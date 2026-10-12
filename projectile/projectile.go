@@ -26,6 +26,9 @@ const (
 	// step is the longest sub-step when sweeping, so a fast arrow can't skip
 	// through a thin wall or a mob between ticks.
 	step = 0.25
+	// Penetration is how deep an arrow's tip sinks past the surface it
+	// hits before it sticks: a third of the 0.75-block arrow.
+	Penetration = 0.25
 )
 
 // Target is something arrows can hit and stick in, such as a mob.
@@ -129,9 +132,14 @@ func (w *World) fly(a *Arrow, s collide.Solids) {
 	d := math.Sqrt(a.VX*a.VX + a.VY*a.VY + a.VZ*a.VZ)
 	n := max(1, int(math.Ceil(d/step)))
 	sx, sy, sz := a.VX/float64(n), a.VY/float64(n), a.VZ/float64(n)
+	// Unit flight direction, to sink the tip in by Penetration.
+	ux, uy, uz := a.VX/math.Max(d, 1e-9), a.VY/math.Max(d, 1e-9), a.VZ/math.Max(d, 1e-9)
 	for i := 0; i < n; i++ {
 		nx, ny, nz := a.X+sx, a.Y+sy, a.Z+sz
 		if t, x, y, z, part := firstHit(w.grid.near(a.X, a.Y, a.Z, nx, ny, nz), a.X, a.Y, a.Z, nx, ny, nz); t != nil {
+			if _, exact := t.(Shape); exact {
+				x, y, z = x+ux*Penetration, y+uy*Penetration, z+uz*Penetration
+			}
 			a.X, a.Y, a.Z, a.Part = x, y, z, part
 			a.stickIn(t)
 			if w.Hit != nil {
@@ -140,11 +148,9 @@ func (w *World) fly(a *Arrow, s collide.Solids) {
 			return
 		}
 		if s.Solid(int(math.Floor(nx)), int(math.Floor(ny)), int(math.Floor(nz))) {
-			// Bury the tip a little past the face, like Minecraft's arrows.
+			// Sink the tip in past the face.
 			f := surface(a.X, a.Y, a.Z, sx, sy, sz)
-			bury := 0.15 / math.Max(1e-9, math.Sqrt(sx*sx+sy*sy+sz*sz))
-			f = math.Min(1, f+bury)
-			a.X, a.Y, a.Z = a.X+sx*f, a.Y+sy*f, a.Z+sz*f
+			a.X, a.Y, a.Z = a.X+sx*f+ux*Penetration, a.Y+sy*f+uy*Penetration, a.Z+sz*f+uz*Penetration
 			a.Stuck, a.Age = true, 0
 			a.VX, a.VY, a.VZ = 0, 0, 0
 			return

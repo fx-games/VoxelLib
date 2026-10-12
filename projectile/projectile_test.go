@@ -44,8 +44,8 @@ func TestStickInWallAtFace(t *testing.T) {
 	for i := 0; i < 20 && !a.Stuck; i++ {
 		w.Tick(ground, nil)
 	}
-	if !a.Stuck || a.X < 30 || a.X > 30.3 {
-		t.Errorf("want stuck just inside the wall face x=30, got stuck=%v x=%.3f", a.Stuck, a.X)
+	if !a.Stuck || math.Abs(a.X-(30+Penetration)) > 0.01 {
+		t.Errorf("want stuck %.2f past the wall face x=30, got stuck=%v x=%.3f", Penetration, a.Stuck, a.X)
 	}
 }
 
@@ -135,8 +135,8 @@ func TestShapeHitExact(t *testing.T) {
 	for i := 0; i < 20 && !a.Stuck; i++ {
 		w.Tick(ground, []Target{p})
 	}
-	if a.In != p || a.Part != 7 || math.Abs(a.X-10.1) > 1e-9 {
-		t.Fatalf("want stuck exactly on the plate, part 7: in=%v part=%d x=%.4f", a.In, a.Part, a.X)
+	if a.In != p || a.Part != 7 || math.Abs(a.X-(10.1+Penetration)) > 0.01 {
+		t.Fatalf("want stuck Penetration past the plate, part 7: in=%v part=%d x=%.4f", a.In, a.Part, a.X)
 	}
 	// Below the plate: inside the box, but the shape misses.
 	b := w.Shoot(0, 0.6, 0.5, math.Pi/2, 0, Speed)
@@ -216,8 +216,10 @@ type arm struct {
 	angle float64
 }
 
+// The pivot is where the arrow's tip ends up, Penetration past the plate.
 func (a *arm) Joint(int) mgl64.Mat4 {
-	return mgl64.Translate3D(a.x, a.y, a.z).Mul4(mgl64.HomogRotate3DY(a.angle)).Mul4(mgl64.Translate3D(-a.x, -a.y, -a.z))
+	px := a.x + Penetration
+	return mgl64.Translate3D(px, a.y, a.z).Mul4(mgl64.HomogRotate3DY(a.angle)).Mul4(mgl64.Translate3D(-px, -a.y, -a.z))
 }
 
 func TestStuckArrowRidesJoint(t *testing.T) {
@@ -230,14 +232,14 @@ func TestStuckArrowRidesJoint(t *testing.T) {
 	if a.In != j {
 		t.Fatal("not stuck")
 	}
-	if _, pos, _, ok := a.Attached(); !ok || math.Abs(pos[0]-10.1) > 1e-9 {
+	if _, pos, _, ok := a.Attached(); !ok || math.Abs(pos[0]-(10.1+Penetration)) > 0.01 {
 		t.Fatalf("attachment %v ok=%v", pos, ok)
 	}
 	yaw0 := a.Yaw
 	j.angle = math.Pi / 2 // the part turns a quarter round
 	w.Tick(ground, []Target{j})
 	// The tip was on the pivot's axis line, so it stays; the arrow turns.
-	if math.Abs(a.X-10.1) > 1e-9 || math.Abs(a.Y-1.5) > 0.2 {
+	if math.Abs(a.X-(10.1+Penetration)) > 0.01 || math.Abs(a.Y-1.5) > 0.2 {
 		t.Errorf("tip moved off the pivot: %.3f,%.3f", a.X, a.Y)
 	}
 	if d := math.Abs(math.Remainder(a.Yaw-yaw0, 2*math.Pi)); math.Abs(d-math.Pi/2) > 1e-6 {
