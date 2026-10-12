@@ -436,8 +436,17 @@ func arrowModel() *model.Model {
 		tri(c[0], c[3], c[2])
 	}
 	pyramid(-0.3, 0, 2*s, 1)
+	// Fletching: two crossed vanes, turned 45° about the shaft so they
+	// leave its corners and read as an X from behind.
+	first := len(me.Verts)
 	box(mgl32.Vec3{-0.002, -4 * s, -0.72}, mgl32.Vec3{0.002, 4 * s, -0.55}, 2)
 	box(mgl32.Vec3{-4 * s, -0.002, -0.72}, mgl32.Vec3{4 * s, 0.002, -0.55}, 2)
+	turn := mgl32.HomogRotate3DZ(math.Pi / 4)
+	for i := first; i < len(me.Verts); i++ {
+		v := &me.Verts[i]
+		v.Pos = mgl32.TransformCoordinate(v.Pos, turn)
+		v.Normal = mgl32.TransformNormal(v.Normal, turn)
+	}
 	box(mgl32.Vec3{-1.2 * s, -1.2 * s, -0.78}, mgl32.Vec3{1.2 * s, 1.2 * s, -0.74}, 3) // nock
 	m.Meshes = []model.Mesh{me}
 	return m
