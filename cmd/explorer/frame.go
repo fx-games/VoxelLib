@@ -54,6 +54,7 @@ func (g *game) run(shotPath string, shotAt int) {
 		for acc >= tickDur {
 			g.tickPlayer()
 			g.tickItems()
+			g.tickCreatures()
 			acc -= tickDur
 		}
 		t1 := time.Now()
@@ -84,6 +85,7 @@ func (g *game) run(shotPath string, shotAt int) {
 			if h, ok := g.target(); ok {
 				g.eng.Renderer.DrawBlockOutline(&g.cam, h.Block.X, h.Block.Y, h.Block.Z)
 			}
+			g.drawCreatures(alpha)
 			g.drawItems(alpha)
 		})
 		g.eng.Renderer.DrawCrosshair(float32(g.cam.Aspect))
@@ -153,6 +155,9 @@ func (g *game) updateTitle(fps int) {
 	title := fmt.Sprintf("voxellib explorer | %d fps | %.1f %.1f %.1f %s | [%d] %s | hand %s | vis %d/%d sec, %d calls, %dk quads, %d MB | chunks %d (+%d) meshes %d | worst frame cpu %.1fms gpu %.1fms (cpu >12ms: %d) interval %.1fms",
 		fps, p.X, p.Y, p.Z, mode, g.selected+1, name, held, s.Visible, s.Sections, s.DrawCalls, s.Quads/1000,
 		s.VertexMemory>>20, loaded, pc, pm, ms(st.costMax), ms(st.gpuMax), st.slowCosts, ms(st.maxFrame))
+	if g.debugMsg != "" {
+		title += " | anim " + g.debugMsg
+	}
 	if g.verbose {
 		title += fmt.Sprintf(" | tick %.1f upd %.1f rend %.1f swap %.1f pace %.1f", ms(st.phase[0]), ms(st.phase[1]), ms(st.phase[2]), ms(st.phase[3]), ms(st.phase[4]))
 		for i, n := range engine.TimingNames {

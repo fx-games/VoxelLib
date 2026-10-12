@@ -3,6 +3,8 @@
 - Read ARCHITECTURE.md first. Keep the layering: `character`, `items`, `items/*` and
   `worldgen/*` must not import `voxel/engine` or `voxel/render`. GL code lives only in
   `voxel/render` and `cmd/`.
+- `model`, `mobs` and `importer/*` must stay GL-free; only `voxel/render` uploads models.
+- Never commit the Cube Pets files: their license forbids redistribution. They are imported from `~/Downloads` at runtime.
 - Verify with `gofmt -l . && go vet ./... && go test ./...`.
 - Visual check without touching the user's mouse or keyboard:
   `go build -o explorer ./cmd/explorer && ./explorer -world '' -shot /tmp/x.png -shot-at 160`

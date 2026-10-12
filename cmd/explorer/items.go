@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"image"
 	"image/png"
+	"log"
 	"math"
 	"math/rand"
 	"os"
@@ -20,6 +21,7 @@ import (
 // drops → items.World, one held item instead of an inventory.
 type itemsState struct {
 	itemNames []string
+	itemImgs  []image.Image // pending upload
 	itemRend  *render.ItemRenderer
 	drops     items.World
 	held      string // item in hand, "" = empty
@@ -35,7 +37,6 @@ func (g *game) loadItems(dir string) error {
 		return err
 	}
 	sort.Strings(files)
-	var imgs []image.Image
 	for _, f := range files {
 		name := strings.TrimSuffix(filepath.Base(f), ".png")
 		if name == "sheet" {
@@ -50,21 +51,36 @@ func (g *game) loadItems(dir string) error {
 		if err != nil {
 			return fmt.Errorf("%s: %w", f, err)
 		}
-		g.itemNames = append(g.itemNames, name)
-		imgs = append(imgs, img)
+		g.addItem(name, img)
 	}
-	if len(imgs) == 0 {
+	if len(files) == 0 {
 		return fmt.Errorf("no sprites in %s (run: go run ./cmd/itemsheet)", dir)
 	}
-	g.itemRend, err = render.NewItemRenderer(g.eng.Renderer, g.itemNames, imgs)
+	return nil
+}
+
+// addItem registers an item sprite; call finishItems once all are added.
+func (g *game) addItem(name string, img image.Image) {
+	g.itemNames = append(g.itemNames, name)
+	g.itemImgs = append(g.itemImgs, img)
+}
+
+// finishItems uploads the registered sprites.
+func (g *game) finishItems() {
+	if len(g.itemImgs) == 0 {
+		return
+	}
+	var err error
+	g.itemRend, err = render.NewItemRenderer(g.eng.Renderer, g.itemNames, g.itemImgs)
 	if err != nil {
-		return err
+		log.Printf("items disabled: %v", err)
+		return
 	}
 	if !g.itemRend.Has(g.held) {
 		g.held = ""
 	}
-	g.itemRand = rand.New(rand.NewSource(int64(len(imgs))))
-	return nil
+	g.itemRand = rand.New(rand.NewSource(int64(len(g.itemImgs))))
+	g.itemImgs = nil
 }
 
 // tickItems scatters items once terrain exists, steps drop physics and

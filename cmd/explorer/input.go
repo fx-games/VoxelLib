@@ -12,6 +12,7 @@ import (
 //	F / double Space  toggle flying      G  toggle no-clip (fly through blocks)
 //	N                 day/night          R  respawn at the spawn point
 //	Q                 drop held item     F3 toggle frame stats on stdout
+//	K                 preview the nearest creature's animations one by one
 func (g *game) setupInput(grab bool) {
 	if grab {
 		g.capture(true)
@@ -46,6 +47,8 @@ func (g *game) setupInput(grab bool) {
 			g.findGround = true
 		case k == glfw.KeyQ:
 			g.dropHeld()
+		case k == glfw.KeyK:
+			g.cycleAnimation()
 		case k == glfw.KeyF3:
 			g.verbose = !g.verbose
 		case k == glfw.KeySpace:

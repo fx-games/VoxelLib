@@ -12,6 +12,8 @@
 //	main.go    flags, window and engine setup
 //	player.go  character controller glue, block breaking/placing
 //	items.go   item sprites, drops, pickup, held item
+//	creatures.go  imported animated models and their behaviour
+//	import.go  Roblox-style and Minecraft-style asset imports
 //	input.go   keyboard/mouse, debug keys
 //	frame.go   main loop, frame stats, screenshots
 package main
@@ -22,6 +24,7 @@ import (
 	"log"
 	"math"
 	"os"
+	"path/filepath"
 	"runtime"
 	"runtime/pprof"
 	"strings"
@@ -56,6 +59,9 @@ func main() {
 		dist     = flag.Int("dist", 12, "render distance in chunks")
 		itemDir  = flag.String("items", "assets/items", "directory of item sprite PNGs ('' = no items)")
 		numItems = flag.Int("item-count", 40, "items scattered around the spawn")
+		pets     = flag.String("pets", filepath.Join(os.Getenv("HOME"), "Downloads/CubePetsVol2_Free_v1.0.zip"), "Roblox-style model pack (dir/zip/glb) to populate the world with ('' = none)")
+		mcAssets = flag.String("mcassets", "assets/cleannrooster", "Minecraft-style asset pack (Blockbench models, animations, item textures) ('' = none)")
+		numMobs  = flag.Int("mob-count", 24, "creatures spawned around the player")
 		shot     = flag.String("shot", "", "save a screenshot PNG at tick -shot-at and quit")
 		shotAt   = flag.Int("shot-at", 200, "tick for -shot")
 		startPos = flag.String("pos", "", "start position x,y,z")
@@ -182,6 +188,14 @@ func main() {
 			log.Printf("items disabled: %v", err)
 		}
 	}
+	g.spawnLeft = *numMobs
+	if *pets != "" {
+		g.importPets(*pets)
+	}
+	if *mcAssets != "" {
+		g.importMCAssets(*mcAssets)
+	}
+	g.finishItems()
 	// -shot runs are automated: never grab the user's mouse.
 	g.setupInput(*shot == "")
 	g.run(*shot, *shotAt)
@@ -210,6 +224,8 @@ type game struct {
 	walkDist float64
 
 	itemsState
+	creaturesState
+	debugMsg string // shown in the title (K animation preview)
 
 	verbose bool
 	edits   string
