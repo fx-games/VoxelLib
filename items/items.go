@@ -36,12 +36,20 @@ const Size = 0.25
 // Box returns the drop's collision box.
 func (d *Drop) Box() collide.AABB { return collide.Box(d.X, d.Y, d.Z, Size, Size) }
 
+// Bob height: the centre floats hoverLift above the drop's feet and bobs
+// ±hoverBob, so a sprite drawn up to 0.5 tall (Minecraft's drop size)
+// keeps its lowest point 0.05 above the ground.
+const (
+	hoverBob  = 0.1
+	hoverLift = 0.25 + hoverBob + 0.05
+)
+
 // Pose returns the interpolated render position, the bob-raised height of
 // the item's centre and its spin angle in radians.
 func (d *Drop) Pose(alpha float64) (x, y, z, spin float64) {
 	t := float64(d.Age) + alpha
 	x = d.PrevX + (d.X-d.PrevX)*alpha
-	y = d.PrevY + (d.Y-d.PrevY)*alpha + 0.25 + 0.1*math.Sin(t/10)
+	y = d.PrevY + (d.Y-d.PrevY)*alpha + hoverLift + hoverBob*math.Sin(t/10)
 	z = d.PrevZ + (d.Z-d.PrevZ)*alpha
 	return x, y, z, t / 20
 }
