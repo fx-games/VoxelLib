@@ -3,6 +3,7 @@ package voxel
 import (
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -82,6 +83,10 @@ type StateInfo struct {
 	Emission uint8
 	Opacity  uint8
 	CullSelf bool
+	// Level is a liquid's Minecraft level: 0 a source (8/9 high), 1..7
+	// flowing and ever shallower ((8-Level)/9); the mesher slopes the
+	// surface between neighbours.
+	Level uint8
 }
 
 // ModelResolver lets a resource pack decide shape and face textures of a state
@@ -259,6 +264,11 @@ func (r *Registry) bake(def *BlockDef, canon string, props map[string]string) St
 	}
 	if props["waterlogged"] == "true" && info.Shape != ShapeCube {
 		info.Layer = LayerTranslucent
+	}
+	if info.Shape == ShapeLiquid {
+		if l, err := strconv.Atoi(props["level"]); err == nil && l > 0 && l < 8 {
+			info.Level = uint8(l)
+		}
 	}
 	for f := range tex {
 		info.Tex[f] = r.texture(tex[f])

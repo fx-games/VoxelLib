@@ -337,6 +337,12 @@ func (m *Mesher) greedy(f voxel.Face, p [3]int, ax int) {
 // quad emits one face quad. p is the block position (section local), w/h the
 // size along the face's u/v axes, top the height of y=1 corners in 1/32.
 func (m *Mesher) quad(f voxel.Face, p [3]int, w, h int, tex uint16, tint uint32, layer voxel.Layer, cl [4]cornerLight, top int) {
+	m.quadTops(f, p, w, h, tex, tint, layer, cl, [4]int{top, top, top, top})
+}
+
+// quadTops is quad with the top height per corner, indexed x|z<<1 (liquid
+// surfaces slope).
+func (m *Mesher) quadTops(f voxel.Face, p [3]int, w, h int, tex uint16, tint uint32, layer voxel.Layer, cl [4]cornerLight, top [4]int) {
 	ua, va := uAxis[f], vAxis[f]
 	var size [3]int
 	size[f.Axis()] = 1
@@ -359,8 +365,8 @@ func (m *Mesher) quad(f voxel.Face, p [3]int, w, h int, tex uint16, tint uint32,
 		x := (p[0] + co[0]*size[0]) * 32
 		y := (p[1] + co[1]*size[1]) * 32
 		z := (p[2] + co[2]*size[2]) * 32
-		if co[1] == 1 && top != 32 {
-			y = (p[1])*32 + top
+		if co[1] == 1 && top != full {
+			y = p[1]*32 + top[co[0]|co[2]<<1]
 		}
 		cx += float32(x)
 		cy += float32(y)
@@ -391,26 +397,28 @@ func (m *Mesher) specials() {
 				switch info.Shape {
 				case voxel.ShapeLiquid:
 					above := &t[st[i+nbOff[voxel.FaceUp]]]
-					top := 28
-					if above.Def == info.Def || above.Opaque {
-						top = 32
+					top := full
+					if !(above.Def == info.Def || above.Opaque) {
+						for k := range top {
+							top[k] = m.liquidCorner(i, info.Def, k&1, k>>1)
+						}
 					}
 					for f := voxel.Face(0); f < voxel.FaceCount; f++ {
 						nb := &t[st[i+nbOff[f]]]
 						if nb.Opaque || nb.Def == info.Def {
-							if !(f == voxel.FaceUp && top != 32 && !nb.Opaque) {
+							if !(f == voxel.FaceUp && top != full && !nb.Opaque) {
 								continue
 							}
 						}
 						l := li[i+nbOff[f]]
-						if f == voxel.FaceUp && top != 32 {
+						if f == voxel.FaceUp && top != full {
 							l = li[i]
 						}
 						c := cornerLight{3, (l >> 4) * 16, (l & 15) * 16}
 						cl := [4]cornerLight{c, c, c, c}
 						tint := m.tint(info, f)
 						p := [3]int{x, y, z}
-						m.quad(f, p, 1, 1, info.Tex[f], tint, info.Layer, cl, top)
+						m.quadTops(f, p, 1, 1, info.Tex[f], tint, info.Layer, cl, top)
 						if f == voxel.FaceUp && info.Layer == voxel.LayerTranslucent {
 							m.quadReversed(p, info.Tex[f], tint, cl, top)
 						}
@@ -425,14 +433,51 @@ func (m *Mesher) specials() {
 	}
 }
 
+// full is a flat block top: every corner at 32/32.
+var full = [4]int{32, 32, 32, 32}
+
+// liquidHeight is a liquid's own surface height for a level (0 source).
+func liquidHeight(level uint8) float32 { return float32(8-level) / 9 }
+
+// liquidCorner is the surface height (1/32 block) at the top corner
+// (cx,cz in 0..1) of liquid cell i, averaged like Minecraft's fluid
+// renderer: the four cells around the corner count their liquid's height
+// (ten times over when nearly full), non-solid cells count as empty, and
+// liquid above any of them fills the corner.
+func (m *Mesher) liquidCorner(i int, def *voxel.BlockDef, cx, cz int) int {
+	t, st := m.table, &m.Snap.States
+	var total, weight float32
+	for dz := cz - 1; dz <= cz; dz++ {
+		for dx := cx - 1; dx <= cx; dx++ {
+			j := i + dx + dz*18
+			if t[st[j+nbOff[voxel.FaceUp]]].Def == def {
+				return 32
+			}
+			nb := &t[st[j]]
+			switch {
+			case nb.Def == def:
+				if h := liquidHeight(nb.Level); h >= 0.8 {
+					total, weight = total+h*10, weight+10
+				} else {
+					total, weight = total+h, weight+1
+				}
+			case !nb.Collides:
+				weight++
+			}
+		}
+	}
+	return max(1, int(total/weight*32+0.5))
+}
+
 // quadReversed emits the underside of a liquid surface (seen from below).
-func (m *Mesher) quadReversed(p [3]int, tex uint16, tint uint32, cl [4]cornerLight, top int) {
+func (m *Mesher) quadReversed(p [3]int, tex uint16, tint uint32, cl [4]cornerLight, top [4]int) {
 	out := m.out[voxel.LayerTranslucent][GroupUnassigned]
-	y := p[1]*32 + top
 	var cx, cz float32
+	var y int
 	for _, k := range [4]int{3, 2, 1, 0} {
 		co := cornerOff[voxel.FaceUp][k]
 		x, z := (p[0]+co[0])*32, (p[2]+co[2])*32
+		y = p[1]*32 + top[co[0]|co[2]<<1]
 		cx += float32(x)
 		cz += float32(z)
 		u, v := uvTab[voxel.FaceUp][k][0], uvTab[voxel.FaceUp][k][1]
