@@ -148,6 +148,20 @@ func TestShapeHitExact(t *testing.T) {
 	}
 }
 
+func TestDetach(t *testing.T) {
+	var w World
+	d := &dummy{x: 10, y: 0, z: 0.5}
+	a := w.Shoot(0, 1, 0.5, math.Pi/2, 0, Speed)
+	w.Shoot(0, 5, 0.5, math.Pi/2, 0, Speed) // misses, stays in the world
+	for i := 0; i < 20 && !a.Stuck; i++ {
+		w.Tick(ground, []Target{d})
+	}
+	got := w.Detach(d)
+	if len(got) != 1 || got[0] != a || len(w.Arrows) != 1 || w.Arrows[0] == a {
+		t.Errorf("detach returned %d arrows, %d left", len(got), len(w.Arrows))
+	}
+}
+
 func TestGridFindsTargetsAcrossCells(t *testing.T) {
 	// 400 decoys off the line of fire, and the real target straddling a
 	// cell corner (x=12, z=0 are both cell edges).

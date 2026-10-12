@@ -39,6 +39,7 @@ type creature struct {
 	// arrow hits against what the player saw.
 	drawn                        bool
 	drawX, drawY, drawZ, drawYaw float64
+	drawPitch                    float64
 	drawFrame, poseFrame         int         // pose is the drawn skin, rebuilt when stale
 	pose                         *model.Pose // deformed vertices for hit tests
 }
@@ -265,9 +266,10 @@ func (g *game) drawCreatures(alpha float64) {
 		}
 		c.skin = c.anim.Skin(c.skin)
 		c.drawn, c.drawX, c.drawY, c.drawZ, c.drawYaw = true, x, y, z, yaw
+		c.drawPitch = c.deathTilt(alpha)
 		c.drawFrame++
 		sky, blk := g.light(x, y+c.sp.height/2, z)
-		g.modelInsts = append(g.modelInsts, render.ModelInstance{Model: c.sp.handle, X: x, Y: y, Z: z, Yaw: yaw, Pitch: c.deathTilt(alpha), Skin: c.skin, Sky: sky, Block: blk})
+		g.modelInsts = append(g.modelInsts, render.ModelInstance{Model: c.sp.handle, X: x, Y: y, Z: z, Yaw: yaw, Pitch: c.drawPitch, Skin: c.skin, Sky: sky, Block: blk})
 	}
 	g.modelRend.Draw(&g.cam, g.modelInsts)
 }

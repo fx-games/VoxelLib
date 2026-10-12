@@ -9,6 +9,7 @@ import (
 	"math/rand"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 
@@ -30,8 +31,10 @@ type itemsState struct {
 	// the scatter alternates between them and the sprite folder, so a small
 	// pack isn't drowned out by a big folder.
 	packFrom int
-	itemRand *rand.Rand
-	instBuf  []render.ItemInstance
+	// unscattered items are never scattered (e.g. arrow pickups).
+	unscattered []string
+	itemRand    *rand.Rand
+	instBuf     []render.ItemInstance
 }
 
 // loadItems reads every sprite PNG in dir (as written by cmd/itemsheet).
@@ -113,7 +116,19 @@ func (g *game) tickItems() {
 				hi = g.packFrom
 			}
 		}
-		g.drops.Spawn(g.itemNames[lo+g.itemRand.Intn(hi-lo)], x, float64(y)+0.5, z)
+		name := g.itemNames[lo+g.itemRand.Intn(hi-lo)]
+		if slices.Contains(g.unscattered, name) {
+			// Pick from everything instead, so a range holding only
+			// unscattered items can't stall the scatter.
+			name = g.itemNames[g.itemRand.Intn(len(g.itemNames))]
+			if slices.Contains(g.unscattered, name) {
+				if len(g.unscattered) >= len(g.itemNames) {
+					g.itemsLeft = 0
+				}
+				continue
+			}
+		}
+		g.drops.Spawn(name, x, float64(y)+0.5, z)
 		g.itemsLeft--
 	}
 	g.drops.Tick(g.terrain)

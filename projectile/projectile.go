@@ -277,6 +277,23 @@ func (w *World) Release(t Target) {
 	}
 }
 
+// Detach removes every arrow stuck in t from the world and returns them,
+// e.g. to turn them into pickups when t's body disappears.
+func (w *World) Detach(t Target) []*Arrow {
+	var out []*Arrow
+	live := w.Arrows[:0]
+	for _, a := range w.Arrows {
+		if a.In == t {
+			out = append(out, a)
+		} else {
+			live = append(live, a)
+		}
+	}
+	clear(w.Arrows[len(live):])
+	w.Arrows = live
+	return out
+}
+
 // Height returns how far up t's box (0 = feet, 1 = top) an arrow struck it,
 // for hit-zone checks such as head shots. Call from World.Hit.
 func (a *Arrow) Height(t Target) float64 {

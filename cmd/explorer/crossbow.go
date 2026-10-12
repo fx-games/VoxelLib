@@ -22,6 +22,9 @@ import (
 	"github.com/memmaker/voxellib/voxel/render"
 )
 
+// arrowItem is the pickup an arrow becomes when a corpse disappears.
+const arrowItem = "arrow"
+
 // crossbowGroup is the bone holding the crossbow in the pack's models.
 const crossbowGroup = "repeater_crossbow_arrow"
 
@@ -66,6 +69,8 @@ func (g *game) setupCrossbow(p *mcmodel.Pack) {
 		g.bowModel = -1
 		return
 	}
+	g.addItem(arrowItem, arrowSprite())
+	g.unscattered = append(g.unscattered, arrowItem)
 	g.equipped = true
 	g.arrows.Hit = func(a *projectile.Arrow, t projectile.Target) {
 		c, ok := t.(*creature)
@@ -179,9 +184,10 @@ func (c *creature) Reach() collide.AABB {
 }
 
 // creatureMatrix places a creature's model space in the world, as the
-// model renderer does.
-func creatureMatrix(x, y, z, yaw float64) mgl32.Mat4 {
-	return mgl32.Translate3D(float32(x), float32(y), float32(z)).Mul4(mgl32.HomogRotate3DY(float32(math.Pi - yaw)))
+// model renderer does (pitch is the death tilt).
+func creatureMatrix(x, y, z, yaw, pitch float64) mgl32.Mat4 {
+	return mgl32.Translate3D(float32(x), float32(y), float32(z)).Mul4(mgl32.HomogRotate3DY(float32(math.Pi - yaw))).
+		Mul4(mgl32.HomogRotate3DX(float32(-pitch)))
 }
 
 // boneMatrix is bone b's skin matrix in the pose last drawn (identity
@@ -196,7 +202,7 @@ func (c *creature) boneMatrix(b int) mgl32.Mat4 {
 // Joint maps bone b's bind-pose model space to the world: the drawn pose
 // of the bone, placed at the creature's current position.
 func (c *creature) Joint(b int) mgl64.Mat4 {
-	return mat64(creatureMatrix(c.mob.X, c.mob.Y, c.mob.Z, c.mob.Yaw).Mul4(c.boneMatrix(b)))
+	return mat64(creatureMatrix(c.mob.X, c.mob.Y, c.mob.Z, c.mob.Yaw, c.deathTilt(1)).Mul4(c.boneMatrix(b)))
 }
 
 func mat64(m mgl32.Mat4) (o mgl64.Mat4) {
@@ -219,7 +225,7 @@ func (c *creature) Intersect(x0, y0, z0, x1, y1, z1 float64) (x, y, z float64, p
 	if !segNearSphere(x0-dx, y0-dy, z0-dz, x1-dx, y1-dy, z1-dz, c.sp.shape.radius) {
 		return 0, 0, 0, -1, false
 	}
-	inv := creatureMatrix(dx, dy, dz, dyaw).Inv()
+	inv := creatureMatrix(dx, dy, dz, dyaw, 0).Inv()
 	o := mgl32.TransformCoordinate(mgl32.Vec3{float32(x0), float32(y0), float32(z0)}, inv)
 	e := mgl32.TransformCoordinate(mgl32.Vec3{float32(x1), float32(y1), float32(z1)}, inv)
 	if c.pose == nil || c.poseFrame != c.drawFrame || !c.drawn {
@@ -230,7 +236,7 @@ func (c *creature) Intersect(x0, y0, z0, x1, y1, z1 float64) (x, y, z float64, p
 	if !ok {
 		return 0, 0, 0, -1, false
 	}
-	w := mgl32.TransformCoordinate(h.Pos, creatureMatrix(c.mob.X, c.mob.Y, c.mob.Z, c.mob.Yaw))
+	w := mgl32.TransformCoordinate(h.Pos, creatureMatrix(c.mob.X, c.mob.Y, c.mob.Z, c.mob.Yaw, c.deathTilt(1)))
 	return float64(w[0]), float64(w[1]), float64(w[2]), h.Bone, true
 }
 
@@ -251,9 +257,15 @@ func (g *game) kill(c *creature) {
 	if c.dying > 0 {
 		return
 	}
+	// Freeze the body where it is: it is no longer ticked, so its previous
+	// pose must equal the current one or drawing keeps interpolating
+	// between them every tick (the corpse jittered), and Static keeps other
+	// mobs from shoving it. Its arrows stay in it until it disappears.
+	m := c.mob
 	c.dying = 1
-	c.mob.VX, c.mob.VZ = 0, 0
-	g.arrows.Release(c)
+	m.VX, m.VY, m.VZ = 0, 0, 0
+	m.PrevX, m.PrevY, m.PrevZ, m.PrevYaw = m.X, m.Y, m.Z, m.Yaw
+	m.Static = true
 	g.debugMsg = c.sp.model.Name + ": head shot"
 }
 
@@ -264,6 +276,7 @@ func (g *game) tickDying() {
 		if c.dying > 0 {
 			c.dying++
 			if c.dying > deathTicks+10 {
+				g.dropArrows(c)
 				continue
 			}
 		}
@@ -271,6 +284,16 @@ func (g *game) tickDying() {
 	}
 	clear(g.creatures[len(live):])
 	g.creatures = live
+}
+
+// dropArrows turns the arrows stuck in a disappearing creature into arrow
+// pickups where they were; they fall and hover like any dropped item.
+func (g *game) dropArrows(c *creature) {
+	for _, a := range g.arrows.Detach(c) {
+		if g.itemRend != nil && g.itemRend.Has(arrowItem) {
+			g.drops.Spawn(arrowItem, a.X, a.Y, a.Z)
+		}
+	}
 }
 
 // deathTilt is how far a dying creature has fallen backwards (radians).
@@ -294,7 +317,7 @@ func (g *game) drawArrows(alpha float64) {
 		if c, ok := a.In.(*creature); ok {
 			if b, pos, d, ok := a.Attached(); ok && c.drawn {
 				// Ride the bone with this frame's animation and position.
-				m := mat64(creatureMatrix(c.drawX, c.drawY, c.drawZ, c.drawYaw).Mul4(c.boneMatrix(b)))
+				m := mat64(creatureMatrix(c.drawX, c.drawY, c.drawZ, c.drawYaw, c.drawPitch).Mul4(c.boneMatrix(b)))
 				p := mgl64.TransformCoordinate(pos, m)
 				x, y, z = p[0], p[1], p[2]
 				yaw, pitch = projectile.Orient(mgl64.TransformNormal(d, m))
@@ -382,4 +405,26 @@ func arrowModel() *model.Model {
 	box(mgl32.Vec3{-1.2 * s, -1.2 * s, -0.78}, mgl32.Vec3{1.2 * s, 1.2 * s, -0.74}, 3) // nock
 	m.Meshes = []model.Mesh{me}
 	return m
+}
+
+// arrowSprite draws a 16×16 item sprite of an arrow, tip to the upper
+// right like Minecraft's arrow item.
+func arrowSprite() image.Image {
+	img := image.NewNRGBA(image.Rect(0, 0, 16, 16))
+	shaft := color.NRGBA{120, 86, 52, 255}
+	head := color.NRGBA{170, 170, 175, 255}
+	dark := color.NRGBA{90, 90, 96, 255}
+	feather := color.NRGBA{235, 235, 235, 255}
+	for i := 3; i <= 11; i++ { // shaft along the diagonal
+		img.Set(i, 15-i, shaft)
+	}
+	for _, p := range [][2]int{{12, 3}, {13, 2}, {14, 1}, {11, 2}, {13, 4}, {12, 1}, {14, 3}} {
+		img.Set(p[0], p[1], head)
+	}
+	img.Set(12, 2, dark)
+	img.Set(13, 3, dark)
+	for _, p := range [][2]int{{1, 12}, {2, 11}, {3, 14}, {4, 13}, {2, 13}, {1, 14}, {2, 14}, {1, 13}} {
+		img.Set(p[0], p[1], feather)
+	}
+	return img
 }
