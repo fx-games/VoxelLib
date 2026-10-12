@@ -16,6 +16,13 @@ type Solids interface {
 	Solid(x, y, z int) bool
 }
 
+// Boxer is optionally implemented by a Solids that also has solid boxes
+// smaller than a block (props, furniture): Boxes appends those
+// overlapping area.
+type Boxer interface {
+	Boxes(area AABB, out []AABB) []AABB
+}
+
 // SolidsFunc adapts a function to Solids.
 type SolidsFunc func(x, y, z int) bool
 
@@ -82,25 +89,28 @@ func (a AABB) Blocks(f func(x, y, z int)) {
 	}
 }
 
-// Colliders appends the boxes of solid blocks overlapping area.
+// Colliders appends the boxes of solid blocks overlapping area, and the
+// Boxer's boxes if s is one.
 func Colliders(s Solids, area AABB, out []AABB) []AABB {
 	area.Blocks(func(x, y, z int) {
 		if s.Solid(x, y, z) {
 			out = append(out, Block(x, y, z))
 		}
 	})
+	if b, ok := s.(Boxer); ok {
+		out = b.Boxes(area, out)
+	}
 	return out
 }
 
-// Fits reports whether the box overlaps no solid block.
+// Fits reports whether the box overlaps nothing solid.
 func Fits(s Solids, box AABB) bool {
-	ok := true
-	box.Blocks(func(x, y, z int) {
-		if ok && s.Solid(x, y, z) {
-			ok = false
+	for _, b := range Colliders(s, box, nil) {
+		if b.Intersects(box) {
+			return false
 		}
-	})
-	return ok
+	}
+	return true
 }
 
 func clipY(b, a AABB, d float64) float64 {

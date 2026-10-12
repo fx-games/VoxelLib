@@ -30,3 +30,24 @@ func TestFits(t *testing.T) {
 		t.Fatal("box on the floor doesn't fit")
 	}
 }
+
+// boxed adds one 0.4-wide box on the floor at x 2..2.4.
+type boxed struct{ SolidsFunc }
+
+func (boxed) Boxes(area AABB, out []AABB) []AABB {
+	if b := (AABB{2, 0, 0, 2.4, 0.5, 1}); b.Intersects(area) {
+		out = append(out, b)
+	}
+	return out
+}
+
+func TestBoxerBlocks(t *testing.T) {
+	w := boxed{floor}
+	dx, _, _ := Move(w, Box(0.5, 0, 0.5, 0.6, 1.8), 3, 0, 0)
+	if want := 2 - 0.8; dx < want-1e-9 || dx > want+1e-9 {
+		t.Fatalf("dx = %v, want %v", dx, want)
+	}
+	if Fits(w, Box(2.2, 0, 0.5, 0.6, 1.8)) || !Fits(w, Box(2.2, 0.5, 0.5, 0.6, 1.8)) {
+		t.Fatal("Fits ignores the box")
+	}
+}
