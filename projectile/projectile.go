@@ -191,14 +191,22 @@ func (a *Arrow) follow() {
 	a.Yaw = tyaw + a.oyaw
 }
 
-// Release unsticks every arrow stuck in t (call when t despawns); they stay
-// where they are until they expire.
+// Release drops every arrow stuck in t (call when t dies or despawns): they
+// fall from where they are and stick in whatever they land on.
 func (w *World) Release(t Target) {
 	for _, a := range w.Arrows {
 		if a.In == t {
-			a.In = nil
+			a.In, a.Stuck = nil, false
+			a.VX, a.VY, a.VZ = 0, 0, 0
 		}
 	}
+}
+
+// Height returns how far up t's box (0 = feet, 1 = top) an arrow struck it,
+// for hit-zone checks such as head shots. Call from World.Hit.
+func (a *Arrow) Height(t Target) float64 {
+	b := t.Box()
+	return (a.Y - b.MinY) / math.Max(1e-9, b.MaxY-b.MinY)
 }
 
 // Lerp interpolates position and orientation for rendering.

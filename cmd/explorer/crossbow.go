@@ -11,6 +11,7 @@ import (
 	"image/color"
 	"log"
 	"math"
+	"strings"
 
 	"github.com/go-gl/mathgl/mgl32"
 	"github.com/memmaker/voxellib/importer/mcmodel"
@@ -37,6 +38,7 @@ type crossbowState struct {
 	reload     int // ticks until the next shot
 	recoil     int // ticks left of the recoil kick
 	arrows     projectile.World
+	heads      map[*model.Model]float64 // head-zone start per model, see headStart
 }
 
 // setupCrossbow finds the crossbow in an imported pack and equips it.
@@ -66,6 +68,10 @@ func (g *game) setupCrossbow(p *mcmodel.Pack) {
 	}
 	g.equipped = true
 	g.arrows.Hit = func(a *projectile.Arrow, t projectile.Target) {
+		if c := g.creatureOf(t); c != nil && a.Height(t) >= g.headStart(c.sp.model) {
+			g.kill(c)
+			return
+		}
 		if m, ok := t.(*mobs.Mob); ok && !m.Static {
 			l := math.Hypot(a.PrevX-a.X, a.PrevZ-a.Z) + 1e-9
 			m.VX += (a.X - a.PrevX) / l * knockback
@@ -117,9 +123,107 @@ func (g *game) tickArrows() {
 	}
 	targets := make([]projectile.Target, 0, len(g.creatures))
 	for _, c := range g.creatures {
-		targets = append(targets, c.mob)
+		if c.dying == 0 {
+			targets = append(targets, c.mob)
+		}
 	}
 	g.arrows.Tick(g.terrain, targets)
+}
+
+// Head shots: an arrow that strikes a creature's head kills it. It topples
+// over like a Minecraft mob (90° over a second), its arrows drop, and it is
+// removed.
+
+const deathTicks = 20
+
+// headStart returns where a model's head begins, as a fraction of its
+// height: the lowest vertex of the "head" bone and its children. Models
+// without a head bone count the top quarter.
+func (g *game) headStart(m *model.Model) float64 {
+	if f, ok := g.heads[m]; ok {
+		return f
+	}
+	head := -1
+	for i, b := range m.Bones {
+		if strings.EqualFold(b.Name, "head") {
+			head = i
+			break
+		}
+	}
+	under := func(b int) bool {
+		for ; b >= 0; b = m.Bones[b].Parent {
+			if b == head {
+				return true
+			}
+		}
+		return false
+	}
+	_, hi := m.Bounds()
+	low := math.Inf(1)
+	if head >= 0 {
+		for _, me := range m.Meshes {
+			for _, v := range me.Verts {
+				if under(int(v.Joints[0])) {
+					low = math.Min(low, float64(v.Pos[1]))
+				}
+			}
+		}
+	}
+	f := 0.75
+	if !math.IsInf(low, 1) && hi[1] > 0 {
+		f = math.Max(0.3, low/float64(hi[1]))
+	}
+	if g.heads == nil {
+		g.heads = map[*model.Model]float64{}
+	}
+	g.heads[m] = f
+	return f
+}
+
+// creatureOf finds the creature an arrow target belongs to.
+func (g *game) creatureOf(t projectile.Target) *creature {
+	for _, c := range g.creatures {
+		if c.mob == t {
+			return c
+		}
+	}
+	return nil
+}
+
+// kill starts a creature's death: it stops, and its arrows fall out.
+func (g *game) kill(c *creature) {
+	if c.dying > 0 {
+		return
+	}
+	c.dying = 1
+	c.mob.VX, c.mob.VZ = 0, 0
+	g.arrows.Release(c.mob)
+	g.debugMsg = c.sp.model.Name + ": head shot"
+}
+
+// tickDying advances deaths and removes creatures that have fallen over.
+func (g *game) tickDying() {
+	live := g.creatures[:0]
+	for _, c := range g.creatures {
+		if c.dying > 0 {
+			c.dying++
+			if c.dying > deathTicks+10 {
+				continue
+			}
+		}
+		live = append(live, c)
+	}
+	clear(g.creatures[len(live):])
+	g.creatures = live
+}
+
+// deathTilt is how far a dying creature has fallen backwards (radians).
+func (c *creature) deathTilt(alpha float64) float64 {
+	if c.dying == 0 {
+		return 0
+	}
+	t := math.Min(1, (float64(c.dying-1)+alpha)/deathTicks)
+	return math.Sqrt(t) * math.Pi / 2 // positive pitch tips the top backwards
 }
 
 // drawArrows draws flying and stuck arrows, and the crossbow in first

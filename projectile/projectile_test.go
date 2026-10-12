@@ -89,3 +89,24 @@ func TestExpires(t *testing.T) {
 		t.Errorf("%d arrows left after their life", len(w.Arrows))
 	}
 }
+
+func TestHeightAndRelease(t *testing.T) {
+	var w World
+	d := &dummy{x: 10, y: 0, z: 0.5}
+	var h float64
+	w.Hit = func(a *Arrow, tg Target) { h = a.Height(tg) }
+	a := w.Shoot(0, 1.7, 0.5, math.Pi/2, 0, Speed) // head height
+	for i := 0; i < 20 && !a.Stuck; i++ {
+		w.Tick(ground, []Target{d})
+	}
+	if h < 0.8 || h > 1 {
+		t.Errorf("hit height %.2f, want near the top", h)
+	}
+	w.Release(d)
+	for i := 0; i < 60 && !(a.Stuck && a.In == nil); i++ {
+		w.Tick(ground, nil)
+	}
+	if !a.Stuck || a.Y > 0 || a.Y < -0.3 {
+		t.Errorf("released arrow should fall and stick in the ground, stuck=%v y=%.2f", a.Stuck, a.Y)
+	}
+}

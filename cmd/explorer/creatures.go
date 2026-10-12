@@ -32,6 +32,8 @@ type creature struct {
 	skin []mgl32.Mat4
 	// debugClip, when set (K key), overrides the behaviour's animation.
 	debugClip string
+	// dying counts ticks since a fatal hit (0 = alive); see crossbow.go.
+	dying int
 }
 
 // creaturesState is the explorer's creature glue: imported models →
@@ -180,8 +182,11 @@ func (g *game) tickCreatures() {
 		g.spawnLeft--
 	}
 	all := make([]*mobs.Mob, 0, len(g.creatures)+1)
+	g.tickDying()
 	for _, c := range g.creatures {
-		c.mob.Tick(g.terrain, g.mobRand)
+		if c.dying == 0 {
+			c.mob.Tick(g.terrain, g.mobRand)
+		}
 		all = append(all, c.mob)
 	}
 	// The player shoves mobs aside but isn't shoved back.
@@ -253,7 +258,7 @@ func (g *game) drawCreatures(alpha float64) {
 		}
 		c.skin = c.anim.Skin(c.skin)
 		sky, blk := g.light(x, y+c.sp.height/2, z)
-		g.modelInsts = append(g.modelInsts, render.ModelInstance{Model: c.sp.handle, X: x, Y: y, Z: z, Yaw: yaw, Skin: c.skin, Sky: sky, Block: blk})
+		g.modelInsts = append(g.modelInsts, render.ModelInstance{Model: c.sp.handle, X: x, Y: y, Z: z, Yaw: yaw, Pitch: c.deathTilt(alpha), Skin: c.skin, Sky: sky, Block: blk})
 	}
 	g.modelRend.Draw(&g.cam, g.modelInsts)
 }
