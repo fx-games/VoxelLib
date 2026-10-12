@@ -124,7 +124,10 @@ func (g *game) drawArrows(alpha float64) {
 	g.modelInsts = g.modelInsts[:0]
 	for _, a := range g.arrows.Arrows {
 		x, y, z, yaw, pitch := a.Lerp(alpha)
-		sky, blk := g.light(x, y, z)
+		// Light the arrow from its middle: a stuck tip sits inside a solid
+		// block, whose light is 0, which drew every stuck arrow black.
+		back := 0.4 * math.Cos(pitch)
+		sky, blk := g.light(x-math.Sin(yaw)*back, y-0.4*math.Sin(pitch), z+math.Cos(yaw)*back)
 		g.modelInsts = append(g.modelInsts, render.ModelInstance{Model: g.arrowModel, X: x, Y: y, Z: z, Yaw: yaw, Pitch: pitch, Sky: sky, Block: blk})
 	}
 	g.modelRend.Draw(&g.cam, g.modelInsts)
