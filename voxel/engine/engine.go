@@ -44,9 +44,9 @@ type Config struct {
 	// Bounds, when set, limits the world to these chunks (inclusive
 	// corners): nothing outside is loaded, generated or drawn, e.g. a
 	// hand-built level.
-	Bounds *[2]voxel.ChunkPos
-	Textures       render.TextureSource
-	RenderOptions  render.Options
+	Bounds        *[2]voxel.ChunkPos
+	Textures      render.TextureSource
+	RenderOptions render.Options
 	// Workers is the size of each background pool (mesh, generation).
 	// Default (NumCPU-3)/2: with the light and save workers that leaves a
 	// core (and a Go P) free for the render thread; oversubscribing shows up
