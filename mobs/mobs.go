@@ -151,7 +151,8 @@ func (m *Mob) tickWalker(w collide.Solids, rnd *rand.Rand) {
 	fx, fz := math.Sin(m.Yaw)*speed, -math.Cos(m.Yaw)*speed
 	m.VX += (fx - m.VX) * 0.5
 	m.VZ += (fz - m.VZ) * 0.5
-	m.VY -= 0.08
+	// Move, then apply gravity, as Minecraft does: the jump's full 0.42
+	// counts on its first tick, so the arc peaks at ~1.25 blocks.
 	mx, my, mz := collide.Move(w, m.Box(), m.VX, m.VY, m.VZ)
 	blocked := (mx != m.VX || mz != m.VZ) && speed > 0
 	m.OnGround = m.VY < 0 && my > m.VY
@@ -159,7 +160,7 @@ func (m *Mob) tickWalker(w collide.Solids, rnd *rand.Rand) {
 		m.VY = 0
 	}
 	m.X, m.Y, m.Z = m.X+mx, m.Y+my, m.Z+mz
-	m.VY *= 0.98
+	m.VY = (m.VY - 0.08) * 0.98
 	if blocked && m.OnGround {
 		m.VY = 0.42 // hop up one block
 		m.set(Jump)
