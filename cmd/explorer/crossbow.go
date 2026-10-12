@@ -16,6 +16,7 @@ import (
 	"github.com/go-gl/mathgl/mgl32"
 	"github.com/go-gl/mathgl/mgl64"
 	"github.com/memmaker/voxellib/importer/mcmodel"
+	"github.com/memmaker/voxellib/mobs"
 	"github.com/memmaker/voxellib/model"
 	"github.com/memmaker/voxellib/projectile"
 	"github.com/memmaker/voxellib/voxel/collide"
@@ -270,6 +271,7 @@ func (g *game) kill(c *creature, arrowYaw float64) {
 	c.dying = 1
 	c.fallYaw = arrowYaw // pushed over along the arrow's flight
 	m.VX, m.VY, m.VZ = 0, 0, 0
+	m.OnGround = false // fallCorpse finds the ground on its first step
 	m.PrevX, m.PrevY, m.PrevZ, m.PrevYaw = m.X, m.Y, m.Z, m.Yaw
 	m.Static = true
 	g.debugMsg = c.sp.model.Name + ": head shot"
@@ -280,7 +282,12 @@ func (g *game) tickDying() {
 	live := g.creatures[:0]
 	for _, c := range g.creatures {
 		if c.dying > 0 {
-			c.dying++
+			landed := g.fallCorpse(c.mob)
+			// Lying still and fading wait until the body is down: a flyer
+			// (or a mob shot mid-jump) drops first.
+			if landed || c.dying < deathTicks {
+				c.dying++
+			}
 			if c.dying > deathTicks+lieTicks+fadeTicks {
 				g.dropArrows(c)
 				continue
@@ -290,6 +297,23 @@ func (g *game) tickDying() {
 	}
 	clear(g.creatures[len(live):])
 	g.creatures = live
+}
+
+// fallCorpse drops a dead body under gravity until it rests on terrain and
+// reports whether it has landed. It keeps the previous position current, so
+// drawing interpolates the fall smoothly.
+func (g *game) fallCorpse(m *mobs.Mob) bool {
+	m.PrevX, m.PrevY, m.PrevZ, m.PrevYaw = m.X, m.Y, m.Z, m.Yaw
+	if m.OnGround {
+		return true
+	}
+	m.VY = (m.VY - 0.08) * 0.98 // Minecraft entity gravity and drag
+	_, my, _ := collide.Move(g.terrain, m.Box(), 0, m.VY, 0)
+	m.Y += my
+	if my != m.VY { // hit the ground
+		m.VY, m.OnGround = 0, true
+	}
+	return m.OnGround
 }
 
 // dropArrows turns the arrows stuck in a disappearing creature into arrow
