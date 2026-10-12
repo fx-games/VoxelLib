@@ -91,10 +91,17 @@ func (g *game) fire() {
 		return
 	}
 	yaw, pitch := g.cam.Yaw, g.cam.Pitch
-	ex, ey, ez := g.player.Eye()
-	fx, fy, fz := math.Sin(yaw)*math.Cos(pitch), math.Sin(pitch), -math.Cos(yaw)*math.Cos(pitch)
-	// Start just in front of the eye, slightly below, so it leaves the bow.
-	g.arrows.Shoot(ex+fx*0.4, ey+fy*0.4-0.1, ez+fz*0.4, yaw, pitch, projectile.Speed)
+	// Vanilla (AbstractArrow, Projectile.shootFromRotation): the arrow starts
+	// at the shooter's position, 0.1 below the eyes, and inherits the
+	// shooter's movement (but not vertical movement while on the ground).
+	p := g.player
+	ex, ey, ez := p.Eye()
+	a := g.arrows.Shoot(ex, ey-0.1, ez, yaw, pitch, projectile.Speed)
+	a.VX += p.X - p.PrevX
+	a.VZ += p.Z - p.PrevZ
+	if !p.OnGround {
+		a.VY += p.Y - p.PrevY
+	}
 	g.reload, g.recoil = reloadTicks, recoilTicks
 }
 
@@ -124,9 +131,10 @@ func (g *game) drawArrows(alpha float64) {
 	g.modelInsts = g.modelInsts[:0]
 	for _, a := range g.arrows.Arrows {
 		x, y, z, yaw, pitch := a.Lerp(alpha)
-		// Like vanilla's projectile renderers: a fresh shot isn't drawn for
-		// its first two ticks while it is near the camera, so it doesn't
-		// fill the screen as it leaves the eye.
+		// A fresh shot isn't drawn for its first two ticks while within 3.5
+		// blocks of the camera, so it doesn't fill the screen as it leaves
+		// the eye. Vanilla does this for snowballs, fireballs, wind charges
+		// and eyes of ender (tickCount < 2 && distSq < 12.25).
 		if !a.Stuck && a.Age < 2 {
 			dx, dy, dz := x-g.cam.X, y-g.cam.Y, z-g.cam.Z
 			if dx*dx+dy*dy+dz*dz < 3.5*3.5 {
