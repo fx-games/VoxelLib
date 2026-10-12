@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/go-gl/mathgl/mgl32"
+	"github.com/go-gl/mathgl/mgl64"
 	"github.com/memmaker/voxellib/importer/mcmodel"
 	"github.com/memmaker/voxellib/model"
 	"github.com/memmaker/voxellib/projectile"
@@ -158,9 +159,52 @@ func newShape(m *model.Model) *shapeInfo {
 	return si
 }
 
-// Box, Frame and Intersect make a creature a projectile.Shape.
+// Box, Frame, Reach, Intersect and Joint make a creature a
+// projectile.Jointed: exact hits, and arrows that ride the bone they hit.
 func (c *creature) Box() collide.AABB             { return c.mob.Box() }
 func (c *creature) Frame() (x, y, z, yaw float64) { return c.mob.Frame() }
+
+// Reach is the box the creature's animated mesh can occupy, for the
+// arrows' broad-phase grid: its bounding sphere around both the drawn and
+// the current position.
+func (c *creature) Reach() collide.AABB {
+	r := c.sp.shape.radius
+	x0, y0, z0 := c.mob.X, c.mob.Y, c.mob.Z
+	x1, y1, z1 := x0, y0, z0
+	if c.drawn {
+		x1, y1, z1 = c.drawX, c.drawY, c.drawZ
+	}
+	return collide.AABB{MinX: min(x0, x1) - r, MinY: min(y0, y1) - r, MinZ: min(z0, z1) - r,
+		MaxX: max(x0, x1) + r, MaxY: max(y0, y1) + r, MaxZ: max(z0, z1) + r}
+}
+
+// creatureMatrix places a creature's model space in the world, as the
+// model renderer does.
+func creatureMatrix(x, y, z, yaw float64) mgl32.Mat4 {
+	return mgl32.Translate3D(float32(x), float32(y), float32(z)).Mul4(mgl32.HomogRotate3DY(float32(math.Pi - yaw)))
+}
+
+// boneMatrix is bone b's skin matrix in the pose last drawn (identity
+// before the first draw).
+func (c *creature) boneMatrix(b int) mgl32.Mat4 {
+	if b >= 0 && b < len(c.skin) {
+		return c.skin[b]
+	}
+	return mgl32.Ident4()
+}
+
+// Joint maps bone b's bind-pose model space to the world: the drawn pose
+// of the bone, placed at the creature's current position.
+func (c *creature) Joint(b int) mgl64.Mat4 {
+	return mat64(creatureMatrix(c.mob.X, c.mob.Y, c.mob.Z, c.mob.Yaw).Mul4(c.boneMatrix(b)))
+}
+
+func mat64(m mgl32.Mat4) (o mgl64.Mat4) {
+	for i := range m {
+		o[i] = float64(m[i])
+	}
+	return o
+}
 
 // Intersect tests the segment against the creature's mesh as last drawn.
 // The hit point is then carried into the creature's current frame, so the
@@ -175,10 +219,7 @@ func (c *creature) Intersect(x0, y0, z0, x1, y1, z1 float64) (x, y, z float64, p
 	if !segNearSphere(x0-dx, y0-dy, z0-dz, x1-dx, y1-dy, z1-dz, c.sp.shape.radius) {
 		return 0, 0, 0, -1, false
 	}
-	toWorld := func(px, py, pz, yaw float64) mgl32.Mat4 {
-		return mgl32.Translate3D(float32(px), float32(py), float32(pz)).Mul4(mgl32.HomogRotate3DY(float32(math.Pi - yaw)))
-	}
-	inv := toWorld(dx, dy, dz, dyaw).Inv()
+	inv := creatureMatrix(dx, dy, dz, dyaw).Inv()
 	o := mgl32.TransformCoordinate(mgl32.Vec3{float32(x0), float32(y0), float32(z0)}, inv)
 	e := mgl32.TransformCoordinate(mgl32.Vec3{float32(x1), float32(y1), float32(z1)}, inv)
 	if c.pose == nil || c.poseFrame != c.drawFrame || !c.drawn {
@@ -189,7 +230,7 @@ func (c *creature) Intersect(x0, y0, z0, x1, y1, z1 float64) (x, y, z float64, p
 	if !ok {
 		return 0, 0, 0, -1, false
 	}
-	w := mgl32.TransformCoordinate(h.Pos, toWorld(c.mob.X, c.mob.Y, c.mob.Z, c.mob.Yaw))
+	w := mgl32.TransformCoordinate(h.Pos, creatureMatrix(c.mob.X, c.mob.Y, c.mob.Z, c.mob.Yaw))
 	return float64(w[0]), float64(w[1]), float64(w[2]), h.Bone, true
 }
 
@@ -250,6 +291,15 @@ func (g *game) drawArrows(alpha float64) {
 	g.modelInsts = g.modelInsts[:0]
 	for _, a := range g.arrows.Arrows {
 		x, y, z, yaw, pitch := a.Lerp(alpha)
+		if c, ok := a.In.(*creature); ok {
+			if b, pos, d, ok := a.Attached(); ok && c.drawn {
+				// Ride the bone with this frame's animation and position.
+				m := mat64(creatureMatrix(c.drawX, c.drawY, c.drawZ, c.drawYaw).Mul4(c.boneMatrix(b)))
+				p := mgl64.TransformCoordinate(pos, m)
+				x, y, z = p[0], p[1], p[2]
+				yaw, pitch = projectile.Orient(mgl64.TransformNormal(d, m))
+			}
+		}
 		// A fresh shot isn't drawn for its first two ticks while within 3.5
 		// blocks of the camera, so it doesn't fill the screen as it leaves
 		// the eye. Vanilla does this for snowballs, fireballs, wind charges

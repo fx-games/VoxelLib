@@ -10,6 +10,8 @@ package projectile
 import (
 	"math"
 
+	"github.com/go-gl/mathgl/mgl64"
+
 	"github.com/memmaker/voxellib/voxel/collide"
 )
 
@@ -44,6 +46,14 @@ type Shape interface {
 	Intersect(x0, y0, z0, x1, y1, z1 float64) (x, y, z float64, part int, ok bool)
 }
 
+// Jointed is a Shape made of moving parts (bones). An arrow stuck in a part
+// rides it: Joint returns the part's current transform from its own space
+// to world space.
+type Jointed interface {
+	Shape
+	Joint(part int) mgl64.Mat4
+}
+
 // Arrow is one projectile.
 type Arrow struct {
 	X, Y, Z             float64 // tip position
@@ -65,11 +75,15 @@ type Arrow struct {
 	// Offset in the target's frame: position relative to its feet, rotated
 	// by -yaw, and the arrow's yaw relative to the target's.
 	ox, oy, oz, oyaw float64
+	// For a Jointed target: tip and direction in the part's space.
+	jointed    bool
+	lpos, ldir mgl64.Vec3
 }
 
 // World holds the arrows in flight and stuck.
 type World struct {
 	Arrows []*Arrow
+	grid   grid
 	// Hit, if set, is called once when an arrow sticks in a target.
 	Hit func(a *Arrow, t Target)
 }
@@ -89,6 +103,7 @@ func (w *World) Shoot(x, y, z, yaw, pitch, speed float64) *Arrow {
 
 // Tick advances every arrow one step and drops expired ones.
 func (w *World) Tick(s collide.Solids, targets []Target) {
+	w.grid.build(targets)
 	live := w.Arrows[:0]
 	for _, a := range w.Arrows {
 		a.PrevX, a.PrevY, a.PrevZ = a.X, a.Y, a.Z
@@ -98,7 +113,7 @@ func (w *World) Tick(s collide.Solids, targets []Target) {
 		case a.In != nil:
 			a.follow()
 		case !a.Stuck:
-			w.fly(a, s, targets)
+			w.fly(a, s)
 		}
 		if !(a.Stuck && a.Age > Life) && a.Y > -1000 {
 			live = append(live, a)
@@ -110,13 +125,13 @@ func (w *World) Tick(s collide.Solids, targets []Target) {
 
 // fly sweeps the arrow along its velocity in sub-steps, sticking at the
 // first block or target it enters.
-func (w *World) fly(a *Arrow, s collide.Solids, targets []Target) {
+func (w *World) fly(a *Arrow, s collide.Solids) {
 	d := math.Sqrt(a.VX*a.VX + a.VY*a.VY + a.VZ*a.VZ)
 	n := max(1, int(math.Ceil(d/step)))
 	sx, sy, sz := a.VX/float64(n), a.VY/float64(n), a.VZ/float64(n)
 	for i := 0; i < n; i++ {
 		nx, ny, nz := a.X+sx, a.Y+sy, a.Z+sz
-		if t, x, y, z, part := firstHit(targets, a.X, a.Y, a.Z, nx, ny, nz); t != nil {
+		if t, x, y, z, part := firstHit(w.grid.near(a.X, a.Y, a.Z, nx, ny, nz), a.X, a.Y, a.Z, nx, ny, nz); t != nil {
 			a.X, a.Y, a.Z, a.Part = x, y, z, part
 			a.stickIn(t)
 			if w.Hit != nil {
@@ -177,7 +192,8 @@ func surface(x, y, z, dx, dy, dz float64) float64 {
 	return f
 }
 
-// firstHit finds the target the segment meets first: a Shape at its exact
+// firstHit finds, among the broad phase's candidates, the target the
+// segment meets first: a Shape at its exact
 // surface, any other target when the segment's end is inside its box.
 func firstHit(targets []Target, x0, y0, z0, x1, y1, z1 float64) (hit Target, x, y, z float64, part int) {
 	best := math.Inf(1)
@@ -211,10 +227,39 @@ func (a *Arrow) stickIn(t Target) {
 	c, s := math.Cos(-tyaw), math.Sin(-tyaw)
 	a.ox, a.oy, a.oz = dx*c-dz*s, a.Y-ty, dx*s+dz*c
 	a.oyaw = a.Yaw - tyaw
+	if j, ok := t.(Jointed); ok && a.Part >= 0 {
+		inv := j.Joint(a.Part).Inv()
+		a.jointed = true
+		a.lpos = mgl64.TransformCoordinate(mgl64.Vec3{a.X, a.Y, a.Z}, inv)
+		a.ldir = mgl64.TransformNormal(dir(a.Yaw, a.Pitch), inv)
+	}
+}
+
+func dir(yaw, pitch float64) mgl64.Vec3 {
+	return mgl64.Vec3{math.Sin(yaw) * math.Cos(pitch), math.Sin(pitch), -math.Cos(yaw) * math.Cos(pitch)}
+}
+
+// Attached reports where an arrow stuck in a Jointed target sits in its
+// part's space, so a renderer can place it with the part's pose of the
+// moment: world tip = Joint(part) * pos, world direction = Joint * dir.
+func (a *Arrow) Attached() (part int, pos, dir mgl64.Vec3, ok bool) {
+	return a.Part, a.lpos, a.ldir, a.jointed && a.In != nil
+}
+
+// Orient returns yaw and pitch pointing along a direction.
+func Orient(d mgl64.Vec3) (yaw, pitch float64) {
+	return math.Atan2(d[0], -d[2]), math.Atan2(d[1], math.Hypot(d[0], d[2]))
 }
 
 // follow moves a stuck arrow with its target.
 func (a *Arrow) follow() {
+	if j, ok := a.In.(Jointed); ok && a.jointed {
+		m := j.Joint(a.Part)
+		p := mgl64.TransformCoordinate(a.lpos, m)
+		a.X, a.Y, a.Z = p[0], p[1], p[2]
+		a.Yaw, a.Pitch = Orient(mgl64.TransformNormal(a.ldir, m))
+		return
+	}
 	tx, ty, tz, tyaw := a.In.Frame()
 	c, s := math.Cos(tyaw), math.Sin(tyaw)
 	a.X, a.Y, a.Z = tx+a.ox*c-a.oz*s, ty+a.oy, tz+a.ox*s+a.oz*c
@@ -226,7 +271,7 @@ func (a *Arrow) follow() {
 func (w *World) Release(t Target) {
 	for _, a := range w.Arrows {
 		if a.In == t {
-			a.In, a.Stuck, a.Part = nil, false, -1
+			a.In, a.Stuck, a.Part, a.jointed = nil, false, -1, false
 			a.VX, a.VY, a.VZ = 0, 0, 0
 		}
 	}

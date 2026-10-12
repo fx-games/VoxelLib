@@ -4,6 +4,7 @@ import (
 	"math"
 	"testing"
 
+	"github.com/go-gl/mathgl/mgl64"
 	"github.com/memmaker/voxellib/voxel/collide"
 )
 
@@ -144,5 +145,88 @@ func TestShapeHitExact(t *testing.T) {
 	}
 	if b.In != nil {
 		t.Error("arrow that missed the shape stuck in it")
+	}
+}
+
+func TestGridFindsTargetsAcrossCells(t *testing.T) {
+	// 400 decoys off the line of fire, and the real target straddling a
+	// cell corner (x=12, z=0 are both cell edges).
+	var targets []Target
+	for i := 0; i < 400; i++ {
+		targets = append(targets, &dummy{x: float64(i%20) * 3, y: 0, z: 5 + float64(i/20)*3})
+	}
+	d := &dummy{x: 12, y: 0, z: 0}
+	targets = append(targets, d)
+	var w World
+	a := w.Shoot(0, 1, 0, math.Pi/2, 0, Speed)
+	for i := 0; i < 20 && !a.Stuck; i++ {
+		w.Tick(ground, targets)
+	}
+	if a.In != d {
+		t.Fatalf("arrow stuck in %v, want the target at the cell corner", a.In)
+	}
+}
+
+// offsetPlate's shape is a plate at px, outside its box at x; Reach covers
+// both.
+type offsetPlate struct {
+	dummy
+	px float64
+}
+
+func (o *offsetPlate) Reach() collide.AABB { b := o.Box(); b.MaxX = o.px + 0.5; return b }
+
+func (o *offsetPlate) Intersect(x0, y0, z0, x1, y1, z1 float64) (x, y, z float64, part int, ok bool) {
+	p := plate{dummy{x: o.px}}
+	return p.Intersect(x0, y0, z0, x1, y1, z1)
+}
+
+func TestGridUsesReach(t *testing.T) {
+	// Box around x=6 (cell 1), shape at x=9 (cell 2): only Reach files the
+	// target where the arrow can meet it.
+	p := &offsetPlate{dummy{x: 6, y: 0, z: 0.5}, 9}
+	var w World
+	a := w.Shoot(8.2, 1.5, 0.5, math.Pi/2, 0, 0.2) // starts in cell 2, past the box
+	for i := 0; i < 100 && !a.Stuck; i++ {
+		w.Tick(ground, []Target{p})
+	}
+	if a.In != p {
+		t.Fatal("broad phase missed a target whose shape reaches past its box")
+	}
+}
+
+// arm is a Jointed target with one part that turns about the Y axis
+// through its feet.
+type arm struct {
+	plate
+	angle float64
+}
+
+func (a *arm) Joint(int) mgl64.Mat4 {
+	return mgl64.Translate3D(a.x, a.y, a.z).Mul4(mgl64.HomogRotate3DY(a.angle)).Mul4(mgl64.Translate3D(-a.x, -a.y, -a.z))
+}
+
+func TestStuckArrowRidesJoint(t *testing.T) {
+	var w World
+	j := &arm{plate: plate{dummy{x: 10.1, y: 0, z: 0.5}}}
+	a := w.Shoot(0, 1.5, 0.5, math.Pi/2, 0, Speed)
+	for i := 0; i < 20 && !a.Stuck; i++ {
+		w.Tick(ground, []Target{j})
+	}
+	if a.In != j {
+		t.Fatal("not stuck")
+	}
+	if _, pos, _, ok := a.Attached(); !ok || math.Abs(pos[0]-10.1) > 1e-9 {
+		t.Fatalf("attachment %v ok=%v", pos, ok)
+	}
+	yaw0 := a.Yaw
+	j.angle = math.Pi / 2 // the part turns a quarter round
+	w.Tick(ground, []Target{j})
+	// The tip was on the pivot's axis line, so it stays; the arrow turns.
+	if math.Abs(a.X-10.1) > 1e-9 || math.Abs(a.Y-1.5) > 0.2 {
+		t.Errorf("tip moved off the pivot: %.3f,%.3f", a.X, a.Y)
+	}
+	if d := math.Abs(math.Remainder(a.Yaw-yaw0, 2*math.Pi)); math.Abs(d-math.Pi/2) > 1e-6 {
+		t.Errorf("arrow turned %.3f, want a quarter turn", d)
 	}
 }
