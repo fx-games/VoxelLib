@@ -110,3 +110,39 @@ func TestHeightAndRelease(t *testing.T) {
 		t.Errorf("released arrow should fall and stick in the ground, stuck=%v y=%.2f", a.Stuck, a.Y)
 	}
 }
+
+// plate is a Shape: a thin wall at x=px, from y 1 to 2 (part 7), and it
+// reports exact surface hits.
+type plate struct{ dummy }
+
+func (p *plate) Intersect(x0, y0, z0, x1, y1, z1 float64) (x, y, z float64, part int, ok bool) {
+	if (x0-p.x)*(x1-p.x) > 0 || x0 == x1 {
+		return 0, 0, 0, 0, false
+	}
+	f := (p.x - x0) / (x1 - x0)
+	y = y0 + (y1-y0)*f
+	if y < 1 || y > 2 {
+		return 0, 0, 0, 0, false
+	}
+	return p.x, y, z0 + (z1-z0)*f, 7, true
+}
+
+func TestShapeHitExact(t *testing.T) {
+	var w World
+	p := &plate{dummy{x: 10.1, y: 0, z: 0.5}}
+	a := w.Shoot(0, 1.5, 0.5, math.Pi/2, 0, Speed)
+	for i := 0; i < 20 && !a.Stuck; i++ {
+		w.Tick(ground, []Target{p})
+	}
+	if a.In != p || a.Part != 7 || math.Abs(a.X-10.1) > 1e-9 {
+		t.Fatalf("want stuck exactly on the plate, part 7: in=%v part=%d x=%.4f", a.In, a.Part, a.X)
+	}
+	// Below the plate: inside the box, but the shape misses.
+	b := w.Shoot(0, 0.6, 0.5, math.Pi/2, 0, Speed)
+	for i := 0; i < 5; i++ {
+		w.Tick(ground, []Target{p})
+	}
+	if b.In != nil {
+		t.Error("arrow that missed the shape stuck in it")
+	}
+}

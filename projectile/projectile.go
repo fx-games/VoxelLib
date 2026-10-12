@@ -35,6 +35,15 @@ type Target interface {
 	Frame() (x, y, z, yaw float64)
 }
 
+// Shape is a Target with an exact shape, such as an animated mesh. Arrows
+// test it instead of the box: each sub-step's segment from x0,y0,z0 to
+// x1,y1,z1 asks for the first point where it meets the shape, and part
+// identifies what was hit (e.g. a bone) for the Hit callback.
+type Shape interface {
+	Target
+	Intersect(x0, y0, z0, x1, y1, z1 float64) (x, y, z float64, part int, ok bool)
+}
+
 // Arrow is one projectile.
 type Arrow struct {
 	X, Y, Z             float64 // tip position
@@ -48,8 +57,10 @@ type Arrow struct {
 
 	Stuck bool
 	// In is the target the arrow is stuck in (nil for terrain or flying).
-	In  Target
-	Age int // ticks since launch, or since sticking
+	In Target
+	// Part is what of a Shape the arrow struck (-1 otherwise).
+	Part int
+	Age  int // ticks since launch, or since sticking
 
 	// Offset in the target's frame: position relative to its feet, rotated
 	// by -yaw, and the arrow's yaw relative to the target's.
@@ -71,7 +82,7 @@ func (w *World) Shoot(x, y, z, yaw, pitch, speed float64) *Arrow {
 	dz := -math.Cos(yaw) * math.Cos(pitch)
 	a := &Arrow{X: x, Y: y, Z: z, PrevX: x, PrevY: y, PrevZ: z,
 		VX: dx * speed, VY: dy * speed, VZ: dz * speed,
-		Yaw: yaw, Pitch: pitch, PrevYaw: yaw, PrevPitch: pitch}
+		Yaw: yaw, Pitch: pitch, PrevYaw: yaw, PrevPitch: pitch, Part: -1}
 	w.Arrows = append(w.Arrows, a)
 	return a
 }
@@ -105,15 +116,13 @@ func (w *World) fly(a *Arrow, s collide.Solids, targets []Target) {
 	sx, sy, sz := a.VX/float64(n), a.VY/float64(n), a.VZ/float64(n)
 	for i := 0; i < n; i++ {
 		nx, ny, nz := a.X+sx, a.Y+sy, a.Z+sz
-		for _, t := range targets {
-			if inBox(t.Box(), nx, ny, nz) {
-				a.X, a.Y, a.Z = nx, ny, nz
-				a.stickIn(t)
-				if w.Hit != nil {
-					w.Hit(a, t)
-				}
-				return
+		if t, x, y, z, part := firstHit(targets, a.X, a.Y, a.Z, nx, ny, nz); t != nil {
+			a.X, a.Y, a.Z, a.Part = x, y, z, part
+			a.stickIn(t)
+			if w.Hit != nil {
+				w.Hit(a, t)
 			}
+			return
 		}
 		if s.Solid(int(math.Floor(nx)), int(math.Floor(ny)), int(math.Floor(nz))) {
 			// Bury the tip a little past the face, like Minecraft's arrows.
@@ -168,6 +177,27 @@ func surface(x, y, z, dx, dy, dz float64) float64 {
 	return f
 }
 
+// firstHit finds the target the segment meets first: a Shape at its exact
+// surface, any other target when the segment's end is inside its box.
+func firstHit(targets []Target, x0, y0, z0, x1, y1, z1 float64) (hit Target, x, y, z float64, part int) {
+	best := math.Inf(1)
+	for _, t := range targets {
+		hx, hy, hz, p, ok := x1, y1, z1, -1, false
+		if sh, isShape := t.(Shape); isShape {
+			hx, hy, hz, p, ok = sh.Intersect(x0, y0, z0, x1, y1, z1)
+		} else {
+			ok = inBox(t.Box(), x1, y1, z1)
+		}
+		if !ok {
+			continue
+		}
+		if d := (hx-x0)*(hx-x0) + (hy-y0)*(hy-y0) + (hz-z0)*(hz-z0); d < best {
+			hit, x, y, z, part, best = t, hx, hy, hz, p, d
+		}
+	}
+	return
+}
+
 func inBox(b collide.AABB, x, y, z float64) bool {
 	return x >= b.MinX && x <= b.MaxX && y >= b.MinY && y <= b.MaxY && z >= b.MinZ && z <= b.MaxZ
 }
@@ -196,7 +226,7 @@ func (a *Arrow) follow() {
 func (w *World) Release(t Target) {
 	for _, a := range w.Arrows {
 		if a.In == t {
-			a.In, a.Stuck = nil, false
+			a.In, a.Stuck, a.Part = nil, false, -1
 			a.VX, a.VY, a.VZ = 0, 0, 0
 		}
 	}

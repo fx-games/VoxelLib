@@ -22,7 +22,8 @@ type species struct {
 	clips  [5]string // clip per mobs.State ("" = fall back to idle)
 	width  float64
 	height float64
-	static bool // props: stay put
+	static bool       // props: stay put
+	shape  *shapeInfo // for exact arrow hits, built on first use
 }
 
 type creature struct {
@@ -34,6 +35,12 @@ type creature struct {
 	debugClip string
 	// dying counts ticks since a fatal hit (0 = alive); see crossbow.go.
 	dying int
+	// drawn is the pose last drawn (skin is its animation), for exact
+	// arrow hits against what the player saw.
+	drawn                        bool
+	drawX, drawY, drawZ, drawYaw float64
+	drawFrame, poseFrame         int         // pose is the drawn skin, rebuilt when stale
+	pose                         *model.Pose // deformed vertices for hit tests
 }
 
 // creaturesState is the explorer's creature glue: imported models →
@@ -257,6 +264,8 @@ func (g *game) drawCreatures(alpha float64) {
 			c.anim.Play(clip, true) // loop one-shots while previewing
 		}
 		c.skin = c.anim.Skin(c.skin)
+		c.drawn, c.drawX, c.drawY, c.drawZ, c.drawYaw = true, x, y, z, yaw
+		c.drawFrame++
 		sky, blk := g.light(x, y+c.sp.height/2, z)
 		g.modelInsts = append(g.modelInsts, render.ModelInstance{Model: c.sp.handle, X: x, Y: y, Z: z, Yaw: yaw, Pitch: c.deathTilt(alpha), Skin: c.skin, Sky: sky, Block: blk})
 	}

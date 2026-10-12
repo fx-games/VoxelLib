@@ -15,9 +15,9 @@ import (
 
 	"github.com/go-gl/mathgl/mgl32"
 	"github.com/memmaker/voxellib/importer/mcmodel"
-	"github.com/memmaker/voxellib/mobs"
 	"github.com/memmaker/voxellib/model"
 	"github.com/memmaker/voxellib/projectile"
+	"github.com/memmaker/voxellib/voxel/collide"
 	"github.com/memmaker/voxellib/voxel/render"
 )
 
@@ -38,7 +38,6 @@ type crossbowState struct {
 	reload     int // ticks until the next shot
 	recoil     int // ticks left of the recoil kick
 	arrows     projectile.World
-	heads      map[*model.Model]float64 // head-zone start per model, see headStart
 }
 
 // setupCrossbow finds the crossbow in an imported pack and equips it.
@@ -68,11 +67,15 @@ func (g *game) setupCrossbow(p *mcmodel.Pack) {
 	}
 	g.equipped = true
 	g.arrows.Hit = func(a *projectile.Arrow, t projectile.Target) {
-		if c := g.creatureOf(t); c != nil && a.Height(t) >= g.headStart(c.sp.model) {
+		c, ok := t.(*creature)
+		if !ok {
+			return
+		}
+		if head := c.sp.shape.head; a.Part >= 0 && a.Part < len(head) && head[a.Part] {
 			g.kill(c)
 			return
 		}
-		if m, ok := t.(*mobs.Mob); ok && !m.Static {
+		if m := c.mob; !m.Static {
 			l := math.Hypot(a.PrevX-a.X, a.PrevZ-a.Z) + 1e-9
 			m.VX += (a.X - a.PrevX) / l * knockback
 			m.VZ += (a.Z - a.PrevZ) / l * knockback
@@ -118,71 +121,88 @@ func (g *game) tickArrows() {
 	}
 	targets := make([]projectile.Target, 0, len(g.creatures))
 	for _, c := range g.creatures {
+		if c.sp.shape == nil {
+			c.sp.shape = newShape(c.sp.model)
+		}
 		if c.dying == 0 {
-			targets = append(targets, c.mob)
+			targets = append(targets, c)
 		}
 	}
 	g.arrows.Tick(g.terrain, targets)
 }
 
-// Head shots: an arrow that strikes a creature's head kills it. It topples
-// over like a Minecraft mob (90° over a second), its arrows drop, and it is
-// removed.
+// Head shots: an arrow that strikes a creature's head kills it. Hits are
+// exact: arrows test the creature's animated triangles in the pose last
+// drawn, and the bone of the triangle struck says whether it was the head.
+// A killed creature topples over like a Minecraft mob (90° over a second),
+// its arrows drop, and it is removed.
 
 const deathTicks = 20
 
-// headStart returns where a model's head begins, as a fraction of its
-// height: the lowest vertex of the "head" bone and its children. Models
-// without a head bone count the top quarter.
-func (g *game) headStart(m *model.Model) float64 {
-	if f, ok := g.heads[m]; ok {
-		return f
-	}
-	head := -1
-	for i, b := range m.Bones {
-		if strings.EqualFold(b.Name, "head") {
-			head = i
-			break
-		}
-	}
-	under := func(b int) bool {
-		for ; b >= 0; b = m.Bones[b].Parent {
-			if b == head {
-				return true
-			}
-		}
-		return false
-	}
-	_, hi := m.Bounds()
-	low := math.Inf(1)
-	if head >= 0 {
-		for _, me := range m.Meshes {
-			for _, v := range me.Verts {
-				if under(int(v.Joints[0])) {
-					low = math.Min(low, float64(v.Pos[1]))
-				}
-			}
-		}
-	}
-	f := 0.75
-	if !math.IsInf(low, 1) && hi[1] > 0 {
-		f = math.Max(0.3, low/float64(hi[1]))
-	}
-	if g.heads == nil {
-		g.heads = map[*model.Model]float64{}
-	}
-	g.heads[m] = f
-	return f
+// shapeInfo is per-model data for exact hits.
+type shapeInfo struct {
+	head   []bool  // per bone: the "head" bone or one of its children
+	radius float64 // bounding sphere around the feet origin
 }
 
-// creatureOf finds the creature an arrow target belongs to.
-func (g *game) creatureOf(t projectile.Target) *creature {
-	for _, c := range g.creatures {
-		if c.mob == t {
-			return c
-		}
+func newShape(m *model.Model) *shapeInfo {
+	si := &shapeInfo{head: make([]bool, len(m.Bones))}
+	for i, b := range m.Bones {
+		si.head[i] = strings.EqualFold(b.Name, "head") || (b.Parent >= 0 && si.head[b.Parent])
 	}
-	return nil
+	lo, hi := m.Bounds()
+	for _, v := range []mgl32.Vec3{lo, hi} {
+		si.radius = math.Max(si.radius, float64(v.Len()))
+	}
+	si.radius *= 1.5 // room for animation to swing limbs out
+	return si
+}
+
+// Box, Frame and Intersect make a creature a projectile.Shape.
+func (c *creature) Box() collide.AABB             { return c.mob.Box() }
+func (c *creature) Frame() (x, y, z, yaw float64) { return c.mob.Frame() }
+
+// Intersect tests the segment against the creature's mesh as last drawn.
+// The hit point is then carried into the creature's current frame, so the
+// arrow sticks where it was seen to hit.
+func (c *creature) Intersect(x0, y0, z0, x1, y1, z1 float64) (x, y, z float64, part int, ok bool) {
+	dx, dy, dz, dyaw := c.drawX, c.drawY, c.drawZ, c.drawYaw
+	skin := c.skin
+	if !c.drawn {
+		dx, dy, dz, dyaw = c.mob.X, c.mob.Y, c.mob.Z, c.mob.Yaw
+		skin = nil
+	}
+	if !segNearSphere(x0-dx, y0-dy, z0-dz, x1-dx, y1-dy, z1-dz, c.sp.shape.radius) {
+		return 0, 0, 0, -1, false
+	}
+	toWorld := func(px, py, pz, yaw float64) mgl32.Mat4 {
+		return mgl32.Translate3D(float32(px), float32(py), float32(pz)).Mul4(mgl32.HomogRotate3DY(float32(math.Pi - yaw)))
+	}
+	inv := toWorld(dx, dy, dz, dyaw).Inv()
+	o := mgl32.TransformCoordinate(mgl32.Vec3{float32(x0), float32(y0), float32(z0)}, inv)
+	e := mgl32.TransformCoordinate(mgl32.Vec3{float32(x1), float32(y1), float32(z1)}, inv)
+	if c.pose == nil || c.poseFrame != c.drawFrame || !c.drawn {
+		c.pose = c.sp.model.Pose(skin, c.pose)
+		c.poseFrame = c.drawFrame
+	}
+	h, ok := c.sp.model.RaycastPose(c.pose, o, e.Sub(o), 1)
+	if !ok {
+		return 0, 0, 0, -1, false
+	}
+	w := mgl32.TransformCoordinate(h.Pos, toWorld(c.mob.X, c.mob.Y, c.mob.Z, c.mob.Yaw))
+	return float64(w[0]), float64(w[1]), float64(w[2]), h.Bone, true
+}
+
+// segNearSphere reports whether the segment a→b passes within r of the
+// origin.
+func segNearSphere(ax, ay, az, bx, by, bz, r float64) bool {
+	dx, dy, dz := bx-ax, by-ay, bz-az
+	t := 0.0
+	if l := dx*dx + dy*dy + dz*dz; l > 0 {
+		t = math.Max(0, math.Min(1, -(ax*dx+ay*dy+az*dz)/l))
+	}
+	px, py, pz := ax+dx*t, ay+dy*t, az+dz*t
+	return px*px+py*py+pz*pz <= r*r
 }
 
 // kill starts a creature's death: it stops, and its arrows fall out.
@@ -192,7 +212,7 @@ func (g *game) kill(c *creature) {
 	}
 	c.dying = 1
 	c.mob.VX, c.mob.VZ = 0, 0
-	g.arrows.Release(c.mob)
+	g.arrows.Release(c)
 	g.debugMsg = c.sp.model.Name + ": head shot"
 }
 
