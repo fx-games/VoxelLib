@@ -84,16 +84,22 @@ func (g *game) spawnLineup() {
 	g.spawnLeft = 0
 }
 
+// ensureModelRenderer creates the model renderer on first use.
+func (g *game) ensureModelRenderer() error {
+	if g.modelRend != nil {
+		return nil
+	}
+	var err error
+	g.modelRend, err = render.NewModelRenderer(g.eng.Renderer)
+	return err
+}
+
 // addSpecies registers imported models. clipFor maps a behaviour state to a
 // clip name for a model ("" if it has none).
 func (g *game) addSpecies(ms []*model.Model, clipFor func(m *model.Model, s mobs.State) string) {
-	if g.modelRend == nil {
-		var err error
-		if g.modelRend, err = render.NewModelRenderer(g.eng.Renderer); err != nil {
-			log.Printf("models disabled: %v", err)
-			return
-		}
-		g.mobRand = rand.New(rand.NewSource(7))
+	if err := g.ensureModelRenderer(); err != nil {
+		log.Printf("models disabled: %v", err)
+		return
 	}
 	for _, m := range ms {
 		h, err := g.modelRend.Add(m)

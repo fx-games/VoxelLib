@@ -7,6 +7,7 @@ cmd/explorer ── demo glue: input, character, items, frame loop
    ├── character        standalone controller (needs only a World interface)
    ├── items            drops + pickup rule (needs only collide.Solids)
    ├── mobs             creature behaviour (needs only collide.Solids)
+   ├── projectile       arrows: ballistic flight, sticking in blocks and targets
    ├── importer/roblox, importer/mcmodel → model (+ model/gltf), via importer/packfs
    ├── items/extrude    sprite → mesh (pure)        items/sheet  sheet cutter (pure)
    ├── worldgen/...     terrain generators (implement worldgen.Generator)

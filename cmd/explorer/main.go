@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"log"
 	"math"
+	"math/rand"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -193,6 +194,8 @@ func main() {
 		}
 	}
 	g.spawnLeft = *numMobs
+	g.mobRand = rand.New(rand.NewSource(7))
+	g.bowModel, g.arrowModel = -1, -1 // set by setupCrossbow
 	if *pets != "" {
 		g.importPets(*pets)
 	}
@@ -234,6 +237,7 @@ type game struct {
 
 	itemsState
 	creaturesState
+	crossbowState
 	help     *render.Overlay // F1 help screen
 	showHelp bool
 	debugMsg string // shown in the title (K animation preview)

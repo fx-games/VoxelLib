@@ -57,6 +57,7 @@ func (g *game) run(shotPath string, shotAt int) {
 			g.tickPlayer()
 			g.tickItems()
 			g.tickCreatures()
+			g.tickArrows()
 			acc -= tickDur
 		}
 		t1 := time.Now()
@@ -88,6 +89,7 @@ func (g *game) run(shotPath string, shotAt int) {
 				g.eng.Renderer.DrawBlockOutline(&g.cam, h.Block.X, h.Block.Y, h.Block.Z)
 			}
 			g.drawCreatures(alpha)
+			g.drawArrows(alpha)
 			g.drawItems(alpha)
 		})
 		g.eng.Renderer.DrawCrosshair(float32(g.cam.Aspect))

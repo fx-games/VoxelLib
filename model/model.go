@@ -135,3 +135,60 @@ func sortStrings(s []string) {
 		}
 	}
 }
+
+// Subtree cuts the named bone and everything under it out of m as a new,
+// static single-bone model, e.g. a weapon a character holds. Vertices are
+// posed as at rest and expressed in the named bone's own frame (origin at
+// its pivot), so callers can place the part freely. Textures are shared.
+// It returns nil if the bone doesn't exist or has no geometry.
+func (m *Model) Subtree(name string) *Model {
+	top := m.Bone(name)
+	if top < 0 {
+		return nil
+	}
+	under := func(b int) bool {
+		for ; b >= 0; b = m.Bones[b].Parent {
+			if b == top {
+				return true
+			}
+		}
+		return false
+	}
+	world := m.BindWorld()
+	root := m.root0()
+	toLocal := root.Mul4(world[top]).Inv()
+	out := &Model{Name: m.Name + "/" + name, Textures: m.Textures, Clips: map[string]*Clip{}, Tags: map[string]bool{},
+		Bones: []Bone{{Name: name, Parent: -1, R: mgl32.QuatIdent(), S: mgl32.Vec3{1, 1, 1}, InvBind: mgl32.Ident4()}}}
+	for _, me := range m.Meshes {
+		var nm Mesh
+		nm.Texture = me.Texture
+		remap := map[uint32]uint32{}
+		for i := 0; i+2 < len(me.Indices); i += 3 {
+			tri := me.Indices[i : i+3]
+			if !under(int(me.Verts[tri[0]].Joints[0])) {
+				continue
+			}
+			for _, vi := range tri {
+				ni, ok := remap[vi]
+				if !ok {
+					v := me.Verts[vi]
+					xf := toLocal.Mul4(root).Mul4(world[v.Joints[0]]).Mul4(m.Bones[v.Joints[0]].InvBind)
+					v.Pos = mgl32.TransformCoordinate(v.Pos, xf)
+					v.Normal = xf.Mat3().Mul3x1(v.Normal).Normalize()
+					v.Joints, v.Weights = [4]uint8{}, [4]float32{1}
+					ni = uint32(len(nm.Verts))
+					remap[vi] = ni
+					nm.Verts = append(nm.Verts, v)
+				}
+				nm.Indices = append(nm.Indices, ni)
+			}
+		}
+		if len(nm.Indices) > 0 {
+			out.Meshes = append(out.Meshes, nm)
+		}
+	}
+	if len(out.Meshes) == 0 {
+		return nil
+	}
+	return out
+}

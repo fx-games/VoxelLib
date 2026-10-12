@@ -148,7 +148,9 @@ func (g *game) drawItems(alpha float64) {
 		g.instBuf = append(g.instBuf, render.ItemInstance{Item: d.Item, X: x, Y: y, Z: z, Yaw: spin, Scale: 0.5, Sky: sky, Block: blk})
 	}
 	g.itemRend.DrawWorld(&g.cam, g.instBuf)
-	if g.held != "" {
+	if g.crossbowOn() {
+		g.drawCrossbowHand(alpha)
+	} else if g.held != "" {
 		sky, blk := g.light(g.cam.X, g.cam.Y, g.cam.Z)
 		t := g.walkDist * 1.6
 		pose := render.HandPose{

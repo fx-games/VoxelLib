@@ -70,6 +70,7 @@ in front of you, playing CLIP (`bind` shows the rest pose).
 | R | respawn |
 | Q | throw held item |
 | K | preview the nearest creature's animations one by one (name in the title) |
+| C | take out / put away the crossbow (from an imported pack); left click shoots arrows that arc and stick |
 | F2 | screenshot to `screenshots/<timestamp>.png`, plus a `.txt` with position, look and a command to restore the view |
 | F3 | frame stats to stdout |
 

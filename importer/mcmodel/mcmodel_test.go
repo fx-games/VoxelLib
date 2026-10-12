@@ -78,3 +78,28 @@ func TestArmorFollowsLimb(t *testing.T) {
 		t.Error("no boots found")
 	}
 }
+
+// The crossbow artmob carries can be cut out as its own model.
+func TestSubtreeCrossbow(t *testing.T) {
+	p, err := Import("../../assets/cleannrooster")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, m := range p.Models {
+		if m.Name != "artmob" {
+			continue
+		}
+		cb := m.Subtree("repeater_crossbow_arrow")
+		if cb == nil {
+			t.Fatal("no crossbow in artmob")
+		}
+		lo, hi := cb.Bounds()
+		size := hi.Sub(lo)
+		if size.Len() < 0.5 || size.Len() > 2 {
+			t.Errorf("crossbow size %v, want roughly a block", size)
+		}
+		t.Logf("crossbow bounds %v .. %v", lo, hi)
+		return
+	}
+	t.Fatal("artmob not found")
+}

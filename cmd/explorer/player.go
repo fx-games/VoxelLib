@@ -70,7 +70,9 @@ func (g *game) tickPlayer() {
 	}
 
 	if g.captured {
-		if g.win.GetMouseButton(glfw.MouseButtonLeft) == glfw.Press {
+		if g.win.GetMouseButton(glfw.MouseButtonLeft) == glfw.Press && g.crossbowOn() {
+			g.fire() // held down: repeat at the reload rate
+		} else if g.win.GetMouseButton(glfw.MouseButtonLeft) == glfw.Press {
 			if g.breakCD--; g.breakCD <= 0 {
 				g.breakBlock()
 			}

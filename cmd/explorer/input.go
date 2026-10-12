@@ -52,6 +52,8 @@ func (g *game) setupInput(grab bool) {
 			g.toggleHelp()
 		case k == glfw.KeyK:
 			g.cycleAnimation()
+		case k == glfw.KeyC:
+			g.toggleCrossbow()
 		case k == glfw.KeyF2:
 			g.shotReq = true
 		case k == glfw.KeyF3:
@@ -85,7 +87,11 @@ func (g *game) setupInput(grab bool) {
 		}
 		switch b {
 		case glfw.MouseButtonLeft:
-			g.breakBlock()
+			if g.crossbowOn() {
+				g.fire()
+			} else {
+				g.breakBlock()
+			}
 		case glfw.MouseButtonRight:
 			g.placeBlock()
 		}

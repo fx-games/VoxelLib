@@ -280,3 +280,7 @@ func Separate(ms []*Mob, w collide.Solids) {
 		}
 	}
 }
+
+// Frame returns the mob's position and yaw, so things stuck to it (such as
+// arrows from package projectile) can follow it.
+func (m *Mob) Frame() (x, y, z, yaw float64) { return m.X, m.Y, m.Z, m.Yaw }

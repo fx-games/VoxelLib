@@ -38,6 +38,7 @@ type ModelInstance struct {
 	Model      int          // handle from Add
 	X, Y, Z    float64      // world position of the model origin
 	Yaw        float64      // radians, as Camera.Yaw (0 faces -Z... see Draw)
+	Pitch      float64      // radians, tilts the model's +Z up (as Camera.Pitch)
 	Scale      float32      // 0 means 1
 	Skin       []mgl32.Mat4 // from model.Animator.Skin; nil = bind pose
 	Sky, Block uint8        // light levels at the model
@@ -201,7 +202,6 @@ func (mr *ModelRenderer) Draw(cam *Camera, insts []ModelInstance) {
 	gl.ActiveTexture(gl.TEXTURE0)
 	gl.Enable(gl.DEPTH_TEST)
 	gl.Disable(gl.CULL_FACE) // mirrored Blockbench cubes flip winding
-	bones := p.loc("uBones")
 	ident := [MaxBones]mgl32.Mat4{}
 	for i := range ident {
 		ident[i] = mgl32.Ident4()
@@ -222,24 +222,59 @@ func (mr *ModelRenderer) Draw(cam *Camera, insts []ModelInstance) {
 		}
 		// Model +Z must turn to the camera's forward at yaw: forward is
 		// (sin yaw, 0, -cos yaw), which is +Z rotated by pi - yaw about Y.
-		model := mgl32.Translate3D(dx, dy, dz).Mul4(mgl32.HomogRotate3DY(float32(3.141592653589793 - in.Yaw))).Mul4(mgl32.Scale3D(s, s, s))
-		gl.UniformMatrix4fv(p.loc("uModel"), 1, false, &model[0])
-		if len(in.Skin) > 0 {
-			gl.UniformMatrix4fv(bones, int32(min(len(in.Skin), MaxBones)), false, &in.Skin[0][0])
-		} else {
-			gl.UniformMatrix4fv(bones, MaxBones, false, &ident[0][0])
-		}
-		gl.Uniform2f(p.loc("uLight"), float32(in.Sky)/15, float32(in.Block)/15)
-		gl.BindVertexArray(g.vao)
-		for _, pt := range g.parts {
-			t := 0
-			if pt.tex >= 0 && pt.tex < len(g.textures) {
-				t = pt.tex
-			}
-			gl.BindTexture(gl.TEXTURE_2D, g.textures[t])
-			gl.DrawElementsWithOffset(gl.TRIANGLES, pt.count, gl.UNSIGNED_INT, uintptr(pt.first)*4)
-		}
+		// Pitch then tilts +Z up about the model's X axis.
+		model := mgl32.Translate3D(dx, dy, dz).Mul4(mgl32.HomogRotate3DY(float32(3.141592653589793 - in.Yaw))).
+			Mul4(mgl32.HomogRotate3DX(float32(-in.Pitch))).Mul4(mgl32.Scale3D(s, s, s))
+		mr.drawModel(g, model, in.Skin, in.Sky, in.Block, &ident)
 	}
+	gl.BindVertexArray(0)
+	gl.Enable(gl.CULL_FACE)
+}
+
+func (mr *ModelRenderer) drawModel(g *gpuModel, model mgl32.Mat4, skin []mgl32.Mat4, sky, block uint8, ident *[MaxBones]mgl32.Mat4) {
+	p := mr.prog
+	gl.UniformMatrix4fv(p.loc("uModel"), 1, false, &model[0])
+	if len(skin) > 0 {
+		gl.UniformMatrix4fv(p.loc("uBones"), int32(min(len(skin), MaxBones)), false, &skin[0][0])
+	} else {
+		gl.UniformMatrix4fv(p.loc("uBones"), MaxBones, false, &ident[0][0])
+	}
+	gl.Uniform2f(p.loc("uLight"), float32(sky)/15, float32(block)/15)
+	gl.BindVertexArray(g.vao)
+	for _, pt := range g.parts {
+		t := 0
+		if pt.tex >= 0 && pt.tex < len(g.textures) {
+			t = pt.tex
+		}
+		gl.BindTexture(gl.TEXTURE_2D, g.textures[t])
+		gl.DrawElementsWithOffset(gl.TRIANGLES, pt.count, gl.UNSIGNED_INT, uintptr(pt.first)*4)
+	}
+}
+
+// DrawHand draws a model in first person, over the world (depth is cleared)
+// with a fixed 70° projection like ItemRenderer.DrawHand. view places the
+// model in view space (camera at the origin looking down -Z, +Y up).
+func (mr *ModelRenderer) DrawHand(handle int, aspect float32, view mgl32.Mat4, sky, block uint8) {
+	if handle < 0 || handle >= len(mr.models) {
+		return
+	}
+	gl.Clear(gl.DEPTH_BUFFER_BIT)
+	p := mr.prog
+	p.use()
+	proj := mgl32.Perspective(mgl32.DegToRad(70), aspect, 0.05, 10)
+	gl.UniformMatrix4fv(p.loc("uViewProj"), 1, false, &proj[0])
+	gl.Uniform1i(p.loc("uTex"), 0)
+	gl.Uniform1f(p.loc("uDaylight"), mr.r.Opt.Daylight)
+	gl.Uniform3f(p.loc("uFogColor"), 0, 0, 0)
+	gl.Uniform2f(p.loc("uFog"), 1e6, 2e6) // no fog on the hand
+	gl.ActiveTexture(gl.TEXTURE0)
+	gl.Enable(gl.DEPTH_TEST)
+	gl.Disable(gl.CULL_FACE)
+	var ident [MaxBones]mgl32.Mat4
+	for i := range ident {
+		ident[i] = mgl32.Ident4()
+	}
+	mr.drawModel(mr.models[handle], view, nil, sky, block, &ident)
 	gl.BindVertexArray(0)
 	gl.Enable(gl.CULL_FACE)
 }
