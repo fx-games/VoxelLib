@@ -73,6 +73,9 @@ func main() {
 		autofly  = flag.Float64("autofly", 0, "debug: fly forward automatically at this many blocks/s (streaming stress test)")
 		cpuprof  = flag.String("cpuprofile", "", "write a CPU profile")
 		verbose  = flag.Bool("verbose", false, "print frame stats to stdout")
+		lineup   = flag.Bool("lineup", false, "debug: line up one standing creature per species in front of the start position")
+		speciesF = flag.String("species", "", "debug: only spawn species whose name contains this")
+		animF    = flag.String("anim", "", "debug: force this clip on lined-up creatures")
 		showHelp = flag.Bool("help-screen", false, "start with the F1 help screen open")
 		vsync    = flag.String("vsync", "on", "frame pacing: on (GL vsync), limit (no GL vsync, sleep to max(display rate, 120Hz)), off (unlimited)")
 	)
@@ -197,6 +200,8 @@ func main() {
 		g.importMCAssets(*mcAssets)
 	}
 	g.finishItems()
+	g.filterSpecies(*speciesF)
+	g.lineup, g.lineupAnim = *lineup, *animF
 	if *showHelp {
 		g.toggleHelp()
 	}

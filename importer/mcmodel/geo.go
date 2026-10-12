@@ -113,9 +113,11 @@ func ParseGeometry(data []byte, texture func(id string) image.Image) ([]*model.M
 			}
 		}
 		m.Meshes = []model.Mesh{me}
-		bind := m.BindWorld()
+		// Cube coordinates are stored before their group's rotation is applied,
+		// so the bind pose is the unrotated model: bone space = model - pivot.
 		for i := range m.Bones {
-			m.Bones[i].InvBind = bind[i].Inv()
+			o := origins[i]
+			m.Bones[i].InvBind = mgl32.Translate3D(-o[0], -o[1], -o[2])
 		}
 		out = append(out, m)
 	}

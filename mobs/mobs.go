@@ -47,6 +47,7 @@ type Mob struct {
 	HomeX, HomeY, HomeZ float64
 	Range               float64 // wander radius around home
 	OnGround            bool
+	Static              bool // never moves (Separate still lets it push others)
 	State               State
 	// StateTicks counts ticks in the current state; TrickTicks is how long
 	// a Trick lasts (set it to the clip length).
@@ -214,5 +215,67 @@ func (m *Mob) tickFlyer(w collide.Solids, rnd *rand.Rand) {
 		m.set(Walk)
 	} else {
 		m.set(Idle)
+	}
+}
+
+// Separate pushes overlapping mobs apart, like Minecraft's entity pushing:
+// each overlapping pair gets an opposing horizontal nudge that grows with
+// the overlap. Mobs with Static set are never moved but still push others.
+// Call it once per tick after ticking every mob; the nudge goes through
+// collision with w so nobody is pushed into a wall.
+func Separate(ms []*Mob, w collide.Solids) {
+	type cell struct{ x, z int }
+	grid := make(map[cell][]int, len(ms))
+	for i, m := range ms {
+		c := cell{int(math.Floor(m.X / 2)), int(math.Floor(m.Z / 2))}
+		grid[c] = append(grid[c], i)
+	}
+	push := make([][2]float64, len(ms))
+	for i, a := range ms {
+		cx, cz := int(math.Floor(a.X/2)), int(math.Floor(a.Z/2))
+		for dx := -1; dx <= 1; dx++ {
+			for dz := -1; dz <= 1; dz++ {
+				for _, j := range grid[cell{cx + dx, cz + dz}] {
+					if j <= i {
+						continue
+					}
+					b := ms[j]
+					if a.Y >= b.Y+b.Height || b.Y >= a.Y+a.Height {
+						continue
+					}
+					ox := (a.Width+b.Width)/2 - math.Abs(a.X-b.X)
+					oz := (a.Width+b.Width)/2 - math.Abs(a.Z-b.Z)
+					if ox <= 0 || oz <= 0 {
+						continue
+					}
+					nx, nz := a.X-b.X, a.Z-b.Z
+					d := math.Hypot(nx, nz)
+					if d < 1e-4 { // exactly stacked: pick a direction
+						nx, nz, d = math.Cos(float64(i)), math.Sin(float64(i)), 1
+					}
+					f := math.Min(0.05, 0.25*math.Min(ox, oz)) / d
+					wa, wb := 0.5, 0.5
+					switch {
+					case a.Static && b.Static:
+						continue
+					case a.Static:
+						wa, wb = 0, 1
+					case b.Static:
+						wa, wb = 1, 0
+					}
+					push[i][0] += nx * f * wa * 2
+					push[i][1] += nz * f * wa * 2
+					push[j][0] -= nx * f * wb * 2
+					push[j][1] -= nz * f * wb * 2
+				}
+			}
+		}
+	}
+	for i, m := range ms {
+		if p := push[i]; p != [2]float64{} {
+			mx, _, mz := collide.Move(w, m.Box(), p[0], 0, p[1])
+			m.X += mx
+			m.Z += mz
+		}
 	}
 }

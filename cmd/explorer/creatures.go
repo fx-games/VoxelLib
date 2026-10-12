@@ -44,6 +44,44 @@ type creaturesState struct {
 	mobRand    *rand.Rand
 	lastAnim   time.Time
 	modelInsts []render.ModelInstance
+	lineup     bool   // debug: species gallery in front of the player
+	lineupAnim string // debug: clip forced on the gallery
+}
+
+// filterSpecies keeps only species whose name contains f.
+func (g *game) filterSpecies(f string) {
+	if f == "" {
+		return
+	}
+	var keep []*species
+	for _, sp := range g.species {
+		if strings.Contains(sp.model.Name, f) {
+			keep = append(keep, sp)
+		}
+	}
+	g.species = keep
+}
+
+// spawnLineup places one creature per species in a row 4 blocks in front
+// of the player, facing it, standing still (debug gallery).
+func (g *game) spawnLineup() {
+	p := g.player
+	fx, fz := math.Sin(g.cam.Yaw), -math.Cos(g.cam.Yaw)
+	rx, rz := -fz, fx
+	n := len(g.species)
+	for i, sp := range g.species {
+		off := (float64(i) - float64(n-1)/2) * 1.6
+		x, z := p.X+fx*4+rx*off, p.Z+fz*4+rz*off
+		y, _ := g.eng.SurfaceY(int(math.Floor(x)), int(math.Floor(z)))
+		m := mobs.New(mobs.Walker, x, float64(y), z, sp.width, sp.height)
+		m.WalkSpeed, m.RunSpeed, m.Range = 0, 0, 0
+		m.Static = true
+		m.Yaw = g.cam.Yaw + math.Pi
+		m.PrevYaw = m.Yaw
+		cr := &creature{sp: sp, mob: m, anim: model.NewAnimator(sp.model), debugClip: g.lineupAnim}
+		g.creatures = append(g.creatures, cr)
+	}
+	g.spawnLeft = 0
 }
 
 // addSpecies registers imported models. clipFor maps a behaviour state to a
@@ -101,6 +139,10 @@ func (g *game) tickCreatures() {
 		return
 	}
 	p := g.player
+	if g.lineup {
+		g.lineup = false
+		g.spawnLineup()
+	}
 	for tries := 0; g.spawnLeft > 0 && tries < 8; tries++ {
 		a := g.mobRand.Float64() * 2 * math.Pi
 		r := 4 + g.mobRand.Float64()*16
@@ -120,6 +162,7 @@ func (g *game) tickCreatures() {
 		m := mobs.New(sp.kind, x, fy, z, sp.width, sp.height)
 		if sp.static {
 			m.WalkSpeed, m.RunSpeed, m.Range = 0, 0, 0
+			m.Static = true
 		}
 		m.Yaw = g.mobRand.Float64() * 2 * math.Pi
 		if c := sp.model.Clips[sp.clips[mobs.Trick]]; c != nil {
@@ -130,9 +173,14 @@ func (g *game) tickCreatures() {
 		g.creatures = append(g.creatures, cr)
 		g.spawnLeft--
 	}
+	all := make([]*mobs.Mob, 0, len(g.creatures)+1)
 	for _, c := range g.creatures {
 		c.mob.Tick(g.terrain, g.mobRand)
+		all = append(all, c.mob)
 	}
+	// The player shoves mobs aside but isn't shoved back.
+	all = append(all, &mobs.Mob{X: p.X, Y: p.Y, Z: p.Z, Width: p.Width, Height: p.Height, Static: true})
+	mobs.Separate(all, g.terrain)
 }
 
 // cycleAnimation (K) steps the nearest creature through all its clips,
@@ -188,7 +236,9 @@ func (g *game) drawCreatures(alpha float64) {
 				clip = c.sp.clips[mobs.Idle]
 			}
 		}
-		if clip != "" {
+		if clip == "bind" { // debug: no animation
+			c.anim.Clip = nil
+		} else if clip != "" {
 			c.anim.Play(clip, false)
 		}
 		c.anim.Update(dt)

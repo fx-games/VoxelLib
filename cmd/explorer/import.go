@@ -48,7 +48,8 @@ func (g *game) importMCAssets(src string) {
 	for _, m := range p.Models {
 		lo, hi := m.Bounds()
 		switch {
-		case m.Tags["humanoid"] && lo[1] < 0.2: // full bodies, not armor pieces
+		case m.Tags["armor"]: // hollow wearable sets
+		case m.Tags["humanoid"] && lo[1] < 0.2: // full bodies, not floating pieces
 			walkers = append(walkers, m)
 		case hi[1]-lo[1] > 0.6 && len(m.Clips) > 0:
 			props = append(props, m)
@@ -60,6 +61,7 @@ func (g *game) importMCAssets(src string) {
 	for _, sp := range g.species[n:] {
 		sp.static = true
 	}
+	g.packFrom = len(g.itemNames)
 	for _, it := range p.Items {
 		g.addItem(it.Name, it.Image)
 	}

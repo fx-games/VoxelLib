@@ -104,9 +104,23 @@ var (
 // when no bone matched.
 func (a *Animation) Bind(m *model.Model) (c *model.Clip, ok bool) {
 	c = &model.Clip{Name: a.Name, Length: a.Length, Loop: a.Loop}
-	idx := map[string]int{}
+	// Exact (case-insensitive) names win; aliases only fill gaps, so a rig
+	// with both "body" and "torso" keeps them apart.
+	exact, alias := map[string]int{}, map[string]int{}
 	for i, b := range m.Bones {
-		idx[canonBone(b.Name)] = i
+		if _, dup := exact[strings.ToLower(b.Name)]; !dup {
+			exact[strings.ToLower(b.Name)] = i
+		}
+		if _, dup := alias[canonBone(b.Name)]; !dup {
+			alias[canonBone(b.Name)] = i
+		}
+	}
+	lookup := func(n string) (int, bool) {
+		if i, ok := exact[strings.ToLower(n)]; ok {
+			return i, true
+		}
+		i, ok := alias[canonBone(n)]
+		return i, ok
 	}
 	names := make([]string, 0, len(a.Bones))
 	for n := range a.Bones {
@@ -114,7 +128,7 @@ func (a *Animation) Bind(m *model.Model) (c *model.Clip, ok bool) {
 	}
 	sort.Strings(names)
 	for _, n := range names {
-		bi, found := idx[canonBone(n)]
+		bi, found := lookup(n)
 		if !found {
 			continue
 		}

@@ -26,8 +26,12 @@ type itemsState struct {
 	drops     items.World
 	held      string // item in hand, "" = empty
 	itemsLeft int    // items still to scatter around the spawn
-	itemRand  *rand.Rand
-	instBuf   []render.ItemInstance
+	// packFrom is where asset-pack items start in itemNames (0 = none):
+	// the scatter alternates between them and the sprite folder, so a small
+	// pack isn't drowned out by a big folder.
+	packFrom int
+	itemRand *rand.Rand
+	instBuf  []render.ItemInstance
 }
 
 // loadItems reads every sprite PNG in dir (as written by cmd/itemsheet).
@@ -101,7 +105,15 @@ func (g *game) tickItems() {
 		if !ok {
 			continue
 		}
-		g.drops.Spawn(g.itemNames[g.itemRand.Intn(len(g.itemNames))], x, float64(y)+0.5, z)
+		lo, hi := 0, len(g.itemNames)
+		if g.packFrom > 0 && g.packFrom < hi {
+			if g.itemsLeft%2 == 0 {
+				lo = g.packFrom
+			} else {
+				hi = g.packFrom
+			}
+		}
+		g.drops.Spawn(g.itemNames[lo+g.itemRand.Intn(hi-lo)], x, float64(y)+0.5, z)
 		g.itemsLeft--
 	}
 	g.drops.Tick(g.terrain)

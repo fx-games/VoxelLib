@@ -192,8 +192,22 @@ func isItemPath(p string) bool {
 }
 
 // tag marks humanoid rigs (head, arms and legs) so callers can pick
-// humanoid behaviour and animations.
+// humanoid behaviour and animations, and "armor" models whose every cube
+// sits in an armor* group: wearable sets drawn over a player body, which
+// look hollow on their own.
 func tag(m *model.Model) {
+	armor, verts := true, 0
+	for _, me := range m.Meshes {
+		for _, v := range me.Verts {
+			verts++
+			if !strings.HasPrefix(strings.ToLower(m.Bones[v.Joints[0]].Name), "armor") {
+				armor = false
+			}
+		}
+	}
+	if armor && verts > 0 {
+		m.Tags["armor"] = true
+	}
 	has := map[string]bool{}
 	for _, b := range m.Bones {
 		has[canonBone(b.Name)] = true

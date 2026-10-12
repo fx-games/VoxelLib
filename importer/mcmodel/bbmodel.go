@@ -205,9 +205,11 @@ func ParseBBModel(data []byte) (*model.Model, []*Animation, error) {
 	if len(m.Bones) == 0 {
 		return nil, nil, fmt.Errorf("mcmodel: no geometry")
 	}
-	bind := m.BindWorld()
+	// Cube coordinates are stored before their group's rotation is applied,
+	// so the bind pose is the unrotated model: bone space = model - pivot.
 	for i := range m.Bones {
-		m.Bones[i].InvBind = bind[i].Inv()
+		o := origins[i]
+		m.Bones[i].InvBind = mgl32.Translate3D(-o[0], -o[1], -o[2])
 	}
 
 	// Embedded animations.

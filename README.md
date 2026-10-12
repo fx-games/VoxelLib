@@ -48,6 +48,11 @@ startup. Its license forbids redistributing the model files, so they are never c
 `-mcassets` (default `assets/cleannrooster`, a copy of
 https://github.com/memmaker/forg-cleannrooster-assets: Blockbench models, animations, item textures)
 adds humanoid mobs, animated props and 128 more pickup items. `-mob-count` sets how many spawn.
+Half of the `-item-count` scattered items come from the pack. Armor-only sets (every cube in an
+`armor*` group, meant to be drawn over a player body) look hollow alone and are skipped. Mobs push
+each other apart, and the player pushes them aside.
+Debugging models: `-lineup -species NAME -anim CLIP` stands one creature per matching species
+in front of you, playing CLIP (`bind` shows the rest pose).
 
 **Controls**
 - WASD and the mouse move and look. Space jumps (and swims up). Shift sneaks or descends. Ctrl sprints, or dives while in water.
