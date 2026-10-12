@@ -78,7 +78,7 @@ func (g *game) setupCrossbow(p *mcmodel.Pack) {
 			return
 		}
 		if head := c.sp.shape.head; a.Part >= 0 && a.Part < len(head) && head[a.Part] {
-			g.kill(c)
+			g.kill(c, a.Yaw)
 			return
 		}
 		if m := c.mob; !m.Static {
@@ -140,10 +140,15 @@ func (g *game) tickArrows() {
 // Head shots: an arrow that strikes a creature's head kills it. Hits are
 // exact: arrows test the creature's animated triangles in the pose last
 // drawn, and the bone of the triangle struck says whether it was the head.
-// A killed creature topples over like a Minecraft mob (90° over a second),
-// its arrows drop, and it is removed.
+// A killed creature freezes in its pose, topples over the way the arrow
+// was flying (90° over a second), lies still, fades out and is removed;
+// the arrows in it then drop as pickups.
 
-const deathTicks = 20
+const (
+	deathTicks = 20 // falling over
+	lieTicks   = 10 // lying still
+	fadeTicks  = 20 // dissolving
+)
 
 // shapeInfo is per-model data for exact hits.
 type shapeInfo struct {
@@ -184,10 +189,10 @@ func (c *creature) Reach() collide.AABB {
 }
 
 // creatureMatrix places a creature's model space in the world, as the
-// model renderer does (pitch is the death tilt).
-func creatureMatrix(x, y, z, yaw, pitch float64) mgl32.Mat4 {
-	return mgl32.Translate3D(float32(x), float32(y), float32(z)).Mul4(mgl32.HomogRotate3DY(float32(math.Pi - yaw))).
-		Mul4(mgl32.HomogRotate3DX(float32(-pitch)))
+// model renderer does, tipped over by tilt toward tiltYaw.
+func creatureMatrix(x, y, z, yaw, tilt, tiltYaw float64) mgl32.Mat4 {
+	return mgl32.Translate3D(float32(x), float32(y), float32(z)).Mul4(render.TiltMatrix(tilt, tiltYaw)).
+		Mul4(mgl32.HomogRotate3DY(float32(math.Pi - yaw)))
 }
 
 // boneMatrix is bone b's skin matrix in the pose last drawn (identity
@@ -202,7 +207,7 @@ func (c *creature) boneMatrix(b int) mgl32.Mat4 {
 // Joint maps bone b's bind-pose model space to the world: the drawn pose
 // of the bone, placed at the creature's current position.
 func (c *creature) Joint(b int) mgl64.Mat4 {
-	return mat64(creatureMatrix(c.mob.X, c.mob.Y, c.mob.Z, c.mob.Yaw, c.deathTilt(1)).Mul4(c.boneMatrix(b)))
+	return mat64(creatureMatrix(c.mob.X, c.mob.Y, c.mob.Z, c.mob.Yaw, c.deathTilt(1), c.fallYaw).Mul4(c.boneMatrix(b)))
 }
 
 func mat64(m mgl32.Mat4) (o mgl64.Mat4) {
@@ -225,7 +230,7 @@ func (c *creature) Intersect(x0, y0, z0, x1, y1, z1 float64) (x, y, z float64, p
 	if !segNearSphere(x0-dx, y0-dy, z0-dz, x1-dx, y1-dy, z1-dz, c.sp.shape.radius) {
 		return 0, 0, 0, -1, false
 	}
-	inv := creatureMatrix(dx, dy, dz, dyaw, 0).Inv()
+	inv := creatureMatrix(dx, dy, dz, dyaw, 0, 0).Inv()
 	o := mgl32.TransformCoordinate(mgl32.Vec3{float32(x0), float32(y0), float32(z0)}, inv)
 	e := mgl32.TransformCoordinate(mgl32.Vec3{float32(x1), float32(y1), float32(z1)}, inv)
 	if c.pose == nil || c.poseFrame != c.drawFrame || !c.drawn {
@@ -236,7 +241,7 @@ func (c *creature) Intersect(x0, y0, z0, x1, y1, z1 float64) (x, y, z float64, p
 	if !ok {
 		return 0, 0, 0, -1, false
 	}
-	w := mgl32.TransformCoordinate(h.Pos, creatureMatrix(c.mob.X, c.mob.Y, c.mob.Z, c.mob.Yaw, c.deathTilt(1)))
+	w := mgl32.TransformCoordinate(h.Pos, creatureMatrix(c.mob.X, c.mob.Y, c.mob.Z, c.mob.Yaw, c.deathTilt(1), c.fallYaw))
 	return float64(w[0]), float64(w[1]), float64(w[2]), h.Bone, true
 }
 
@@ -253,7 +258,7 @@ func segNearSphere(ax, ay, az, bx, by, bz, r float64) bool {
 }
 
 // kill starts a creature's death: it stops, and its arrows fall out.
-func (g *game) kill(c *creature) {
+func (g *game) kill(c *creature, arrowYaw float64) {
 	if c.dying > 0 {
 		return
 	}
@@ -263,6 +268,7 @@ func (g *game) kill(c *creature) {
 	// mobs from shoving it. Its arrows stay in it until it disappears.
 	m := c.mob
 	c.dying = 1
+	c.fallYaw = arrowYaw // pushed over along the arrow's flight
 	m.VX, m.VY, m.VZ = 0, 0, 0
 	m.PrevX, m.PrevY, m.PrevZ, m.PrevYaw = m.X, m.Y, m.Z, m.Yaw
 	m.Static = true
@@ -275,7 +281,7 @@ func (g *game) tickDying() {
 	for _, c := range g.creatures {
 		if c.dying > 0 {
 			c.dying++
-			if c.dying > deathTicks+10 {
+			if c.dying > deathTicks+lieTicks+fadeTicks {
 				g.dropArrows(c)
 				continue
 			}
@@ -296,13 +302,22 @@ func (g *game) dropArrows(c *creature) {
 	}
 }
 
-// deathTilt is how far a dying creature has fallen backwards (radians).
+// deathTilt is how far a dying creature has fallen over (radians).
 func (c *creature) deathTilt(alpha float64) float64 {
 	if c.dying == 0 {
 		return 0
 	}
 	t := math.Min(1, (float64(c.dying-1)+alpha)/deathTicks)
-	return math.Sqrt(t) * math.Pi / 2 // positive pitch tips the top backwards
+	return math.Sqrt(t) * math.Pi / 2
+}
+
+// deathFade is how far a dead creature has dissolved (0 solid, 1 gone).
+func (c *creature) deathFade(alpha float64) float32 {
+	if c.dying == 0 {
+		return 0
+	}
+	t := (float64(c.dying-1) + alpha - deathTicks - lieTicks) / fadeTicks
+	return float32(math.Max(0, math.Min(1, t)))
 }
 
 // drawArrows draws flying and stuck arrows, and the crossbow in first
@@ -314,10 +329,12 @@ func (g *game) drawArrows(alpha float64) {
 	g.modelInsts = g.modelInsts[:0]
 	for _, a := range g.arrows.Arrows {
 		x, y, z, yaw, pitch := a.Lerp(alpha)
+		var fade float32
 		if c, ok := a.In.(*creature); ok {
+			fade = c.drawFade
 			if b, pos, d, ok := a.Attached(); ok && c.drawn {
 				// Ride the bone with this frame's animation and position.
-				m := mat64(creatureMatrix(c.drawX, c.drawY, c.drawZ, c.drawYaw, c.drawPitch).Mul4(c.boneMatrix(b)))
+				m := mat64(creatureMatrix(c.drawX, c.drawY, c.drawZ, c.drawYaw, c.drawTilt, c.fallYaw).Mul4(c.boneMatrix(b)))
 				p := mgl64.TransformCoordinate(pos, m)
 				x, y, z = p[0], p[1], p[2]
 				yaw, pitch = projectile.Orient(mgl64.TransformNormal(d, m))
@@ -337,7 +354,7 @@ func (g *game) drawArrows(alpha float64) {
 		// block, whose light is 0, which drew every stuck arrow black.
 		back := 0.4 * math.Cos(pitch)
 		sky, blk := g.light(x-math.Sin(yaw)*back, y-0.4*math.Sin(pitch), z+math.Cos(yaw)*back)
-		g.modelInsts = append(g.modelInsts, render.ModelInstance{Model: g.arrowModel, X: x, Y: y, Z: z, Yaw: yaw, Pitch: pitch, Sky: sky, Block: blk})
+		g.modelInsts = append(g.modelInsts, render.ModelInstance{Model: g.arrowModel, X: x, Y: y, Z: z, Yaw: yaw, Pitch: pitch, Sky: sky, Block: blk, Fade: fade})
 	}
 	g.modelRend.Draw(&g.cam, g.modelInsts)
 }
@@ -397,9 +414,29 @@ func arrowModel() *model.Model {
 			me.Indices = append(me.Indices, base, base+1, base+2, base, base+2, base+3)
 		}
 	}
-	const s = 1.0 / 32                                                     // half the shaft's thickness
-	box(mgl32.Vec3{-s, -s, -0.75}, mgl32.Vec3{s, s, -0.1}, 0)              // shaft
-	box(mgl32.Vec3{-2 * s, -2 * s, -0.12}, mgl32.Vec3{2 * s, 2 * s, 0}, 1) // head
+	const s = 1.0 / 32                                        // half the shaft's thickness
+	box(mgl32.Vec3{-s, -s, -0.75}, mgl32.Vec3{s, s, -0.1}, 0) // shaft
+	// Head: an elongated four-sided pyramid, its point at the origin.
+	pyramid := func(base, tip float32, r float32, px int) {
+		u := (float32(px) + 0.5) / 4
+		apex := mgl32.Vec3{0, 0, tip}
+		c := [4]mgl32.Vec3{{-r, -r, base}, {r, -r, base}, {r, r, base}, {-r, r, base}}
+		tri := func(a, b, c mgl32.Vec3) {
+			n := b.Sub(a).Cross(c.Sub(a)).Normalize()
+			i := uint32(len(me.Verts))
+			for _, p := range []mgl32.Vec3{a, b, c} {
+				me.Verts = append(me.Verts, model.Vertex{Pos: p, Normal: n, UV: mgl32.Vec2{u, 0.5}, Weights: [4]float32{1}})
+			}
+			me.Indices = append(me.Indices, i, i+1, i+2)
+		}
+		for k := 0; k < 4; k++ {
+			tri(c[k], c[(k+1)%4], apex)
+		}
+		tri(c[0], c[2], c[1]) // base
+		tri(c[0], c[3], c[2])
+	}
+	pyramid(-0.3, 0, 2*s, 1)
+	box(mgl32.Vec3{-1.4 * s, -1.4 * s, -0.33}, mgl32.Vec3{1.4 * s, 1.4 * s, -0.29}, 3) // collar
 	box(mgl32.Vec3{-0.002, -4 * s, -0.72}, mgl32.Vec3{0.002, 4 * s, -0.55}, 2)
 	box(mgl32.Vec3{-4 * s, -0.002, -0.72}, mgl32.Vec3{4 * s, 0.002, -0.55}, 2)
 	box(mgl32.Vec3{-1.2 * s, -1.2 * s, -0.78}, mgl32.Vec3{1.2 * s, 1.2 * s, -0.74}, 3) // nock

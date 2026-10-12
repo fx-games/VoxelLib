@@ -39,7 +39,9 @@ type creature struct {
 	// arrow hits against what the player saw.
 	drawn                        bool
 	drawX, drawY, drawZ, drawYaw float64
-	drawPitch                    float64
+	drawTilt                     float64 // death tilt as drawn
+	drawFade                     float32
+	fallYaw                      float64     // direction a corpse falls
 	drawFrame, poseFrame         int         // pose is the drawn skin, rebuilt when stale
 	pose                         *model.Pose // deformed vertices for hit tests
 }
@@ -248,28 +250,30 @@ func (g *game) drawCreatures(alpha float64) {
 		if math.Hypot(x-g.cam.X, z-g.cam.Z) > float64(g.eng.Renderer.Opt.RenderDistance*16) {
 			continue
 		}
-		clip := c.debugClip
-		if clip == "" {
-			clip = c.sp.clips[c.mob.State]
+		if c.dying == 0 || c.skin == nil { // the dead keep their last pose
+			clip := c.debugClip
 			if clip == "" {
-				clip = c.sp.clips[mobs.Idle]
+				clip = c.sp.clips[c.mob.State]
+				if clip == "" {
+					clip = c.sp.clips[mobs.Idle]
+				}
 			}
+			if clip == "bind" { // debug: no animation
+				c.anim.Clip = nil
+			} else if clip != "" {
+				c.anim.Play(clip, false)
+			}
+			c.anim.Update(dt)
+			if c.debugClip != "" && c.anim.Done() {
+				c.anim.Play(clip, true) // loop one-shots while previewing
+			}
+			c.skin = c.anim.Skin(c.skin)
 		}
-		if clip == "bind" { // debug: no animation
-			c.anim.Clip = nil
-		} else if clip != "" {
-			c.anim.Play(clip, false)
-		}
-		c.anim.Update(dt)
-		if c.debugClip != "" && c.anim.Done() {
-			c.anim.Play(clip, true) // loop one-shots while previewing
-		}
-		c.skin = c.anim.Skin(c.skin)
 		c.drawn, c.drawX, c.drawY, c.drawZ, c.drawYaw = true, x, y, z, yaw
-		c.drawPitch = c.deathTilt(alpha)
+		c.drawTilt, c.drawFade = c.deathTilt(alpha), c.deathFade(alpha)
 		c.drawFrame++
 		sky, blk := g.light(x, y+c.sp.height/2, z)
-		g.modelInsts = append(g.modelInsts, render.ModelInstance{Model: c.sp.handle, X: x, Y: y, Z: z, Yaw: yaw, Pitch: c.drawPitch, Skin: c.skin, Sky: sky, Block: blk})
+		g.modelInsts = append(g.modelInsts, render.ModelInstance{Model: c.sp.handle, X: x, Y: y, Z: z, Yaw: yaw, Tilt: c.drawTilt, TiltYaw: c.fallYaw, Fade: c.drawFade, Skin: c.skin, Sky: sky, Block: blk})
 	}
 	g.modelRend.Draw(&g.cam, g.modelInsts)
 }

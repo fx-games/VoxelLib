@@ -42,6 +42,23 @@ type ModelInstance struct {
 	Scale      float32      // 0 means 1
 	Skin       []mgl32.Mat4 // from model.Animator.Skin; nil = bind pose
 	Sky, Block uint8        // light levels at the model
+	// Tilt tips the whole model over by Tilt radians toward the world
+	// direction TiltYaw (yaw convention), pivoting at its origin, e.g. a
+	// falling corpse.
+	Tilt, TiltYaw float64
+	// Fade dissolves the model: 0 is solid, 1 is gone (a dither pattern
+	// discards that share of its pixels, so no blending or sorting).
+	Fade float32
+}
+
+// TiltMatrix rotates the vertical toward world direction yaw by angle
+// radians, about the horizontal axis across that direction.
+func TiltMatrix(angle, yaw float64) mgl32.Mat4 {
+	if angle == 0 {
+		return mgl32.Ident4()
+	}
+	fx, fz := math.Sin(yaw), -math.Cos(yaw)
+	return mgl32.HomogRotate3D(float32(angle), mgl32.Vec3{float32(fz), 0, float32(-fx)})
 }
 
 const modelVS = `#version 330 core
@@ -79,11 +96,14 @@ uniform vec2 uLight;
 uniform float uDaylight;
 uniform vec3 uFogColor;
 uniform vec2 uFog;
+uniform float uFade;
 out vec4 fragColor;
 float curve(float l) { return mix(0.04, 1.0, l / (4.0 - 3.0 * l)); }
 void main() {
 	vec4 c = texture(uTex, vUV);
 	if (c.a < 0.5) discard;
+	// Interleaved gradient noise: a stable screen-space dither for fading.
+	if (uFade > 0.0 && fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715)))) < uFade) discard;
 	float sky = curve(uLight.x) * uDaylight;
 	float blk = curve(uLight.y);
 	vec3 light = max(max(vec3(sky) * vec3(0.95, 0.97, 1.0), vec3(blk) * vec3(1.0, 0.86, 0.66)), vec3(0.04));
@@ -223,8 +243,9 @@ func (mr *ModelRenderer) Draw(cam *Camera, insts []ModelInstance) {
 		// Model +Z must turn to the camera's forward at yaw: forward is
 		// (sin yaw, 0, -cos yaw), which is +Z rotated by pi - yaw about Y.
 		// Pitch then tilts +Z up about the model's X axis.
-		model := mgl32.Translate3D(dx, dy, dz).Mul4(mgl32.HomogRotate3DY(float32(3.141592653589793 - in.Yaw))).
+		model := mgl32.Translate3D(dx, dy, dz).Mul4(TiltMatrix(in.Tilt, in.TiltYaw)).Mul4(mgl32.HomogRotate3DY(float32(3.141592653589793 - in.Yaw))).
 			Mul4(mgl32.HomogRotate3DX(float32(-in.Pitch))).Mul4(mgl32.Scale3D(s, s, s))
+		gl.Uniform1f(mr.prog.loc("uFade"), in.Fade)
 		mr.drawModel(g, model, in.Skin, in.Sky, in.Block, &ident)
 	}
 	gl.BindVertexArray(0)
@@ -267,6 +288,7 @@ func (mr *ModelRenderer) DrawHand(handle int, aspect float32, view mgl32.Mat4, s
 	gl.Uniform1f(p.loc("uDaylight"), mr.r.Opt.Daylight)
 	gl.Uniform3f(p.loc("uFogColor"), 0, 0, 0)
 	gl.Uniform2f(p.loc("uFog"), 1e6, 2e6) // no fog on the hand
+	gl.Uniform1f(p.loc("uFade"), 0)
 	gl.ActiveTexture(gl.TEXTURE0)
 	gl.Enable(gl.DEPTH_TEST)
 	gl.Disable(gl.CULL_FACE)
