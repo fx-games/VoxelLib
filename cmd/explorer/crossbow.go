@@ -351,24 +351,46 @@ func (g *game) drawArrows(alpha float64) {
 		return
 	}
 	g.modelInsts = g.modelInsts[:0]
+	// drawnPose remembers each arrow's pose this frame, for arrows stuck in
+	// it (hosts come first in the list).
+	type pose struct {
+		m    mgl64.Mat4 // tip frame, as projectile.Arrow.Joint
+		fade float32
+	}
+	drawn := map[*projectile.Arrow]pose{}
 	for _, a := range g.arrows.Arrows {
 		x, y, z, yaw, pitch := a.Lerp(alpha)
 		var fade float32
-		if c, ok := a.In.(*creature); ok {
-			fade = c.drawFade
-			if b, pos, d, ok := a.Attached(); ok && c.drawn {
+		var host mgl64.Mat4
+		hosted := false
+		switch in := a.In.(type) {
+		case *creature:
+			fade = in.drawFade
+			if in.drawn {
 				// Ride the bone with this frame's animation and position.
-				m := mat64(creatureMatrix(c.drawX, c.drawY, c.drawZ, c.drawYaw, c.drawTilt, c.fallYaw).Mul4(c.boneMatrix(b)))
-				p := mgl64.TransformCoordinate(pos, m)
-				x, y, z = p[0], p[1], p[2]
-				yaw, pitch = projectile.Orient(mgl64.TransformNormal(d, m))
+				host = mat64(creatureMatrix(in.drawX, in.drawY, in.drawZ, in.drawYaw, in.drawTilt, in.fallYaw))
+				hosted = true
+			}
+		case *projectile.Arrow: // Robin Hood: ride the arrow it split
+			if hp, ok := drawn[in]; ok {
+				host, fade, hosted = hp.m, hp.fade, true
 			}
 		}
+		if b, pos, d, ok := a.Attached(); ok && hosted {
+			m := host
+			if c, ok := a.In.(*creature); ok {
+				m = m.Mul4(mat64(c.boneMatrix(b)))
+			}
+			p := mgl64.TransformCoordinate(pos, m)
+			x, y, z = p[0], p[1], p[2]
+			yaw, pitch = projectile.Orient(mgl64.TransformNormal(d, m))
+		}
+		drawn[a] = pose{mgl64.Translate3D(x, y, z).Mul4(mgl64.HomogRotate3DY(math.Pi - yaw)).Mul4(mgl64.HomogRotate3DX(-pitch)), fade}
 		// A fresh shot isn't drawn for its first two ticks while within 3.5
 		// blocks of the camera, so it doesn't fill the screen as it leaves
 		// the eye. Vanilla does this for snowballs, fireballs, wind charges
 		// and eyes of ender (tickCount < 2 && distSq < 12.25).
-		if !a.Stuck && a.Age < 2 {
+		if a.Flown < 2 { // counted from launch: a shot can stick at once
 			dx, dy, dz := x-g.cam.X, y-g.cam.Y, z-g.cam.Z
 			if dx*dx+dy*dy+dz*dz < 3.5*3.5 {
 				continue

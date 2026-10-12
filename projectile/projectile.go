@@ -29,6 +29,11 @@ const (
 	// Penetration is how deep an arrow's tip sinks past the surface it
 	// hits before it sticks: a third of the 0.75-block arrow.
 	Penetration = 0.25
+	// Length and Radius are the arrow's shaft as other arrows see it: a
+	// stuck arrow is a target, so a second shot can split it Robin Hood
+	// style and stick in it.
+	Length = 0.75
+	Radius = 0.06
 )
 
 // Target is something arrows can hit and stick in, such as a mob.
@@ -74,6 +79,10 @@ type Arrow struct {
 	// Part is what of a Shape the arrow struck (-1 otherwise).
 	Part int
 	Age  int // ticks since launch, or since sticking
+	// Flown counts ticks since launch and never resets, e.g. to hide a
+	// fresh shot near the camera even if it stuck at once.
+	Flown int
+	gone  bool // removed from the world (arrows stuck in it go too)
 
 	// Offset in the target's frame: position relative to its feet, rotated
 	// by -yaw, and the arrow's yaw relative to the target's.
@@ -85,8 +94,9 @@ type Arrow struct {
 
 // World holds the arrows in flight and stuck.
 type World struct {
-	Arrows []*Arrow
-	grid   grid
+	Arrows  []*Arrow
+	grid    grid
+	scratch []Target
 	// Hit, if set, is called once when an arrow sticks in a target.
 	Hit func(a *Arrow, t Target)
 }
@@ -104,14 +114,27 @@ func (w *World) Shoot(x, y, z, yaw, pitch, speed float64) *Arrow {
 	return a
 }
 
-// Tick advances every arrow one step and drops expired ones.
+// Tick advances every arrow one step and drops expired ones. Stuck arrows
+// are targets too, alongside the given ones.
 func (w *World) Tick(s collide.Solids, targets []Target) {
-	w.grid.build(targets)
+	all := append(w.scratch[:0], targets...)
+	for _, a := range w.Arrows {
+		if a.Stuck {
+			all = append(all, a)
+		}
+	}
+	w.scratch = all
+	w.grid.build(all)
 	live := w.Arrows[:0]
 	for _, a := range w.Arrows {
 		a.PrevX, a.PrevY, a.PrevZ = a.X, a.Y, a.Z
 		a.PrevYaw, a.PrevPitch = a.Yaw, a.Pitch
 		a.Age++
+		a.Flown++
+		if host, ok := a.In.(*Arrow); ok && host.gone {
+			a.gone = true // its host expired: it goes with it
+			continue
+		}
 		switch {
 		case a.In != nil:
 			a.follow()
@@ -120,6 +143,8 @@ func (w *World) Tick(s collide.Solids, targets []Target) {
 		}
 		if !(a.Stuck && a.Age > Life) && a.Y > -1000 {
 			live = append(live, a)
+		} else {
+			a.gone = true
 		}
 	}
 	clear(w.Arrows[len(live):])
@@ -283,13 +308,16 @@ func (w *World) Release(t Target) {
 	}
 }
 
-// Detach removes every arrow stuck in t from the world and returns them,
-// e.g. to turn them into pickups when t's body disappears.
+// Detach removes every arrow stuck in t, and those stuck in them, from the
+// world and returns them, e.g. to turn them into pickups when t's body
+// disappears.
 func (w *World) Detach(t Target) []*Arrow {
 	var out []*Arrow
 	live := w.Arrows[:0]
-	for _, a := range w.Arrows {
-		if a.In == t {
+	for _, a := range w.Arrows { // hosts precede the arrows stuck in them
+		host, inArrow := a.In.(*Arrow)
+		if a.In == t || (inArrow && host.gone) {
+			a.gone = true
 			out = append(out, a)
 		} else {
 			live = append(live, a)
@@ -312,4 +340,62 @@ func (a *Arrow) Lerp(alpha float64) (x, y, z, yaw, pitch float64) {
 	dy := math.Remainder(a.Yaw-a.PrevYaw, 2*math.Pi)
 	return a.PrevX + (a.X-a.PrevX)*alpha, a.PrevY + (a.Y-a.PrevY)*alpha, a.PrevZ + (a.Z-a.PrevZ)*alpha,
 		a.PrevYaw + dy*alpha, a.PrevPitch + (a.Pitch-a.PrevPitch)*alpha
+}
+
+// An arrow is itself a Jointed target once stuck: its shaft is a thin
+// cylinder from the tip back Length along its direction.
+
+func (a *Arrow) tail() (x, y, z float64) {
+	d := dir(a.Yaw, a.Pitch)
+	return a.X - d[0]*Length, a.Y - d[1]*Length, a.Z - d[2]*Length
+}
+
+// Box bounds the shaft.
+func (a *Arrow) Box() collide.AABB {
+	tx, ty, tz := a.tail()
+	return collide.AABB{MinX: min(a.X, tx) - Radius, MinY: min(a.Y, ty) - Radius, MinZ: min(a.Z, tz) - Radius,
+		MaxX: max(a.X, tx) + Radius, MaxY: max(a.Y, ty) + Radius, MaxZ: max(a.Z, tz) + Radius}
+}
+
+// Frame is the tip and yaw.
+func (a *Arrow) Frame() (x, y, z, yaw float64) { return a.X, a.Y, a.Z, a.Yaw }
+
+// Intersect finds where segment p0→p1 first comes within Radius of the
+// shaft (closest approach of the two segments).
+func (a *Arrow) Intersect(x0, y0, z0, x1, y1, z1 float64) (x, y, z float64, part int, ok bool) {
+	tx, ty, tz := a.tail()
+	p := mgl64.Vec3{x0, y0, z0}
+	u := mgl64.Vec3{x1 - x0, y1 - y0, z1 - z0}
+	q := mgl64.Vec3{tx, ty, tz}
+	v := mgl64.Vec3{a.X - tx, a.Y - ty, a.Z - tz}
+	s, t := closest(p, u, q, v)
+	c1, c2 := p.Add(u.Mul(s)), q.Add(v.Mul(t))
+	if c1.Sub(c2).Len() > Radius {
+		return 0, 0, 0, -1, false
+	}
+	return c1[0], c1[1], c1[2], 0, true
+}
+
+// closest returns the parameters (0..1) of the closest points between
+// segments p+s*u and q+t*v.
+func closest(p, u, q, v mgl64.Vec3) (s, t float64) {
+	w := p.Sub(q)
+	a, b, c, d, e := u.Dot(u), u.Dot(v), v.Dot(v), u.Dot(w), v.Dot(w)
+	den := a*c - b*b
+	clamp := func(x float64) float64 { return math.Max(0, math.Min(1, x)) }
+	if den > 1e-12 {
+		s = clamp((b*e - c*d) / den)
+	}
+	if c > 1e-12 {
+		t = clamp((b*s + e) / c)
+	}
+	if a > 1e-12 {
+		s = clamp((b*t - d) / a)
+	}
+	return s, t
+}
+
+// Joint is the arrow's frame: origin at the tip, +Z along its flight.
+func (a *Arrow) Joint(int) mgl64.Mat4 {
+	return mgl64.Translate3D(a.X, a.Y, a.Z).Mul4(mgl64.HomogRotate3DY(math.Pi - a.Yaw)).Mul4(mgl64.HomogRotate3DX(-a.Pitch))
 }

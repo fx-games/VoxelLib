@@ -14,10 +14,8 @@ import (
 //	Q                 drop held item     F3 toggle frame stats on stdout
 //	F1                help screen (help.go; keep helpLines in sync)
 //	K                 preview the nearest creature's animations one by one
-func (g *game) setupInput(grab bool) {
-	if grab {
-		g.capture(true)
-	}
+func (g *game) setupInput() {
+	g.capture(true)
 	g.win.SetKeyCallback(func(w *glfw.Window, k glfw.Key, sc int, a glfw.Action, m glfw.ModifierKey) {
 		if a != glfw.Press {
 			return

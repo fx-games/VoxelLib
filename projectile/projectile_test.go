@@ -246,3 +246,46 @@ func TestStuckArrowRidesJoint(t *testing.T) {
 		t.Errorf("arrow turned %.3f, want a quarter turn", d)
 	}
 }
+
+func TestRobinHood(t *testing.T) {
+	var w World
+	first := w.Shoot(25, 5, 0.5, math.Pi/2, 0, Speed)
+	for i := 0; i < 20 && !first.Stuck; i++ {
+		w.Tick(ground, nil)
+	}
+	// The same shot again: it meets the first arrow's nock and sticks in it.
+	second := w.Shoot(25, 5, 0.5, math.Pi/2, 0, Speed)
+	for i := 0; i < 20 && !second.Stuck; i++ {
+		w.Tick(ground, nil)
+	}
+	if second.In != first {
+		t.Fatalf("second arrow stuck in %v, want the first arrow", second.In)
+	}
+	tail, _, _ := first.tail()
+	if second.X < tail || second.X > first.X {
+		t.Errorf("second tip at x=%.3f, want inside the first shaft %.3f..%.3f", second.X, tail, first.X)
+	}
+	// It goes with its host.
+	got := w.Detach(first) // nothing is stuck in "first" except second
+	if len(got) != 1 || got[0] != second {
+		t.Errorf("detach returned %d", len(got))
+	}
+}
+
+func TestHostExpiryTakesChildren(t *testing.T) {
+	var w World
+	first := w.Shoot(25, 5, 0.5, math.Pi/2, 0, Speed)
+	for i := 0; i < 20 && !first.Stuck; i++ {
+		w.Tick(ground, nil)
+	}
+	second := w.Shoot(25, 5, 0.5, math.Pi/2, 0, Speed)
+	for i := 0; i < 20 && !second.Stuck; i++ {
+		w.Tick(ground, nil)
+	}
+	for i := 0; i < Life+5; i++ {
+		w.Tick(ground, nil)
+	}
+	if len(w.Arrows) != 0 {
+		t.Errorf("%d arrows left after their host expired", len(w.Arrows))
+	}
+}

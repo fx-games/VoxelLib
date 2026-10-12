@@ -99,6 +99,11 @@ func main() {
 	glfw.WindowHint(glfw.OpenGLProfile, glfw.OpenGLCoreProfile)
 	glfw.WindowHint(glfw.OpenGLForwardCompatible, glfw.True)
 	glfw.WindowHint(glfw.Samples, 0)
+	if *shot != "" {
+		// Automated run: don't take focus from whatever the user is doing.
+		glfw.WindowHint(glfw.Focused, glfw.False)
+		glfw.WindowHint(glfw.FocusOnShow, glfw.False)
+	}
 	win, err := glfw.CreateWindow(1280, 720, "voxellib explorer", nil, nil)
 	if err != nil {
 		log.Fatal(err)
@@ -208,8 +213,11 @@ func main() {
 	if *showHelp {
 		g.toggleHelp()
 	}
-	// -shot runs are automated: never grab the user's mouse.
-	g.setupInput(*shot == "")
+	// -shot runs are automated: never grab the user's mouse or take any
+	// keyboard or mouse input.
+	if *shot == "" {
+		g.setupInput()
+	}
 	g.run(*shot, *shotAt)
 }
 
