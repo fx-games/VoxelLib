@@ -97,17 +97,12 @@ func (g *game) fire() {
 		return
 	}
 	yaw, pitch := g.cam.Yaw, g.cam.Pitch
-	// Vanilla (AbstractArrow, Projectile.shootFromRotation): the arrow starts
-	// at the shooter's position, 0.1 below the eyes, and inherits the
-	// shooter's movement (but not vertical movement while on the ground).
-	p := g.player
-	ex, ey, ez := p.Eye()
-	a := g.arrows.Shoot(ex, ey-0.1, ez, yaw, pitch, projectile.Speed)
-	a.VX += p.X - p.PrevX
-	a.VZ += p.Z - p.PrevZ
-	if !p.OnGround {
-		a.VY += p.Y - p.PrevY
-	}
+	// The arrow starts like vanilla's (AbstractArrow): at the shooter, 0.1
+	// below the eyes. Unlike vanilla it doesn't inherit the shooter's
+	// movement, so it flies exactly where the crosshair pointed and doesn't
+	// drift along with a strafing player.
+	ex, ey, ez := g.player.Eye()
+	g.arrows.Shoot(ex, ey-0.1, ez, yaw, pitch, projectile.Speed)
 	g.reload, g.recoil = reloadTicks, recoilTicks
 }
 
