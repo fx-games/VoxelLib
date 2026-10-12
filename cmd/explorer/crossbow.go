@@ -124,6 +124,15 @@ func (g *game) drawArrows(alpha float64) {
 	g.modelInsts = g.modelInsts[:0]
 	for _, a := range g.arrows.Arrows {
 		x, y, z, yaw, pitch := a.Lerp(alpha)
+		// Like vanilla's projectile renderers: a fresh shot isn't drawn for
+		// its first two ticks while it is near the camera, so it doesn't
+		// fill the screen as it leaves the eye.
+		if !a.Stuck && a.Age < 2 {
+			dx, dy, dz := x-g.cam.X, y-g.cam.Y, z-g.cam.Z
+			if dx*dx+dy*dy+dz*dz < 3.5*3.5 {
+				continue
+			}
+		}
 		// Light the arrow from its middle: a stuck tip sits inside a solid
 		// block, whose light is 0, which drew every stuck arrow black.
 		back := 0.4 * math.Cos(pitch)
