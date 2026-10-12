@@ -208,12 +208,41 @@ func tag(m *model.Model) {
 	if armor && verts > 0 {
 		m.Tags["armor"] = true
 	}
+	// A humanoid with nothing on its head is a partial armor/robe set too
+	// (sanguine): drawn alone it is a headless, legless coat.
+	headVerts := 0
+	under := func(b int, root int) bool {
+		for ; b >= 0; b = m.Bones[b].Parent {
+			if b == root {
+				return true
+			}
+		}
+		return false
+	}
+	head := -1
+	for i, b := range m.Bones {
+		if canonBone(b.Name) == "head" {
+			head = i
+			break
+		}
+	}
+	for _, me := range m.Meshes {
+		for _, v := range me.Verts {
+			if head >= 0 && under(int(v.Joints[0]), head) {
+				headVerts++
+			}
+		}
+	}
+
 	has := map[string]bool{}
 	for _, b := range m.Bones {
 		has[canonBone(b.Name)] = true
 	}
 	if has["head"] && has["leftarm"] && has["rightarm"] && has["leftleg"] && has["rightleg"] {
 		m.Tags["humanoid"] = true
+		if headVerts == 0 {
+			m.Tags["armor"] = true
+		}
 	}
 }
 

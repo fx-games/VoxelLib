@@ -71,16 +71,18 @@ func (g *game) importMCAssets(src string) {
 
 // humanoidClip picks clips from the shared humanoid animation library.
 // Most animation.mob.* clips are a combat stance (body turned ~27° with the
-// head turned back), and slashcombo/leapslam leap 2-3 blocks into the air;
-// on wandering mobs that reads as a twisted torso and a body flying apart.
-// These upright, grounded clips come first.
+// head turned back), slashcombo/leapslam leap 2-3 blocks into the air,
+// flourish2 whips the body round twice with an elastic overshoot and
+// running leans the torso 25° with the legs only roughly following. On
+// wandering mobs all of these read as body parts flying around, so they
+// stick to the calm idle and walking cycles.
 func humanoidClip(m *model.Model, s mobs.State) string {
 	prefer := map[mobs.State][]string{
 		mobs.Idle:  {"idle", "animation.mob.idle"},
 		mobs.Walk:  {"walking", "animation.mob.walk"},
-		mobs.Run:   {"running", "walking"},
-		mobs.Jump:  {"running", "walking"}, // hops up a block: no leap clip
-		mobs.Trick: {"animation.mob.trickster.flourish2", "animation.mob.wave"},
+		mobs.Run:   {"walking", "animation.mob.walk"},
+		mobs.Jump:  {"walking", "animation.mob.walk"}, // hops up a block: no leap clip
+		mobs.Trick: {"idle", "animation.mob.idle"},
 	}[s]
 	for _, n := range prefer {
 		if _, ok := m.Clips[n]; ok {
