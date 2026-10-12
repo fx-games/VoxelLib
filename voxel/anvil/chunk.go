@@ -18,8 +18,10 @@ const (
 )
 
 // DecodeChunk converts chunk NBT into a voxel.Chunk shaped for w. Sections
-// outside the world's height are dropped. Light is not trusted; the world
-// relights the chunk itself, so data from any version is consistent.
+// outside the world's height are dropped. Light is only trusted from chunks
+// voxellib lit and saved itself (the litTag): those load with Chunk.Lit
+// set and skip relighting. Anything else is relit by the world, so data
+// from any version is consistent.
 func DecodeChunk(w *voxel.World, root Compound) (*voxel.Chunk, error) {
 	dv := root.Int("DataVersion")
 	level := root
@@ -36,6 +38,7 @@ func DecodeChunk(w *voxel.World, root Compound) (*voxel.Chunk, error) {
 		return nil, errors.New("anvil: chunk has no sections")
 	}
 	reg := w.Reg
+	trusted := level.Int(litTag) == 1 && len(secs.Items) == len(ch.Sections)
 	for _, it := range secs.Items {
 		sc, ok := it.(Compound)
 		if !ok {
@@ -45,6 +48,13 @@ func DecodeChunk(w *voxel.World, root Compound) (*voxel.Chunk, error) {
 		s := ch.Section(sy * 16)
 		if s == nil {
 			continue
+		}
+		sky, blk := sc.Bytes("SkyLight"), sc.Bytes("BlockLight")
+		if len(sky) == 2048 && len(blk) == 2048 {
+			copy(s.Sky, sky)
+			copy(s.Block, blk)
+		} else {
+			trusted = false
 		}
 		var palNBT List
 		var data []int64
@@ -78,6 +88,7 @@ func DecodeChunk(w *voxel.World, root Compound) (*voxel.Chunk, error) {
 		s.Recount()
 	}
 	ch.RecomputeHeights(reg.Table())
+	ch.Lit = trusted
 	return ch, nil
 }
 
@@ -103,6 +114,9 @@ func stateFromNBT(reg *voxel.Registry, c Compound) voxel.StateID {
 	}
 	return reg.State(name, props)
 }
+
+// litTag marks chunk NBT whose light voxellib computed (see DecodeChunk).
+const litTag = "voxellib:lit"
 
 // EncodeChunk converts a chunk into 1.18+ chunk NBT.
 func EncodeChunk(w *voxel.World, ch *voxel.Chunk) Compound {
@@ -151,7 +165,7 @@ func EncodeChunk(w *voxel.World, ch *voxel.Chunk) Compound {
 		}
 		secs.Items = append(secs.Items, sc)
 	}
-	return Compound{
+	root := Compound{
 		"DataVersion":    int32(DataVersion),
 		"xPos":           int32(ch.Pos.X),
 		"zPos":           int32(ch.Pos.Z),
@@ -163,6 +177,10 @@ func EncodeChunk(w *voxel.World, ch *voxel.Chunk) Compound {
 		"sections":       secs,
 		"block_entities": List{Type: TagCompound},
 	}
+	if ch.Lit {
+		root[litTag] = int8(1)
+	}
+	return root
 }
 
 // legacy numeric ids (pre-1.13) for the common terrain blocks.

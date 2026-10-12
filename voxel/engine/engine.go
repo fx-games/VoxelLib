@@ -41,6 +41,10 @@ type Config struct {
 	Generator      Generator       // used for chunks not on disk (nil: void)
 	WorldDir       string          // Minecraft world folder to load/save ("" = memory only)
 	ReadOnly       bool            // never write to WorldDir
+	// Bounds, when set, limits the world to these chunks (inclusive
+	// corners): nothing outside is loaded, generated or drawn, e.g. a
+	// hand-built level.
+	Bounds *[2]voxel.ChunkPos
 	Textures       render.TextureSource
 	RenderOptions  render.Options
 	// Workers is the size of each background pool (mesh, generation).
@@ -379,6 +383,9 @@ func (e *Engine) requestChunks(r int) {
 	for dz := -r; dz <= r; dz++ {
 		for dx := -r; dx <= r; dx++ {
 			p := e.center.Add(dx, dz)
+			if !e.inBounds(p) {
+				continue
+			}
 			if !e.loaded[p] && !e.pending[p] {
 				want = append(want, p)
 			}
@@ -395,6 +402,13 @@ func (e *Engine) requestChunks(r int) {
 	}
 }
 
+// inBounds reports whether a chunk is inside Config.Bounds (or there are
+// none). Neighbours outside count as present: there is nothing there.
+func (e *Engine) inBounds(p voxel.ChunkPos) bool {
+	b := e.cfg.Bounds
+	return b == nil || p.X >= b[0].X && p.X <= b[1].X && p.Z >= b[0].Z && p.Z <= b[1].Z
+}
+
 func (e *Engine) dist2(p voxel.ChunkPos) int {
 	dx, dz := p.X-e.center.X, p.Z-e.center.Z
 	return dx*dx + dz*dz
@@ -403,7 +417,7 @@ func (e *Engine) dist2(p voxel.ChunkPos) int {
 func (e *Engine) neighboursLoaded(p voxel.ChunkPos) bool {
 	for dx := -1; dx <= 1; dx++ {
 		for dz := -1; dz <= 1; dz++ {
-			if !e.loaded[p.Add(dx, dz)] {
+			if n := p.Add(dx, dz); !e.loaded[n] && e.inBounds(n) {
 				return false
 			}
 		}
