@@ -57,6 +57,7 @@ func main() {
 		autofly  = flag.Float64("autofly", 0, "debug: fly forward automatically at this many blocks/s (streaming stress test)")
 		cpuprof  = flag.String("cpuprofile", "", "write a CPU profile")
 		verbose  = flag.Bool("verbose", false, "print frame stats to stdout")
+		vsync    = flag.String("vsync", "on", "frame pacing: on (GL vsync), limit (no GL vsync, sleep to max(display rate, 120Hz)), off (unlimited)")
 	)
 	flag.Parse()
 
@@ -82,7 +83,19 @@ func main() {
 		log.Fatal(err)
 	}
 	win.MakeContextCurrent()
-	glfw.SwapInterval(1)
+	frameLimit := time.Duration(0)
+	if *vsync == "on" {
+		glfw.SwapInterval(1)
+	} else {
+		glfw.SwapInterval(0)
+		if *vsync == "limit" {
+			hz := 120 // never pace slower than this: 8.3ms frames
+			if m := glfw.GetPrimaryMonitor(); m != nil && m.GetVideoMode().RefreshRate > hz {
+				hz = m.GetVideoMode().RefreshRate
+			}
+			frameLimit = time.Second / time.Duration(hz)
+		}
+	}
 
 	var paths []string
 	if *packs != "" {
@@ -112,7 +125,7 @@ func main() {
 	}
 	defer eng.Close()
 
-	g := &game{eng: eng, win: win, flying: *fly, verbose: *verbose, edits: *edits, autofly: *autofly}
+	g := &game{eng: eng, win: win, flying: *fly, verbose: *verbose, edits: *edits, autofly: *autofly, frameLimit: frameLimit}
 	for _, n := range hotbarNames {
 		g.hotbar = append(g.hotbar, reg.Parse(n))
 	}
@@ -155,18 +168,28 @@ type game struct {
 	spawnKnown       bool
 	frozen           bool
 
-	verbose  bool
-	edits    string
-	autofly  float64
-	phase    [4]time.Duration // worst: physics, update, render, swap
-	maxFrame time.Duration
-	hotbar   []voxel.StateID
-	selected int
-	captured bool
-	lastJump time.Time
-	tick     int
-	breakCD  int
-	placeCD  int
+	verbose bool
+	edits   string
+	autofly float64
+	// frameLimit paces frames without GL vsync (0 = unlimited).
+	frameLimit time.Duration
+	frameStart time.Time
+	// GPU timer queries, read back 3 frames later so nothing waits.
+	tq     [4]uint32
+	fq     int
+	gpuMax time.Duration
+	// cost: CPU work per frame up to SwapBuffers (excludes vsync waits).
+	costMax   time.Duration
+	slowCosts int
+	phase     [5]time.Duration // worst: physics, update, render, swap, pacing
+	maxFrame  time.Duration
+	hotbar    []voxel.StateID
+	selected  int
+	captured  bool
+	lastJump  time.Time
+	tick      int
+	breakCD   int
+	placeCD   int
 }
 
 const (
@@ -482,8 +505,9 @@ func (g *game) run(shotPath string, shotAt int) {
 	for !g.win.ShouldClose() {
 		glfw.PollEvents()
 		now := time.Now()
-		if ft := now.Sub(last); ft > g.maxFrame && g.tick > 40 {
-			g.maxFrame = ft
+		g.frameStart = now
+		if ft := now.Sub(last); g.tick > 40 {
+			g.maxFrame = max(g.maxFrame, ft)
 		}
 		acc += now.Sub(last)
 		last = now
@@ -509,7 +533,7 @@ func (g *game) run(shotPath string, shotAt int) {
 		gl.Clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
 		g.cam.X, g.cam.Y, g.cam.Z = ix, iy+eyeHeight, iz
 		g.cam.Aspect = float64(fw) / float64(max(fh, 1))
-		g.eng.Render(&g.cam)
+		g.gpuTimer(func() { g.eng.Render(&g.cam) })
 		if h, ok := g.target(); ok {
 			g.eng.Renderer.DrawBlockOutline(&g.cam, h.Block.X, h.Block.Y, h.Block.Z)
 		}
@@ -524,8 +548,24 @@ func (g *game) run(shotPath string, shotAt int) {
 		}
 		t3 := time.Now()
 		g.win.SwapBuffers()
+		tSwap := time.Now()
+		if g.frameLimit > 0 {
+			// Sleep most of the remainder, spin the last bit for precision.
+			end := g.frameStart.Add(g.frameLimit)
+			if d := time.Until(end) - 500*time.Microsecond; d > 0 {
+				osSleep(d)
+			}
+			for time.Now().Before(end) {
+			}
+		}
 		t4 := time.Now()
-		for i, d := range []time.Duration{t1.Sub(t0), t2.Sub(t1), t3.Sub(t2), t4.Sub(t3)} {
+		if cost := t3.Sub(t0); g.tick > 40 {
+			g.costMax = max(g.costMax, cost)
+			if cost > 12*time.Millisecond {
+				g.slowCosts++
+			}
+		}
+		for i, d := range []time.Duration{t1.Sub(t0), t2.Sub(t1), t3.Sub(t2), tSwap.Sub(t3), t4.Sub(tSwap)} {
 			g.phase[i] = max(g.phase[i], d)
 		}
 
@@ -542,9 +582,9 @@ func (g *game) run(shotPath string, shotAt int) {
 			name := strings.TrimPrefix(g.eng.World.Reg.Info(g.hotbar[g.selected]).Name, "minecraft:")
 			title := (fmt.Sprintf("voxellib explorer | %d fps | %.1f %.1f %.1f %s | [%d] %s | vis %d/%d sec, %d calls, %dk quads, %d MB | chunks %d (+%d) meshes %d",
 				fps, g.x, g.y, g.z, mode, g.selected+1, name, s.Visible, s.Sections, s.DrawCalls, s.Quads/1000,
-				s.VertexMemory>>20, loaded, pc, pm)) + fmt.Sprintf(" | worst frame %.1fms", float64(g.maxFrame.Microseconds())/1000)
+				s.VertexMemory>>20, loaded, pc, pm)) + fmt.Sprintf(" | worst frame cpu %.1fms gpu %.1fms (cpu >12ms: %d) interval %.1fms", ms(g.costMax), ms(g.gpuMax), g.slowCosts, ms(g.maxFrame))
 			if g.verbose {
-				title += fmt.Sprintf(" | phys %.1f upd %.1f rend %.1f swap %.1f", ms(g.phase[0]), ms(g.phase[1]), ms(g.phase[2]), ms(g.phase[3]))
+				title += fmt.Sprintf(" | phys %.1f upd %.1f rend %.1f swap %.1f pace %.1f", ms(g.phase[0]), ms(g.phase[1]), ms(g.phase[2]), ms(g.phase[3]), ms(g.phase[4]))
 			}
 			if g.verbose {
 				for i, n := range engine.TimingNames {
@@ -552,13 +592,31 @@ func (g *game) run(shotPath string, shotAt int) {
 				}
 				g.eng.Timing = [7]time.Duration{}
 			}
-			g.maxFrame, g.phase = 0, [4]time.Duration{}
+			g.maxFrame, g.phase, g.costMax, g.gpuMax = 0, [5]time.Duration{}, 0, 0
 			g.win.SetTitle(title)
 			if g.verbose {
 				fmt.Println(title)
 			}
 		}
 	}
+}
+
+// gpuTimer measures f's GPU time with a TIME_ELAPSED query, reading the
+// result of a query issued 3 frames ago so the CPU never waits for it.
+func (g *game) gpuTimer(f func()) {
+	if g.tq[0] == 0 {
+		gl.GenQueries(int32(len(g.tq)), &g.tq[0])
+	}
+	g.fq++
+	qi := g.fq % len(g.tq)
+	if g.fq > len(g.tq) && g.tick > 40 {
+		var ns uint64
+		gl.GetQueryObjectui64v(g.tq[(qi+1)%len(g.tq)], gl.QUERY_RESULT, &ns)
+		g.gpuMax = max(g.gpuMax, time.Duration(ns))
+	}
+	gl.BeginQuery(gl.TIME_ELAPSED, g.tq[qi])
+	f()
+	gl.EndQuery(gl.TIME_ELAPSED)
 }
 
 func saveShot(path string, w, h int) {

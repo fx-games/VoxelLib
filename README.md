@@ -22,4 +22,16 @@ A self-contained Minecraft-compatible voxel engine in Go (go-gl/gl 3.3 core, GLF
 Controls: WASD, mouse, Space jump (double-tap or F to fly), Shift sneak/descend, Ctrl sprint,
 LMB break, RMB place, 1-9/scroll select block, N day/night, Esc quit.
 
+Debug flags: `-verbose` prints per-phase worst times each 0.5s, including the
+worst CPU work per frame (`cpu`, everything before SwapBuffers) and GPU time
+(`gpu`, timer query). `-autofly N` flies forward at N blocks/s (vanilla
+creative sprint-flying is ~22). `-vsync on|limit|off`.
+
+Frame-time design notes: the render thread never takes the world write lock
+(chunk inserts/unloads and light passes run on one worker, light passes only
+under the read lock); GPU uploads go to freshly allocated spans with
+unsynchronized mapping and freed spans are retired for 4 frames; region
+buffers add fixed 2 MiB pages instead of growing; worker threads run at a
+lower macOS QoS than the render thread.
+
 Textures: RPG16 pack, CC BY-SA (see assets/rpg16pack/CREDITS.txt).

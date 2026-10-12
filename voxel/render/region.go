@@ -2,6 +2,7 @@ package render
 
 import (
 	"sort"
+	"unsafe"
 
 	"github.com/go-gl/gl/v3.3-core/gl"
 	"github.com/memmaker/voxellib/voxel/mesh"
@@ -57,6 +58,19 @@ func (a *arena) grow(newCap int) {
 	a.cap = newCap
 }
 
+// retired is a freed span the GPU may still be reading; it returns to the
+// arena after retireFrames frames.
+type retired struct {
+	reg    *region
+	off, n int
+	frame  uint64
+}
+
+const retireFrames = 4
+
+// pageVerts is the vertex capacity of a region page (2 MiB).
+const pageVerts = 1 << 17
+
 func (a *arena) used() int {
 	u := a.cap
 	for _, s := range a.free {
@@ -65,13 +79,16 @@ func (a *arena) used() int {
 	return u
 }
 
-// region owns one VAO/VBO shared by up to 8x4x8 sections. Sections draw
-// from it with a single glMultiDrawElementsBaseVertex per layer.
+// region is one fixed-size VAO/VBO page shared by sections of the same 8x4x8
+// region. Sections draw from it with one glMultiDrawElementsBaseVertex per
+// layer. A full region gets another page rather than growing: growing needs a
+// GPU read-back on macOS (no glCopyBufferSubData), which stalls the frame.
 type region struct {
 	key      [3]int
 	vao, vbo uint32
 	arena    arena
 	sections map[uint32]*section // by region index
+	dead     bool
 	// scratch for multidraw
 	counts []int32
 	bases  []int32
@@ -80,56 +97,56 @@ type region struct {
 func newRegion(key [3]int, ebo uint32, initial int) *region {
 	r := &region{key: key, sections: map[uint32]*section{}}
 	gl.GenVertexArrays(1, &r.vao)
-	r.alloc(initial, ebo)
-	r.arena.grow(initial)
-	return r
-}
-
-func (r *region) alloc(capVerts int, ebo uint32) {
 	gl.BindVertexArray(r.vao)
 	gl.GenBuffers(1, &r.vbo)
 	gl.BindBuffer(gl.ARRAY_BUFFER, r.vbo)
-	gl.BufferData(gl.ARRAY_BUFFER, capVerts*vertexBytes, nil, gl.STATIC_DRAW)
+	gl.BufferData(gl.ARRAY_BUFFER, initial*vertexBytes, nil, gl.STATIC_DRAW)
 	gl.EnableVertexAttribArray(0)
 	gl.VertexAttribIPointerWithOffset(0, 4, gl.UNSIGNED_INT, vertexBytes, 0)
 	gl.BindBuffer(gl.ELEMENT_ARRAY_BUFFER, ebo)
 	gl.BindVertexArray(0)
+	r.arena.grow(initial)
+	return r
 }
 
-// ensure guarantees n contiguous free vertices, growing the buffer (with a GPU
-// side copy) when needed. Returns the offset.
-func (r *region) allocate(n int, ebo uint32) int {
-	if off, ok := r.arena.alloc(n); ok {
-		return off
-	}
-	newCap := r.arena.cap * 2
-	for newCap-r.arena.cap < n {
-		newCap *= 2
-	}
-	// Read back and re-upload: glCopyBufferSubData is unimplemented in
-	// Apple's GL driver. Growth is rare (doubling), so the round trip is fine.
-	old, oldCap := r.vbo, r.arena.cap
-	tmp := make([]byte, oldCap*vertexBytes)
-	gl.BindBuffer(gl.ARRAY_BUFFER, old)
-	gl.GetBufferSubData(gl.ARRAY_BUFFER, 0, len(tmp), gl.Ptr(tmp))
-	r.alloc(newCap, ebo)
-	gl.BindBuffer(gl.ARRAY_BUFFER, r.vbo)
-	gl.BufferSubData(gl.ARRAY_BUFFER, 0, len(tmp), gl.Ptr(tmp))
-	gl.DeleteBuffers(1, &old)
-	r.arena.grow(newCap)
-	off, _ := r.arena.alloc(n)
-	return off
-}
-
+// upload writes vertices into a range no in-flight draw reads: freshly
+// allocated spans only, since freed spans are retired for a few frames before
+// reuse. That lets it map unsynchronized; glBufferSubData into a buffer the
+// GPU is still drawing from makes Apple's driver stall the next draw call.
 func (r *region) upload(off int, data []uint32) {
 	if len(data) == 0 {
 		return
 	}
 	gl.BindBuffer(gl.ARRAY_BUFFER, r.vbo)
-	gl.BufferSubData(gl.ARRAY_BUFFER, off*vertexBytes, len(data)*4, gl.Ptr(data))
+	ptr := gl.MapBufferRange(gl.ARRAY_BUFFER, off*vertexBytes, len(data)*4,
+		gl.MAP_WRITE_BIT|gl.MAP_UNSYNCHRONIZED_BIT|gl.MAP_INVALIDATE_RANGE_BIT)
+	if ptr == nil {
+		gl.BufferSubData(gl.ARRAY_BUFFER, off*vertexBytes, len(data)*4, gl.Ptr(data))
+		return
+	}
+	copy(unsafe.Slice((*uint32)(ptr), len(data)), data)
+	gl.UnmapBuffer(gl.ARRAY_BUFFER)
+}
+
+// allocPair allocates two spans in this page, or neither.
+func (r *region) allocPair(a, b int) (int, int, bool) {
+	offA, ok := r.arena.alloc(a)
+	if !ok {
+		return 0, 0, false
+	}
+	if b == 0 {
+		return offA, 0, true
+	}
+	offB, ok := r.arena.alloc(b)
+	if !ok {
+		r.arena.release(offA, a)
+		return 0, 0, false
+	}
+	return offA, offB, true
 }
 
 func (r *region) destroy() {
+	r.dead = true
 	gl.DeleteBuffers(1, &r.vbo)
 	gl.DeleteVertexArrays(1, &r.vao)
 }

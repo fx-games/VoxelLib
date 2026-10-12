@@ -11,12 +11,14 @@ type World struct {
 	MinY   int
 	Height int
 
-	mu     sync.RWMutex
-	chunks map[ChunkPos]*Chunk
-	dirty  map[SectionPos]struct{}
-	// lastDirty short-circuits repeated marks of the same section in a BFS.
-	lastDirty SectionPos
-	hasLast   bool
+	mu sync.RWMutex
+	// lightMu serialises light passes, which run under the read lock and
+	// share lightQ/removeQ/cache. SetBlock relights under the write lock.
+	lightMu sync.Mutex
+	chunks  map[ChunkPos]*Chunk
+	// dirty has its own lock so TakeDirty never waits behind a light pass.
+	dirtyMu sync.Mutex
+	dirty   map[SectionPos]struct{}
 
 	lightQ  []lightNode
 	removeQ []lightNode
@@ -228,11 +230,9 @@ func (w *World) SetBlock(x, y, z int, id StateID) bool {
 
 // markDirty records a section for remeshing; caller holds the write lock.
 func (w *World) markDirty(p SectionPos) {
-	if w.hasLast && w.lastDirty == p {
-		return
-	}
-	w.lastDirty, w.hasLast = p, true
+	w.dirtyMu.Lock()
 	w.dirty[p] = struct{}{}
+	w.dirtyMu.Unlock()
 }
 
 // MarkDirty flags a section for remeshing.
@@ -244,8 +244,8 @@ func (w *World) MarkDirty(p SectionPos) {
 
 // TakeDirty returns and clears the set of sections that need remeshing.
 func (w *World) TakeDirty() []SectionPos {
-	w.mu.Lock()
-	defer w.mu.Unlock()
+	w.dirtyMu.Lock()
+	defer w.dirtyMu.Unlock()
 	if len(w.dirty) == 0 {
 		return nil
 	}
@@ -254,7 +254,6 @@ func (w *World) TakeDirty() []SectionPos {
 		out = append(out, p)
 	}
 	clear(w.dirty)
-	w.hasLast = false
 	return out
 }
 

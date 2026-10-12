@@ -43,8 +43,9 @@ type Config struct {
 	Textures       render.TextureSource
 	RenderOptions  render.Options
 	// Workers is the size of each background pool (mesh, generation).
-	// Default (NumCPU-2)/2 so the render thread and the light worker always
-	// find a free core; oversubscribing shows up as frame hitches.
+	// Default (NumCPU-3)/2: with the light and save workers that leaves a
+	// core (and a Go P) free for the render thread; oversubscribing shows up
+	// as frame hitches. Workers also run at a lower OS priority (macOS).
 	Workers      int
 	UploadBudget time.Duration // GPU upload time per frame, default 4ms
 }
@@ -63,19 +64,20 @@ type Engine struct {
 	pending  map[voxel.ChunkPos]bool // load/generate requested
 	loadReq  chan voxel.ChunkPos
 	loadRes  chan *voxel.Chunk
-	lightReq chan voxel.ChunkPos
+	worldOps chan worldOp // applied in order by the light worker
 	litRes   chan voxel.ChunkPos
 	lit      map[voxel.ChunkPos]bool // mirror of Chunk.Lit, so the main thread needn't lock
 	saveReq  chan *voxel.Chunk
 
-	meshJobs   chan voxel.SectionPos
-	meshRes    chan *mesh.Mesh
-	dirty      map[voxel.SectionPos]bool
-	inFlight   map[voxel.SectionPos]bool
-	redo       map[voxel.SectionPos]bool
-	mainMesher *mesh.Mesher
-	cfgMu      sync.RWMutex
-	meshCfg    *mesh.Config
+	meshJobs    chan voxel.SectionPos
+	meshRes     chan *mesh.Mesh
+	dirty       map[voxel.SectionPos]bool
+	inFlight    map[voxel.SectionPos]bool
+	redo        map[voxel.SectionPos]bool
+	mainMesher  *mesh.Mesher
+	cfgMu       sync.RWMutex
+	meshCfg     *mesh.Config
+	dispatchBuf []meshCand
 
 	quit chan struct{}
 	wg   sync.WaitGroup
@@ -100,11 +102,12 @@ func New(cfg Config) (*Engine, error) {
 		cfg.RenderDistance = 12
 	}
 	if cfg.Workers <= 0 {
-		cfg.Workers = max(1, (runtime.NumCPU()-2)/2)
+		cfg.Workers = max(1, (runtime.NumCPU()-3)/2)
 	}
 	if cfg.UploadBudget == 0 {
 		cfg.UploadBudget = 4 * time.Millisecond
 	}
+	renderThread()
 	w := voxel.NewWorld(cfg.Registry, cfg.MinY, cfg.Height)
 	ro := cfg.RenderOptions
 	ro.RenderDistance = cfg.RenderDistance
@@ -116,7 +119,7 @@ func New(cfg Config) (*Engine, error) {
 		World: w, Renderer: r, cfg: cfg,
 		loaded: map[voxel.ChunkPos]bool{}, pending: map[voxel.ChunkPos]bool{},
 		loadReq: make(chan voxel.ChunkPos, 4096), loadRes: make(chan *voxel.Chunk, 4096),
-		lightReq: make(chan voxel.ChunkPos, 1<<16), litRes: make(chan voxel.ChunkPos, 1<<16),
+		worldOps: make(chan worldOp, 4096), litRes: make(chan voxel.ChunkPos, 1<<16),
 		lit: map[voxel.ChunkPos]bool{}, saveReq: make(chan *voxel.Chunk, 1024),
 		meshJobs: make(chan voxel.SectionPos, cfg.Workers*2), meshRes: make(chan *mesh.Mesh, 1024),
 		dirty: map[voxel.SectionPos]bool{}, inFlight: map[voxel.SectionPos]bool{}, redo: map[voxel.SectionPos]bool{},
@@ -138,6 +141,7 @@ func New(cfg Config) (*Engine, error) {
 
 func (e *Engine) loadWorker() {
 	defer e.wg.Done()
+	workerThread()
 	for {
 		select {
 		case <-e.quit:
@@ -174,14 +178,42 @@ func (e *Engine) produce(p voxel.ChunkPos) *voxel.Chunk {
 	return c
 }
 
+// worldOp is a batch of structural world changes. The main thread never
+// takes the world write lock while streaming: lighting holds it for
+// milliseconds at a time, so every insert, unload and light pass goes through
+// this one goroutine, in submission order.
+type worldOp struct {
+	add    []*voxel.Chunk
+	remove []voxel.ChunkPos
+	light  []voxel.ChunkPos // nearest first
+}
+
 func (e *Engine) lightWorker() {
 	defer e.wg.Done()
+	workerThread()
 	for {
 		select {
 		case <-e.quit:
 			return
-		case p := <-e.lightReq:
-			if e.World.TryLightChunk(p) {
+		case op := <-e.worldOps:
+			if len(op.remove) > 0 {
+				for _, c := range e.World.RemoveChunks(op.remove) {
+					if c.Modified && e.store != nil {
+						select {
+						case e.saveReq <- c:
+						case <-e.quit:
+							return
+						}
+					}
+				}
+			}
+			if len(op.add) > 0 {
+				e.World.AddChunks(op.add)
+			}
+			for _, p := range op.light {
+				if !e.World.TryLightChunk(p) {
+					continue
+				}
 				select {
 				case e.litRes <- p:
 				case <-e.quit:
@@ -194,6 +226,7 @@ func (e *Engine) lightWorker() {
 
 func (e *Engine) saveWorker() {
 	defer e.wg.Done()
+	workerThread()
 	for {
 		select {
 		case <-e.quit:
@@ -218,6 +251,7 @@ func (e *Engine) save(c *voxel.Chunk) {
 
 func (e *Engine) meshWorker() {
 	defer e.wg.Done()
+	workerThread()
 	m := mesh.NewMesher()
 	for {
 		select {
@@ -283,7 +317,6 @@ recv:
 		}
 	}
 	if len(batch) > 0 {
-		e.World.AddChunks(batch)
 		for _, ch := range batch {
 			e.loaded[ch.Pos] = true
 		}
@@ -303,19 +336,18 @@ recv:
 			}
 		}
 		sort.Slice(req, func(i, j int) bool { return e.dist2(req[i]) < e.dist2(req[j]) })
-		for _, p := range req {
-			select {
-			case e.lightReq <- p:
-			default:
-			}
-		}
+		e.worldOps <- worldOp{add: batch, light: req}
 	}
 	e.mark(2, &t)
-	for n := 0; n < 4096; n++ {
+	// Bounded: each lit column re-dirties 9 columns of sections.
+	for n := 0; n < 64; n++ {
 		select {
 		case p := <-e.litRes:
 			if e.loaded[p] {
 				e.lit[p] = true
+				// Lighting dirtied the 3x3 sections before this message
+				// arrived; dispatch may have dropped them as not ready.
+				e.dirtyAround(p)
 			}
 			continue
 		default:
@@ -401,11 +433,7 @@ func (e *Engine) unloadFar(r int) {
 	if len(far) == 0 {
 		return
 	}
-	for _, c := range e.World.RemoveChunks(far) {
-		if c.Modified && e.store != nil {
-			e.saveReq <- c
-		}
-	}
+	e.worldOps <- worldOp{remove: far}
 	for _, p := range far {
 		delete(e.loaded, p)
 		delete(e.lit, p)
@@ -413,27 +441,58 @@ func (e *Engine) unloadFar(r int) {
 	}
 }
 
+// dirtyAround queues every section of the 3x3 columns around p.
+func (e *Engine) dirtyAround(p voxel.ChunkPos) {
+	ms, n := e.World.MinSection(), e.World.SectionCount()
+	for dx := -1; dx <= 1; dx++ {
+		for dz := -1; dz <= 1; dz++ {
+			for sy := ms; sy < ms+n; sy++ {
+				e.dirty[voxel.SectionPos{X: p.X + dx, Y: sy, Z: p.Z + dz}] = true
+			}
+		}
+	}
+}
+
+// meshCand is a dirty section and its squared distance to the viewer.
+type meshCand struct {
+	p voxel.SectionPos
+	d float64
+}
+
 // dispatch sends dirty, renderable sections to the workers, nearest first.
 func (e *Engine) dispatch() {
-	if len(e.dirty) == 0 {
+	// Only as many jobs as the queue takes: a backlog of thousands must not
+	// cost a full sort every frame.
+	free := cap(e.meshJobs) - len(e.meshJobs)
+	if len(e.dirty) == 0 || free == 0 {
 		return
 	}
 	R := e.cfg.RenderDistance
-	list := make([]voxel.SectionPos, 0, len(e.dirty))
+	vx, vy, vz := e.viewer[0], e.viewer[1], e.viewer[2]
+	list := e.dispatchBuf[:0]
 	for p := range e.dirty {
 		if !e.inRange(p.Chunk(), R) {
 			delete(e.dirty, p)
 			continue
 		}
-		list = append(list, p)
-	}
-	vx, vy, vz := e.viewer[0], e.viewer[1], e.viewer[2]
-	d := func(p voxel.SectionPos) float64 {
 		dx, dy, dz := float64(p.X*16+8)-vx, float64(p.Y*16+8)-vy, float64(p.Z*16+8)-vz
-		return dx*dx + dy*dy*2 + dz*dz
+		list = append(list, meshCand{p, dx*dx + dy*dy*2 + dz*dz})
 	}
-	sort.Slice(list, func(i, j int) bool { return d(list[i]) < d(list[j]) })
-	for _, p := range list {
+	e.dispatchBuf = list
+	// Partial selection: move the nearest candidates to the front. Dropped
+	// and in-flight entries consume picks, so take a few extra.
+	k := min(len(list), free*4)
+	for i := 0; i < k; i++ {
+		m := i
+		for j := i + 1; j < len(list); j++ {
+			if list[j].d < list[m].d {
+				m = j
+			}
+		}
+		list[i], list[m] = list[m], list[i]
+	}
+	for _, c := range list[:k] {
+		p := c.p
 		if !e.ChunkReady(p.Chunk()) {
 			// Dropped: lighting the last neighbour re-dirties it.
 			delete(e.dirty, p)
@@ -579,7 +638,8 @@ func (e *Engine) Close() {
 		break
 	}
 	if e.store != nil && !e.cfg.ReadOnly {
-		for p := range e.loaded {
+		// Includes chunks whose unload op was still queued.
+		for _, p := range e.World.Chunks() {
 			if c := e.World.Chunk(p); c != nil && c.Modified {
 				e.save(c)
 			}

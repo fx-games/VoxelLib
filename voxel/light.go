@@ -194,9 +194,17 @@ func (w *World) relight(x, y, z int, oldInfo, newInfo StateInfo, t []StateInfo) 
 
 // TryLightChunk lights a column if it and its 8 neighbours are loaded. It
 // returns true when the column is (now) lit.
+//
+// A light pass takes milliseconds, so it holds only the read lock (plus
+// lightMu, so passes don't overlap). It writes nothing but light nibbles,
+// the Lit flag and the chunk lookup cache: block readers (physics,
+// raycasts) never wait for it. Mesh snapshots taken meanwhile may see partial
+// light; the sections are re-dirtied when the pass ends, so they are remeshed.
 func (w *World) TryLightChunk(p ChunkPos) bool {
-	w.mu.Lock()
-	defer w.mu.Unlock()
+	w.lightMu.Lock()
+	defer w.lightMu.Unlock()
+	w.mu.RLock()
+	defer w.mu.RUnlock()
 	c := w.chunks[p]
 	if c == nil {
 		return false

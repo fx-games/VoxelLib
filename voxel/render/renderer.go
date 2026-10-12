@@ -39,9 +39,10 @@ type Stats struct {
 type section struct {
 	pos     voxel.SectionPos
 	reg     *region
-	off, n  int
+	off, n  int // opaque + cutout vertices
+	tOff    int // translucent vertices
 	ranges  [voxel.LayerCount][mesh.GroupCount]mesh.Range
-	transN  int // translucent vertices, stored after the opaque ones
+	transN  int
 	vis     mesh.VisGraph
 	empty   bool
 	trans   *mesh.Mesh
@@ -65,7 +66,7 @@ type Renderer struct {
 	emptyVAO            uint32
 	lineVAO, lineVBO    uint32
 
-	regions  map[[3]int]*region
+	regions  map[[3]int][]*region // pages per region key
 	sections map[voxel.SectionPos]*section
 	columns  map[voxel.ChunkPos]int
 
@@ -80,6 +81,26 @@ type Renderer struct {
 	counts []int32
 	bases  []int32
 	ptrs   []unsafe.Pointer
+
+	frame   uint64
+	retired []retired
+}
+
+// retire frees a span once in-flight frames can no longer read it.
+func (r *Renderer) retire(reg *region, off, n int) {
+	if n > 0 {
+		r.retired = append(r.retired, retired{reg, off, n, r.frame})
+	}
+}
+
+func (r *Renderer) releaseRetired() {
+	i := 0
+	for ; i < len(r.retired) && r.retired[i].frame+retireFrames <= r.frame; i++ {
+		if rt := r.retired[i]; !rt.reg.dead {
+			rt.reg.arena.release(rt.off, rt.n)
+		}
+	}
+	r.retired = append(r.retired[:0], r.retired[i:]...)
 }
 
 type bfsNode struct {
@@ -98,7 +119,7 @@ func New(w *voxel.World, src TextureSource, opt Options) (*Renderer, error) {
 		return nil, err
 	}
 	r := &Renderer{Opt: opt, world: w, src: src,
-		regions: map[[3]int]*region{}, sections: map[voxel.SectionPos]*section{}, columns: map[voxel.ChunkPos]int{}}
+		regions: map[[3]int][]*region{}, sections: map[voxel.SectionPos]*section{}, columns: map[voxel.ChunkPos]int{}}
 	if r.Opt.RenderDistance == 0 {
 		r.Opt.RenderDistance = 12
 	}
@@ -138,7 +159,15 @@ func New(w *voxel.World, src TextureSource, opt Options) (*Renderer, error) {
 	gl.GenBuffers(1, &r.lineVBO)
 	gl.BindVertexArray(r.lineVAO)
 	gl.BindBuffer(gl.ARRAY_BUFFER, r.lineVBO)
-	gl.BufferData(gl.ARRAY_BUFFER, 64*12, nil, gl.DYNAMIC_DRAW)
+	// Static: unit-cube edges (24 vertices) then the crosshair (4). Both are
+	// placed with uMVP; rewriting a buffer the GPU still reads stalls macOS.
+	var lv []float32
+	corner := func(i int) []float32 { return []float32{float32(i & 1), float32(i >> 1 & 1), float32(i >> 2 & 1)} }
+	for _, e := range [12][2]int{{0, 1}, {2, 3}, {4, 5}, {6, 7}, {0, 2}, {1, 3}, {4, 6}, {5, 7}, {0, 4}, {1, 5}, {2, 6}, {3, 7}} {
+		lv = append(append(lv, corner(e[0])...), corner(e[1])...)
+	}
+	lv = append(lv, -1, 0, 0, 1, 0, 0, 0, -1, 0, 0, 1, 0)
+	gl.BufferData(gl.ARRAY_BUFFER, len(lv)*4, gl.Ptr(lv), gl.STATIC_DRAW)
 	gl.EnableVertexAttribArray(0)
 	gl.VertexAttribPointerWithOffset(0, 3, gl.FLOAT, false, 12, 0)
 	gl.BindVertexArray(0)
@@ -196,27 +225,46 @@ func (r *Renderer) Upload(m *mesh.Mesh) {
 	}
 	dataN := len(m.Data) / mesh.VertexWords
 	s.transN = len(m.Trans) / mesh.VertexWords
-	s.n = dataN + s.transN
+	s.n = dataN
 	key := mesh.RegionOf(m.Pos)
-	reg := r.regions[key]
+	var reg *region
+	for _, pg := range r.regions[key] {
+		if a, b, ok := pg.allocPair(s.n, s.transN); ok {
+			reg, s.off, s.tOff = pg, a, b
+			break
+		}
+	}
 	if reg == nil {
-		reg = newRegion(key, r.ebo, 1<<16)
-		r.regions[key] = reg
+		reg = newRegion(key, r.ebo, max(pageVerts, s.n+s.transN))
+		r.regions[key] = append(r.regions[key], reg)
+		s.off, s.tOff, _ = reg.allocPair(s.n, s.transN)
 	}
 	s.reg = reg
-	s.off = reg.allocate(s.n, r.ebo)
 	reg.sections[mesh.RegionIndex(m.Pos)] = s
 	reg.upload(s.off, m.Data)
 	if s.transN > 0 {
 		s.trans = m
-		r.sortSection(s)
+		r.sortSection(s, true)
 	}
 }
 
-func (r *Renderer) sortSection(s *section) {
+// sortSection uploads the translucent quads sorted for the camera. fresh
+// means s.tOff was just allocated and is safe to write.
+func (r *Renderer) sortSection(s *section, fresh bool) {
 	o := s.pos.Origin()
 	cam := [3]float32{float32(r.camX - float64(o.X)), float32(r.camY - float64(o.Y)), float32(r.camZ - float64(o.Z))}
-	s.reg.upload(s.off+s.n-s.transN, s.trans.SortTranslucent(cam))
+	data := s.trans.SortTranslucent(cam)
+	// Write the new order to a fresh span; the old one may still be drawn.
+	if fresh {
+		s.reg.upload(s.tOff, data)
+	} else if off, ok := s.reg.arena.alloc(s.transN); ok {
+		r.retire(s.reg, s.tOff, s.transN)
+		s.tOff = off
+		s.reg.upload(off, data)
+	} else {
+		gl.BindBuffer(gl.ARRAY_BUFFER, s.reg.vbo)
+		gl.BufferSubData(gl.ARRAY_BUFFER, s.tOff*vertexBytes, len(data)*4, gl.Ptr(data))
+	}
 	s.sortPos = [3]float64{r.camX, r.camY, r.camZ}
 }
 
@@ -224,11 +272,23 @@ func (r *Renderer) free(s *section) {
 	if s.reg == nil {
 		return
 	}
-	s.reg.arena.release(s.off, s.n)
+	r.retire(s.reg, s.off, s.n)
+	r.retire(s.reg, s.tOff, s.transN)
 	delete(s.reg.sections, mesh.RegionIndex(s.pos))
 	if len(s.reg.sections) == 0 {
 		s.reg.destroy()
-		delete(r.regions, s.reg.key)
+		pages := r.regions[s.reg.key]
+		for i, pg := range pages {
+			if pg == s.reg {
+				pages = append(pages[:i], pages[i+1:]...)
+				break
+			}
+		}
+		if len(pages) == 0 {
+			delete(r.regions, s.reg.key)
+		} else {
+			r.regions[s.reg.key] = pages
+		}
 	}
 	s.reg, s.n, s.transN = nil, 0, 0
 }
@@ -353,6 +413,8 @@ func (r *Renderer) cullVisible(fr *frustum) {
 // Render draws sky and terrain for a camera.
 func (r *Renderer) Render(cam *Camera) {
 	r.camX, r.camY, r.camZ = cam.X, cam.Y, cam.Z
+	r.frame++
+	r.releaseRetired()
 	if cam.Far == 0 {
 		cam.Far = float64(r.Opt.RenderDistance*16) * 1.5
 	}
@@ -397,10 +459,13 @@ func (r *Renderer) Render(cam *Camera) {
 	st.DrawCalls, st.DrawRanges, st.Quads = 0, 0, 0
 	st.Visible = len(r.visible)
 	st.Sections = len(r.sections)
-	st.Regions = len(r.regions)
+	st.Regions = 0
 	st.VertexMemory = 0
-	for _, reg := range r.regions {
-		st.VertexMemory += reg.arena.cap * vertexBytes
+	for _, pages := range r.regions {
+		for _, reg := range pages {
+			st.Regions++
+			st.VertexMemory += reg.arena.cap * vertexBytes
+		}
 	}
 
 	// Group visible sections by region, keeping BFS (near to far) order of
@@ -459,7 +524,7 @@ func (r *Renderer) Render(cam *Camera) {
 		}
 		dx, dy, dz := s.sortPos[0]-r.camX, s.sortPos[1]-r.camY, s.sortPos[2]-r.camZ
 		if resorts < 16 && dx*dx+dy*dy+dz*dz > 1 && r.near(s, 48) {
-			r.sortSection(s)
+			r.sortSection(s, false)
 			resorts++
 		}
 		if s.reg != cur && cur != nil {
@@ -468,7 +533,7 @@ func (r *Renderer) Render(cam *Camera) {
 		}
 		cur = s.reg
 		r.counts = append(r.counts, int32(s.transN/4*6))
-		r.bases = append(r.bases, int32(s.off+s.n-s.transN))
+		r.bases = append(r.bases, int32(s.tOff))
 	}
 	if cur != nil {
 		r.multiDraw(cur)
@@ -531,51 +596,32 @@ func (r *Renderer) multiDraw(reg *region) {
 // selection outline).
 func (r *Renderer) DrawBlockOutline(cam *Camera, x, y, z int) {
 	const e = 0.002
-	ox := float32(float64(x)-cam.X) - e
-	oy := float32(float64(y)-cam.Y) - e
-	oz := float32(float64(z)-cam.Z) - e
-	s := float32(1 + 2*e)
-	var v []float32
-	c := func(i int) (float32, float32, float32) {
-		return ox + s*float32(i&1), oy + s*float32(i>>1&1), oz + s*float32(i>>2&1)
-	}
-	for _, e := range [12][2]int{{0, 1}, {2, 3}, {4, 5}, {6, 7}, {0, 2}, {1, 3}, {4, 6}, {5, 7}, {0, 4}, {1, 5}, {2, 6}, {3, 7}} {
-		ax, ay, az := c(e[0])
-		bx, by, bz := c(e[1])
-		v = append(v, ax, ay, az, bx, by, bz)
-	}
-	vp := cam.ViewProj()
-	r.drawLines(v, vp, mgl32.Vec4{0, 0, 0, 0.6}, true)
+	o := mgl32.Vec3{float32(float64(x)-cam.X) - e, float32(float64(y)-cam.Y) - e, float32(float64(z)-cam.Z) - e}
+	m := cam.ViewProj().Mul4(mgl32.Translate3D(o[0], o[1], o[2])).Mul4(mgl32.Scale3D(1+2*e, 1+2*e, 1+2*e))
+	gl.Enable(gl.BLEND)
+	gl.BlendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA)
+	r.drawLines(0, 24, m, mgl32.Vec4{0, 0, 0, 0.6})
+	gl.Disable(gl.BLEND)
 }
 
 // DrawCrosshair draws a screen-centre cross; aspect = width/height.
 func (r *Renderer) DrawCrosshair(aspect float32) {
 	const s = 0.025
-	v := []float32{-s / aspect, 0, 0, s / aspect, 0, 0, 0, -s, 0, 0, s, 0}
 	gl.Disable(gl.DEPTH_TEST)
 	gl.Enable(gl.BLEND)
 	gl.BlendFunc(gl.ONE_MINUS_DST_COLOR, gl.ZERO)
-	r.drawLines(v, mgl32.Ident4(), mgl32.Vec4{1, 1, 1, 1}, false)
+	r.drawLines(24, 4, mgl32.Scale3D(s/aspect, s, 1), mgl32.Vec4{1, 1, 1, 1})
 	gl.Disable(gl.BLEND)
 	gl.Enable(gl.DEPTH_TEST)
 }
 
-func (r *Renderer) drawLines(v []float32, mvp mgl32.Mat4, col mgl32.Vec4, blend bool) {
+func (r *Renderer) drawLines(first, n int32, mvp mgl32.Mat4, col mgl32.Vec4) {
 	r.lines.use()
 	gl.UniformMatrix4fv(r.lines.loc("uMVP"), 1, false, &mvp[0])
 	gl.Uniform4fv(r.lines.loc("uColor"), 1, &col[0])
 	gl.BindVertexArray(r.lineVAO)
-	gl.BindBuffer(gl.ARRAY_BUFFER, r.lineVBO)
-	gl.BufferSubData(gl.ARRAY_BUFFER, 0, len(v)*4, gl.Ptr(v))
-	if blend {
-		gl.Enable(gl.BLEND)
-		gl.BlendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA)
-	}
 	gl.LineWidth(1)
-	gl.DrawArrays(gl.LINES, 0, int32(len(v)/3))
-	if blend {
-		gl.Disable(gl.BLEND)
-	}
+	gl.DrawArrays(gl.LINES, first, n)
 	gl.BindVertexArray(0)
 }
 
@@ -591,10 +637,12 @@ func (r *Renderer) VisibleSections() []voxel.SectionPos {
 
 // Destroy frees all GPU resources.
 func (r *Renderer) Destroy() {
-	for _, reg := range r.regions {
-		reg.destroy()
+	for _, pages := range r.regions {
+		for _, reg := range pages {
+			reg.destroy()
+		}
 	}
-	r.regions = map[[3]int]*region{}
+	r.regions = map[[3]int][]*region{}
 	r.sections = map[voxel.SectionPos]*section{}
 	r.tex.delete()
 	gl.DeleteBuffers(1, &r.ebo)
