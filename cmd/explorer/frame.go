@@ -89,6 +89,7 @@ func (g *game) run(shotPath string, shotAt int) {
 			g.drawItems(alpha)
 		})
 		g.eng.Renderer.DrawCrosshair(float32(g.cam.Aspect))
+		g.drawHelp(fw, fh)
 
 		if shotPath != "" && g.tick >= shotAt {
 			saveShot(shotPath, fw, fh)
@@ -152,7 +153,7 @@ func (g *game) updateTitle(fps int) {
 	if held == "" {
 		held = "-"
 	}
-	title := fmt.Sprintf("voxellib explorer | %d fps | %.1f %.1f %.1f %s | [%d] %s | hand %s | vis %d/%d sec, %d calls, %dk quads, %d MB | chunks %d (+%d) meshes %d | worst frame cpu %.1fms gpu %.1fms (cpu >12ms: %d) interval %.1fms",
+	title := fmt.Sprintf("voxellib explorer (F1 help) | %d fps | %.1f %.1f %.1f %s | [%d] %s | hand %s | vis %d/%d sec, %d calls, %dk quads, %d MB | chunks %d (+%d) meshes %d | worst frame cpu %.1fms gpu %.1fms (cpu >12ms: %d) interval %.1fms",
 		fps, p.X, p.Y, p.Z, mode, g.selected+1, name, held, s.Visible, s.Sections, s.DrawCalls, s.Quads/1000,
 		s.VertexMemory>>20, loaded, pc, pm, ms(st.costMax), ms(st.gpuMax), st.slowCosts, ms(st.maxFrame))
 	if g.debugMsg != "" {

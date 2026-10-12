@@ -12,6 +12,7 @@ import (
 //	F / double Space  toggle flying      G  toggle no-clip (fly through blocks)
 //	N                 day/night          R  respawn at the spawn point
 //	Q                 drop held item     F3 toggle frame stats on stdout
+//	F1                help screen (help.go; keep helpLines in sync)
 //	K                 preview the nearest creature's animations one by one
 func (g *game) setupInput(grab bool) {
 	if grab {
@@ -47,6 +48,8 @@ func (g *game) setupInput(grab bool) {
 			g.findGround = true
 		case k == glfw.KeyQ:
 			g.dropHeld()
+		case k == glfw.KeyF1:
+			g.toggleHelp()
 		case k == glfw.KeyK:
 			g.cycleAnimation()
 		case k == glfw.KeyF3:

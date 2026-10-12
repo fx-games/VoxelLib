@@ -7,3 +7,5 @@ require (
 	github.com/go-gl/glfw/v3.3/glfw v0.0.0-20250301202403-da16c1255728
 	github.com/go-gl/mathgl v1.2.0
 )
+
+require golang.org/x/image v0.23.0

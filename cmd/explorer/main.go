@@ -73,6 +73,7 @@ func main() {
 		autofly  = flag.Float64("autofly", 0, "debug: fly forward automatically at this many blocks/s (streaming stress test)")
 		cpuprof  = flag.String("cpuprofile", "", "write a CPU profile")
 		verbose  = flag.Bool("verbose", false, "print frame stats to stdout")
+		showHelp = flag.Bool("help-screen", false, "start with the F1 help screen open")
 		vsync    = flag.String("vsync", "on", "frame pacing: on (GL vsync), limit (no GL vsync, sleep to max(display rate, 120Hz)), off (unlimited)")
 	)
 	flag.Parse()
@@ -196,6 +197,9 @@ func main() {
 		g.importMCAssets(*mcAssets)
 	}
 	g.finishItems()
+	if *showHelp {
+		g.toggleHelp()
+	}
 	// -shot runs are automated: never grab the user's mouse.
 	g.setupInput(*shot == "")
 	g.run(*shot, *shotAt)
@@ -225,6 +229,8 @@ type game struct {
 
 	itemsState
 	creaturesState
+	help     *render.Overlay // F1 help screen
+	showHelp bool
 	debugMsg string // shown in the title (K animation preview)
 
 	verbose bool

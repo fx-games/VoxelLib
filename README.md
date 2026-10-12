@@ -58,6 +58,7 @@ adds humanoid mobs, animated props and 128 more pickup items. `-mob-count` sets 
 **Debug keys**
 | key | action |
 |---|---|
+| F1 | help screen with all controls |
 | F or double Space | toggle flying |
 | G | toggle no-clip |
 | N | day/night |
