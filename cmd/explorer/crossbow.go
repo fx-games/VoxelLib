@@ -414,8 +414,8 @@ func arrowModel() *model.Model {
 			me.Indices = append(me.Indices, base, base+1, base+2, base, base+2, base+3)
 		}
 	}
-	const s = 1.0 / 32                                        // half the shaft's thickness
-	box(mgl32.Vec3{-s, -s, -0.75}, mgl32.Vec3{s, s, -0.1}, 0) // shaft
+	const s = 1.0 / 32                                         // half the shaft's thickness
+	box(mgl32.Vec3{-s, -s, -0.75}, mgl32.Vec3{s, s, -0.28}, 0) // shaft, ends inside the head's base
 	// Head: an elongated four-sided pyramid, its point at the origin.
 	pyramid := func(base, tip float32, r float32, px int) {
 		u := (float32(px) + 0.5) / 4
@@ -436,7 +436,6 @@ func arrowModel() *model.Model {
 		tri(c[0], c[3], c[2])
 	}
 	pyramid(-0.3, 0, 2*s, 1)
-	box(mgl32.Vec3{-1.4 * s, -1.4 * s, -0.33}, mgl32.Vec3{1.4 * s, 1.4 * s, -0.29}, 3) // collar
 	box(mgl32.Vec3{-0.002, -4 * s, -0.72}, mgl32.Vec3{0.002, 4 * s, -0.55}, 2)
 	box(mgl32.Vec3{-4 * s, -0.002, -0.72}, mgl32.Vec3{4 * s, 0.002, -0.55}, 2)
 	box(mgl32.Vec3{-1.2 * s, -1.2 * s, -0.78}, mgl32.Vec3{1.2 * s, 1.2 * s, -0.74}, 3) // nock
