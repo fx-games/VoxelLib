@@ -8,6 +8,7 @@ cmd/explorer ── demo glue: input, character, items, frame loop
    ├── items            drops + pickup rule (needs only collide.Solids)
    ├── mobs             creature behaviour (needs only collide.Solids)
    ├── projectile       arrows: ballistic flight, sticking in blocks and targets
+   ├── audio            positional mixer on oto (pure Go reader, no GL)
    ├── importer/roblox, importer/mcmodel → model (+ model/gltf), via importer/packfs
    ├── items/extrude    sprite → mesh (pure)        items/sheet  sheet cutter (pure)
    ├── worldgen/...     terrain generators (implement worldgen.Generator)
@@ -17,6 +18,7 @@ cmd/explorer ── demo glue: input, character, items, frame loop
           ├── voxel/anvil    load/save .mca
           ├── voxel/mcres    resource packs
           ├── voxel/physics  raycast       voxel/collide  AABB sweep
+          ├── voxel/nav      A* pathfinding (stdlib only)
           └── voxel          registry, chunks, world, light
 ```
 Rule: lower layers never import higher ones. `character`, `items` and

@@ -649,3 +649,16 @@ func (e *Engine) Close() {
 	}
 	e.Renderer.Destroy()
 }
+
+// Flush writes every modified chunk to the world directory now (an editor's
+// save), instead of waiting for unload or Close.
+func (e *Engine) Flush() {
+	if e.store == nil || e.cfg.ReadOnly {
+		return
+	}
+	for _, p := range e.World.Chunks() {
+		if c := e.World.Chunk(p); c != nil && c.Modified {
+			e.save(c)
+		}
+	}
+}
