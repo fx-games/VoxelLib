@@ -1,0 +1,3 @@
+Textures: RPG16 by Hugues Alexandre Ross - https://huguesross.net
+License: CC BY-SA 4.0 (see LICENSE.txt). Remapped to Minecraft texture names;
+ore textures are composites of the RPG16 stone and mineral overlays.

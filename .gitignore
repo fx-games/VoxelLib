@@ -1,0 +1,6 @@
+*.test
+*.prof
+/explorer
+/rpg16pack
+saves/
+.DS_Store
