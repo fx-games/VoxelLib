@@ -96,6 +96,50 @@ var mapping = map[string][]string{
 	"green_wool": {"wool/wool_dark_green"}, "red_wool": {"wool/wool_red"}, "black_wool": {"wool/wool_black"},
 }
 
+// Animated textures: vertical frame strips copied whole, with a .png.mcmeta.
+// alpha > 0 replaces the alpha of every visible pixel (see-through water).
+var animated = map[string]struct {
+	file      string
+	frametime int
+	alpha     uint8
+}{
+	"water_still": {"default/default_water_source_animated", 2, 150},
+	"water_flow":  {"default/default_water_flowing_animated", 2, 150},
+	"lava_still":  {"default/default_lava_source_animated", 4, 0},
+	"lava_flow":   {"default/default_lava_flowing_animated", 3, 0},
+}
+
+func writeAnimated(src, dst string) int {
+	n := 0
+	for name, a := range animated {
+		img, err := load(src, a.file)
+		if err != nil {
+			log.Printf("skip %s: %v", name, err)
+			continue
+		}
+		b := img.Bounds()
+		strip := image.NewNRGBA(image.Rect(0, 0, b.Dx(), b.Dy()))
+		draw.Draw(strip, strip.Bounds(), img, b.Min, draw.Src)
+		if a.alpha > 0 {
+			for i := 3; i < len(strip.Pix); i += 4 {
+				if strip.Pix[i] > 0 {
+					strip.Pix[i] = a.alpha
+				}
+			}
+		}
+		f, err := os.Create(filepath.Join(dst, name+".png"))
+		if err != nil {
+			log.Fatal(err)
+		}
+		png.Encode(f, strip)
+		f.Close()
+		meta := fmt.Sprintf(`{"animation":{"frametime":%d}}`+"\n", a.frametime)
+		os.WriteFile(filepath.Join(dst, name+".png.mcmeta"), []byte(meta), 0o644)
+		n++
+	}
+	return n
+}
+
 func load(src, rel string) (image.Image, error) {
 	f, err := os.Open(filepath.Join(src, rel+".png"))
 	if err != nil {
@@ -114,8 +158,11 @@ func main() {
 	if err := os.MkdirAll(dst, 0o755); err != nil {
 		log.Fatal(err)
 	}
-	n := 0
+	n := writeAnimated(*src, dst)
 	for name, files := range mapping {
+		if _, ok := animated[name]; ok {
+			continue
+		}
 		var canvas *image.NRGBA
 		for _, rel := range files {
 			img, err := load(*src, rel)

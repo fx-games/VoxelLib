@@ -27,7 +27,8 @@ import (
 	"github.com/memmaker/voxellib/voxel/render"
 )
 
-// Generator fills new chunks. *gen.Generator implements it.
+// Generator fills new chunks; see package worldgen for implementations
+// (worldgen/overworld, worldgen/flat) and the rules generators must follow.
 type Generator interface {
 	Generate(w *voxel.World, c *voxel.Chunk)
 }

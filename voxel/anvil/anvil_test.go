@@ -5,13 +5,13 @@ import (
 	"time"
 
 	"github.com/memmaker/voxellib/voxel"
-	"github.com/memmaker/voxellib/voxel/gen"
+	"github.com/memmaker/voxellib/worldgen/overworld"
 )
 
 func TestRoundTrip(t *testing.T) {
 	reg := voxel.NewRegistry()
 	w := voxel.NewWorld(reg, -64, 384)
-	g := gen.New(reg, 42)
+	g := overworld.New(reg, 42)
 	start := time.Now()
 	var chunks []*voxel.Chunk
 	for i := 0; i < 16; i++ {

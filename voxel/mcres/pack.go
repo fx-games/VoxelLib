@@ -93,25 +93,83 @@ func splitID(id string) (string, string) {
 }
 
 // Texture loads a texture by resource name ("block/stone"). Animated strips
-// are cut to their first frame.
+// are cut to their first frame; see TextureFrames for all of them.
 func (p *Pack) Texture(name string) (image.Image, error) {
-	ns, rel := splitID(name)
-	f, err := p.open(path.Join("assets", ns, "textures", rel+".png"))
+	frames, _, err := p.TextureFrames(name)
 	if err != nil {
 		return nil, err
+	}
+	return frames[0], nil
+}
+
+// TextureFrames loads a texture and, for animated ones (a vertical strip of
+// square frames with a .png.mcmeta "animation" section), returns the frames
+// in play order and the ticks (1/20 s) each one is shown. Still textures
+// return one frame and 0.
+func (p *Pack) TextureFrames(name string) ([]image.Image, int, error) {
+	ns, rel := splitID(name)
+	file := path.Join("assets", ns, "textures", rel+".png")
+	f, err := p.open(file)
+	if err != nil {
+		return nil, 0, err
 	}
 	defer f.Close()
 	img, _, err := image.Decode(f)
 	if err != nil {
-		return nil, fmt.Errorf("mcres: %s: %w", name, err)
+		return nil, 0, fmt.Errorf("mcres: %s: %w", name, err)
 	}
 	b := img.Bounds()
-	if b.Dy() > b.Dx() && b.Dy()%b.Dx() == 0 {
-		frame := image.NewNRGBA(image.Rect(0, 0, b.Dx(), b.Dx()))
-		draw.Draw(frame, frame.Bounds(), img, b.Min, draw.Src)
-		return frame, nil
+	if b.Dy() <= b.Dx() || b.Dy()%b.Dx() != 0 {
+		return []image.Image{img}, 0, nil
 	}
-	return img, nil
+	n := b.Dy() / b.Dx()
+	strip := make([]image.Image, n)
+	for i := range strip {
+		fr := image.NewNRGBA(image.Rect(0, 0, b.Dx(), b.Dx()))
+		draw.Draw(fr, fr.Bounds(), img, image.Pt(b.Min.X, b.Min.Y+i*b.Dx()), draw.Src)
+		strip[i] = fr
+	}
+	var meta struct {
+		Animation *struct {
+			Frametime int               `json:"frametime"`
+			Frames    []json.RawMessage `json:"frames"`
+		} `json:"animation"`
+	}
+	if data, err := p.readFile(file + ".mcmeta"); err == nil {
+		json.Unmarshal(data, &meta)
+	}
+	if meta.Animation == nil {
+		return strip[:1], 0, nil // a tall texture without animation metadata
+	}
+	ft := max(meta.Animation.Frametime, 1)
+	if len(meta.Animation.Frames) == 0 {
+		return strip, ft, nil
+	}
+	// Explicit order: entries are an index or {"index":i,"time":t}; per-frame
+	// times are approximated by repeating the frame.
+	var out []image.Image
+	for _, raw := range meta.Animation.Frames {
+		var idx, t int
+		var obj struct{ Index, Time int }
+		if json.Unmarshal(raw, &idx) == nil {
+			t = ft
+		} else if json.Unmarshal(raw, &obj) == nil {
+			idx, t = obj.Index, obj.Time
+			if t == 0 {
+				t = ft
+			}
+		}
+		if idx < 0 || idx >= n {
+			continue
+		}
+		for r := 0; r < max(1, t/ft); r++ {
+			out = append(out, strip[idx])
+		}
+	}
+	if len(out) == 0 {
+		return strip, ft, nil
+	}
+	return out, ft, nil
 }
 
 // MissingTexture returns the classic magenta/black checkerboard.

@@ -4,6 +4,7 @@ import (
 	"image"
 	"math"
 	"sort"
+	"time"
 	"unsafe"
 
 	"github.com/go-gl/gl/v3.3-core/gl"
@@ -19,9 +20,29 @@ type Options struct {
 	FogColor       mgl32.Vec3
 	Daylight       float32 // 0..1 multiplier for sky light
 	SunDir         mgl32.Vec3
+	// Fog, when non-nil, replaces the distance fog and sky colour, e.g. for
+	// a camera under water or lava.
+	Fog *Fog
 	// Missing returns the placeholder texture; IsGreyscale decides tinting.
 	Missing     func(size int) image.Image
 	IsGreyscale func(image.Image) bool
+}
+
+// Fog is a fog override: colour plus start and end distance in blocks.
+type Fog struct {
+	Color      mgl32.Vec3
+	Start, End float32
+}
+
+// CurrentFog returns the fog the terrain is drawn with: Opt.Fog if set,
+// else distance fog ending at the render distance, darkened with daylight
+// as in Minecraft. Other passes (items) use it to match the terrain.
+func (r *Renderer) CurrentFog() Fog {
+	if r.Opt.Fog != nil {
+		return *r.Opt.Fog
+	}
+	far := float32(r.Opt.RenderDistance * 16)
+	return Fog{Color: r.Opt.FogColor.Mul(0.04 + 0.96*r.Opt.Daylight), Start: far * 0.6, End: far}
 }
 
 // Stats describes the last rendered frame.
@@ -58,6 +79,7 @@ type Renderer struct {
 	world      *voxel.World
 	src        TextureSource
 	tex        *textureArray
+	start      time.Time // animation clock
 	texVersion uint64
 	cfg        *mesh.Config
 
@@ -172,6 +194,7 @@ func New(w *voxel.World, src TextureSource, opt Options) (*Renderer, error) {
 	gl.VertexAttribPointerWithOffset(0, 3, gl.FLOAT, false, 12, 0)
 	gl.BindVertexArray(0)
 
+	r.start = time.Now()
 	r.reloadTextures()
 	return r, nil
 }
@@ -427,10 +450,11 @@ func (r *Renderer) Render(cam *Camera) {
 	gl.CullFace(gl.BACK)
 	gl.FrontFace(gl.CCW)
 
-	// Sky and fog darken with daylight, as in Minecraft.
-	dl := r.Opt.Daylight
-	skyCol := r.Opt.SkyColor.Mul(0.04 + 0.96*dl)
-	fogCol := r.Opt.FogColor.Mul(0.04 + 0.96*dl)
+	fog := r.CurrentFog()
+	skyCol, fogCol := r.Opt.SkyColor.Mul(0.04+0.96*r.Opt.Daylight), fog.Color
+	if r.Opt.Fog != nil {
+		skyCol = fog.Color
+	}
 	gl.DepthMask(false)
 	r.sky.use()
 	inv := vp.Inv()
@@ -449,9 +473,12 @@ func (r *Renderer) Render(cam *Camera) {
 	gl.UniformMatrix4fv(p.loc("uViewProj"), 1, false, &vp[0])
 	gl.Uniform1f(p.loc("uDaylight"), r.Opt.Daylight)
 	gl.Uniform3fv(p.loc("uFogColor"), 1, &fogCol[0])
-	far := float32(r.Opt.RenderDistance * 16)
-	gl.Uniform2f(p.loc("uFog"), far*0.6, far)
+	gl.Uniform2f(p.loc("uFog"), fog.Start, fog.End)
 	gl.Uniform1i(p.loc("uTex"), 0)
+	gl.Uniform1i(p.loc("uLayerMap"), 1)
+	gl.ActiveTexture(gl.TEXTURE1)
+	r.tex.animate(int(time.Since(r.start) / (50 * time.Millisecond)))
+	gl.BindTexture(gl.TEXTURE_2D, r.tex.layerMap)
 	gl.ActiveTexture(gl.TEXTURE0)
 	gl.BindTexture(gl.TEXTURE_2D_ARRAY, r.tex.id)
 

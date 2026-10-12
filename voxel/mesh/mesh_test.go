@@ -5,13 +5,13 @@ import (
 	"time"
 
 	"github.com/memmaker/voxellib/voxel"
-	"github.com/memmaker/voxellib/voxel/gen"
+	"github.com/memmaker/voxellib/worldgen/overworld"
 )
 
 func TestMeshGenerated(t *testing.T) {
 	reg := voxel.NewRegistry()
 	w := voxel.NewWorld(reg, -64, 384)
-	g := gen.New(reg, 7)
+	g := overworld.New(reg, 7)
 	for cx := -2; cx <= 2; cx++ {
 		for cz := -2; cz <= 2; cz++ {
 			c := w.NewChunk(voxel.ChunkPos{X: cx, Z: cz})

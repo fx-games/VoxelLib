@@ -6,6 +6,8 @@ layout(location = 0) in uvec4 aData;
 uniform mat4 uViewProj;     // rotation-only view * projection (camera-relative)
 uniform vec3 uRegionOrigin; // region origin minus camera position
 
+uniform usampler2D uLayerMap; // base layer -> current animation frame layer
+
 out vec3 vUV;
 out vec3 vColor;
 out vec2 vLight;
@@ -22,7 +24,8 @@ void main() {
 	vec3 pos = uRegionOrigin + sec + local;
 	gl_Position = uViewProj * vec4(pos, 1.0);
 
-	vUV = vec3(float((w1 >> 12) & 31u), float((w1 >> 17) & 31u), float(w1 & 4095u));
+	uint layer = texelFetch(uLayerMap, ivec2(int(w1 & 4095u), 0), 0).r;
+	vUV = vec3(float((w1 >> 12) & 31u), float((w1 >> 17) & 31u), float(layer));
 	uint n = (w1 >> 22) & 7u;
 	vec3 tint = vec3(float(w2 & 255u), float((w2 >> 8) & 255u), float((w2 >> 16) & 255u)) * (1.0 / 255.0);
 	vColor = tint * SHADE[n] * AO[w0 >> 30];

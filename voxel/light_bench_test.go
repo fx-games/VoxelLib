@@ -4,12 +4,12 @@ import (
 	"testing"
 
 	"github.com/memmaker/voxellib/voxel"
-	"github.com/memmaker/voxellib/voxel/gen"
+	"github.com/memmaker/voxellib/worldgen/overworld"
 )
 
 func BenchmarkLightChunk(b *testing.B) {
 	reg := voxel.NewRegistry()
-	g := gen.New(reg, 3)
+	g := overworld.New(reg, 3)
 	var chunks []*voxel.Chunk
 	w0 := voxel.NewWorld(reg, -64, 384)
 	for cx := -3; cx <= 3; cx++ {
