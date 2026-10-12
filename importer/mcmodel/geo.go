@@ -119,6 +119,7 @@ func ParseGeometry(data []byte, texture func(id string) image.Image) ([]*model.M
 			o := origins[i]
 			m.Bones[i].InvBind = mgl32.Translate3D(-o[0], -o[1], -o[2])
 		}
+		attachArmor(m)
 		out = append(out, m)
 	}
 	return out, nil

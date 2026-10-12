@@ -3,6 +3,7 @@ package mcmodel
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/memmaker/voxellib/model"
@@ -48,5 +49,32 @@ func TestImportRepo(t *testing.T) {
 	}
 	if humanoids < 15 {
 		t.Errorf("only %d humanoids", humanoids)
+	}
+}
+
+// Boots left at the model root must follow the legs, as in Minecraft.
+func TestArmorFollowsLimb(t *testing.T) {
+	p, err := Import("../../assets/cleannrooster")
+	if err != nil {
+		t.Fatal(err)
+	}
+	checked := 0
+	for _, m := range p.Models {
+		for i, b := range m.Bones {
+			if p := b.Parent; p >= i {
+				t.Errorf("%s: bone %s comes before its parent", m.Name, b.Name)
+			}
+			want := map[string]string{"armorleftboot": "leftleg", "armorrightboot": "rightleg"}[strings.ToLower(b.Name)]
+			if want == "" || !m.Tags["humanoid"] {
+				continue
+			}
+			checked++
+			if b.Parent < 0 || canonBone(m.Bones[b.Parent].Name) != want {
+				t.Errorf("%s: %s not attached to %s", m.Name, b.Name, want)
+			}
+		}
+	}
+	if checked == 0 {
+		t.Error("no boots found")
 	}
 }

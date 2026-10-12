@@ -211,6 +211,7 @@ func ParseBBModel(data []byte) (*model.Model, []*Animation, error) {
 		o := origins[i]
 		m.Bones[i].InvBind = mgl32.Translate3D(-o[0], -o[1], -o[2])
 	}
+	attachArmor(m)
 
 	// Embedded animations.
 	var anims []*Animation
