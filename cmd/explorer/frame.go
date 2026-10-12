@@ -58,6 +58,7 @@ func (g *game) run(shotPath string, shotAt int) {
 			g.tickItems()
 			g.tickCreatures()
 			g.tickArrows()
+			g.tickPlayerHealth()
 			acc -= tickDur
 		}
 		t1 := time.Now()
@@ -89,6 +90,7 @@ func (g *game) run(shotPath string, shotAt int) {
 				g.eng.Renderer.DrawBlockOutline(&g.cam, h.Block.X, h.Block.Y, h.Block.Z)
 			}
 			g.drawCreatures(alpha)
+			g.drawWeapons()
 			g.drawArrows(alpha)
 			g.drawItems(alpha)
 		})
@@ -97,6 +99,7 @@ func (g *game) run(shotPath string, shotAt int) {
 			g.shotReq = false
 			g.saveDebugShot(fw, fh)
 		}
+		g.drawHUD(fw, fh)
 		g.drawHelp(fw, fh)
 
 		if shotPath != "" && g.tick >= shotAt {

@@ -19,7 +19,7 @@ type species struct {
 	model  *model.Model
 	handle int
 	kind   mobs.Kind
-	clips  [5]string // clip per mobs.State ("" = fall back to idle)
+	clips  [mobs.NumStates]string // clip per mobs.State ("" = fall back to idle)
 	width  float64
 	height float64
 	static bool       // props: stay put
@@ -33,6 +33,9 @@ type creature struct {
 	skin []mgl32.Mat4
 	// debugClip, when set (K key), overrides the behaviour's animation.
 	debugClip string
+	// attacks counts attacks (picks the next clip); attackClip is playing.
+	attacks    int
+	attackClip string
 	// dying counts ticks since a fatal hit (0 = alive); see crossbow.go.
 	dying int
 	// drawn is the pose last drawn (skin is its animation), for exact
@@ -127,7 +130,7 @@ func (g *game) addSpecies(ms []*model.Model, clipFor func(m *model.Model, s mobs
 		if m.Tags["flying"] {
 			sp.kind = mobs.Flyer
 		}
-		for s := mobs.Idle; s <= mobs.Trick; s++ {
+		for s := mobs.Idle; s <= mobs.Trick; s++ { // Attack clips: combat.go
 			sp.clips[s] = clipFor(m, s)
 		}
 		g.species = append(g.species, sp)
@@ -192,6 +195,7 @@ func (g *game) tickCreatures() {
 		g.spawnLeft--
 	}
 	all := make([]*mobs.Mob, 0, len(g.creatures)+1)
+	g.aimHostiles()
 	g.tickDying()
 	for _, c := range g.creatures {
 		if c.dying == 0 {
@@ -201,6 +205,7 @@ func (g *game) tickCreatures() {
 	}
 	// The player shoves mobs aside but isn't shoved back.
 	all = append(all, &mobs.Mob{X: p.X, Y: p.Y, Z: p.Z, Width: p.Width, Height: p.Height, Static: true})
+	g.applyStrikes()
 	mobs.Separate(all, g.terrain)
 }
 
@@ -252,6 +257,9 @@ func (g *game) drawCreatures(alpha float64) {
 		}
 		if c.dying == 0 || c.skin == nil { // the dead keep their last pose
 			clip := c.debugClip
+			if clip == "" {
+				clip = g.combatClip(c)
+			}
 			if clip == "" {
 				clip = c.sp.clips[c.mob.State]
 				if clip == "" {

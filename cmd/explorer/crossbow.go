@@ -74,6 +74,11 @@ func (g *game) setupCrossbow(p *mcmodel.Pack) {
 	g.unscattered = append(g.unscattered, arrowItem)
 	g.equipped = true
 	g.arrows.Hit = func(a *projectile.Arrow, t projectile.Target) {
+		if t == projectile.Target(g.playerTgt) {
+			g.hurtPlayer(arrowDamage, a.PrevX, a.PrevZ)
+			a.Discard()
+			return
+		}
 		c, ok := t.(*creature)
 		if !ok {
 			return
@@ -82,6 +87,7 @@ func (g *game) setupCrossbow(p *mcmodel.Pack) {
 			g.kill(c, a.Yaw)
 			return
 		}
+		g.provoke(c)
 		if m := c.mob; !m.Static {
 			l := math.Hypot(a.PrevX-a.X, a.PrevZ-a.Z) + 1e-9
 			m.VX += (a.X - a.PrevX) / l * knockback
@@ -134,6 +140,9 @@ func (g *game) tickArrows() {
 		if c.dying == 0 {
 			targets = append(targets, c)
 		}
+	}
+	if g.playerTgt != nil && !g.player.NoClip {
+		targets = append(targets, g.playerTgt)
 	}
 	g.arrows.Tick(g.terrain, targets)
 }

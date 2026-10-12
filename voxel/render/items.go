@@ -185,6 +185,31 @@ func (ir *ItemRenderer) DrawWorld(cam *Camera, items []ItemInstance) {
 	ir.end()
 }
 
+// ItemPose is an item placed by a full transform, e.g. a weapon in a
+// creature's hand: M (in blocks, about X,Y,Z) maps the item's unit slab
+// (X,Y in [-0.5,0.5], the sprite's left-bottom at -X,-Y) to the world.
+type ItemPose struct {
+	Item       string
+	X, Y, Z    float64
+	M          mgl32.Mat4
+	Sky, Block uint8
+}
+
+// DrawPosed draws items at arbitrary transforms. Call after Renderer.Render
+// with the same camera.
+func (ir *ItemRenderer) DrawPosed(cam *Camera, items []ItemPose) {
+	if len(items) == 0 {
+		return
+	}
+	vp := cam.ViewProj()
+	ir.begin(ir.r.CurrentFog())
+	for _, it := range items {
+		model := mgl32.Translate3D(float32(it.X-cam.X), float32(it.Y-cam.Y), float32(it.Z-cam.Z)).Mul4(it.M)
+		ir.draw(it.Item, vp, model, it.Sky, it.Block)
+	}
+	ir.end()
+}
+
 // HandPose describes the first-person held item's motion.
 type HandPose struct {
 	BobX, BobY float32 // view bobbing offset (walking), in view units

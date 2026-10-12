@@ -135,13 +135,16 @@ func (w *World) Tick(s collide.Solids, targets []Target) {
 			a.gone = true // its host expired: it goes with it
 			continue
 		}
+		if a.gone { // discarded
+			continue
+		}
 		switch {
 		case a.In != nil:
 			a.follow()
 		case !a.Stuck:
 			w.fly(a, s)
 		}
-		if !(a.Stuck && a.Age > Life) && a.Y > -1000 {
+		if !a.gone && !(a.Stuck && a.Age > Life) && a.Y > -1000 {
 			live = append(live, a)
 		} else {
 			a.gone = true
@@ -224,8 +227,8 @@ func surface(x, y, z, dx, dy, dz float64) float64 {
 }
 
 // firstHit finds, among the broad phase's candidates, the target the
-// segment meets first: a Shape at its exact
-// surface, any other target when the segment's end is inside its box.
+// segment meets first: a Shape at its exact surface, any other target when
+// the segment enters its box.
 func firstHit(targets []Target, x0, y0, z0, x1, y1, z1 float64) (hit Target, x, y, z float64, part int) {
 	best := math.Inf(1)
 	for _, t := range targets {
@@ -233,7 +236,10 @@ func firstHit(targets []Target, x0, y0, z0, x1, y1, z1 float64) (hit Target, x, 
 		if sh, isShape := t.(Shape); isShape {
 			hx, hy, hz, p, ok = sh.Intersect(x0, y0, z0, x1, y1, z1)
 		} else {
-			ok = inBox(t.Box(), x1, y1, z1)
+			// Only entering counts: an arrow leaving a box it started in
+			// (a shooter's own) passes through.
+			b := t.Box()
+			ok = inBox(b, x1, y1, z1) && !inBox(b, x0, y0, z0)
 		}
 		if !ok {
 			continue
@@ -307,6 +313,10 @@ func (w *World) Release(t Target) {
 		}
 	}
 }
+
+// Discard removes the arrow from the world at the end of this tick, e.g.
+// from World.Hit when it hit something it shouldn't stick in.
+func (a *Arrow) Discard() { a.gone = true }
 
 // Detach removes every arrow stuck in t, and those stuck in them, from the
 // world and returns them, e.g. to turn them into pickups when t's body

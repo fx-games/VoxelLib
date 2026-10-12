@@ -62,6 +62,7 @@ func (g *game) importMCAssets(src string) {
 		sp.static = true
 	}
 	g.setupCrossbow(p)
+	g.setupCombat(p)
 	g.packFrom = len(g.itemNames)
 	for _, it := range p.Items {
 		g.addItem(it.Name, it.Image)

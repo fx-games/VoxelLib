@@ -49,6 +49,9 @@ type ModelInstance struct {
 	// Fade dissolves the model: 0 is solid, 1 is gone (a dither pattern
 	// discards that share of its pixels, so no blending or sorting).
 	Fade float32
+	// Transform, when set, replaces Yaw/Pitch/Tilt/Scale: it maps model
+	// space to the world about X,Y,Z (e.g. a weapon in a creature's hand).
+	Transform *mgl32.Mat4
 }
 
 // TiltMatrix rotates the vertical toward world direction yaw by angle
@@ -243,6 +246,11 @@ func (mr *ModelRenderer) Draw(cam *Camera, insts []ModelInstance) {
 		// Model +Z must turn to the camera's forward at yaw: forward is
 		// (sin yaw, 0, -cos yaw), which is +Z rotated by pi - yaw about Y.
 		// Pitch then tilts +Z up about the model's X axis.
+		if in.Transform != nil {
+			gl.Uniform1f(mr.prog.loc("uFade"), in.Fade)
+			mr.drawModel(g, mgl32.Translate3D(dx, dy, dz).Mul4(*in.Transform), in.Skin, in.Sky, in.Block, &ident)
+			continue
+		}
 		model := mgl32.Translate3D(dx, dy, dz).Mul4(TiltMatrix(in.Tilt, in.TiltYaw)).Mul4(mgl32.HomogRotate3DY(float32(3.141592653589793 - in.Yaw))).
 			Mul4(mgl32.HomogRotate3DX(float32(-in.Pitch))).Mul4(mgl32.Scale3D(s, s, s))
 		gl.Uniform1f(mr.prog.loc("uFade"), in.Fade)

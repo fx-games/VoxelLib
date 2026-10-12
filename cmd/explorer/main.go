@@ -201,6 +201,7 @@ func main() {
 	g.spawnLeft = *numMobs
 	g.mobRand = rand.New(rand.NewSource(7))
 	g.bowModel, g.arrowModel = -1, -1 // set by setupCrossbow
+	g.swordModel = -1                 // set by setupCombat
 	if *pets != "" {
 		g.importPets(*pets)
 	}
@@ -247,6 +248,7 @@ type game struct {
 	itemsState
 	creaturesState
 	crossbowState
+	combatState
 	help     *render.Overlay // F1 help screen
 	showHelp bool
 	debugMsg string // shown in the title (K animation preview)

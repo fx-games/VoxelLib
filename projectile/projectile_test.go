@@ -289,3 +289,19 @@ func TestHostExpiryTakesChildren(t *testing.T) {
 		t.Errorf("%d arrows left after their host expired", len(w.Arrows))
 	}
 }
+
+func TestShooterBoxAndDiscard(t *testing.T) {
+	var w World
+	shooter := &dummy{x: 0, y: 0, z: 0.5}
+	victim := &dummy{x: 10, y: 0, z: 0.5}
+	w.Hit = func(a *Arrow, tg Target) { a.Discard() }
+	a := w.Shoot(0, 1, 0.5, math.Pi/2, 0, Speed) // starts inside the shooter's box
+	hit := false
+	for i := 0; i < 20 && len(w.Arrows) > 0; i++ {
+		w.Tick(ground, []Target{shooter, victim})
+		hit = hit || a.In == victim
+	}
+	if !hit || len(w.Arrows) != 0 {
+		t.Errorf("want the arrow to leave the box it started in, hit the victim and be discarded: hit=%v left=%d", hit, len(w.Arrows))
+	}
+}

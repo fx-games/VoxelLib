@@ -38,3 +38,30 @@ func TestFlyerStaysAirborne(t *testing.T) {
 		t.Fatalf("flyer at y=%.1f", m.Y)
 	}
 }
+
+func TestHostileChasesAndStrikes(t *testing.T) {
+	m := New(Walker, 0, 0, 0, 0.6, 1.8)
+	m.Hostile, m.Reach, m.AttackTicks, m.HitTick, m.Cooldown = true, 2, 10, 4, 6
+	m.GoalX, m.GoalZ = 12, 0
+	rnd := rand.New(rand.NewSource(1))
+	strikes, firstStrike := 0, -1
+	for i := 0; i < 200; i++ {
+		m.Tick(floor, rnd)
+		if m.Strike {
+			strikes++
+			if firstStrike < 0 {
+				firstStrike = i
+			}
+			if d := math.Hypot(m.GoalX-m.X, m.GoalZ-m.Z); d > m.Reach+0.01 {
+				t.Fatalf("struck from %.2f blocks, reach %.1f", d, m.Reach)
+			}
+		}
+	}
+	if firstStrike < 0 {
+		t.Fatal("never struck")
+	}
+	// After reaching the goal: one strike per attack + cooldown (16 ticks).
+	if want := (200 - firstStrike) / 16; strikes < want-1 || strikes > want+1 {
+		t.Errorf("%d strikes, want about %d", strikes, want)
+	}
+}

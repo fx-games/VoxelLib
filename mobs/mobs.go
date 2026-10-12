@@ -30,10 +30,15 @@ const (
 	Walk
 	Run
 	Jump
-	Trick // a one-off flourish while idling
+	Trick  // a one-off flourish while idling
+	Attack // a hostile mob's attack, AttackTicks long
+
+	NumStates = iota
 )
 
-func (s State) String() string { return [...]string{"Idle", "Walk", "Run", "Jump", "Trick"}[s] }
+func (s State) String() string {
+	return [...]string{"Idle", "Walk", "Run", "Jump", "Trick", "Attack"}[s]
+}
 
 // Mob is one creature.
 type Mob struct {
@@ -52,6 +57,19 @@ type Mob struct {
 	// StateTicks counts ticks in the current state; TrickTicks is how long
 	// a Trick lasts (set it to the clip length).
 	StateTicks, TrickTicks int
+
+	// Hostile mobs chase the goal (set it every tick, e.g. to the player's
+	// feet) and attack once within Reach: an Attack lasts AttackTicks, with
+	// Cooldown ticks between attacks. Strike is true on the one tick of an
+	// attack (HitTick) when the blow lands or the shot leaves; acting on
+	// it (damage, firing) is up to the caller.
+	Hostile              bool
+	GoalX, GoalY, GoalZ  float64
+	Reach                float64
+	AttackTicks, HitTick int
+	Cooldown             int
+	Strike               bool
+	cool                 int
 
 	timer          int
 	tx, ty, tz     float64
@@ -119,6 +137,11 @@ func (m *Mob) steer(maxTurn float64) float64 {
 }
 
 func (m *Mob) tickWalker(w collide.Solids, rnd *rand.Rand) {
+	m.Strike = false
+	if m.Hostile {
+		m.locomote(w, m.hostile())
+		return
+	}
 	switch {
 	case m.State == Trick:
 		if m.StateTicks >= m.TrickTicks {
@@ -147,6 +170,41 @@ func (m *Mob) tickWalker(w collide.Solids, rnd *rand.Rand) {
 			}
 		}
 	}
+	m.locomote(w, speed)
+}
+
+// hostile steers toward the goal, runs the attack cycle and returns the
+// speed to move at.
+func (m *Mob) hostile() float64 {
+	m.tx, m.tz = m.GoalX, m.GoalZ
+	m.hasTarget, m.run = false, true
+	dist := m.steer(0.35)
+	if m.cool > 0 {
+		m.cool--
+	}
+	if m.State == Attack {
+		if m.StateTicks == m.HitTick {
+			m.Strike = true
+		}
+		if m.StateTicks >= m.AttackTicks {
+			m.set(Idle)
+			m.cool = m.Cooldown
+		}
+		return 0
+	}
+	if dist <= m.Reach && m.cool == 0 {
+		m.set(Attack)
+		return 0
+	}
+	if dist > m.Reach*0.8 {
+		return m.RunSpeed
+	}
+	return 0
+}
+
+// locomote moves a walker at speed along its yaw, with gravity, collisions
+// and hops up single blocks, and picks the movement state.
+func (m *Mob) locomote(w collide.Solids, speed float64) {
 	// Speed is a target velocity; ground friction makes it snappy.
 	fx, fz := math.Sin(m.Yaw)*speed, -math.Cos(m.Yaw)*speed
 	m.VX += (fx - m.VX) * 0.5
@@ -166,7 +224,7 @@ func (m *Mob) tickWalker(w collide.Solids, rnd *rand.Rand) {
 		m.set(Jump)
 	}
 	switch {
-	case m.State == Trick:
+	case m.State == Trick, m.State == Attack:
 	case !m.OnGround && m.State == Jump:
 	case speed == 0:
 		m.set(Idle)
