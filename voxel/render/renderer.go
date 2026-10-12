@@ -19,7 +19,10 @@ type Options struct {
 	SkyColor       mgl32.Vec3
 	FogColor       mgl32.Vec3
 	Daylight       float32 // 0..1 multiplier for sky light
-	SunDir         mgl32.Vec3
+	// BlockBrightness 0..1 brightens block light (torches) toward
+	// Minecraft's "Bright" gamma; 0 is the plain, moody curve.
+	BlockBrightness float32
+	SunDir          mgl32.Vec3
 	// Fog, when non-nil, replaces the distance fog and sky colour, e.g. for
 	// a camera under water or lava.
 	Fog *Fog
@@ -472,6 +475,7 @@ func (r *Renderer) Render(cam *Camera) {
 	p.use()
 	gl.UniformMatrix4fv(p.loc("uViewProj"), 1, false, &vp[0])
 	gl.Uniform1f(p.loc("uDaylight"), r.Opt.Daylight)
+	gl.Uniform1f(p.loc("uBlockBright"), r.Opt.BlockBrightness)
 	gl.Uniform3fv(p.loc("uFogColor"), 1, &fogCol[0])
 	gl.Uniform2f(p.loc("uFog"), fog.Start, fog.End)
 	gl.Uniform1i(p.loc("uTex"), 0)

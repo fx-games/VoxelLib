@@ -64,11 +64,15 @@ uniform vec3 uFogColor;
 uniform vec2 uFog;
 out vec4 fragColor;
 float curve(float l) { return mix(0.04, 1.0, l / (4.0 - 3.0 * l)); }
+// blockCurve is curve for block light, raised toward Minecraft's bright
+// gamma (1-(1-l)^4) by uBlockBright.
+uniform float uBlockBright;
+float blockCurve(float l) { return mix(curve(l), mix(0.04, 1.0, 1.0 - pow(1.0 - l, 4.0)), uBlockBright); }
 void main() {
 	vec4 c = texture(uTex, vec3(vUV.xy, uLayer));
 	if (c.a < 0.5) discard;
 	float sky = curve(uLight.x) * uDaylight;
-	float blk = curve(uLight.y);
+	float blk = blockCurve(uLight.y);
 	vec3 light = max(max(vec3(sky) * vec3(0.95, 0.97, 1.0), vec3(blk) * vec3(1.0, 0.86, 0.66)), vec3(0.04));
 	vec3 col = c.rgb * vShade * light;
 	float f = clamp((vDist - uFog.x) / (uFog.y - uFog.x), 0.0, 1.0);
@@ -136,6 +140,7 @@ func (ir *ItemRenderer) begin(fog Fog) {
 	p.use()
 	gl.Uniform1i(p.loc("uTex"), 0)
 	gl.Uniform1f(p.loc("uDaylight"), ir.r.Opt.Daylight)
+	gl.Uniform1f(p.loc("uBlockBright"), ir.r.Opt.BlockBrightness)
 	gl.Uniform3fv(p.loc("uFogColor"), 1, &fog.Color[0])
 	gl.Uniform2f(p.loc("uFog"), fog.Start, fog.End)
 	gl.ActiveTexture(gl.TEXTURE0)

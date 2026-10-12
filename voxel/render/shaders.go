@@ -52,12 +52,16 @@ out vec4 fragColor;
 float curve(float l) {
 	return mix(0.04, 1.0, l / (4.0 - 3.0 * l));
 }
+// blockCurve is curve for block light, raised toward Minecraft's bright
+// gamma (1-(1-l)^4) by uBlockBright.
+uniform float uBlockBright;
+float blockCurve(float l) { return mix(curve(l), mix(0.04, 1.0, 1.0 - pow(1.0 - l, 4.0)), uBlockBright); }
 
 void main() {
 	vec4 c = texture(uTex, vUV);
 	if (c.a < uAlphaCut) discard;
 	float sky = curve(clamp(vLight.x, 0.0, 1.0)) * uDaylight;
-	float blk = curve(clamp(vLight.y, 0.0, 1.0));
+	float blk = blockCurve(clamp(vLight.y, 0.0, 1.0));
 	vec3 light = max(vec3(sky) * vec3(0.95, 0.97, 1.0), vec3(blk) * vec3(1.0, 0.86, 0.66));
 	light = max(light, vec3(0.04));
 	vec3 col = c.rgb * vColor * light;
