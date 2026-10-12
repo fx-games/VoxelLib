@@ -164,7 +164,7 @@ func ImportWith(src string, o Options) (*Pack, error) {
 					continue
 				}
 				// Share only when the rigs match: most animated bones exist.
-				if c, ok := a.Bind(m); ok && 2*boneCount(c) >= len(a.Bones) {
+				if c, ok := a.Bind(m); ok && rigsMatch(a, m, c) {
 					m.Clips[a.Name] = c
 				}
 			}
@@ -246,10 +246,33 @@ func tag(m *model.Model) {
 	}
 }
 
-func boneCount(c *model.Clip) int {
+// rigsMatch reports whether clip c (animation a bound to m) belongs on m:
+// at least half of the animation's named bones exist in m. Blockbench's
+// default names (bone, bone7, group2, cube3) say nothing about the rig, so
+// they don't count; otherwise a mortar's idle animates a totem's staff.
+func rigsMatch(a *Animation, m *model.Model, c *model.Clip) bool {
+	want := 0
+	for n := range a.Bones {
+		if !genericBone(n) {
+			want++
+		}
+	}
 	seen := map[int]bool{}
 	for _, ch := range c.Channels {
-		seen[ch.Bone] = true
+		if !genericBone(m.Bones[ch.Bone].Name) {
+			seen[ch.Bone] = true
+		}
 	}
-	return len(seen)
+	return len(seen) > 0 && 2*len(seen) >= want
+}
+
+// genericBone reports Blockbench's default group names.
+func genericBone(n string) bool {
+	n = strings.ToLower(n)
+	for _, p := range []string{"bone", "group", "cube"} {
+		if rest, ok := strings.CutPrefix(n, p); ok && strings.Trim(rest, "0123456789") == "" {
+			return true
+		}
+	}
+	return false
 }

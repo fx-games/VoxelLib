@@ -92,16 +92,14 @@ func humanoidClip(m *model.Model, s mobs.State) string {
 	return clipByName(m, s)
 }
 
-// propClip loops a prop's idle-ish clip (or its first one) as its "trick".
+// propClip loops a prop's own idle clip. Props without one (their idle is
+// often a zero-length "hold the rest pose" clip) stand in the rest pose:
+// their other clips are one-shot attacks and openings.
 func propClip(m *model.Model, s mobs.State) string {
-	names := m.ClipNames()
-	for _, n := range names {
+	for _, n := range m.ClipNames() {
 		if strings.Contains(strings.ToLower(n), "idle") {
 			return n
 		}
-	}
-	if len(names) > 0 {
-		return names[0]
 	}
 	return ""
 }
