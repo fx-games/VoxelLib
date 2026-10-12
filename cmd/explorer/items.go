@@ -152,7 +152,7 @@ func (g *game) drawItems(alpha float64) {
 		g.drawCrossbowHand(alpha)
 	} else if g.held != "" {
 		sky, blk := g.light(g.cam.X, g.cam.Y, g.cam.Z)
-		t := g.walkDist * 1.6
+		t := g.bobPhase(alpha)
 		pose := render.HandPose{
 			BobX:  float32(math.Sin(t)) * 0.02,
 			BobY:  -float32(math.Abs(math.Cos(t))) * 0.03,
@@ -163,4 +163,10 @@ func (g *game) drawItems(alpha float64) {
 		}
 		g.itemRend.DrawHand(g.held, float32(g.cam.Aspect), pose, sky, blk)
 	}
+}
+
+// bobPhase is the hand bob's phase, interpolated between ticks so the held
+// item doesn't step at the 20 Hz tick rate.
+func (g *game) bobPhase(alpha float64) float64 {
+	return (g.prevWalk + (g.walkDist-g.prevWalk)*alpha) * 1.6
 }

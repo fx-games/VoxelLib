@@ -100,6 +100,7 @@ func (g *game) tickPlayer() {
 		in.Sprint = g.key(glfw.KeyLeftControl)
 	}
 	p.Tick(g.terrain, in)
+	g.prevWalk = g.walkDist
 	if p.OnGround {
 		g.walkDist += math.Hypot(p.X-p.PrevX, p.Z-p.PrevZ)
 	}

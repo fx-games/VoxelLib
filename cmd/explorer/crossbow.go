@@ -133,7 +133,7 @@ func (g *game) drawArrows(alpha float64) {
 // drawCrossbowHand draws the crossbow in the lower right of the view, with
 // walking bob and a recoil kick after each shot.
 func (g *game) drawCrossbowHand(alpha float64) {
-	t := g.walkDist * 1.6
+	t := g.bobPhase(alpha)
 	bobX, bobY := float32(math.Sin(t))*0.02, -float32(math.Abs(math.Cos(t)))*0.03
 	kick := float32(0)
 	if g.recoil > 0 {

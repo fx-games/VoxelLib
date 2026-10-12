@@ -234,6 +234,7 @@ type game struct {
 	placeCD  int
 	swing    int // ticks left of the hand swing animation
 	walkDist float64
+	prevWalk float64 // walkDist last tick, for interpolating the bob
 
 	itemsState
 	creaturesState
