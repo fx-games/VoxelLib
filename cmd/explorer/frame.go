@@ -5,7 +5,9 @@ import (
 	"image"
 	"image/png"
 	"log"
+	"math"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -89,6 +91,10 @@ func (g *game) run(shotPath string, shotAt int) {
 			g.drawItems(alpha)
 		})
 		g.eng.Renderer.DrawCrosshair(float32(g.cam.Aspect))
+		if g.shotReq { // before the help overlay, so it never hides the scene
+			g.shotReq = false
+			g.saveDebugShot(fw, fh)
+		}
 		g.drawHelp(fw, fh)
 
 		if shotPath != "" && g.tick >= shotAt {
@@ -190,7 +196,52 @@ func (g *game) gpuTimer(f func()) {
 	gl.EndQuery(gl.TIME_ELAPSED)
 }
 
+// shotDir is where F2 screenshots go.
+const shotDir = "screenshots"
+
+// saveDebugShot (F2) saves the frame as screenshots/<timestamp>.png with a
+// .txt next to it: position, look and an explorer command that restores
+// the view. Encoding runs in the background so the frame doesn't hitch.
+func (g *game) saveDebugShot(w, h int) {
+	if err := os.MkdirAll(shotDir, 0o755); err != nil {
+		log.Print(err)
+		return
+	}
+	base := filepath.Join(shotDir, time.Now().Format("2006-01-02_15-04-05.000"))
+	img := readFrame(w, h)
+	p := g.player
+	yaw, pitch := g.cam.Yaw*180/math.Pi, g.cam.Pitch*180/math.Pi
+	info := fmt.Sprintf("pos %.2f,%.2f,%.2f\nlook %.1f,%.1f\nflying %v\nheld %q\ntick %d\n"+
+		"repro: ./explorer -pos %.2f,%.2f,%.2f -look %.1f,%.1f -hold %q%s\n",
+		p.X, p.Y, p.Z, yaw, pitch, p.Flying, g.held, g.tick,
+		p.X, p.Y, p.Z, yaw, pitch, g.held, map[bool]string{true: " -fly"}[p.Flying])
+	go func() {
+		if err := writePNG(base+".png", img); err != nil {
+			log.Print(err)
+			return
+		}
+		os.WriteFile(base+".txt", []byte(info), 0o644)
+		log.Printf("screenshot saved: %s.png", base)
+	}()
+}
+
 func saveShot(path string, w, h int) {
+	if err := writePNG(path, readFrame(w, h)); err != nil {
+		log.Print(err)
+	}
+}
+
+func writePNG(path string, img image.Image) error {
+	f, err := os.Create(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	return png.Encode(f, img)
+}
+
+// readFrame reads the back buffer into an opaque, top-down image.
+func readFrame(w, h int) *image.NRGBA {
 	px := make([]byte, w*h*4)
 	gl.ReadPixels(0, 0, int32(w), int32(h), gl.RGBA, gl.UNSIGNED_BYTE, gl.Ptr(px))
 	img := image.NewNRGBA(image.Rect(0, 0, w, h))
@@ -200,13 +251,7 @@ func saveShot(path string, w, h int) {
 	for i := 3; i < len(img.Pix); i += 4 {
 		img.Pix[i] = 255
 	}
-	f, err := os.Create(path)
-	if err != nil {
-		log.Print(err)
-		return
-	}
-	defer f.Close()
-	png.Encode(f, img)
+	return img
 }
 
 func ms(d time.Duration) float64 { return float64(d.Microseconds()) / 1000 }

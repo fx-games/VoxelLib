@@ -36,6 +36,7 @@ var helpLines = [][2]string{
 	{"N", "day / night"},
 	{"R", "respawn"},
 	{"K", "preview nearest creature's animations"},
+	{"F2", "screenshot to screenshots/ (with position)"},
 	{"F3", "frame stats on stdout"},
 	{"F1", "show / hide this help"},
 	{"Esc", "release mouse (again: quit)"},

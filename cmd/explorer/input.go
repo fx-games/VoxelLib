@@ -52,6 +52,8 @@ func (g *game) setupInput(grab bool) {
 			g.toggleHelp()
 		case k == glfw.KeyK:
 			g.cycleAnimation()
+		case k == glfw.KeyF2:
+			g.shotReq = true
 		case k == glfw.KeyF3:
 			g.verbose = !g.verbose
 		case k == glfw.KeySpace:

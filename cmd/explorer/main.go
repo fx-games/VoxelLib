@@ -237,6 +237,7 @@ type game struct {
 	help     *render.Overlay // F1 help screen
 	showHelp bool
 	debugMsg string // shown in the title (K animation preview)
+	shotReq  bool   // F2: save a screenshot after this frame
 
 	verbose bool
 	edits   string
