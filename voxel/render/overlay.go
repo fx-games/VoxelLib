@@ -44,13 +44,20 @@ func NewOverlay() (*Overlay, error) {
 	return o, nil
 }
 
-// SetImage uploads the image to draw.
+// SetImage uploads the image to draw, into the same texture while the
+// size stays (HUDs repaint every frame).
 func (o *Overlay) SetImage(img image.Image) {
+	w, h := img.Bounds().Dx(), img.Bounds().Dy()
+	if o.tex != 0 && w == o.w && h == o.h {
+		gl.BindTexture(gl.TEXTURE_2D, o.tex)
+		gl.TexSubImage2D(gl.TEXTURE_2D, 0, 0, 0, int32(w), int32(h), gl.RGBA, gl.UNSIGNED_BYTE, gl.Ptr(toNRGBARect(img).Pix))
+		return
+	}
 	if o.tex != 0 {
 		gl.DeleteTextures(1, &o.tex)
 	}
 	o.tex = uploadTexture2D(img)
-	o.w, o.h = img.Bounds().Dx(), img.Bounds().Dy()
+	o.w, o.h = w, h
 }
 
 // Size returns the image size in pixels.

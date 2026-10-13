@@ -289,6 +289,11 @@ func (mr *ModelRenderer) drawModel(g *gpuModel, model mgl32.Mat4, skin []mgl32.M
 // with a fixed 70° projection like ItemRenderer.DrawHand. view places the
 // model in view space (camera at the origin looking down -Z, +Y up).
 func (mr *ModelRenderer) DrawHand(handle int, aspect float32, view mgl32.Mat4, sky, block uint8) {
+	mr.DrawHandSkinned(handle, aspect, view, nil, sky, block)
+}
+
+// DrawHandSkinned is DrawHand posed by skin (from model.Animator.Skin).
+func (mr *ModelRenderer) DrawHandSkinned(handle int, aspect float32, view mgl32.Mat4, skin []mgl32.Mat4, sky, block uint8) {
 	if handle < 0 || handle >= len(mr.models) {
 		return
 	}
@@ -310,7 +315,7 @@ func (mr *ModelRenderer) DrawHand(handle int, aspect float32, view mgl32.Mat4, s
 	for i := range ident {
 		ident[i] = mgl32.Ident4()
 	}
-	mr.drawModel(mr.models[handle], view, nil, sky, block, &ident)
+	mr.drawModel(mr.models[handle], view, skin, sky, block, &ident)
 	gl.BindVertexArray(0)
 	gl.Enable(gl.CULL_FACE)
 }
