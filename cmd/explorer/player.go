@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"math"
+	"strconv"
 	"strings"
 
 	"github.com/go-gl/glfw/v3.3/glfw"
@@ -151,6 +152,9 @@ func (g *game) placeBlock() {
 	if !ok {
 		return
 	}
+	if g.toggleDoor(h.Block) {
+		return
+	}
 	p := h.Block
 	if !g.eng.World.Reg.Info(h.State).Def.Replaceable {
 		p = p.Offset(h.Face)
@@ -165,6 +169,33 @@ func (g *game) placeBlock() {
 	}
 	g.swing = 6
 	g.eng.SetBlock(p.X, p.Y, p.Z, id)
+}
+
+// toggleDoor opens or closes the door at p, both halves, as a right click
+// does in Minecraft; false if p is not a door.
+func (g *game) toggleDoor(p voxel.BlockPos) bool {
+	reg := g.eng.World.Reg
+	info := reg.Info(g.eng.Block(p.X, p.Y, p.Z))
+	if !strings.HasSuffix(info.Name, "_door") {
+		return false
+	}
+	props := reg.StateProps(g.eng.Block(p.X, p.Y, p.Z))
+	open := strconv.FormatBool(props["open"] != "true")
+	other := p.Y + 1
+	if props["half"] == "upper" {
+		other = p.Y - 1
+	}
+	for _, y := range []int{p.Y, other} {
+		id := g.eng.Block(p.X, y, p.Z)
+		if reg.Info(id).Name != info.Name {
+			continue
+		}
+		pr := reg.StateProps(id)
+		pr["open"] = open
+		g.eng.SetBlock(p.X, y, p.Z, reg.State(info.Name, pr))
+	}
+	g.placeCD, g.swing = 6, 6
+	return true
 }
 
 // applyEdits applies the -edits debug flag relative to the player.

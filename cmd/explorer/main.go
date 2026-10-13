@@ -234,6 +234,7 @@ type game struct {
 	cam     render.Camera
 	terrain *terrain
 	signs   *signText
+	torches torchFX
 	player  *character.Character
 
 	spawnX, spawnY, spawnZ float64

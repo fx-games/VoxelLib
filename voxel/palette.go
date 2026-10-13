@@ -29,6 +29,20 @@ func longsFor(b uint8) int {
 	return (SectionVolume + per - 1) / per
 }
 
+// MayContain reports whether any state matching f may be stored: false
+// only when no palette entry matches (a direct container always may).
+func (p *PalettedContainer) MayContain(f func(StateID) bool) bool {
+	if p.bits > 8 {
+		return true
+	}
+	for _, s := range p.palette {
+		if f(s) {
+			return true
+		}
+	}
+	return false
+}
+
 // Get returns the state at index (y<<8|z<<4|x).
 func (p *PalettedContainer) Get(i int) StateID {
 	if p.bits == 0 {

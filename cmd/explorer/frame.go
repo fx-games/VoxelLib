@@ -58,6 +58,7 @@ func (g *game) run(shotPath string, shotAt int) {
 			g.tickItems()
 			g.tickCreatures()
 			g.tickArrows()
+			g.tickTorches()
 			g.tickPlayerHealth()
 			acc -= tickDur
 		}
@@ -94,6 +95,7 @@ func (g *game) run(shotPath string, shotAt int) {
 			g.drawWeapons()
 			g.drawArrows(alpha)
 			g.drawItems(alpha)
+			g.drawTorches(alpha)
 		})
 		g.eng.Renderer.DrawCrosshair(float32(g.cam.Aspect))
 		if g.shotReq { // before the help overlay, so it never hides the scene
