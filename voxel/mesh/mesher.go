@@ -423,6 +423,8 @@ func (m *Mesher) specials() {
 							m.quadReversed(p, info.Tex[f], tint, cl, top)
 						}
 					}
+				case voxel.ShapeBoxes:
+					m.boxes(x, y, z, i, info)
 				case voxel.ShapeCross:
 					l := li[i]
 					c := cornerLight{3, (l >> 4) * 16, (l & 15) * 16}
@@ -432,6 +434,152 @@ func (m *Mesher) specials() {
 		}
 	}
 }
+
+// projectedUV marks a vertex whose u/v are in 1/16 of a tile (box faces
+// show the part of the texture their extent covers, like Minecraft models).
+const projectedUV = 1 << 25
+
+// boxes meshes a ShapeBoxes block's elements, flat lit. Faces on the block
+// boundary hidden by an opaque neighbour are culled.
+func (m *Mesher) boxes(x, y, z, i int, info *voxel.StateInfo) {
+	t, st, li := m.table, &m.Snap.States, &m.Snap.Light
+	bs := voxel.Connected(info, func(f voxel.Face) *voxel.StateInfo { return &t[st[i+nbOff[f]]] })
+	base := [3]float32{float32(x * 16), float32(y * 16), float32(z * 16)}
+	for _, b := range bs {
+		for f := voxel.Face(0); f < voxel.FaceCount; f++ {
+			if b.Skip&(1<<f) != 0 {
+				continue
+			}
+			ax := f.Axis()
+			onEdge := len(b.Rot) == 0 && ((f&1 == 0 && b.Min[ax] <= 0) || (f&1 == 1 && b.Max[ax] >= 16))
+			l := li[i]
+			if onEdge {
+				if t[st[i+nbOff[f]]].Opaque {
+					continue
+				}
+				l = li[i+nbOff[f]]
+			}
+			c := cornerLight{3, (l >> 4) * 16, (l & 15) * 16}
+			tex := info.Tex[f]
+			if b.Tex[f] != "" {
+				tex = b.TexID[f]
+			}
+			m.boxFace(f, base, &b, tex, m.tint(info, f), info.Layer, c)
+		}
+	}
+}
+
+// projUV is the texture position (1/16) of point q on face f when a texture
+// is laid over the block's face (same orientation as uvTab).
+func projUV(f voxel.Face, q [3]float32) (float32, float32) {
+	switch f {
+	case voxel.FaceDown:
+		return q[0], 16 - q[2]
+	case voxel.FaceUp:
+		return q[0], q[2]
+	case voxel.FaceNorth:
+		return 16 - q[0], 16 - q[1]
+	case voxel.FaceSouth:
+		return q[0], 16 - q[1]
+	case voxel.FaceWest:
+		return q[2], 16 - q[1]
+	}
+	return 16 - q[2], 16 - q[1]
+}
+
+// boxFace emits face f of element b of the block at base (all 1/16).
+func (m *Mesher) boxFace(f voxel.Face, base [3]float32, b *voxel.Box, tex uint16, tint uint32, layer voxel.Layer, c cornerLight) {
+	var q [4][3]float32
+	var uv [4][2]float32
+	for k := 0; k < 4; k++ {
+		co := cornerOff[f][k]
+		for a := 0; a < 3; a++ {
+			q[k][a] = b.Min[a]
+			if co[a] == 1 {
+				q[k][a] = b.Max[a]
+			}
+		}
+		uv[k][0], uv[k][1] = projUV(f, q[k])
+	}
+	if b.UV != nil {
+		// stretch the face's own extent over the element's u0,v0..u1,v1
+		r := b.UV[f]
+		lo, hi := uv[0], uv[0]
+		for k := 1; k < 4; k++ {
+			lo = [2]float32{min(lo[0], uv[k][0]), min(lo[1], uv[k][1])}
+			hi = [2]float32{max(hi[0], uv[k][0]), max(hi[1], uv[k][1])}
+		}
+		for k := range uv {
+			for a := 0; a < 2; a++ {
+				t := float32(0)
+				if hi[a] > lo[a] {
+					t = (uv[k][a] - lo[a]) / (hi[a] - lo[a])
+				}
+				uv[k][a] = r[a] + t*(r[a+2]-r[a])
+			}
+		}
+	}
+	group, normal := int(f), uint32(f)
+	if len(b.Rot) > 0 {
+		for k := range q {
+			q[k] = voxel.RotatePoint(q[k], b.Rot)
+		}
+		group, normal = GroupUnassigned, 6
+		if n := rotatedFace(f, b.Rot); n < voxel.FaceCount {
+			normal = uint32(n)
+		}
+	}
+	if layer == voxel.LayerTranslucent {
+		group = GroupUnassigned
+	}
+	out := m.out[layer][group]
+	var sum [3]float32
+	for k := 0; k < 4; k++ {
+		var p [3]uint32
+		for a := 0; a < 3; a++ {
+			v := base[a] + q[k][a]
+			sum[a] += v
+			// ponytail: parts poking out below a section's origin (a wall
+			// torch's foot) are clamped; vertices can't go negative.
+			p[a] = uint32(min(max(v*2+0.5, 0), 1023))
+		}
+		u := uint32(min(max(uv[k][0]+0.5, 0), 31))
+		v := uint32(min(max(uv[k][1]+0.5, 0), 31))
+		out = append(out,
+			p[0]|p[1]<<10|p[2]<<20|uint32(c.ao)<<30,
+			uint32(tex)|u<<12|v<<17|normal<<22|projectedUV,
+			tint|m.ridx,
+			uint32(c.sky)|uint32(c.blk)<<8)
+	}
+	m.out[layer][group] = out
+	if layer == voxel.LayerTranslucent {
+		m.trans = append(m.trans, [3]float32{sum[0] / 64, sum[1] / 64, sum[2] / 64})
+	}
+}
+
+// rotatedFace is where face f points after rots, or FaceCount when that's
+// not along an axis.
+func rotatedFace(f voxel.Face, rots []voxel.Rot) voxel.Face {
+	n := f.Normal()
+	d := voxel.RotatePoint([3]float32{float32(n.X), float32(n.Y), float32(n.Z)}, zeroOrigin(rots))
+	for g := voxel.Face(0); g < voxel.FaceCount; g++ {
+		gn := g.Normal()
+		if abs32(d[0]-float32(gn.X))+abs32(d[1]-float32(gn.Y))+abs32(d[2]-float32(gn.Z)) < 1e-3 {
+			return g
+		}
+	}
+	return voxel.FaceCount
+}
+
+func zeroOrigin(rots []voxel.Rot) []voxel.Rot {
+	out := make([]voxel.Rot, len(rots))
+	for i, r := range rots {
+		out[i] = voxel.Rot{Axis: r.Axis, Deg: r.Deg}
+	}
+	return out
+}
+
+func abs32(v float32) float32 { return max(v, -v) }
 
 // full is a flat block top: every corner at 32/32.
 var full = [4]int{32, 32, 32, 32}

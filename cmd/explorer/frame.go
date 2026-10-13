@@ -89,6 +89,7 @@ func (g *game) run(shotPath string, shotAt int) {
 			if h, ok := g.target(); ok {
 				g.eng.Renderer.DrawBlockOutline(&g.cam, h.Block.X, h.Block.Y, h.Block.Z)
 			}
+			g.drawSigns()
 			g.drawCreatures(alpha)
 			g.drawWeapons()
 			g.drawArrows(alpha)

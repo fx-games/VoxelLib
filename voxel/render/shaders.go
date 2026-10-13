@@ -26,6 +26,7 @@ void main() {
 
 	uint layer = texelFetch(uLayerMap, ivec2(int(w1 & 4095u), 0), 0).r;
 	vUV = vec3(float((w1 >> 12) & 31u), float((w1 >> 17) & 31u), float(layer));
+	if ((w1 & (1u << 25)) != 0u) vUV.xy *= 1.0 / 16.0; // box faces: u/v in 1/16 tile
 	uint n = (w1 >> 22) & 7u;
 	vec3 tint = vec3(float(w2 & 255u), float((w2 >> 8) & 255u), float((w2 >> 16) & 255u)) * (1.0 / 255.0);
 	vColor = tint * SHADE[n] * AO[w0 >> 30];

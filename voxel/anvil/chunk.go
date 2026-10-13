@@ -1,9 +1,12 @@
 package anvil
 
 import (
+	"encoding/json"
 	"errors"
+	"fmt"
 	"math/bits"
 	"sort"
+	"strings"
 
 	"github.com/memmaker/voxellib/voxel"
 )
@@ -39,6 +42,7 @@ func DecodeChunk(w *voxel.World, root Compound) (*voxel.Chunk, error) {
 	}
 	reg := w.Reg
 	trusted := level.Int(litTag) == 1 && len(secs.Items) == len(ch.Sections)
+	legacy := false
 	for _, it := range secs.Items {
 		sc, ok := it.(Compound)
 		if !ok {
@@ -64,6 +68,7 @@ func DecodeChunk(w *voxel.World, root Compound) (*voxel.Chunk, error) {
 			palNBT, data = sc.List("Palette"), sc.Longs("BlockStates")
 		} else if blocks := sc.Bytes("Blocks"); len(blocks) == 4096 {
 			decodeLegacy(reg, s, blocks, sc.Bytes("Data"))
+			legacy = true
 			continue
 		} else {
 			continue
@@ -87,6 +92,10 @@ func DecodeChunk(w *voxel.World, root Compound) (*voxel.Chunk, error) {
 		s.Blocks.LoadPacked(pal, ud, b, spanning)
 		s.Recount()
 	}
+	if legacy {
+		fixDoors(reg, ch)
+	}
+	ch.Signs = readSigns(level)
 	ch.RecomputeHeights(reg.Table())
 	ch.Lit = trusted
 	return ch, nil
@@ -183,39 +192,6 @@ func EncodeChunk(w *voxel.World, ch *voxel.Chunk) Compound {
 	return root
 }
 
-// legacy numeric ids (pre-1.13) for the common terrain blocks.
-var legacyIDs = map[byte]string{
-	1: "stone", 2: "grass_block", 3: "dirt", 4: "cobblestone", 5: "oak_planks", 7: "bedrock",
-	8: "water", 9: "water", 10: "lava", 11: "lava", 12: "sand", 13: "gravel", 14: "gold_ore",
-	15: "iron_ore", 16: "coal_ore", 17: "oak_log", 18: "oak_leaves", 20: "glass", 21: "lapis_ore",
-	24: "sandstone", 31: "short_grass", 32: "dead_bush", 35: "white_wool", 37: "dandelion", 38: "poppy",
-	39: "brown_mushroom", 40: "red_mushroom", 41: "gold_block", 42: "iron_block", 45: "bricks",
-	47: "bookshelf", 48: "mossy_cobblestone", 49: "obsidian", 56: "diamond_ore", 57: "diamond_block",
-	58: "crafting_table", 73: "redstone_ore", 79: "ice", 80: "snow_block", 81: "cactus", 82: "clay",
-	83: "sugar_cane", 86: "pumpkin", 89: "glowstone", 98: "stone_bricks", 103: "melon",
-	110: "mycelium", 129: "emerald_ore", 159: "terracotta", 172: "terracotta", 174: "packed_ice",
-}
-
-func decodeLegacy(reg *voxel.Registry, s *voxel.Section, blocks, meta []byte) {
-	// legacy order is y<<8|z<<4|x too
-	var buf [voxel.SectionVolume]voxel.StateID
-	cache := map[byte]voxel.StateID{0: voxel.Air}
-	for i, b := range blocks {
-		id, ok := cache[b]
-		if !ok {
-			if name, ok2 := legacyIDs[b]; ok2 {
-				id = reg.Default(name)
-			} else {
-				id = reg.Default("stone")
-			}
-			cache[b] = id
-		}
-		buf[i] = id
-	}
-	s.Blocks.Pack(&buf)
-	s.Recount()
-}
-
 // SortedKeys is a helper for deterministic debugging output.
 func SortedKeys(c Compound) []string {
 	ks := make([]string, 0, len(c))
@@ -224,4 +200,62 @@ func SortedKeys(c Compound) []string {
 	}
 	sort.Strings(ks)
 	return ks
+}
+
+// readSigns collects sign text from legacy TileEntities (Text1..4) and
+// modern block_entities (front_text.messages). Lines may be JSON text.
+func readSigns(level Compound) map[voxel.BlockPos][4]string {
+	var out map[voxel.BlockPos][4]string
+	for _, key := range []string{"TileEntities", "block_entities"} {
+		for _, it := range level.List(key).Items {
+			te, _ := it.(Compound)
+			id := te.String("id")
+			if id != "Sign" && id != "minecraft:sign" {
+				continue
+			}
+			var lines [4]string
+			if ft := te.Compound("front_text"); ft != nil {
+				for i, m := range ft.List("messages").Items {
+					if s, ok := m.(string); ok && i < 4 {
+						lines[i] = signText(s)
+					}
+				}
+			} else {
+				for i := range lines {
+					lines[i] = signText(te.String(fmt.Sprintf("Text%d", i+1)))
+				}
+			}
+			if out == nil {
+				out = map[voxel.BlockPos][4]string{}
+			}
+			out[voxel.BlockPos{X: te.Int("x"), Y: te.Int("y"), Z: te.Int("z")}] = lines
+		}
+	}
+	return out
+}
+
+// signText flattens a JSON text component ("..." or {"text":..,"extra":[..]})
+// to plain text; anything else is returned as is.
+func signText(s string) string {
+	var v any
+	if (strings.HasPrefix(s, "{") || strings.HasPrefix(s, `"`)) && json.Unmarshal([]byte(s), &v) == nil {
+		var b strings.Builder
+		var walk func(any)
+		walk = func(v any) {
+			switch t := v.(type) {
+			case string:
+				b.WriteString(t)
+			case []any:
+				for _, e := range t {
+					walk(e)
+				}
+			case map[string]any:
+				walk(t["text"])
+				walk(t["extra"])
+			}
+		}
+		walk(v)
+		return b.String()
+	}
+	return s
 }

@@ -186,8 +186,28 @@ func (mr *ModelRenderer) Add(m *model.Model) (int, error) {
 	if len(g.textures) == 0 {
 		g.textures = append(g.textures, uploadTexture2D(whiteImage()))
 	}
+	for i, old := range mr.models { // reuse a slot freed by Remove
+		if old == nil {
+			mr.models[i] = g
+			return i, nil
+		}
+	}
 	mr.models = append(mr.models, g)
 	return len(mr.models) - 1, nil
+}
+
+// Remove frees a model's GPU buffers and textures; its handle may be
+// reissued by a later Add.
+func (mr *ModelRenderer) Remove(handle int) {
+	if handle < 0 || handle >= len(mr.models) || mr.models[handle] == nil {
+		return
+	}
+	g := mr.models[handle]
+	gl.DeleteVertexArrays(1, &g.vao)
+	gl.DeleteBuffers(1, &g.vbo)
+	gl.DeleteBuffers(1, &g.ebo)
+	gl.DeleteTextures(int32(len(g.textures)), &g.textures[0])
+	mr.models[handle] = nil
 }
 
 func whiteImage() image.Image {
@@ -236,7 +256,7 @@ func (mr *ModelRenderer) Draw(cam *Camera, insts []ModelInstance) {
 	}
 	fr := makeFrustum(vp)
 	for _, in := range insts {
-		if in.Model < 0 || in.Model >= len(mr.models) {
+		if in.Model < 0 || in.Model >= len(mr.models) || mr.models[in.Model] == nil {
 			continue
 		}
 		dx, dy, dz := float32(in.X-cam.X), float32(in.Y-cam.Y), float32(in.Z-cam.Z)

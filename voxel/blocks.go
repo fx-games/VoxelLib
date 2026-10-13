@@ -22,6 +22,11 @@ func cross(name, tex string, tint Tint) *BlockDef {
 	return &BlockDef{Name: name, Shape: ShapeCross, Layer: LayerCutout, Textures: all6(tex), Tint: tint, Replaceable: true}
 }
 
+// boxes: a ShapeBoxes block (see shapes.go); collision comes from its boxes.
+func boxes(name string, tex [6]string) *BlockDef {
+	return &BlockDef{Name: name, Shape: ShapeBoxes, Layer: LayerCutout, Textures: tex}
+}
+
 func leaves(name string, tint Tint) *BlockDef {
 	return &BlockDef{Name: name, Shape: ShapeCube, Layer: LayerCutout, Textures: all6("block/" + name),
 		Tint: tint, Collides: true, LightOpacity: 1}
@@ -53,6 +58,22 @@ func builtinBlocks() []*BlockDef {
 		cube("pumpkin", column("block/pumpkin_top", "block/pumpkin_side")),
 		cube("melon", column("block/melon_top", "block/melon_side")),
 		cube("tnt", bottomTop("block/tnt_bottom", "block/tnt_top", "block/tnt_side")),
+		simple("netherrack"),
+		cube("smooth_stone", column("block/smooth_stone", "block/smooth_stone_slab_side")),
+		cube("jukebox", column("block/jukebox_top", "block/jukebox_side")),
+		boxes("smooth_stone_slab", column("block/smooth_stone", "block/smooth_stone_slab_side")),
+		boxes("oak_stairs", all6("block/oak_planks")), boxes("cobblestone_stairs", all6("block/cobblestone")),
+		boxes("oak_door", all6("block/oak_door_bottom")), boxes("ladder", all6("block/ladder")),
+		boxes("snow", all6("block/snow")), boxes("lever", all6("block/cobblestone")),
+		boxes("farmland", bottomTop("block/dirt", "block/farmland", "block/dirt")),
+		boxes("stone_pressure_plate", all6("block/stone")), boxes("redstone_wire", all6("block/redstone_dust_dot")),
+		// ponytail: chests and signs are entity-rendered in vanilla; planks until we cut their atlases.
+		boxes("chest", all6("block/oak_planks")), boxes("oak_sign", all6("block/oak_planks")), boxes("oak_wall_sign", all6("block/oak_planks")),
+		{Name: "oak_fence", Shape: ShapeBoxes, Layer: LayerCutout, Textures: all6("block/oak_planks"), Connects: true},
+		{Name: "torch", Shape: ShapeBoxes, Layer: LayerCutout, Textures: all6("block/torch"), LightEmission: 14},
+		{Name: "wall_torch", Shape: ShapeBoxes, Layer: LayerCutout, Textures: all6("block/torch"), LightEmission: 14},
+		{Name: "fire", Shape: ShapeCross, Layer: LayerCutout, Textures: all6("block/fire_0"), LightEmission: 15},
+		cross("wheat", "block/wheat_stage7", TintNone),
 		cube("hay_block", column("block/hay_block_top", "block/hay_block_side")),
 
 		leaves("oak_leaves", TintFoliage), leaves("birch_leaves", TintBirch),

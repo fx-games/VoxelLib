@@ -24,6 +24,7 @@ const (
 	ShapeCube                // full 16^3 cube
 	ShapeCross               // two diagonal quads (flowers, grass)
 	ShapeLiquid              // cube whose top is lowered when not covered by liquid
+	ShapeBoxes               // StateInfo.Boxes (stairs, slabs, doors, torches, ...)
 )
 
 // Layer is the render pass, as Minecraft's RenderType: solid has no blending and
@@ -64,6 +65,7 @@ type BlockDef struct {
 	LightEmission uint8
 	LightOpacity  uint8 // light lost passing through, 0..15
 	CullSelf      bool  // faces between two of the same block are hidden (glass, water)
+	Connects      bool  // fence: grows arms toward opaque and connecting neighbours (see Connected)
 	Unknown       bool  // created on demand for a name nobody registered
 }
 
@@ -87,6 +89,11 @@ type StateInfo struct {
 	// flowing and ever shallower ((8-Level)/9); the mesher slopes the
 	// surface between neighbours.
 	Level uint8
+	// Boxes are a ShapeBoxes state's elements; Variants holds the
+	// neighbour-dependent ones (Connected picks).
+	Boxes    []Box
+	Variants map[string][]Box
+	Connects bool
 }
 
 // ModelResolver lets a resource pack decide shape and face textures of a state
@@ -229,7 +236,20 @@ func (r *Registry) bake(def *BlockDef, canon string, props map[string]string) St
 		Def: def, Name: def.Name, Props: canon,
 		Shape: def.Shape, Layer: def.Layer, Tint: def.Tint, TintMask: def.TintMask,
 		Opaque: def.Opaque, Collides: def.Collides, Emission: def.LightEmission,
-		Opacity: def.LightOpacity, CullSelf: def.CullSelf,
+		Opacity: def.LightOpacity, CullSelf: def.CullSelf, Connects: def.Connects,
+	}
+	if def.Shape == ShapeBoxes {
+		info.Variants = shapeVariants(def.Name, props)
+		for _, bs := range info.Variants {
+			for i := range bs {
+				for f, t := range bs[i].Tex {
+					if t != "" {
+						bs[i].TexID[f] = r.texture(t)
+					}
+				}
+			}
+		}
+		info.Boxes = info.Variants[""]
 	}
 	if info.TintMask == 0 {
 		info.TintMask = 0x3f
@@ -253,7 +273,24 @@ func (r *Registry) bake(def *BlockDef, canon string, props map[string]string) St
 		info.TintMask = 0
 		info.Tint = TintNone
 	}
-	if r.Resolver != nil {
+	// Horizontal facing turns a cube's north (front) texture to that side.
+	if def.Shape == ShapeCube {
+		turns := map[string]int{"east": 1, "south": 2, "west": 3}[props["facing"]]
+		for ; turns > 0; turns-- { // north->east->south->west
+			tex[FaceEast], tex[FaceSouth], tex[FaceWest], tex[FaceNorth] =
+				tex[FaceNorth], tex[FaceEast], tex[FaceSouth], tex[FaceWest]
+		}
+	}
+	// Per-state textures: upper door halves, growing crops.
+	if props["half"] == "upper" {
+		for f := range tex {
+			tex[f] = strings.Replace(tex[f], "_bottom", "_top", 1)
+		}
+	}
+	if a, ok := props["age"]; ok && strings.Contains(tex[0], "_stage") {
+		tex = all6(tex[0][:strings.LastIndex(tex[0], "_stage")+6] + a)
+	}
+	if r.Resolver != nil && def.Shape != ShapeBoxes {
 		if shape, t, ok := r.Resolver(def.Name, props); ok {
 			info.Shape = shape
 			tex = t

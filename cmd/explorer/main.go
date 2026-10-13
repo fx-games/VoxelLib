@@ -54,6 +54,7 @@ func main() {
 	var (
 		worldDir = flag.String("world", "saves/demo", "Minecraft world directory to load/save ('' = memory only)")
 		readOnly = flag.Bool("readonly", false, "never write to the world directory")
+		signFont = flag.String("signfont", "", "pixel TTF for sign text ('' = built-in font, 'none' = no sign text)")
 		packs    = flag.String("pack", "", "extra resource packs (dir/zip/jar), comma separated, highest priority first")
 		genName  = flag.String("gen", "overworld", "terrain generator for new chunks: overworld | flat")
 		seed     = flag.Int64("seed", 1337, "terrain seed")
@@ -198,6 +199,11 @@ func main() {
 			log.Printf("items disabled: %v", err)
 		}
 	}
+	if *signFont != "none" {
+		if err := g.loadSignFont(*signFont); err != nil {
+			log.Printf("sign text disabled: %v", err)
+		}
+	}
 	g.spawnLeft = *numMobs
 	g.mobRand = rand.New(rand.NewSource(7))
 	g.bowModel, g.arrowModel = -1, -1 // set by setupCrossbow
@@ -227,6 +233,7 @@ type game struct {
 	win     *glfw.Window
 	cam     render.Camera
 	terrain *terrain
+	signs   *signText
 	player  *character.Character
 
 	spawnX, spawnY, spawnZ float64

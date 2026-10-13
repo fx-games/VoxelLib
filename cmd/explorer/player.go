@@ -29,6 +29,11 @@ func (t *terrain) Solid(x, y, z int) bool {
 	return w.Reg.Info(w.Block(x, y, z)).Collides
 }
 
+// Boxes adds stairs, slabs, doors, fences, ... (collide.Boxer).
+func (t *terrain) Boxes(area collide.AABB, out []collide.AABB) []collide.AABB {
+	return t.eng.World.Boxes(area, out)
+}
+
 func (t *terrain) Liquid(x, y, z int) character.Liquid {
 	switch t.eng.World.Reg.Info(t.eng.World.Block(x, y, z)).Name {
 	case "minecraft:water":

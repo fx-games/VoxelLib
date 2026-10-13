@@ -106,7 +106,26 @@ func (p *Pack) Texture(name string) (image.Image, error) {
 // square frames with a .png.mcmeta "animation" section), returns the frames
 // in play order and the ticks (1/20 s) each one is shown. Still textures
 // return one frame and 0.
+//
+// A name ending in "#W:x,y,w,h" is the w×h region at x,y of a sheet laid out
+// W pixels wide (entity textures; scaled for higher resolution packs).
 func (p *Pack) TextureFrames(name string) ([]image.Image, int, error) {
+	if base, region, ok := strings.Cut(name, "#"); ok {
+		img, err := p.Texture(base)
+		if err != nil {
+			return nil, 0, err
+		}
+		var sw, x, y, w, h int
+		if _, err := fmt.Sscanf(region, "%d:%d,%d,%d,%d", &sw, &x, &y, &w, &h); err != nil || sw <= 0 {
+			return nil, 0, fmt.Errorf("mcres: bad region %q", name)
+		}
+		b := img.Bounds()
+		k := float64(b.Dx()) / float64(sw)
+		r := image.Rect(int(float64(x)*k), int(float64(y)*k), int(float64(x+w)*k), int(float64(y+h)*k)).Add(b.Min)
+		out := image.NewNRGBA(image.Rect(0, 0, r.Dx(), r.Dy()))
+		draw.Draw(out, out.Bounds(), img, r.Min, draw.Src)
+		return []image.Image{out}, 0, nil
+	}
 	ns, rel := splitID(name)
 	file := path.Join("assets", ns, "textures", rel+".png")
 	f, err := p.open(file)
@@ -188,7 +207,10 @@ func MissingTexture(size int) image.Image {
 }
 
 // IsGreyscale reports whether an image has (almost) no colour, which is how
-// vanilla marks biome-tinted textures. Used to decide whether to tint.
+// packs mark biome-tinted textures. Used to decide whether to tint. Vanilla
+// style packs often keep a faint warm cast (Pixel Perfection's leaves are
+// 175,163,140), so "almost" is a saturation below 30%; textures a pack has
+// painted green are far above that.
 func IsGreyscale(img image.Image) bool {
 	b := img.Bounds()
 	for y := b.Min.Y; y < b.Max.Y; y++ {
@@ -198,7 +220,7 @@ func IsGreyscale(img image.Image) bool {
 				continue
 			}
 			mx, mn := max(r, g, bl), min(r, g, bl)
-			if mx-mn > 0x1800 {
+			if mx-mn > 0x1800 && (mx-mn)*10 > mx*3 {
 				return false
 			}
 		}

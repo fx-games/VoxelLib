@@ -55,7 +55,9 @@ type Chunk struct {
 	Lit bool
 	// Modified marks the chunk for saving.
 	Modified bool
-	minY     int
+	// Signs holds sign text by absolute block position (read-only: not saved).
+	Signs map[BlockPos][4]string
+	minY  int
 }
 
 func newChunk(pos ChunkPos, minY, height int) *Chunk {
