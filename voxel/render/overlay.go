@@ -3,7 +3,7 @@ package render
 import (
 	"image"
 
-	"github.com/go-gl/gl/v3.3-core/gl"
+	"github.com/memmaker/voxellib/platform/gl"
 )
 
 // Overlay draws a 2D image over the frame in pixel coordinates, for HUD

@@ -4,7 +4,7 @@ import (
 	"math"
 	"time"
 
-	"github.com/go-gl/glfw/v3.3/glfw"
+	"github.com/memmaker/voxellib/platform/glfw"
 )
 
 // Debug keys (also listed in README.md):
@@ -27,6 +27,10 @@ func (g *game) setupInput() {
 				g.capture(false)
 			} else {
 				w.SetShouldClose(true)
+			}
+		case k == glfw.KeyE:
+			if h, ok := g.target(); ok {
+				g.toggleDoor(h.Block)
 			}
 		case k == glfw.KeyF:
 			p.ToggleFly()

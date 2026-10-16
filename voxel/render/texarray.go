@@ -4,7 +4,7 @@ import (
 	"image"
 	"image/color"
 
-	"github.com/go-gl/gl/v3.3-core/gl"
+	"github.com/memmaker/voxellib/platform/gl"
 )
 
 // TextureSource supplies block textures by resource name ("block/stone").

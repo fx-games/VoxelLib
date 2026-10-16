@@ -5,6 +5,7 @@ package audio
 import (
 	"encoding/binary"
 	"math"
+	"runtime"
 	"sync"
 	"time"
 
@@ -60,7 +61,9 @@ func New() (*Mixer, error) {
 	if err != nil {
 		return nil, err
 	}
-	<-ready
+	if runtime.GOOS != "js" {
+		<-ready // in the browser the context only resumes after a user gesture; oto waits for it
+	}
 	m := &Mixer{ctx: ctx}
 	m.player = ctx.NewPlayer(m)
 	m.player.SetBufferSize(int(SampleRate * latency.Seconds() * 8))

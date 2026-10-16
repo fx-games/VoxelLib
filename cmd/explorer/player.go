@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/go-gl/glfw/v3.3/glfw"
+	"github.com/memmaker/voxellib/platform/glfw"
 	"github.com/memmaker/voxellib/character"
 	"github.com/memmaker/voxellib/voxel"
 	"github.com/memmaker/voxellib/voxel/collide"
@@ -134,7 +134,7 @@ func (g *game) target() (physics.Hit, bool) {
 func (g *game) breakBlock() {
 	g.breakCD = 5
 	h, ok := g.target()
-	if !ok || g.eng.World.Reg.Info(h.State).Name == "minecraft:bedrock" {
+	if !ok || g.eng.World.Reg.Info(h.State).Name == "minecraft:bedrock" || g.toggleDoor(h.Block) {
 		return
 	}
 	g.swing = 6
@@ -150,9 +150,6 @@ func (g *game) placeBlock() {
 	g.placeCD = 4
 	h, ok := g.target()
 	if !ok {
-		return
-	}
-	if g.toggleDoor(h.Block) {
 		return
 	}
 	p := h.Block
@@ -171,8 +168,8 @@ func (g *game) placeBlock() {
 	g.eng.SetBlock(p.X, p.Y, p.Z, id)
 }
 
-// toggleDoor opens or closes the door at p, both halves, as a right click
-// does in Minecraft; false if p is not a door.
+// toggleDoor opens or closes the door at p, both halves (left click or E);
+// false if p is not a door.
 func (g *game) toggleDoor(p voxel.BlockPos) bool {
 	reg := g.eng.World.Reg
 	info := reg.Info(g.eng.Block(p.X, p.Y, p.Z))
@@ -194,7 +191,7 @@ func (g *game) toggleDoor(p voxel.BlockPos) bool {
 		pr["open"] = open
 		g.eng.SetBlock(p.X, y, p.Z, reg.State(info.Name, pr))
 	}
-	g.placeCD, g.swing = 6, 6
+	g.breakCD, g.swing = math.MaxInt32, 6 // holding the button doesn't flap it; the next click resets this
 	return true
 }
 

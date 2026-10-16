@@ -4,7 +4,7 @@ import (
 	"sort"
 	"unsafe"
 
-	"github.com/go-gl/gl/v3.3-core/gl"
+	"github.com/memmaker/voxellib/platform/gl"
 	"github.com/memmaker/voxellib/voxel/mesh"
 )
 

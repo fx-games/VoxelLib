@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/go-gl/gl/v3.3-core/gl"
+	"github.com/memmaker/voxellib/platform/gl"
 )
 
 func compile(src string, kind uint32) (uint32, error) {
