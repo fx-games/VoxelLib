@@ -1,3 +1,8 @@
+// Package render draws voxel.World meshes. The default backend is OpenGL 3.3
+// core (files *_gl.go), which needs a current GL context on the calling
+// goroutine. Building with -tags wgpu selects the WebGPU backend
+// (gogpu/wgpu, files *_wgpu.go) instead. Culling, sorting and buffer
+// management are shared (this file, region.go, texarray.go).
 package render
 
 import (
@@ -5,9 +10,7 @@ import (
 	"math"
 	"sort"
 	"time"
-	"unsafe"
 
-	"github.com/memmaker/voxellib/platform/gl"
 	"github.com/go-gl/mathgl/mgl32"
 	"github.com/memmaker/voxellib/voxel"
 	"github.com/memmaker/voxellib/voxel/mesh"
@@ -74,6 +77,14 @@ type section struct {
 	quads   int
 }
 
+// drawBatch is one multidraw: ranges counts[first:first+n] / bases[...] of a
+// region page, drawn with the given layer's state.
+type drawBatch struct {
+	reg      *region
+	layer    voxel.Layer
+	first, n int
+}
+
 // Renderer owns all GPU state for one world.
 type Renderer struct {
 	Opt   Options
@@ -86,10 +97,7 @@ type Renderer struct {
 	texVersion uint64
 	cfg        *mesh.Config
 
-	terrain, sky, lines *program
-	ebo                 uint32
-	emptyVAO            uint32
-	lineVAO, lineVBO    uint32
+	gpu gpuRenderer // backend state
 
 	regions  map[[3]int][]*region // pages per region key
 	sections map[voxel.SectionPos]*section
@@ -103,9 +111,10 @@ type Renderer struct {
 	visible          []*section
 	camX, camY, camZ float64
 
-	counts []int32
-	bases  []int32
-	ptrs   []unsafe.Pointer
+	// draw lists for this frame: index counts and base vertices per range
+	counts  []int32
+	bases   []int32
+	batches []drawBatch
 
 	frame   uint64
 	retired []retired
@@ -137,12 +146,32 @@ type bfsNode struct {
 // maxQuadsPerDraw sizes the shared quad index buffer.
 const maxQuadsPerDraw = 1 << 15
 
-// New creates a renderer. A GL 3.3 core context must be current; gl.Init is
-// called here.
-func New(w *voxel.World, src TextureSource, opt Options) (*Renderer, error) {
-	if err := gl.Init(); err != nil {
-		return nil, err
+// quadIndices is the shared quad index buffer (0,1,2, 2,3,0) + 4k, like
+// Minecraft's sequential index buffer: every section reuses it via base
+// vertex.
+func quadIndices() []uint32 {
+	idx := make([]uint32, maxQuadsPerDraw*6)
+	for q := 0; q < maxQuadsPerDraw; q++ {
+		b := uint32(q * 4)
+		copy(idx[q*6:], []uint32{b, b + 1, b + 2, b + 2, b + 3, b})
 	}
+	return idx
+}
+
+// lineVertices are the static line vertices: unit-cube edges (24 vertices)
+// then the crosshair (4). Both are placed with an MVP matrix.
+func lineVertices() []float32 {
+	var lv []float32
+	corner := func(i int) []float32 { return []float32{float32(i & 1), float32(i >> 1 & 1), float32(i >> 2 & 1)} }
+	for _, e := range [12][2]int{{0, 1}, {2, 3}, {4, 5}, {6, 7}, {0, 2}, {1, 3}, {4, 6}, {5, 7}, {0, 4}, {1, 5}, {2, 6}, {3, 7}} {
+		lv = append(append(lv, corner(e[0])...), corner(e[1])...)
+	}
+	return append(lv, -1, 0, 0, 1, 0, 0, 0, -1, 0, 0, 1, 0)
+}
+
+// New creates a renderer. With the GL backend a GL 3.3 core context must be
+// current (gl.Init is called here); with wgpu, Init must have been called.
+func New(w *voxel.World, src TextureSource, opt Options) (*Renderer, error) {
 	r := &Renderer{Opt: opt, world: w, src: src,
 		regions: map[[3]int][]*region{}, sections: map[voxel.SectionPos]*section{}, columns: map[voxel.ChunkPos]int{}}
 	if r.Opt.RenderDistance == 0 {
@@ -158,45 +187,9 @@ func New(w *voxel.World, src TextureSource, opt Options) (*Renderer, error) {
 	if r.Opt.SunDir == (mgl32.Vec3{}) {
 		r.Opt.SunDir = mgl32.Vec3{0.4, 0.8, -0.45}.Normalize()
 	}
-	var err error
-	if r.terrain, err = newProgram(terrainVS, terrainFS); err != nil {
+	if err := r.initGPU(); err != nil {
 		return nil, err
 	}
-	if r.sky, err = newProgram(skyVS, skyFS); err != nil {
-		return nil, err
-	}
-	if r.lines, err = newProgram(lineVS, lineFS); err != nil {
-		return nil, err
-	}
-	// Shared quad index buffer (0,1,2, 2,3,0) + 4k, like Minecraft's
-	// sequential index buffer: every section reuses it via base vertex.
-	idx := make([]uint32, maxQuadsPerDraw*6)
-	for q := 0; q < maxQuadsPerDraw; q++ {
-		b := uint32(q * 4)
-		copy(idx[q*6:], []uint32{b, b + 1, b + 2, b + 2, b + 3, b})
-	}
-	gl.GenBuffers(1, &r.ebo)
-	gl.BindBuffer(gl.ELEMENT_ARRAY_BUFFER, r.ebo)
-	gl.BufferData(gl.ELEMENT_ARRAY_BUFFER, len(idx)*4, gl.Ptr(idx), gl.STATIC_DRAW)
-	gl.GenVertexArrays(1, &r.emptyVAO)
-
-	gl.GenVertexArrays(1, &r.lineVAO)
-	gl.GenBuffers(1, &r.lineVBO)
-	gl.BindVertexArray(r.lineVAO)
-	gl.BindBuffer(gl.ARRAY_BUFFER, r.lineVBO)
-	// Static: unit-cube edges (24 vertices) then the crosshair (4). Both are
-	// placed with uMVP; rewriting a buffer the GPU still reads stalls macOS.
-	var lv []float32
-	corner := func(i int) []float32 { return []float32{float32(i & 1), float32(i >> 1 & 1), float32(i >> 2 & 1)} }
-	for _, e := range [12][2]int{{0, 1}, {2, 3}, {4, 5}, {6, 7}, {0, 2}, {1, 3}, {4, 6}, {5, 7}, {0, 4}, {1, 5}, {2, 6}, {3, 7}} {
-		lv = append(append(lv, corner(e[0])...), corner(e[1])...)
-	}
-	lv = append(lv, -1, 0, 0, 1, 0, 0, 0, -1, 0, 0, 1, 0)
-	gl.BufferData(gl.ARRAY_BUFFER, len(lv)*4, gl.Ptr(lv), gl.STATIC_DRAW)
-	gl.EnableVertexAttribArray(0)
-	gl.VertexAttribPointerWithOffset(0, 3, gl.FLOAT, false, 12, 0)
-	gl.BindVertexArray(0)
-
 	r.start = time.Now()
 	r.reloadTextures()
 	return r, nil
@@ -261,7 +254,7 @@ func (r *Renderer) Upload(m *mesh.Mesh) {
 		}
 	}
 	if reg == nil {
-		reg = newRegion(key, r.ebo, max(pageVerts, s.n+s.transN))
+		reg = r.newRegion(key, max(pageVerts, s.n+s.transN))
 		r.regions[key] = append(r.regions[key], reg)
 		s.off, s.tOff, _ = reg.allocPair(s.n, s.transN)
 	}
@@ -288,8 +281,7 @@ func (r *Renderer) sortSection(s *section, fresh bool) {
 		s.tOff = off
 		s.reg.upload(off, data)
 	} else {
-		gl.BindBuffer(gl.ARRAY_BUFFER, s.reg.vbo)
-		gl.BufferSubData(gl.ARRAY_BUFFER, s.tOff*vertexBytes, len(data)*4, gl.Ptr(data))
+		s.reg.overwrite(s.tOff, data)
 	}
 	s.sortPos = [3]float64{r.camX, r.camY, r.camZ}
 }
@@ -446,46 +438,16 @@ func (r *Renderer) Render(cam *Camera) {
 	}
 	vp := cam.ViewProj()
 	fr := makeFrustum(vp)
-
-	gl.Enable(gl.DEPTH_TEST)
-	gl.DepthFunc(gl.LEQUAL)
-	gl.Enable(gl.CULL_FACE)
-	gl.CullFace(gl.BACK)
-	gl.FrontFace(gl.CCW)
-
-	fog := r.CurrentFog()
-	skyCol, fogCol := r.Opt.SkyColor.Mul(0.04+0.96*r.Opt.Daylight), fog.Color
-	if r.Opt.Fog != nil {
-		skyCol = fog.Color
-	}
-	gl.DepthMask(false)
-	r.sky.use()
-	inv := vp.Inv()
-	gl.UniformMatrix4fv(r.sky.loc("uInvViewProj"), 1, false, &inv[0])
-	gl.Uniform3fv(r.sky.loc("uFogColor"), 1, &fogCol[0])
-	gl.Uniform3fv(r.sky.loc("uSkyColor"), 1, &skyCol[0])
-	gl.Uniform3fv(r.sky.loc("uSunDir"), 1, &r.Opt.SunDir[0])
-	gl.BindVertexArray(r.emptyVAO)
-	gl.DrawArrays(gl.TRIANGLES, 0, 3)
-	gl.DepthMask(true)
-
 	r.cullVisible(&fr)
-
-	p := r.terrain
-	p.use()
-	gl.UniformMatrix4fv(p.loc("uViewProj"), 1, false, &vp[0])
-	gl.Uniform1f(p.loc("uDaylight"), r.Opt.Daylight)
-	gl.Uniform1f(p.loc("uBlockBright"), r.Opt.BlockBrightness)
-	gl.Uniform3fv(p.loc("uFogColor"), 1, &fogCol[0])
-	gl.Uniform2f(p.loc("uFog"), fog.Start, fog.End)
-	gl.Uniform1i(p.loc("uTex"), 0)
-	gl.Uniform1i(p.loc("uLayerMap"), 1)
-	gl.ActiveTexture(gl.TEXTURE1)
 	r.tex.animate(int(time.Since(r.start) / (50 * time.Millisecond)))
-	gl.BindTexture(gl.TEXTURE_2D, r.tex.layerMap)
-	gl.ActiveTexture(gl.TEXTURE0)
-	gl.BindTexture(gl.TEXTURE_2D_ARRAY, r.tex.id)
+	r.buildBatches()
+	r.drawTerrain(vp)
+}
 
+// buildBatches fills r.batches with the frame's multidraws: solid then
+// cutout per region (near to far), then translucent far to near, re-sorting
+// nearby sections when the camera moved.
+func (r *Renderer) buildBatches() {
 	st := &r.Stats
 	st.DrawCalls, st.DrawRanges, st.Quads = 0, 0, 0
 	st.Visible = len(r.visible)
@@ -514,15 +476,17 @@ func (r *Renderer) Render(cam *Camera) {
 		st.Quads += s.quads
 	}
 
-	gl.Disable(gl.BLEND)
-	for layer := voxel.LayerSolid; layer < voxel.LayerTranslucent; layer++ {
-		cut := float32(0)
-		if layer == voxel.LayerCutout {
-			cut = 0.5
+	r.counts, r.bases, r.batches = r.counts[:0], r.bases[:0], r.batches[:0]
+	flush := func(reg *region, layer voxel.Layer, first int) {
+		if n := len(r.counts) - first; n > 0 {
+			r.batches = append(r.batches, drawBatch{reg, layer, first, n})
+			st.DrawCalls++
+			st.DrawRanges += n
 		}
-		gl.Uniform1f(p.loc("uAlphaCut"), cut)
+	}
+	for layer := voxel.LayerSolid; layer < voxel.LayerTranslucent; layer++ {
 		for _, reg := range order {
-			r.counts, r.bases = r.counts[:0], r.bases[:0]
+			first := len(r.counts)
 			for _, s := range bucket[reg] {
 				o := s.pos.Origin()
 				ox, oy, oz := float64(o.X)-r.camX, float64(o.Y)-r.camY, float64(o.Z)-r.camZ
@@ -535,19 +499,13 @@ func (r *Renderer) Render(cam *Camera) {
 					r.bases = append(r.bases, int32(s.off+rg.First))
 				}
 			}
-			r.multiDraw(reg)
+			flush(reg, layer, first)
 		}
 	}
 
-	// Translucent: far to near, re-sorting nearby sections when the camera
-	// moved, depth writes off.
-	gl.Enable(gl.BLEND)
-	gl.BlendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA)
-	gl.DepthMask(false)
-	gl.Uniform1f(p.loc("uAlphaCut"), 0.01)
 	resorts := 0
 	var cur *region
-	r.counts, r.bases = r.counts[:0], r.bases[:0]
+	first := len(r.counts)
 	for i := len(r.visible) - 1; i >= 0; i-- {
 		s := r.visible[i]
 		if s.transN == 0 || s.reg == nil {
@@ -559,19 +517,36 @@ func (r *Renderer) Render(cam *Camera) {
 			resorts++
 		}
 		if s.reg != cur && cur != nil {
-			r.multiDraw(cur)
-			r.counts, r.bases = r.counts[:0], r.bases[:0]
+			flush(cur, voxel.LayerTranslucent, first)
+			first = len(r.counts)
 		}
 		cur = s.reg
 		r.counts = append(r.counts, int32(s.transN/4*6))
 		r.bases = append(r.bases, int32(s.tOff))
 	}
 	if cur != nil {
-		r.multiDraw(cur)
+		flush(cur, voxel.LayerTranslucent, first)
 	}
-	gl.DepthMask(true)
-	gl.Disable(gl.BLEND)
-	gl.BindVertexArray(0)
+}
+
+// regionOrigin is a region's origin relative to the camera.
+func (r *Renderer) regionOrigin(reg *region) mgl32.Vec3 {
+	o := reg.key
+	return mgl32.Vec3{
+		float32(float64(o[0]*mesh.RegionX*16) - r.camX),
+		float32(float64(o[1]*mesh.RegionY*16) - r.camY),
+		float32(float64(o[2]*mesh.RegionZ*16) - r.camZ),
+	}
+}
+
+// skyColors returns the sky's zenith and horizon colours for this frame.
+func (r *Renderer) skyColors() (sky, fog mgl32.Vec3) {
+	f := r.CurrentFog()
+	sky = r.Opt.SkyColor.Mul(0.04 + 0.96*r.Opt.Daylight)
+	if r.Opt.Fog != nil {
+		sky = f.Color
+	}
+	return sky, f.Color
 }
 
 func (r *Renderer) near(s *section, dist float64) bool {
@@ -602,58 +577,17 @@ func groupVisible(g int, ox, oy, oz float64) bool {
 	return true
 }
 
-func (r *Renderer) multiDraw(reg *region) {
-	n := len(r.counts)
-	if n == 0 {
-		return
-	}
-	if len(r.ptrs) < n {
-		r.ptrs = make([]unsafe.Pointer, n*2)
-	}
-	o := reg.key
-	origin := mgl32.Vec3{
-		float32(float64(o[0]*mesh.RegionX*16) - r.camX),
-		float32(float64(o[1]*mesh.RegionY*16) - r.camY),
-		float32(float64(o[2]*mesh.RegionZ*16) - r.camZ),
-	}
-	gl.Uniform3fv(r.terrain.loc("uRegionOrigin"), 1, &origin[0])
-	gl.BindVertexArray(reg.vao)
-	gl.MultiDrawElementsBaseVertex(gl.TRIANGLES, &r.counts[0], gl.UNSIGNED_INT, &r.ptrs[0], int32(n), &r.bases[0])
-	r.Stats.DrawCalls++
-	r.Stats.DrawRanges += n
-}
-
-// DrawBlockOutline draws a wireframe box around a block (Minecraft's
-// selection outline).
-func (r *Renderer) DrawBlockOutline(cam *Camera, x, y, z int) {
+// outlineMVP places the unit cube of line vertices around a block.
+func outlineMVP(cam *Camera, x, y, z int) mgl32.Mat4 {
 	const e = 0.002
 	o := mgl32.Vec3{float32(float64(x)-cam.X) - e, float32(float64(y)-cam.Y) - e, float32(float64(z)-cam.Z) - e}
-	m := cam.ViewProj().Mul4(mgl32.Translate3D(o[0], o[1], o[2])).Mul4(mgl32.Scale3D(1+2*e, 1+2*e, 1+2*e))
-	gl.Enable(gl.BLEND)
-	gl.BlendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA)
-	r.drawLines(0, 24, m, mgl32.Vec4{0, 0, 0, 0.6})
-	gl.Disable(gl.BLEND)
+	return cam.ViewProj().Mul4(mgl32.Translate3D(o[0], o[1], o[2])).Mul4(mgl32.Scale3D(1+2*e, 1+2*e, 1+2*e))
 }
 
-// DrawCrosshair draws a screen-centre cross; aspect = width/height.
-func (r *Renderer) DrawCrosshair(aspect float32) {
+// crosshairMVP scales the crosshair lines; aspect = width/height.
+func crosshairMVP(aspect float32) mgl32.Mat4 {
 	const s = 0.025
-	gl.Disable(gl.DEPTH_TEST)
-	gl.Enable(gl.BLEND)
-	gl.BlendFunc(gl.ONE_MINUS_DST_COLOR, gl.ZERO)
-	r.drawLines(24, 4, mgl32.Scale3D(s/aspect, s, 1), mgl32.Vec4{1, 1, 1, 1})
-	gl.Disable(gl.BLEND)
-	gl.Enable(gl.DEPTH_TEST)
-}
-
-func (r *Renderer) drawLines(first, n int32, mvp mgl32.Mat4, col mgl32.Vec4) {
-	r.lines.use()
-	gl.UniformMatrix4fv(r.lines.loc("uMVP"), 1, false, &mvp[0])
-	gl.Uniform4fv(r.lines.loc("uColor"), 1, &col[0])
-	gl.BindVertexArray(r.lineVAO)
-	gl.LineWidth(1)
-	gl.DrawArrays(gl.LINES, first, n)
-	gl.BindVertexArray(0)
+	return mgl32.Scale3D(s/aspect, s, 1)
 }
 
 // VisibleSections returns positions drawn last frame (debugging/tests).
@@ -676,5 +610,5 @@ func (r *Renderer) Destroy() {
 	r.regions = map[[3]int][]*region{}
 	r.sections = map[voxel.SectionPos]*section{}
 	r.tex.delete()
-	gl.DeleteBuffers(1, &r.ebo)
+	r.destroyGPU()
 }

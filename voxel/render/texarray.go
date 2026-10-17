@@ -3,8 +3,6 @@ package render
 import (
 	"image"
 	"image/color"
-
-	"github.com/memmaker/voxellib/platform/gl"
 )
 
 // TextureSource supplies block textures by resource name ("block/stone").
@@ -23,17 +21,18 @@ type AnimatedTextureSource interface {
 // anim is one animated texture: frames 1.. live in layers extra.. .
 type anim struct{ base, extra, count, ticks int }
 
-// textureArray holds every block texture as one layer of a GL_TEXTURE_2D_ARRAY:
-// no atlas bleeding, and greedy-merged quads can tile a texture with GL_REPEAT.
+// textureArray holds every block texture as one layer of a 2D array texture:
+// no atlas bleeding, and greedy-merged quads can tile a texture with repeat
+// wrapping.
 type textureArray struct {
-	id       uint32
+	gpu      gpuTexArray
 	size     int
 	layers   int
+	levels   int // highest mip level
 	tintable []bool
-	// Animation: the shader looks every layer up in layerMap (a 1-row R16UI
-	// texture) so animated layers can point at their current frame.
+	// Animation: the shader looks every layer up in a layer map (a 1-row
+	// R16UI texture) so animated layers can point at their current frame.
 	anims    []anim
-	layerMap uint32
 	mapPix   []uint16
 	lastTick int
 }
@@ -121,20 +120,15 @@ func newTextureArray(names []string, src TextureSource, missing func(int) image.
 	tint := make([]bool, len(names))
 	imgs = append(imgs, extra...)
 	ta := &textureArray{size: size, layers: len(imgs), anims: anims, lastTick: -1}
-	gl.GenTextures(1, &ta.id)
-	gl.BindTexture(gl.TEXTURE_2D_ARRAY, ta.id)
-	levels := mipLevels
-	for s := size; s>>levels == 0; levels-- {
+	ta.levels = mipLevels
+	for s := size; s>>ta.levels == 0; ta.levels-- {
 	}
-	gl.TexParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MIN_FILTER, gl.NEAREST_MIPMAP_LINEAR)
-	gl.TexParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MAG_FILTER, gl.NEAREST)
-	gl.TexParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_S, gl.REPEAT)
-	gl.TexParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_T, gl.REPEAT)
-	gl.TexParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MAX_LEVEL, int32(levels))
-	for l := 0; l <= levels; l++ {
-		s := size >> l
-		gl.TexImage3D(gl.TEXTURE_2D_ARRAY, int32(l), gl.RGBA8, int32(s), int32(s), int32(len(imgs)), 0, gl.RGBA, gl.UNSIGNED_BYTE, nil)
+	ta.mapPix = make([]uint16, len(imgs))
+	for i := range ta.mapPix {
+		ta.mapPix[i] = uint16(i)
 	}
+	ta.allocGPU()
+	mips := make([][]byte, ta.levels+1)
 	for i, img := range imgs {
 		if img == nil {
 			img = missing(size)
@@ -142,27 +136,16 @@ func newTextureArray(names []string, src TextureSource, missing func(int) image.
 			tint[i] = isGrey(img)
 		}
 		px := toNRGBA(img, size).Pix
-		for l := 0; l <= levels; l++ {
-			s := size >> l
-			gl.TexSubImage3D(gl.TEXTURE_2D_ARRAY, int32(l), 0, 0, int32(i), int32(s), int32(s), 1, gl.RGBA, gl.UNSIGNED_BYTE, gl.Ptr(px))
-			if l < levels {
-				px = downsample(px, s)
+		for l := 0; l <= ta.levels; l++ {
+			mips[l] = px
+			if l < ta.levels {
+				px = downsample(px, size>>l)
 			}
 		}
+		ta.uploadLayer(i, mips)
 	}
 	ta.tintable = tint
-
-	ta.mapPix = make([]uint16, len(imgs))
-	for i := range ta.mapPix {
-		ta.mapPix[i] = uint16(i)
-	}
-	gl.GenTextures(1, &ta.layerMap)
-	gl.BindTexture(gl.TEXTURE_2D, ta.layerMap)
-	gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST)
-	gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST)
-	gl.PixelStorei(gl.UNPACK_ALIGNMENT, 2)
-	gl.TexImage2D(gl.TEXTURE_2D, 0, gl.R16UI, int32(len(imgs)), 1, 0, gl.RED_INTEGER, gl.UNSIGNED_SHORT, gl.Ptr(ta.mapPix))
-	gl.PixelStorei(gl.UNPACK_ALIGNMENT, 4)
+	ta.uploadMap()
 	return ta
 }
 
@@ -185,14 +168,6 @@ func (t *textureArray) animate(tick int) {
 		}
 	}
 	if changed {
-		gl.BindTexture(gl.TEXTURE_2D, t.layerMap)
-		gl.PixelStorei(gl.UNPACK_ALIGNMENT, 2)
-		gl.TexSubImage2D(gl.TEXTURE_2D, 0, 0, 0, int32(len(t.mapPix)), 1, gl.RED_INTEGER, gl.UNSIGNED_SHORT, gl.Ptr(t.mapPix))
-		gl.PixelStorei(gl.UNPACK_ALIGNMENT, 4)
+		t.uploadMap()
 	}
-}
-
-func (t *textureArray) delete() {
-	gl.DeleteTextures(1, &t.id)
-	gl.DeleteTextures(1, &t.layerMap)
 }

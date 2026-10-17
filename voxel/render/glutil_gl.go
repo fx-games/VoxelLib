@@ -1,3 +1,5 @@
+//go:build !wgpu
+
 // Package render draws voxel.World meshes with OpenGL 3.3 core. It needs a
 // current GL context on the calling goroutine (the main thread with GLFW).
 package render

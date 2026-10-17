@@ -1,3 +1,5 @@
+//go:build !wgpu
+
 package render
 
 const terrainVS = `#version 330 core

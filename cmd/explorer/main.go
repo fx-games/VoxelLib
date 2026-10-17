@@ -31,8 +31,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/memmaker/voxellib/platform/glfw"
 	"github.com/memmaker/voxellib/character"
+	"github.com/memmaker/voxellib/platform/glfw"
 	"github.com/memmaker/voxellib/voxel"
 	"github.com/memmaker/voxellib/voxel/engine"
 	"github.com/memmaker/voxellib/voxel/mcres"
@@ -75,6 +75,7 @@ func main() {
 		autofly  = flag.Float64("autofly", 0, "debug: fly forward automatically at this many blocks/s (streaming stress test)")
 		cpuprof  = flag.String("cpuprofile", "", "write a CPU profile")
 		verbose  = flag.Bool("verbose", false, "print frame stats to stdout")
+		bench    = flag.Duration("bench", 0, "quit after this long and print the mean frame time (runs unfocused, mouse free)")
 		lineup   = flag.Bool("lineup", false, "debug: line up one standing creature per species in front of the start position")
 		speciesF = flag.String("species", "", "debug: only spawn species whose name contains this")
 		animF    = flag.String("anim", "", "debug: force this clip on lined-up creatures")
@@ -95,26 +96,26 @@ func main() {
 		log.Fatal(err)
 	}
 	defer glfw.Terminate()
-	glfw.WindowHint(glfw.ContextVersionMajor, 3)
-	glfw.WindowHint(glfw.ContextVersionMinor, 3)
-	glfw.WindowHint(glfw.OpenGLProfile, glfw.OpenGLCoreProfile)
-	glfw.WindowHint(glfw.OpenGLForwardCompatible, glfw.True)
-	glfw.WindowHint(glfw.Samples, 0)
-	if *shot != "" {
+	render.WindowHints()
+	automated := *shot != "" || *autofly > 0 || *bench > 0
+	if automated {
 		// Automated run: don't take focus from whatever the user is doing.
 		glfw.WindowHint(glfw.Focused, glfw.False)
 		glfw.WindowHint(glfw.FocusOnShow, glfw.False)
+	}
+	if *bench > 0 {
+		// On top but unfocused: macOS throttles occluded Metal windows.
+		glfw.WindowHint(glfw.Floating, glfw.True)
 	}
 	win, err := glfw.CreateWindow(1280, 720, "voxellib explorer", nil, nil)
 	if err != nil {
 		log.Fatal(err)
 	}
-	win.MakeContextCurrent()
+	if err := render.Init(win, *vsync == "on"); err != nil {
+		log.Fatal(err)
+	}
 	frameLimit := time.Duration(0)
-	if *vsync == "on" {
-		glfw.SwapInterval(1)
-	} else {
-		glfw.SwapInterval(0)
+	if *vsync != "on" {
 		if *vsync == "limit" {
 			hz := 120 // never pace slower than this: 8.3ms frames
 			if m := glfw.GetPrimaryMonitor(); m != nil && m.GetVideoMode().RefreshRate > hz {
@@ -164,7 +165,7 @@ func main() {
 	defer eng.Close()
 
 	g := &game{eng: eng, win: win, verbose: *verbose, edits: *edits, autofly: *autofly,
-		frameLimit: frameLimit}
+		frameLimit: frameLimit, automated: automated, bench: *bench}
 	g.held, g.itemsLeft = *hold, *numItems
 	g.terrain = &terrain{eng: eng}
 	for _, n := range hotbarNames {
@@ -265,7 +266,10 @@ type game struct {
 	verbose bool
 	edits   string
 	autofly float64
-	stats   frameStats
+	// automated runs never grab the mouse; bench > 0 quits after that long.
+	automated bool
+	bench     time.Duration
+	stats     frameStats
 	// frameLimit paces frames without GL vsync (0 = unlimited).
 	frameLimit time.Duration
 }

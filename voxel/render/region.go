@@ -2,9 +2,7 @@ package render
 
 import (
 	"sort"
-	"unsafe"
 
-	"github.com/memmaker/voxellib/platform/gl"
 	"github.com/memmaker/voxellib/voxel/mesh"
 )
 
@@ -79,53 +77,23 @@ func (a *arena) used() int {
 	return u
 }
 
-// region is one fixed-size VAO/VBO page shared by sections of the same 8x4x8
-// region. Sections draw from it with one glMultiDrawElementsBaseVertex per
-// layer. A full region gets another page rather than growing: growing needs a
-// GPU read-back on macOS (no glCopyBufferSubData), which stalls the frame.
+// region is one fixed-size vertex buffer page shared by sections of the same
+// 8x4x8 region. Sections draw from it with one multidraw per layer. A full
+// region gets another page rather than growing: growing needs a GPU
+// read-back on macOS GL (no glCopyBufferSubData), which stalls the frame.
 type region struct {
 	key      [3]int
-	vao, vbo uint32
+	gpu      gpuRegion
 	arena    arena
 	sections map[uint32]*section // by region index
 	dead     bool
-	// scratch for multidraw
-	counts []int32
-	bases  []int32
 }
 
-func newRegion(key [3]int, ebo uint32, initial int) *region {
-	r := &region{key: key, sections: map[uint32]*section{}}
-	gl.GenVertexArrays(1, &r.vao)
-	gl.BindVertexArray(r.vao)
-	gl.GenBuffers(1, &r.vbo)
-	gl.BindBuffer(gl.ARRAY_BUFFER, r.vbo)
-	gl.BufferData(gl.ARRAY_BUFFER, initial*vertexBytes, nil, gl.STATIC_DRAW)
-	gl.EnableVertexAttribArray(0)
-	gl.VertexAttribIPointerWithOffset(0, 4, gl.UNSIGNED_INT, vertexBytes, 0)
-	gl.BindBuffer(gl.ELEMENT_ARRAY_BUFFER, ebo)
-	gl.BindVertexArray(0)
-	r.arena.grow(initial)
-	return r
-}
-
-// upload writes vertices into a range no in-flight draw reads: freshly
-// allocated spans only, since freed spans are retired for a few frames before
-// reuse. That lets it map unsynchronized; glBufferSubData into a buffer the
-// GPU is still drawing from makes Apple's driver stall the next draw call.
-func (r *region) upload(off int, data []uint32) {
-	if len(data) == 0 {
-		return
-	}
-	gl.BindBuffer(gl.ARRAY_BUFFER, r.vbo)
-	ptr := gl.MapBufferRange(gl.ARRAY_BUFFER, off*vertexBytes, len(data)*4,
-		gl.MAP_WRITE_BIT|gl.MAP_UNSYNCHRONIZED_BIT|gl.MAP_INVALIDATE_RANGE_BIT)
-	if ptr == nil {
-		gl.BufferSubData(gl.ARRAY_BUFFER, off*vertexBytes, len(data)*4, gl.Ptr(data))
-		return
-	}
-	copy(unsafe.Slice((*uint32)(ptr), len(data)), data)
-	gl.UnmapBuffer(gl.ARRAY_BUFFER)
+func (r *Renderer) newRegion(key [3]int, initial int) *region {
+	reg := &region{key: key, sections: map[uint32]*section{}}
+	reg.gpu = r.newGPURegion(initial)
+	reg.arena.grow(initial)
+	return reg
 }
 
 // allocPair allocates two spans in this page, or neither.
@@ -147,6 +115,5 @@ func (r *region) allocPair(a, b int) (int, int, bool) {
 
 func (r *region) destroy() {
 	r.dead = true
-	gl.DeleteBuffers(1, &r.vbo)
-	gl.DeleteVertexArrays(1, &r.vao)
+	r.gpu.destroy()
 }

@@ -140,6 +140,9 @@ const (
 	Samples           = glfw.Samples
 	Focused           = glfw.Focused
 	FocusOnShow       = glfw.FocusOnShow
+	Floating          = glfw.Floating
+	ClientAPI         = glfw.ClientAPI
+	NoAPI             = glfw.NoAPI
 )
 
 func RawMouseMotionSupported() bool { return glfw.RawMouseMotionSupported() }

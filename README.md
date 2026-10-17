@@ -78,6 +78,8 @@ in front of you, playing CLIP (`bind` shows the rest pose).
 - `-verbose` prints per-phase worst times every 0.5 s. That includes CPU work per frame up to SwapBuffers and GPU time from a timer query.
 - `-autofly N` flies forward at N blocks/s (vanilla sprint-flying is about 22).
 - `-vsync on|limit|off` sets frame pacing.
+- `-bench 25s` runs unfocused without grabbing the mouse, then prints the frame rate and CPU time per frame.
+- `go build -tags wgpu ./cmd/explorer` builds the WebGPU backend (gogpu/wgpu, Metal on macOS) instead of GL.
 - `-shot file.png -shot-at TICK` saves a screenshot and quits. It never grabs the mouse.
 - `-pos x,y,z`, `-look yaw,pitch`, `-hold ITEM` and `-edits` set up test scenes.
 

@@ -1,6 +1,6 @@
 module github.com/memmaker/voxellib
 
-go 1.23.0
+go 1.25.0
 
 require (
 	github.com/go-gl/gl v0.0.0-20231021071112-07e5d0ea2e71
@@ -10,11 +10,19 @@ require (
 
 require (
 	github.com/ebitengine/oto/v3 v3.3.3
+	github.com/gogpu/gputypes v0.8.0
+	github.com/gogpu/wgpu v0.34.5
 	golang.org/x/image v0.23.0
 )
 
 require (
 	github.com/ebitengine/purego v0.8.4 // indirect
-	golang.org/x/sys v0.30.0 // indirect
+	github.com/go-webgpu/goffi v0.6.3 // indirect
+	github.com/go-webgpu/webgpu v0.5.5 // indirect
+	github.com/gogpu/gpucontext v0.31.3 // indirect
+	github.com/gogpu/naga v0.19.0 // indirect
+	golang.org/x/sys v0.47.0 // indirect
 	golang.org/x/text v0.21.0 // indirect
 )
+
+replace github.com/gogpu/wgpu => github.com/memmaker/wgpu v0.0.0-20261017184224-2a1548dbc903

@@ -8,13 +8,13 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
-	"github.com/memmaker/voxellib/platform/gl"
-	"github.com/memmaker/voxellib/platform/glfw"
 	"github.com/go-gl/mathgl/mgl32"
 	"github.com/memmaker/voxellib/character"
+	"github.com/memmaker/voxellib/platform/glfw"
 	"github.com/memmaker/voxellib/voxel/engine"
 	"github.com/memmaker/voxellib/voxel/render"
 )
@@ -22,10 +22,8 @@ import (
 // frameStats tracks worst-case frame times between title updates.
 type frameStats struct {
 	frameStart time.Time
-	// GPU timer queries, read back 3 frames later so nothing waits.
-	tq     [4]uint32
-	fq     int
-	gpuMax time.Duration
+	gpu        render.GPUTimer
+	gpuMax     time.Duration
 	// cost: CPU work per frame up to SwapBuffers (excludes vsync waits).
 	costMax   time.Duration
 	slowCosts int
@@ -43,7 +41,17 @@ func (g *game) run(shotPath string, shotAt int) {
 	last := time.Now()
 	acc := time.Duration(0)
 	frames, fpsTime := 0, time.Now()
+	start := time.Now()
+	var benchFrames, benchCPU []time.Duration
 	for !g.win.ShouldClose() {
+		if g.bench > 0 {
+			if el := time.Since(start); el > g.bench {
+				printBench(benchFrames, benchCPU)
+				return
+			} else if el > 3*time.Second { // skip startup
+				benchFrames = append(benchFrames, time.Since(last))
+			}
+		}
 		glfw.PollEvents()
 		now := time.Now()
 		st.frameStart = now
@@ -69,9 +77,10 @@ func (g *game) run(shotPath string, shotAt int) {
 		t2 := time.Now()
 
 		fw, fh := g.win.GetFramebufferSize()
-		gl.Viewport(0, 0, int32(fw), int32(fh))
-		gl.ClearColor(0.75, 0.85, 1, 1)
-		gl.Clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
+		if g.shotReq || shotPath != "" && g.tick >= shotAt {
+			render.CaptureNextFrame()
+		}
+		render.BeginFrame(fw, fh, 0.75, 0.85, 1)
 		g.cam.X, g.cam.Y, g.cam.Z = ix, iy+g.player.EyeHeight, iz
 		g.cam.Aspect = float64(fw) / float64(max(fh, 1))
 		opt := &g.eng.Renderer.Opt
@@ -113,7 +122,10 @@ func (g *game) run(shotPath string, shotAt int) {
 			return
 		}
 		t3 := time.Now()
-		g.win.SwapBuffers()
+		if g.bench > 0 && time.Since(start) > 3*time.Second {
+			benchCPU = append(benchCPU, t3.Sub(st.frameStart))
+		}
+		render.EndFrame(g.win)
 		tSwap := time.Now()
 		if g.frameLimit > 0 {
 			// Sleep most of the remainder, spin the last bit for precision.
@@ -185,23 +197,11 @@ func (g *game) updateTitle(fps int) {
 	g.win.SetTitle(title)
 }
 
-// gpuTimer measures f's GPU time with a TIME_ELAPSED query, reading the
-// result of a query issued 3 frames ago so the CPU never waits for it.
+// gpuTimer measures f's GPU time without waiting for the result.
 func (g *game) gpuTimer(f func()) {
-	st := &g.stats
-	if st.tq[0] == 0 {
-		gl.GenQueries(int32(len(st.tq)), &st.tq[0])
+	if d := g.stats.gpu.Measure(f); g.tick > 40 {
+		g.stats.gpuMax = max(g.stats.gpuMax, d)
 	}
-	st.fq++
-	qi := st.fq % len(st.tq)
-	if st.fq > len(st.tq) && g.tick > 40 {
-		var ns uint64
-		gl.GetQueryObjectui64v(st.tq[(qi+1)%len(st.tq)], gl.QUERY_RESULT, &ns)
-		st.gpuMax = max(st.gpuMax, time.Duration(ns))
-	}
-	gl.BeginQuery(gl.TIME_ELAPSED, st.tq[qi])
-	f()
-	gl.EndQuery(gl.TIME_ELAPSED)
 }
 
 // shotDir is where F2 screenshots go.
@@ -216,7 +216,7 @@ func (g *game) saveDebugShot(w, h int) {
 		return
 	}
 	base := filepath.Join(shotDir, time.Now().Format("2006-01-02_15-04-05.000"))
-	img := readFrame(w, h)
+	img := render.ReadFrame(w, h)
 	p := g.player
 	yaw, pitch := g.cam.Yaw*180/math.Pi, g.cam.Pitch*180/math.Pi
 	info := fmt.Sprintf("pos %.2f,%.2f,%.2f\nlook %.1f,%.1f\nflying %v\nheld %q\ntick %d\n"+
@@ -234,7 +234,7 @@ func (g *game) saveDebugShot(w, h int) {
 }
 
 func saveShot(path string, w, h int) {
-	if err := writePNG(path, readFrame(w, h)); err != nil {
+	if err := writePNG(path, render.ReadFrame(w, h)); err != nil {
 		log.Print(err)
 	}
 }
@@ -248,18 +248,24 @@ func writePNG(path string, img image.Image) error {
 	return png.Encode(f, img)
 }
 
-// readFrame reads the back buffer into an opaque, top-down image.
-func readFrame(w, h int) *image.NRGBA {
-	px := make([]byte, w*h*4)
-	gl.ReadPixels(0, 0, int32(w), int32(h), gl.RGBA, gl.UNSIGNED_BYTE, gl.Ptr(px))
-	img := image.NewNRGBA(image.Rect(0, 0, w, h))
-	for y := 0; y < h; y++ {
-		copy(img.Pix[y*w*4:(y+1)*w*4], px[(h-1-y)*w*4:(h-y)*w*4])
-	}
-	for i := 3; i < len(img.Pix); i += 4 {
-		img.Pix[i] = 255
-	}
-	return img
-}
-
 func ms(d time.Duration) float64 { return float64(d.Microseconds()) / 1000 }
+
+// printBench reports -bench: frame interval and CPU cost (frame start to
+// EndFrame), mean and 99th percentile.
+func printBench(frames, cpu []time.Duration) {
+	if len(frames) == 0 || len(cpu) == 0 {
+		return
+	}
+	stat := func(ds []time.Duration) (mean, p99 time.Duration) {
+		var sum time.Duration
+		for _, d := range ds {
+			sum += d
+		}
+		slices.Sort(ds)
+		return sum / time.Duration(len(ds)), ds[len(ds)*99/100]
+	}
+	fm, fp := stat(frames)
+	cm, cp := stat(cpu)
+	fmt.Printf("bench %s: %d frames, %.0f fps, interval mean %.2fms p99 %.2fms, cpu mean %.2fms p99 %.2fms\n",
+		render.Backend, len(frames), float64(time.Second)/float64(fm), ms(fm), ms(fp), ms(cm), ms(cp))
+}

@@ -3,9 +3,7 @@ package render
 import (
 	"image"
 	"math"
-	"unsafe"
 
-	"github.com/memmaker/voxellib/platform/gl"
 	"github.com/go-gl/mathgl/mgl32"
 	"github.com/memmaker/voxellib/items/extrude"
 )
@@ -15,10 +13,7 @@ import (
 // share one texture array and one vertex buffer; each item is a range.
 type ItemRenderer struct {
 	r      *Renderer
-	prog   *program
-	vao    uint32
-	vbo    uint32
-	tex    uint32
+	gpu    gpuItemRenderer
 	index  map[string]int
 	ranges [][2]int32 // first, count per item
 }
@@ -32,62 +27,10 @@ type ItemInstance struct {
 	Sky, Block uint8   // light levels 0..15 at the item
 }
 
-const itemVS = `#version 330 core
-layout(location = 0) in vec3 aPos;
-layout(location = 1) in vec3 aUV;
-layout(location = 2) in vec3 aNormal;
-uniform mat4 uMVP;
-uniform mat4 uModel; // model rotation+scale (camera-relative world space)
-out vec3 vUV;
-out float vShade;
-out float vDist;
-void main() {
-	vec4 wp = uModel * vec4(aPos, 1.0);
-	gl_Position = uMVP * vec4(aPos, 1.0);
-	vUV = aUV;
-	vec3 n = normalize(mat3(uModel) * aNormal);
-	// Minecraft-like fixed directional shading: top bright, bottom dark.
-	vShade = 0.7 + 0.3 * n.y + 0.1 * abs(n.x);
-	vDist = length(wp.xz);
-}
-`
-
-const itemFS = `#version 330 core
-in vec3 vUV;
-in float vShade;
-in float vDist;
-uniform sampler2DArray uTex;
-uniform float uLayer;
-uniform vec2 uLight; // sky, block in 0..1
-uniform float uDaylight;
-uniform vec3 uFogColor;
-uniform vec2 uFog;
-out vec4 fragColor;
-float curve(float l) { return mix(0.04, 1.0, l / (4.0 - 3.0 * l)); }
-// blockCurve is curve for block light, raised toward Minecraft's bright
-// gamma (1-(1-l)^4) by uBlockBright.
-uniform float uBlockBright;
-float blockCurve(float l) { return mix(curve(l), mix(0.04, 1.0, 1.0 - pow(1.0 - l, 4.0)), uBlockBright); }
-void main() {
-	vec4 c = texture(uTex, vec3(vUV.xy, uLayer));
-	if (c.a < 0.5) discard;
-	float sky = curve(uLight.x) * uDaylight;
-	float blk = blockCurve(uLight.y);
-	vec3 light = max(max(vec3(sky) * vec3(0.95, 0.97, 1.0), vec3(blk) * vec3(1.0, 0.86, 0.66)), vec3(0.04));
-	vec3 col = c.rgb * vShade * light;
-	float f = clamp((vDist - uFog.x) / (uFog.y - uFog.x), 0.0, 1.0);
-	fragColor = vec4(mix(col, uFogColor, f * f), 1.0);
-}
-`
-
 // NewItemRenderer extrudes every sprite and uploads them. names[i] is the
 // item ID of imgs[i]. Sprites should share one size; others are rescaled.
 func NewItemRenderer(r *Renderer, names []string, imgs []image.Image) (*ItemRenderer, error) {
-	prog, err := newProgram(itemVS, itemFS)
-	if err != nil {
-		return nil, err
-	}
-	ir := &ItemRenderer{r: r, prog: prog, index: map[string]int{}}
+	ir := &ItemRenderer{r: r, index: map[string]int{}}
 	size := 8
 	for _, img := range imgs {
 		size = max(size, img.Bounds().Dx(), img.Bounds().Dy())
@@ -101,33 +44,12 @@ func NewItemRenderer(r *Renderer, names []string, imgs []image.Image) (*ItemRend
 			verts = append(verts, v.Pos[0], v.Pos[1], v.Pos[2], v.UV[0], v.UV[1], v.Normal[0], v.Normal[1], v.Normal[2])
 		}
 	}
-	gl.GenVertexArrays(1, &ir.vao)
-	gl.BindVertexArray(ir.vao)
-	gl.GenBuffers(1, &ir.vbo)
-	gl.BindBuffer(gl.ARRAY_BUFFER, ir.vbo)
-	if len(verts) > 0 {
-		gl.BufferData(gl.ARRAY_BUFFER, len(verts)*4, gl.Ptr(verts), gl.STATIC_DRAW)
-	}
-	stride := int32(8 * 4)
-	gl.EnableVertexAttribArray(0)
-	gl.VertexAttribPointerWithOffset(0, 3, gl.FLOAT, false, stride, 0)
-	gl.EnableVertexAttribArray(1)
-	gl.VertexAttribPointerWithOffset(1, 2, gl.FLOAT, false, stride, 3*4)
-	gl.EnableVertexAttribArray(2)
-	gl.VertexAttribPointerWithOffset(2, 3, gl.FLOAT, false, stride, 5*4)
-	gl.BindVertexArray(0)
-
-	gl.GenTextures(1, &ir.tex)
-	gl.BindTexture(gl.TEXTURE_2D_ARRAY, ir.tex)
-	gl.TexParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MIN_FILTER, gl.NEAREST)
-	gl.TexParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MAG_FILTER, gl.NEAREST)
-	gl.TexParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE)
-	gl.TexParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
-	gl.TexParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MAX_LEVEL, 0)
-	gl.TexImage3D(gl.TEXTURE_2D_ARRAY, 0, gl.RGBA8, int32(size), int32(size), int32(max(len(imgs), 1)), 0, gl.RGBA, gl.UNSIGNED_BYTE, nil)
+	layers := make([][]byte, len(imgs))
 	for i, img := range imgs {
-		px := toNRGBA(img, size).Pix
-		gl.TexSubImage3D(gl.TEXTURE_2D_ARRAY, 0, 0, 0, int32(i), int32(size), int32(size), 1, gl.RGBA, gl.UNSIGNED_BYTE, unsafe.Pointer(&px[0]))
+		layers[i] = toNRGBA(img, size).Pix
+	}
+	if err := ir.initGPU(verts, size, layers); err != nil {
+		return nil, err
 	}
 	return ir, nil
 }
@@ -135,38 +57,12 @@ func NewItemRenderer(r *Renderer, names []string, imgs []image.Image) (*ItemRend
 // Has reports whether an item ID is known.
 func (ir *ItemRenderer) Has(item string) bool { _, ok := ir.index[item]; return ok }
 
-func (ir *ItemRenderer) begin(fog Fog) {
-	p := ir.prog
-	p.use()
-	gl.Uniform1i(p.loc("uTex"), 0)
-	gl.Uniform1f(p.loc("uDaylight"), ir.r.Opt.Daylight)
-	gl.Uniform1f(p.loc("uBlockBright"), ir.r.Opt.BlockBrightness)
-	gl.Uniform3fv(p.loc("uFogColor"), 1, &fog.Color[0])
-	gl.Uniform2f(p.loc("uFog"), fog.Start, fog.End)
-	gl.ActiveTexture(gl.TEXTURE0)
-	gl.BindTexture(gl.TEXTURE_2D_ARRAY, ir.tex)
-	gl.BindVertexArray(ir.vao)
-	gl.Enable(gl.DEPTH_TEST)
-	gl.Disable(gl.CULL_FACE) // slabs are thin; cheap to draw both sides
-}
-
 func (ir *ItemRenderer) draw(item string, vp, model mgl32.Mat4, sky, block uint8) {
 	i, ok := ir.index[item]
 	if !ok {
 		return
 	}
-	p := ir.prog
-	mvp := vp.Mul4(model)
-	gl.UniformMatrix4fv(p.loc("uMVP"), 1, false, &mvp[0])
-	gl.UniformMatrix4fv(p.loc("uModel"), 1, false, &model[0])
-	gl.Uniform1f(p.loc("uLayer"), float32(i))
-	gl.Uniform2f(p.loc("uLight"), float32(sky)/15, float32(block)/15)
-	gl.DrawArrays(gl.TRIANGLES, ir.ranges[i][0], ir.ranges[i][1])
-}
-
-func (ir *ItemRenderer) end() {
-	gl.BindVertexArray(0)
-	gl.Enable(gl.CULL_FACE)
+	ir.drawRange(i, vp.Mul4(model), model, sky, block)
 }
 
 // DrawWorld draws items lying in the world. Call after Renderer.Render with
@@ -228,7 +124,7 @@ func (ir *ItemRenderer) DrawHand(item string, aspect float32, pose HandPose, sky
 	if _, ok := ir.index[item]; !ok {
 		return
 	}
-	gl.Clear(gl.DEPTH_BUFFER_BIT)
+	clearDepth()
 	proj := mgl32.Perspective(mgl32.DegToRad(70), aspect, 0.05, 10)
 	sw := float32(math.Sin(float64(pose.Swing) * math.Pi))
 	sw2 := float32(math.Sin(math.Sqrt(float64(pose.Swing)) * math.Pi))
@@ -240,12 +136,4 @@ func (ir *ItemRenderer) DrawHand(item string, aspect float32, pose HandPose, sky
 	ir.begin(Fog{Color: mgl32.Vec3{}, Start: 1e6, End: 2e6}) // no fog on the hand
 	ir.draw(item, proj, model, sky, block)
 	ir.end()
-}
-
-// Delete frees GL resources.
-func (ir *ItemRenderer) Delete() {
-	gl.DeleteBuffers(1, &ir.vbo)
-	gl.DeleteVertexArrays(1, &ir.vao)
-	gl.DeleteTextures(1, &ir.tex)
-	gl.DeleteProgram(ir.prog.id)
 }
