@@ -67,6 +67,7 @@ type Engine struct {
 	started  bool
 	loaded   map[voxel.ChunkPos]bool // present in the world
 	pending  map[voxel.ChunkPos]bool // load/generate requested
+	stale    map[voxel.ChunkPos]bool // pending from before Regenerate: dropped on arrival
 	loadReq  chan voxel.ChunkPos
 	loadRes  chan *voxel.Chunk
 	worldOps chan worldOp // applied in order by the light worker
@@ -79,6 +80,7 @@ type Engine struct {
 	dirty       map[voxel.SectionPos]bool
 	inFlight    map[voxel.SectionPos]bool
 	redo        map[voxel.SectionPos]bool
+	staleMesh   map[voxel.SectionPos]bool // in flight at Regenerate: not uploaded
 	mainMesher  *mesh.Mesher
 	cfgMu       sync.RWMutex
 	meshCfg     *mesh.Config
@@ -122,12 +124,13 @@ func New(cfg Config) (*Engine, error) {
 	}
 	e := &Engine{
 		World: w, Renderer: r, cfg: cfg,
-		loaded: map[voxel.ChunkPos]bool{}, pending: map[voxel.ChunkPos]bool{},
+		loaded: map[voxel.ChunkPos]bool{}, pending: map[voxel.ChunkPos]bool{}, stale: map[voxel.ChunkPos]bool{},
 		loadReq: make(chan voxel.ChunkPos, 4096), loadRes: make(chan *voxel.Chunk, 4096),
 		worldOps: make(chan worldOp, 4096), litRes: make(chan voxel.ChunkPos, 1<<16),
 		lit: map[voxel.ChunkPos]bool{}, saveReq: make(chan *voxel.Chunk, 1024),
 		meshJobs: make(chan voxel.SectionPos, cfg.Workers*2), meshRes: make(chan *mesh.Mesh, 1024),
 		dirty: map[voxel.SectionPos]bool{}, inFlight: map[voxel.SectionPos]bool{}, redo: map[voxel.SectionPos]bool{},
+		staleMesh:  map[voxel.SectionPos]bool{},
 		mainMesher: mesh.NewMesher(), meshCfg: r.MeshConfig(), quit: make(chan struct{}),
 	}
 	if cfg.WorldDir != "" {
@@ -314,6 +317,10 @@ recv:
 		select {
 		case ch := <-e.loadRes:
 			delete(e.pending, ch.Pos)
+			if e.stale[ch.Pos] {
+				delete(e.stale, ch.Pos) // made before Regenerate: requested again
+				continue
+			}
 			if e.inRange(ch.Pos, R+3) {
 				batch = append(batch, ch)
 			}
@@ -456,6 +463,31 @@ func (e *Engine) unloadFar(r int) {
 	}
 }
 
+// Regenerate drops every chunk, so the world streams in again from the
+// generator (or WorldDir), e.g. after the generator's input changed.
+// Chunks and meshes still being made from the old world are discarded when
+// they arrive. Call on the GL thread, between Updates.
+func (e *Engine) Regenerate() {
+	for p := range e.pending {
+		e.stale[p] = true
+	}
+	for p := range e.inFlight {
+		e.staleMesh[p] = true
+	}
+	clear(e.redo)
+	clear(e.dirty)
+	all := make([]voxel.ChunkPos, 0, len(e.loaded))
+	for p := range e.loaded {
+		all = append(all, p)
+	}
+	e.worldOps <- worldOp{remove: all}
+	for _, p := range all {
+		e.Renderer.RemoveColumn(p)
+	}
+	clear(e.loaded)
+	clear(e.lit)
+}
+
 // dirtyAround queues every section of the 3x3 columns around p.
 func (e *Engine) dirtyAround(p voxel.ChunkPos) {
 	ms, n := e.World.MinSection(), e.World.SectionCount()
@@ -534,6 +566,10 @@ func (e *Engine) uploadResults() {
 		select {
 		case m := <-e.meshRes:
 			delete(e.inFlight, m.Pos)
+			if e.staleMesh[m.Pos] {
+				delete(e.staleMesh, m.Pos)
+				continue
+			}
 			if e.redo[m.Pos] {
 				delete(e.redo, m.Pos)
 				e.dirty[m.Pos] = true

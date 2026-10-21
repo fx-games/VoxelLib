@@ -2,6 +2,7 @@ package render
 
 import (
 	"image"
+	"image/draw"
 	"math"
 
 	"github.com/go-gl/mathgl/mgl32"
@@ -28,7 +29,9 @@ type ItemInstance struct {
 }
 
 // NewItemRenderer extrudes every sprite and uploads them. names[i] is the
-// item ID of imgs[i]. Sprites should share one size; others are rescaled.
+// item ID of imgs[i]. The texture layers are as large as the largest
+// sprite; a smaller one sits unscaled in its layer's top-left corner, so
+// its texels stay exactly where the extruded side faces expect them.
 func NewItemRenderer(r *Renderer, names []string, imgs []image.Image) (*ItemRenderer, error) {
 	ir := &ItemRenderer{r: r, index: map[string]int{}}
 	size := 8
@@ -36,17 +39,19 @@ func NewItemRenderer(r *Renderer, names []string, imgs []image.Image) (*ItemRend
 		size = max(size, img.Bounds().Dx(), img.Bounds().Dy())
 	}
 	var verts []float32
+	layers := make([][]byte, len(imgs))
 	for i, img := range imgs {
 		ir.index[names[i]] = i
 		m := extrude.Extrude(img)
+		b := img.Bounds()
+		su, sv := float32(b.Dx())/float32(size), float32(b.Dy())/float32(size)
 		ir.ranges = append(ir.ranges, [2]int32{int32(len(verts) / 8), int32(len(m.Verts))})
 		for _, v := range m.Verts {
-			verts = append(verts, v.Pos[0], v.Pos[1], v.Pos[2], v.UV[0], v.UV[1], v.Normal[0], v.Normal[1], v.Normal[2])
+			verts = append(verts, v.Pos[0], v.Pos[1], v.Pos[2], v.UV[0]*su, v.UV[1]*sv, v.Normal[0], v.Normal[1], v.Normal[2])
 		}
-	}
-	layers := make([][]byte, len(imgs))
-	for i, img := range imgs {
-		layers[i] = toNRGBA(img, size).Pix
+		layer := image.NewNRGBA(image.Rect(0, 0, size, size))
+		draw.Draw(layer, b.Sub(b.Min), img, b.Min, draw.Src)
+		layers[i] = layer.Pix
 	}
 	if err := ir.initGPU(verts, size, layers); err != nil {
 		return nil, err
@@ -121,11 +126,6 @@ type HandPose struct {
 // world (depth is cleared) with its own fixed 70° projection, like
 // Minecraft's first-person item. aspect is the viewport's width/height.
 func (ir *ItemRenderer) DrawHand(item string, aspect float32, pose HandPose, sky, block uint8) {
-	if _, ok := ir.index[item]; !ok {
-		return
-	}
-	clearDepth()
-	proj := mgl32.Perspective(mgl32.DegToRad(70), aspect, 0.05, 10)
 	sw := float32(math.Sin(float64(pose.Swing) * math.Pi))
 	sw2 := float32(math.Sin(math.Sqrt(float64(pose.Swing)) * math.Pi))
 	model := mgl32.Translate3D(0.5+pose.BobX-0.25*sw2, -0.38+pose.BobY+0.15*sw2, -0.9-0.15*sw).
@@ -133,6 +133,18 @@ func (ir *ItemRenderer) DrawHand(item string, aspect float32, pose HandPose, sky
 		Mul4(mgl32.HomogRotate3DZ(mgl32.DegToRad(20))).
 		Mul4(mgl32.HomogRotate3DX(mgl32.DegToRad(-80 * sw2))).
 		Mul4(mgl32.Scale3D(0.42, 0.42, 0.42))
+	ir.DrawHandModel(item, aspect, model, sky, block)
+}
+
+// DrawHandModel draws a held item like DrawHand but placed by the caller:
+// model maps the item's unit slab (see ItemPose) into view space (x right,
+// y up, looking down -z), e.g. Minecraft's first-person transform chain.
+func (ir *ItemRenderer) DrawHandModel(item string, aspect float32, model mgl32.Mat4, sky, block uint8) {
+	if _, ok := ir.index[item]; !ok {
+		return
+	}
+	clearHandDepth()
+	proj := mgl32.Perspective(mgl32.DegToRad(70), aspect, 0.05, 10)
 	ir.begin(Fog{Color: mgl32.Vec3{}, Start: 1e6, End: 2e6}) // no fog on the hand
 	ir.draw(item, proj, model, sky, block)
 	ir.end()

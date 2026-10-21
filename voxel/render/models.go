@@ -190,6 +190,29 @@ func (mr *ModelRenderer) Draw(cam *Camera, insts []ModelInstance) {
 	mr.end()
 }
 
+// handPass is set between BeginHands and EndHands: the hand draws share
+// one depth buffer instead of each clearing it.
+var handPass bool
+
+// BeginHands starts drawing several first-person pieces (arms, held items)
+// that hide one another by depth: it clears the depth buffer once, and the
+// DrawHand calls until EndHands keep it.
+func BeginHands() {
+	clearDepth()
+	handPass = true
+}
+
+// EndHands ends BeginHands.
+func EndHands() { handPass = false }
+
+// clearHandDepth clears the depth buffer for a hand draw, unless it is
+// part of BeginHands.
+func clearHandDepth() {
+	if !handPass {
+		clearDepth()
+	}
+}
+
 // DrawHand draws a model in first person, over the world (depth is cleared)
 // with a fixed 70° projection like ItemRenderer.DrawHand. view places the
 // model in view space (camera at the origin looking down -Z, +Y up).
@@ -202,7 +225,7 @@ func (mr *ModelRenderer) DrawHandSkinned(handle int, aspect float32, view mgl32.
 	if handle < 0 || handle >= len(mr.models) {
 		return
 	}
-	clearDepth()
+	clearHandDepth()
 	proj := mgl32.Perspective(mgl32.DegToRad(70), aspect, 0.05, 10)
 	mr.begin(modelLight{proj, Fog{Start: 1e6, End: 2e6}, mr.r.Opt.Daylight, mr.r.Opt.BlockBrightness}) // no fog on the hand
 	mr.drawModel(mr.models[handle], view, skin, sky, block, 0)
