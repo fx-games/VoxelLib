@@ -26,6 +26,17 @@ const (
 // set and skip relighting. Anything else is relit by the world, so data
 // from any version is consistent.
 func DecodeChunk(w *voxel.World, root Compound) (*voxel.Chunk, error) {
+	return DecodeChunkIDs(w, root, nil)
+}
+
+// LegacyIDs maps a pre-1.13 numeric block id (Blocks plus the Add nibble,
+// 0..4095) and its metadata (0..15) to a state.
+type LegacyIDs func(id uint16, meta uint8) voxel.StateID
+
+// DecodeChunkIDs is DecodeChunk with the numeric ids of legacy chunks
+// resolved by ids (nil: vanilla 1.12 ids). It also keeps legacy biome ids
+// in Chunk.Biomes.
+func DecodeChunkIDs(w *voxel.World, root Compound, ids LegacyIDs) (*voxel.Chunk, error) {
 	dv := root.Int("DataVersion")
 	level := root
 	if lv := root.Compound("Level"); lv != nil {
@@ -67,6 +78,10 @@ func DecodeChunk(w *voxel.World, root Compound) (*voxel.Chunk, error) {
 		} else if sc.Has("Palette") {
 			palNBT, data = sc.List("Palette"), sc.Longs("BlockStates")
 		} else if blocks := sc.Bytes("Blocks"); len(blocks) == 4096 {
+			if ids != nil {
+				decodeIDs(s, blocks, sc.Bytes("Add"), sc.Bytes("Data"), ids)
+				continue
+			}
 			decodeLegacy(reg, s, blocks, sc.Bytes("Data"))
 			legacy = true
 			continue
@@ -96,6 +111,9 @@ func DecodeChunk(w *voxel.World, root Compound) (*voxel.Chunk, error) {
 		fixDoors(reg, ch)
 	}
 	ch.Signs = readSigns(level)
+	if b := level.Bytes("Biomes"); len(b) == 256 {
+		ch.Biomes = b
+	}
 	ch.RecomputeHeights(reg.Table())
 	ch.Lit = trusted
 	return ch, nil

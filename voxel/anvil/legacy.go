@@ -170,3 +170,24 @@ func fixDoors(reg *voxel.Registry, ch *voxel.Chunk) {
 		}
 	}
 }
+
+// decodeIDs unpacks a legacy section through ids; add and meta are nibble
+// arrays (2048 bytes) or absent.
+func decodeIDs(s *voxel.Section, blocks, add, meta []byte, ids LegacyIDs) {
+	var buf [voxel.SectionVolume]voxel.StateID
+	for i, b := range blocks {
+		id := uint16(b)
+		var m uint8
+		if len(add) == 2048 {
+			id |= uint16(add[i/2]>>(4*(i%2))&15) << 8
+		}
+		if len(meta) == 2048 {
+			m = meta[i/2] >> (4 * (i % 2)) & 15
+		}
+		if id != 0 {
+			buf[i] = ids(id, m)
+		}
+	}
+	s.Blocks.Pack(&buf)
+	s.Recount()
+}

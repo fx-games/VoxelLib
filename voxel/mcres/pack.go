@@ -242,15 +242,23 @@ type variant struct {
 }
 
 type modelFace struct {
-	Texture  string `json:"texture"`
-	Cullface string `json:"cullface"`
+	Texture   string      `json:"texture"`
+	Cullface  string      `json:"cullface"`
+	UV        *[4]float32 `json:"uv"`
+	Rotation  int         `json:"rotation"`  // texture turn, clockwise degrees
+	TintIndex *int        `json:"tintindex"` // absent or < 0: not tinted
 }
 
 type element struct {
-	From     [3]float64               `json:"from"`
-	To       [3]float64               `json:"to"`
-	Rotation *struct{ Angle float64 } `json:"rotation"`
-	Faces    map[string]modelFace     `json:"faces"`
+	From     [3]float32 `json:"from"`
+	To       [3]float32 `json:"to"`
+	Rotation *struct {
+		Origin  [3]float32
+		Axis    string
+		Angle   float32
+		Rescale bool
+	} `json:"rotation"`
+	Faces map[string]modelFace `json:"faces"`
 }
 
 type model struct {
@@ -327,8 +335,7 @@ func lookupTex(tex map[string]string, ref string) string {
 	if ref == "" || strings.HasPrefix(ref, "#") {
 		return ""
 	}
-	_, rel := splitID(ref)
-	return rel
+	return strings.TrimPrefix(ref, "minecraft:")
 }
 
 // pickVariant chooses the variant whose "k=v,..." key matches props.
@@ -380,44 +387,174 @@ func rotateFaces(t [6]string, rx, ry int) [6]string {
 // (stairs, multipart fences, ...) falls back to the registry defaults.
 func (p *Pack) Resolver() voxel.ModelResolver {
 	return func(name string, props map[string]string) (voxel.Shape, [6]string, bool) {
-		var none [6]string
-		ns, rel := splitID(name)
-		data, err := p.readFile(path.Join("assets", ns, "blockstates", rel+".json"))
-		if err != nil {
-			return 0, none, false
-		}
-		var bs blockstate
-		if json.Unmarshal(data, &bs) != nil || len(bs.Variants) == 0 {
-			return 0, none, false
-		}
-		v, err := pickVariant(&bs, props)
-		if err != nil {
-			return 0, none, false
-		}
-		tex, elems, chain, err := p.resolve(v.Model)
-		if err != nil {
-			return 0, none, false
-		}
-		for _, c := range chain {
-			if c == "block/cross" || c == "block/tinted_cross" {
-				return voxel.ShapeCross, all(lookupTex(tex, "#cross")), true
-			}
-		}
-		// First full-cube element (vanilla grass_block adds a second, tinted
-		// overlay element on top; the base cube is enough here).
-		for _, e := range elems {
-			if e.From == [3]float64{0, 0, 0} && e.To == [3]float64{16, 16, 16} {
-				var t [6]string
-				for fn, face := range e.Faces {
-					if f, ok := voxel.FaceByName(fn); ok {
-						t[f] = lookupTex(tex, face.Texture)
-					}
-				}
-				return voxel.ShapeCube, rotateFaces(t, v.X, v.Y), true
-			}
-		}
-		return 0, none, false
+		shape, tex, _, ok := p.resolveState(name, props)
+		return shape, tex, ok
 	}
 }
 
+// FaceResolver returns the voxel.FaceResolver of the cubes Resolver finds:
+// each face's cullface and whether it has a tintindex, turned with the
+// blockstate. Set both on a registry.
+func (p *Pack) FaceResolver() voxel.FaceResolver {
+	return func(name string, props map[string]string) (voxel.FaceRules, bool) {
+		shape, _, rules, ok := p.resolveState(name, props)
+		return rules, ok && shape == voxel.ShapeCube
+	}
+}
+
+// ponytail: resolveState runs twice per state (Resolver, FaceResolver);
+// models are cached, only the blockstate file is read again, once per
+// state at registration.
+func (p *Pack) resolveState(name string, props map[string]string) (voxel.Shape, [6]string, voxel.FaceRules, bool) {
+	var none [6]string
+	var rules voxel.FaceRules
+	ns, rel := splitID(name)
+	data, err := p.readFile(path.Join("assets", ns, "blockstates", rel+".json"))
+	if err != nil {
+		return 0, none, rules, false
+	}
+	var bs blockstate
+	if json.Unmarshal(data, &bs) != nil || len(bs.Variants) == 0 {
+		return 0, none, rules, false
+	}
+	v, err := pickVariant(&bs, props)
+	if err != nil {
+		return 0, none, rules, false
+	}
+	tex, elems, chain, err := p.resolve(v.Model)
+	if err != nil {
+		return 0, none, rules, false
+	}
+	for _, c := range chain {
+		if c == "block/cross" || c == "block/tinted_cross" {
+			return voxel.ShapeCross, all(lookupTex(tex, "#cross")), rules, true
+		}
+	}
+	// First full-cube element (vanilla grass_block adds a second, tinted
+	// overlay element on top; the base cube is enough here).
+	for _, e := range elems {
+		if e.From == [3]float32{0, 0, 0} && e.To == [3]float32{16, 16, 16} {
+			var t [6]string
+			for f := range rules.Cull {
+				rules.Cull[f] = voxel.FaceCount
+			}
+			for fn, face := range e.Faces {
+				f, ok := voxel.FaceByName(fn)
+				if !ok {
+					continue
+				}
+				t[f] = lookupTex(tex, face.Texture)
+				if c, ok := voxel.FaceByName(face.Cullface); ok {
+					rules.Cull[f] = c
+				}
+				if face.TintIndex != nil && *face.TintIndex >= 0 {
+					rules.Tinted |= 1 << f
+				}
+			}
+			return voxel.ShapeCube, rotateFaces(t, v.X, v.Y), rotateRules(rules, v.X, v.Y), true
+		}
+	}
+	return 0, none, rules, false
+}
+
+// rotateRules turns face rules like rotateFaces turns textures; cullface
+// directions turn along.
+func rotateRules(r voxel.FaceRules, rx, ry int) voxel.FaceRules {
+	var ids [6]string
+	for f := range ids {
+		ids[f] = string(rune('0' + f))
+	}
+	perm := rotateFaces(ids, rx, ry) // perm[new face] = old face
+	var to [6]voxel.Face             // old face → new face
+	for nf, of := range perm {
+		to[of[0]-'0'] = voxel.Face(nf)
+	}
+	var out voxel.FaceRules
+	for nf, of := range perm {
+		o := of[0] - '0'
+		out.Cull[nf] = r.Cull[o]
+		if c := r.Cull[o]; c < voxel.FaceCount {
+			out.Cull[nf] = to[c]
+		}
+		if r.Tinted&(1<<o) != 0 {
+			out.Tinted |= 1 << nf
+		}
+	}
+	return out
+}
+
 func all(t string) [6]string { return [6]string{t, t, t, t, t, t} }
+
+// ModelBoxes returns the elements of block model id ("block/stairs",
+// "lotr:block/x") as voxel boxes: per-face textures resolved through the
+// model's texture variables, with vars (variable → texture) taking
+// precedence, plus UVs (with their "rotation"), element rotations (with
+// "rescale"), cullfaces and which faces take the block's tint
+// ("tintindex"). Faces a model leaves out are not drawn.
+func (p *Pack) ModelBoxes(id string, vars map[string]string) ([]voxel.Box, error) {
+	tex, elems, _, err := p.resolve(id)
+	if err != nil {
+		return nil, err
+	}
+	for k, v := range vars {
+		tex[k] = v
+	}
+	out := make([]voxel.Box, 0, len(elems))
+	for _, e := range elems {
+		b := voxel.Box{Min: e.From, Max: e.To, Skip: 0x3f}
+		var uv [6][4]float32
+		hasUV := false
+		cull := [6]voxel.Face{voxel.FaceCount, voxel.FaceCount, voxel.FaceCount, voxel.FaceCount, voxel.FaceCount, voxel.FaceCount}
+		b.Cull = &cull
+		for fn, face := range e.Faces {
+			f, ok := voxel.FaceByName(fn)
+			if !ok {
+				continue
+			}
+			b.Skip &^= 1 << f
+			b.Tex[f] = lookupTex(tex, face.Texture)
+			if c, ok := voxel.FaceByName(face.Cullface); ok {
+				cull[f] = c
+			}
+			if face.TintIndex == nil || *face.TintIndex < 0 {
+				b.NoTint |= 1 << f
+			}
+			if q := uint8(face.Rotation/90) & 3; q != 0 {
+				b.UVRot[f], hasUV = q, true
+			}
+			if face.UV != nil {
+				uv[f], hasUV = *face.UV, true
+			} else {
+				uv[f] = defaultUV(f, e.From, e.To)
+			}
+		}
+		if hasUV {
+			b.UV = &uv
+		}
+		if r := e.Rotation; r != nil && r.Angle != 0 {
+			if axis := strings.Index("xyz", r.Axis); axis >= 0 {
+				b.Rot = []voxel.Rot{{Axis: axis, Deg: r.Angle, Origin: r.Origin, Rescale: r.Rescale}}
+			}
+		}
+		out = append(out, b)
+	}
+	return out, nil
+}
+
+// defaultUV is the UV Minecraft derives from an element's position when a
+// face gives none.
+func defaultUV(f voxel.Face, a, b [3]float32) [4]float32 {
+	switch f {
+	case voxel.FaceDown:
+		return [4]float32{a[0], 16 - b[2], b[0], 16 - a[2]}
+	case voxel.FaceUp:
+		return [4]float32{a[0], a[2], b[0], b[2]}
+	case voxel.FaceNorth:
+		return [4]float32{16 - b[0], 16 - b[1], 16 - a[0], 16 - a[1]}
+	case voxel.FaceSouth:
+		return [4]float32{a[0], 16 - b[1], b[0], 16 - a[1]}
+	case voxel.FaceWest:
+		return [4]float32{a[2], 16 - b[1], b[2], 16 - a[1]}
+	}
+	return [4]float32{16 - b[2], 16 - b[1], 16 - a[2], 16 - a[1]}
+}

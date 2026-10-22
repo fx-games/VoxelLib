@@ -14,9 +14,19 @@
 // borders, like trees, must be derived from world coordinates so neighbours
 // agree), and may read w only for its height range (w.MinY, w.MaxY()). Light
 // is computed by the engine afterwards.
+//
+// Games register generators by name (Register) so a world description,
+// such as a VoxelMap dimension's "generator", can pick one; the Factory
+// gets the world seed and a Blocks function that resolves block keys
+// ("minecraft:stone#0"). Structures (structure.go) are placed with
+// PlaceStructures.
 package worldgen
 
-import "github.com/memmaker/voxellib/voxel"
+import (
+	"sync"
+
+	"github.com/memmaker/voxellib/voxel"
+)
 
 // Generator fills a freshly allocated chunk. It matches
 // voxel/engine.Generator.
@@ -28,4 +38,25 @@ type Generator interface {
 // spawn column near x,z.
 type Spawner interface {
 	FindLand(x, z int) (int, int)
+}
+
+// Blocks resolves a block key ("minecraft:stone#0") to a state, e.g.
+// voxelmap.Map.State.
+type Blocks func(key string) voxel.StateID
+
+// Factory makes a generator for a world seed. Resolve every key the
+// generator needs once, here, not per block.
+type Factory func(seed int64, blocks Blocks) Generator
+
+var factories sync.Map // name → Factory
+
+// Register makes a generator available by name (e.g. "mygame:surface"),
+// typically from a game package's init.
+func Register(name string, f Factory) { factories.Store(name, f) }
+
+// Lookup returns the factory registered under name, or nil.
+func Lookup(name string) Factory {
+	f, _ := factories.Load(name)
+	fac, _ := f.(Factory)
+	return fac
 }

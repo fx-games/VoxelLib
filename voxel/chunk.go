@@ -55,9 +55,15 @@ type Chunk struct {
 	Lit bool
 	// Modified marks the chunk for saving.
 	Modified bool
+	// Edited has bit i set when World.SetBlock changed Sections[i]: what a
+	// delta save stores (at most 64 sections).
+	Edited uint64
 	// Signs holds sign text by absolute block position (read-only: not saved).
 	Signs map[BlockPos][4]string
-	minY  int
+	// Biomes holds legacy (pre-1.13) biome ids per column (z<<4|x), nil if
+	// the chunk had none (read-only: not saved).
+	Biomes []byte
+	minY   int
 }
 
 func newChunk(pos ChunkPos, minY, height int) *Chunk {

@@ -11,10 +11,13 @@ import (
 // Rot rotates an element like a Minecraft model's element or blockstate
 // rotation: Deg degrees about Axis (0=x 1=y 2=z) through Origin (1/16).
 // Positive angles follow Minecraft's element convention (right handed).
+// Rescale stretches the two other axes by 1/cos(Deg) about Origin, like an
+// element's "rescale": a 45° turned full-width plane spans the block again.
 type Rot struct {
-	Axis   int
-	Deg    float32
-	Origin [3]float32
+	Axis    int
+	Deg     float32
+	Origin  [3]float32
+	Rescale bool
 }
 
 // Box is one model element in 1/16 units (Minecraft model pixels). Max may
@@ -30,6 +33,16 @@ type Box struct {
 	TexID [6]uint16
 	Rot   []Rot // applied in order; collision uses the rotated bounds
 	Skip  uint8 // faces (1<<Face) not drawn
+	// UVRot turns a face's texture clockwise by quarter turns (a model
+	// face's "rotation"/90); it needs UV.
+	UVRot [6]uint8
+	// Cull, when set, is per face the side whose opaque neighbour hides it
+	// (a model face's "cullface"; FaceCount: never hidden). Nil culls faces
+	// on the block boundary by the neighbour they face.
+	Cull *[6]Face
+	// NoTint marks faces (1<<Face) drawn without the state's tint (model
+	// faces without "tintindex").
+	NoTint uint8
 }
 
 func bx(x0, y0, z0, x1, y1, z1 float32) Box {
@@ -43,26 +56,58 @@ func RotatePoint(p [3]float32, rots []Rot) [3]float32 {
 		sn, cs := float32(s), float32(c)
 		a, b := (r.Axis+1)%3, (r.Axis+2)%3 // x: y,z  y: z,x  z: x,y
 		u, v := p[a]-r.Origin[a], p[b]-r.Origin[b]
+		if r.Rescale && cs > 1e-3 {
+			k := 1 / max(cs, -cs)
+			u, v = u*k, v*k
+		}
 		p[a], p[b] = r.Origin[a]+u*cs-v*sn, r.Origin[b]+u*sn+v*cs
 	}
 	return p
 }
 
 // rotY turns every box by a blockstate-style y rotation (Minecraft's y=deg).
-func rotY(bs []Box, deg float32) []Box { return rotAll(bs, 1, deg) }
+func rotY(bs []Box, deg float32) []Box { return RotateBoxes(bs, 1, deg) }
 
-// rotAll appends a blockstate rotation (Minecraft's x=/y=, clockwise seen
+// RotateBoxes appends a blockstate rotation (Minecraft's x=/y=, clockwise seen
 // from the positive axis) about the block centre.
-func rotAll(bs []Box, axis int, deg float32) []Box {
+func RotateBoxes(bs []Box, axis int, deg float32) []Box {
 	if deg == 0 {
 		return bs
 	}
 	out := make([]Box, len(bs))
+	rot := Rot{Axis: axis, Deg: -deg, Origin: [3]float32{8, 8, 8}}
 	for i, b := range bs {
-		b.Rot = append(append([]Rot(nil), b.Rot...), Rot{axis, -deg, [3]float32{8, 8, 8}})
+		b.Rot = append(append([]Rot(nil), b.Rot...), rot)
+		if b.Cull != nil { // a cullface turns with the blockstate, not with the element
+			c := *b.Cull
+			for f, side := range c {
+				if side < FaceCount {
+					c[f] = RotateFace(side, []Rot{rot})
+				}
+			}
+			b.Cull = &c
+		}
 		out[i] = b
 	}
 	return out
+}
+
+// RotateFace is where face f points after rots, or FaceCount when that's
+// not along an axis.
+func RotateFace(f Face, rots []Rot) Face {
+	n := f.Normal()
+	d := [3]float32{float32(n.X), float32(n.Y), float32(n.Z)}
+	for _, r := range rots {
+		d = RotatePoint(d, []Rot{{Axis: r.Axis, Deg: r.Deg}})
+	}
+	for g := Face(0); g < FaceCount; g++ {
+		gn := g.Normal()
+		dx, dy, dz := d[0]-float32(gn.X), d[1]-float32(gn.Y), d[2]-float32(gn.Z)
+		if dx*dx+dy*dy+dz*dz < 1e-6 {
+			return g
+		}
+	}
+	return FaceCount
 }
 
 // thin is a d-pixel plate against the side opposite facing (doors, ladders):
@@ -162,7 +207,7 @@ func shapeVariants(name string, p map[string]string) map[string][]Box {
 	case n == "wall_torch":
 		// block/template_torch_wall: leans 22.5° away from the wall.
 		b := torch(bx(-1, 3.5, 7, 1, 13.5, 9))
-		b.Rot = []Rot{{2, -22.5, [3]float32{0, 3.5, 8}}}
+		b.Rot = []Rot{{Axis: 2, Deg: -22.5, Origin: [3]float32{0, 3.5, 8}}}
 		return one(rotY([]Box{b}, yRotFromEast[p["facing"]])...)
 	case n == "ladder":
 		return one(thin(p["facing"], 1))
@@ -217,15 +262,15 @@ func lever(p map[string]string) []Box {
 	if p["powered"] == "true" {
 		angle = 45
 	}
-	h.Rot = []Rot{{0, angle, [3]float32{8, 1, 8}}}
+	h.Rot = []Rot{{Axis: 0, Deg: angle, Origin: [3]float32{8, 1, 8}}}
 	bs := []Box{base, h}
 	f := p["facing"]
 	y := map[string]float32{"north": 0, "east": 90, "south": 180, "west": 270}[f]
 	switch p["face"] {
 	case "wall":
-		bs = rotAll(bs, 0, 90)
+		bs = RotateBoxes(bs, 0, 90)
 	case "ceiling":
-		bs = rotAll(bs, 0, 180)
+		bs = RotateBoxes(bs, 0, 180)
 		y = map[string]float32{"south": 0, "west": 90, "north": 180, "east": 270}[f]
 	}
 	return rotY(bs, y)
@@ -422,14 +467,18 @@ func stairShape(info *StateInfo, nb func(Face) *StateInfo) string {
 func (w *World) Boxes(area collide.AABB, out []collide.AABB) []collide.AABB {
 	area.Grow(0, 0.5, 0).Blocks(func(x, y, z int) {
 		info := w.Reg.Info(w.Block(x, y, z))
-		if info.Shape != ShapeBoxes || !collidable(info.Name) {
-			return
+		boxes := info.Collision
+		if boxes == nil {
+			if info.Shape != ShapeBoxes || !collidable(info.Name) {
+				return
+			}
+			nb := func(f Face) *StateInfo {
+				n := f.Normal()
+				return w.Reg.Info(w.Block(x+n.X, y+n.Y, z+n.Z))
+			}
+			boxes = Connected(info, nb)
 		}
-		nb := func(f Face) *StateInfo {
-			n := f.Normal()
-			return w.Reg.Info(w.Block(x+n.X, y+n.Y, z+n.Z))
-		}
-		for _, b := range Connected(info, nb) {
+		for _, b := range boxes {
 			if len(b.Rot) > 0 {
 				b = axisAligned(b)
 			}

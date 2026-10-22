@@ -195,6 +195,7 @@ func (w *World) SetBlock(x, y, z int, id StateID) bool {
 	}
 	c.SetRaw(lx, y, lz, id)
 	c.Modified = true
+	c.Edited |= 1 << uint((y-w.MinY)>>4)
 	t := w.Reg.Table()
 
 	// heightmap

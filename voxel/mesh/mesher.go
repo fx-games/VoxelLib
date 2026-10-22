@@ -242,15 +242,17 @@ func (m *Mesher) light(x, y, z int, f voxel.Face) (c [4]cornerLight) {
 	return
 }
 
-func (m *Mesher) tint(info *voxel.StateInfo, f voxel.Face) uint32 {
+func (m *Mesher) tint(info *voxel.StateInfo, f voxel.Face, tex uint16) uint32 {
 	if info.Tint == voxel.TintNone || info.TintMask&(1<<f) == 0 {
 		return 0xFFFFFF
 	}
-	tex := info.Tex[f]
 	if m.cfg != nil && int(tex) < len(m.cfg.Tintable) && !m.cfg.Tintable[tex] {
 		return 0xFFFFFF
 	}
-	c := TintColors[info.Tint]
+	c := TintColors[min(int(info.Tint), len(TintColors)-1)]
+	if info.Tint == voxel.TintFixed {
+		c = info.TintColor
+	}
 	return (c>>16)&0xff | (c>>8&0xff)<<8 | (c&0xff)<<16 // to r,g,b byte order
 }
 
@@ -272,11 +274,18 @@ func (m *Mesher) cubes() {
 					m.mask[b<<4|a] = 0
 					i := idx(p[0], p[1], p[2])
 					info := &t[st[i]]
-					if info.Shape != voxel.ShapeCube || !faceVisible(info, &t[st[i+off]]) {
+					if info.Shape != voxel.ShapeCube {
 						continue
 					}
+					if info.Cull == nil {
+						if !faceVisible(info, &t[st[i+off]]) {
+							continue
+						}
+					} else if side := info.Cull[f]; side < voxel.FaceCount && !faceVisible(info, &t[st[i+nbOff[side]]]) {
+						continue // a model face without cullface (FaceCount) is never hidden
+					}
 					cl := m.light(p[0], p[1], p[2], f)
-					tint := m.tint(info, f)
+					tint := m.tint(info, f, info.Tex[f])
 					if info.Layer != voxel.LayerTranslucent && cl[0] == cl[1] && cl[1] == cl[2] && cl[2] == cl[3] {
 						// key: tex 12 | layer 2 | ao 2 | sky 8 | blk 8 | tint 24 ; +1 so 0 = empty
 						m.mask[b<<4|a] = (uint64(info.Tex[f]) | uint64(info.Layer)<<12 | uint64(cl[0].ao)<<14 |
@@ -416,7 +425,7 @@ func (m *Mesher) specials() {
 						}
 						c := cornerLight{3, (l >> 4) * 16, (l & 15) * 16}
 						cl := [4]cornerLight{c, c, c, c}
-						tint := m.tint(info, f)
+						tint := m.tint(info, f, info.Tex[f])
 						p := [3]int{x, y, z}
 						m.quadTops(f, p, 1, 1, info.Tex[f], tint, info.Layer, cl, top)
 						if f == voxel.FaceUp && info.Layer == voxel.LayerTranslucent {
@@ -428,7 +437,7 @@ func (m *Mesher) specials() {
 				case voxel.ShapeCross:
 					l := li[i]
 					c := cornerLight{3, (l >> 4) * 16, (l & 15) * 16}
-					m.cross(x, y, z, info.Tex[0], m.tint(info, voxel.FaceUp), info.Layer, c)
+					m.cross(x, y, z, info.Tex[0], m.tint(info, voxel.FaceUp, info.Tex[0]), info.Layer, c)
 				}
 			}
 		}
@@ -439,8 +448,9 @@ func (m *Mesher) specials() {
 // show the part of the texture their extent covers, like Minecraft models).
 const projectedUV = 1 << 25
 
-// boxes meshes a ShapeBoxes block's elements, flat lit. Faces on the block
-// boundary hidden by an opaque neighbour are culled.
+// boxes meshes a ShapeBoxes block's elements, flat lit. A face is culled by
+// an opaque neighbour on its Box.Cull side (model cullface), or without
+// Cull, when it lies on the block boundary facing that neighbour.
 func (m *Mesher) boxes(x, y, z, i int, info *voxel.StateInfo) {
 	t, st, li := m.table, &m.Snap.States, &m.Snap.Light
 	bs := voxel.Connected(info, func(f voxel.Face) *voxel.StateInfo { return &t[st[i+nbOff[f]]] })
@@ -452,19 +462,28 @@ func (m *Mesher) boxes(x, y, z, i int, info *voxel.StateInfo) {
 			}
 			ax := f.Axis()
 			onEdge := len(b.Rot) == 0 && ((f&1 == 0 && b.Min[ax] <= 0) || (f&1 == 1 && b.Max[ax] >= 16))
+			side, cull := f, onEdge
+			if b.Cull != nil {
+				side = b.Cull[f]
+				cull = side < voxel.FaceCount
+			}
 			l := li[i]
-			if onEdge {
-				if t[st[i+nbOff[f]]].Opaque {
+			if cull { // lit from the side that can hide it, as Minecraft's flat lighting
+				if t[st[i+nbOff[side]]].Opaque {
 					continue
 				}
-				l = li[i+nbOff[f]]
+				l = li[i+nbOff[side]]
 			}
 			c := cornerLight{3, (l >> 4) * 16, (l & 15) * 16}
 			tex := info.Tex[f]
 			if b.Tex[f] != "" {
 				tex = b.TexID[f]
 			}
-			m.boxFace(f, base, &b, tex, m.tint(info, f), info.Layer, c)
+			tint := uint32(0xFFFFFF)
+			if b.NoTint&(1<<f) == 0 {
+				tint = m.tint(info, f, tex) // the face's own texture decides whether it is greyscale
+			}
+			m.boxFace(f, base, &b, tex, tint, info.Layer, c)
 		}
 	}
 }
@@ -510,12 +529,19 @@ func (m *Mesher) boxFace(f voxel.Face, base [3]float32, b *voxel.Box, tex uint16
 			hi = [2]float32{max(hi[0], uv[k][0]), max(hi[1], uv[k][1])}
 		}
 		for k := range uv {
+			var st [2]float32 // corner position in the face, 0..1 along u, v
 			for a := 0; a < 2; a++ {
-				t := float32(0)
 				if hi[a] > lo[a] {
-					t = (uv[k][a] - lo[a]) / (hi[a] - lo[a])
+					st[a] = (uv[k][a] - lo[a]) / (hi[a] - lo[a])
 				}
-				uv[k][a] = r[a] + t*(r[a+2]-r[a])
+			}
+			// Turning the texture clockwise a quarter shows at each corner
+			// the texel of the corner before it (Minecraft's BlockFaceUV).
+			for n := b.UVRot[f] & 3; n > 0; n-- {
+				st = [2]float32{st[1], 1 - st[0]}
+			}
+			for a := 0; a < 2; a++ {
+				uv[k][a] = r[a] + st[a]*(r[a+2]-r[a])
 			}
 		}
 	}
@@ -525,7 +551,7 @@ func (m *Mesher) boxFace(f voxel.Face, base [3]float32, b *voxel.Box, tex uint16
 			q[k] = voxel.RotatePoint(q[k], b.Rot)
 		}
 		group, normal = GroupUnassigned, 6
-		if n := rotatedFace(f, b.Rot); n < voxel.FaceCount {
+		if n := voxel.RotateFace(f, b.Rot); n < voxel.FaceCount {
 			normal = uint32(n)
 		}
 	}
@@ -556,30 +582,6 @@ func (m *Mesher) boxFace(f voxel.Face, base [3]float32, b *voxel.Box, tex uint16
 		m.trans = append(m.trans, [3]float32{sum[0] / 64, sum[1] / 64, sum[2] / 64})
 	}
 }
-
-// rotatedFace is where face f points after rots, or FaceCount when that's
-// not along an axis.
-func rotatedFace(f voxel.Face, rots []voxel.Rot) voxel.Face {
-	n := f.Normal()
-	d := voxel.RotatePoint([3]float32{float32(n.X), float32(n.Y), float32(n.Z)}, zeroOrigin(rots))
-	for g := voxel.Face(0); g < voxel.FaceCount; g++ {
-		gn := g.Normal()
-		if abs32(d[0]-float32(gn.X))+abs32(d[1]-float32(gn.Y))+abs32(d[2]-float32(gn.Z)) < 1e-3 {
-			return g
-		}
-	}
-	return voxel.FaceCount
-}
-
-func zeroOrigin(rots []voxel.Rot) []voxel.Rot {
-	out := make([]voxel.Rot, len(rots))
-	for i, r := range rots {
-		out[i] = voxel.Rot{Axis: r.Axis, Deg: r.Deg}
-	}
-	return out
-}
-
-func abs32(v float32) float32 { return max(v, -v) }
 
 // full is a flat block top: every corner at 32/32.
 var full = [4]int{32, 32, 32, 32}

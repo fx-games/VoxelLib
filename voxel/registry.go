@@ -48,6 +48,7 @@ const (
 	TintWater
 	TintBirch
 	TintSpruce
+	TintFixed // BlockDef.TintColor
 )
 
 // BlockDef describes a block type. Textures are resource names in Minecraft's
@@ -63,10 +64,21 @@ type BlockDef struct {
 	Collides      bool
 	Replaceable   bool // placing a block may overwrite it (air, water, grass)
 	LightEmission uint8
-	LightOpacity  uint8 // light lost passing through, 0..15
-	CullSelf      bool  // faces between two of the same block are hidden (glass, water)
-	Connects      bool  // fence: grows arms toward opaque and connecting neighbours (see Connected)
-	Unknown       bool  // created on demand for a name nobody registered
+	LightOpacity  uint8  // light lost passing through, 0..15
+	CullSelf      bool   // faces between two of the same block are hidden (glass, water)
+	Connects      bool   // fence: grows arms toward opaque and connecting neighbours (see Connected)
+	Unknown       bool   // created on demand for a name nobody registered
+	TintColor     uint32 // 0xRRGGBB for TintFixed
+	// Boxes, when set, are a ShapeBoxes block's elements (e.g. from a JSON
+	// block model) instead of the built-in shapes picked by name.
+	Boxes []Box
+	// Collision, when non-nil, replaces the collision of the render shape:
+	// these boxes collide (an empty list: nothing does). Collides should be
+	// false then, or the full cube collides too.
+	Collision []Box
+	// Level is a liquid's level for blocks that encode it in the name
+	// rather than a "level" property (see StateInfo.Level).
+	Level uint8
 }
 
 // StateInfo is the flattened, baked view of one state the mesher and physics
@@ -91,14 +103,33 @@ type StateInfo struct {
 	Level uint8
 	// Boxes are a ShapeBoxes state's elements; Variants holds the
 	// neighbour-dependent ones (Connected picks).
-	Boxes    []Box
-	Variants map[string][]Box
-	Connects bool
+	Boxes     []Box
+	Variants  map[string][]Box
+	Connects  bool
+	Collision []Box // BlockDef.Collision
+	TintColor uint32
+	// Cull, when set, is per face of a cube the side whose opaque
+	// neighbour hides it (FaceCount: never hidden), from its model's
+	// cullfaces (see FaceResolver). Nil: each face by the neighbour it faces.
+	Cull *[6]Face
 }
 
 // ModelResolver lets a resource pack decide shape and face textures of a state
 // (see mcres). It returns ok=false to keep the BlockDef's defaults.
 type ModelResolver func(name string, props map[string]string) (shape Shape, tex [6]string, ok bool)
+
+// FaceRules are a cube model's per-face details: Cull[f] is the side whose
+// opaque neighbour hides face f (a model face's cullface; FaceCount when it
+// has none), Tinted the faces (1<<Face) with a tintindex.
+type FaceRules struct {
+	Cull   [6]Face
+	Tinted uint8
+}
+
+// FaceResolver lets a resource pack give the per-face rules of a state the
+// ModelResolver made a cube (see mcres). ok=false keeps the defaults: every
+// face culled by the neighbour it faces, tinted by BlockDef.TintMask.
+type FaceResolver func(name string, props map[string]string) (rules FaceRules, ok bool)
 
 // Registry owns block definitions, state ids and the texture name table. It is
 // safe for concurrent use; Table() is lock free.
@@ -111,6 +142,7 @@ type Registry struct {
 	texIndex   map[string]uint16
 	texVersion atomic.Uint64
 	Resolver   ModelResolver
+	Faces      FaceResolver // used for states Resolver made cubes
 	// Missing is the texture name used for faces without one.
 	Missing string
 }
@@ -237,9 +269,14 @@ func (r *Registry) bake(def *BlockDef, canon string, props map[string]string) St
 		Shape: def.Shape, Layer: def.Layer, Tint: def.Tint, TintMask: def.TintMask,
 		Opaque: def.Opaque, Collides: def.Collides, Emission: def.LightEmission,
 		Opacity: def.LightOpacity, CullSelf: def.CullSelf, Connects: def.Connects,
+		Collision: def.Collision, TintColor: def.TintColor, Level: def.Level,
 	}
 	if def.Shape == ShapeBoxes {
-		info.Variants = shapeVariants(def.Name, props)
+		if def.Boxes != nil {
+			info.Variants = map[string][]Box{"": append([]Box(nil), def.Boxes...)}
+		} else {
+			info.Variants = shapeVariants(def.Name, props)
+		}
 		for _, bs := range info.Variants {
 			for i := range bs {
 				for f, t := range bs[i].Tex {
@@ -296,6 +333,14 @@ func (r *Registry) bake(def *BlockDef, canon string, props map[string]string) St
 			tex = t
 			if def.Unknown && shape != ShapeCube {
 				info.Opaque, info.Collides, info.Opacity, info.Layer = false, false, 0, LayerCutout
+			}
+			if shape == ShapeCube && r.Faces != nil {
+				if fr, ok := r.Faces(def.Name, props); ok {
+					info.TintMask = fr.Tinted
+					if fr.Cull != [6]Face{FaceDown, FaceUp, FaceNorth, FaceSouth, FaceWest, FaceEast} {
+						info.Cull = &fr.Cull
+					}
+				}
 			}
 		}
 	}
