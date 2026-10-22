@@ -1,6 +1,6 @@
-// Command explorer is a first-person demo of voxellib: Minecraft-like
-// terrain, walking, flying and swimming, block breaking and placing, and
-// extruded 2D item sprites to pick up.
+// Command explorer is a first-person demo of voxellib on the app shell:
+// Minecraft-like terrain, walking, flying and swimming, block breaking and
+// placing, extruded 2D item sprites to pick up, creatures, a crossbow.
 //
 //	./run.sh                                   # build and run (repo root)
 //	go run ./cmd/explorer                      # generated world saved to saves/demo
@@ -8,15 +8,15 @@
 //	go run ./cmd/explorer -world ~/path/to/mc/world -pack client.jar
 //	go run ./cmd/explorer -map path/to/voxelmap -pos 251,95,-350
 //
-// See README.md for controls and debug keys. Files:
+// See README.md for controls and debug keys. The window, input, tick loop,
+// player and entities are package app; files here:
 //
-//	main.go    flags, window and engine setup
-//	player.go  character controller glue, block breaking/placing
+//	main.go    flags, engine config, hooks
+//	input.go   the explorer's own keys
 //	items.go   item sprites, drops, pickup, held item
-//	creatures.go  imported animated models and their behaviour
+//	creatures.go  imported animated models (app entities) and their behaviour
 //	import.go  Roblox-style and Minecraft-style asset imports
-//	input.go   keyboard/mouse, debug keys
-//	frame.go   main loop, frame stats, screenshots
+//	combat.go, crossbow.go, torches.go, signs.go, help.go: demo features
 package main
 
 import (
@@ -30,16 +30,14 @@ import (
 	"runtime"
 	"runtime/pprof"
 	"strings"
-	"time"
 
-	"github.com/memmaker/voxellib/character"
-	"github.com/memmaker/voxellib/platform/glfw"
+	"github.com/memmaker/voxellib/app"
 	"github.com/memmaker/voxellib/voxel"
 	"github.com/memmaker/voxellib/voxel/engine"
 	"github.com/memmaker/voxellib/voxel/mcres"
+	"github.com/memmaker/voxellib/voxel/physics"
 	"github.com/memmaker/voxellib/voxel/render"
 	"github.com/memmaker/voxellib/voxel/voxelmap"
-	"github.com/memmaker/voxellib/worldgen"
 	"github.com/memmaker/voxellib/worldgen/flat"
 	"github.com/memmaker/voxellib/worldgen/overworld"
 )
@@ -56,41 +54,49 @@ var hotbarNames = []string{
 	"sand", "stone_bricks", "water[level=0]", "lava[level=0]",
 }
 
+type options struct {
+	itemDir, signFont, pets, mcAssets, species, anim, hold string
+	numItems, numMobs                                      int
+	night, fly, lineup, help                               bool
+}
+
 func main() {
 	var (
+		o        options
+		cfg      app.Config
 		worldDir = flag.String("world", "saves/demo", "Minecraft world directory to load/save ('' = memory only)")
 		readOnly = flag.Bool("readonly", false, "never write to the world directory")
-		signFont = flag.String("signfont", "", "pixel TTF for sign text ('' = built-in font, 'none' = no sign text)")
 		packs    = flag.String("pack", "", "extra resource packs (dir/zip/jar), comma separated, highest priority first")
 		genName  = flag.String("gen", "overworld", "terrain generator for new chunks: overworld | flat")
 		seed     = flag.Int64("seed", 1337, "terrain seed")
 		dist     = flag.Int("dist", 12, "render distance in chunks")
-		itemDir  = flag.String("items", "assets/items", "directory of item sprite PNGs ('' = no items)")
-		numItems = flag.Int("item-count", 40, "items scattered around the spawn")
-		pets     = flag.String("pets", filepath.Join(os.Getenv("HOME"), "Downloads/CubePetsVol2_Free_v1.0.zip"), "Roblox-style model pack (dir/zip/glb) to populate the world with ('' = none)")
-		mcAssets = flag.String("mcassets", "assets/cleannrooster", "Minecraft-style asset pack (Blockbench models, animations, item textures) ('' = none)")
-		numMobs  = flag.Int("mob-count", 24, "creatures spawned around the player")
-		shot     = flag.String("shot", "", "save a screenshot PNG at tick -shot-at and quit")
-		shotAt   = flag.Int("shot-at", 200, "tick for -shot")
 		startPos = flag.String("pos", "", "start position x,y,z")
 		look     = flag.String("look", "", "start yaw,pitch in degrees")
-		night    = flag.Bool("night", false, "start at night")
-		fly      = flag.Bool("fly", false, "start flying")
-		hold     = flag.String("hold", "sword_01", "item held at start")
-		edits    = flag.String("edits", "", "debug: 'dx,dy,dz,block;...' edits relative to the player, applied once terrain is ready")
-		autofly  = flag.Float64("autofly", 0, "debug: fly forward automatically at this many blocks/s (streaming stress test)")
 		cpuprof  = flag.String("cpuprofile", "", "write a CPU profile")
-		verbose  = flag.Bool("verbose", false, "print frame stats to stdout")
-		bench    = flag.Duration("bench", 0, "quit after this long and print the mean frame time (runs unfocused, mouse free)")
-		lineup   = flag.Bool("lineup", false, "debug: line up one standing creature per species in front of the start position")
-		speciesF = flag.String("species", "", "debug: only spawn species whose name contains this")
-		animF    = flag.String("anim", "", "debug: force this clip on lined-up creatures")
-		showHelp = flag.Bool("help-screen", false, "start with the F1 help screen open")
 		mapDir   = flag.String("map", "", "VoxelMap directory to walk (instead of -world)")
 		mapDim   = flag.Int("dim", math.MinInt, "VoxelMap dimension id (default: the map's spawn dimension)")
 		slot     = flag.String("slot", "", "save slot for -map: only your changes are stored there ('' = not saved)")
-		vsync    = flag.String("vsync", "on", "frame pacing: on (vsync), limit (no vsync, sleep to max(display rate, 120Hz)), off (unlimited)")
 	)
+	flag.StringVar(&o.signFont, "signfont", "", "pixel TTF for sign text ('' = built-in font, 'none' = no sign text)")
+	flag.StringVar(&o.itemDir, "items", "assets/items", "directory of item sprite PNGs ('' = no items)")
+	flag.IntVar(&o.numItems, "item-count", 40, "items scattered around the spawn")
+	flag.StringVar(&o.pets, "pets", filepath.Join(os.Getenv("HOME"), "Downloads/CubePetsVol2_Free_v1.0.zip"), "Roblox-style model pack (dir/zip/glb) to populate the world with ('' = none)")
+	flag.StringVar(&o.mcAssets, "mcassets", "assets/cleannrooster", "Minecraft-style asset pack (Blockbench models, animations, item textures) ('' = none)")
+	flag.IntVar(&o.numMobs, "mob-count", 24, "creatures spawned around the player")
+	flag.StringVar(&cfg.Debug.Shot, "shot", "", "save a screenshot PNG at tick -shot-at and quit")
+	flag.IntVar(&cfg.Debug.ShotAt, "shot-at", 200, "tick for -shot")
+	flag.BoolVar(&o.night, "night", false, "start at night")
+	flag.BoolVar(&o.fly, "fly", false, "start flying")
+	flag.StringVar(&o.hold, "hold", "sword_01", "item held at start")
+	flag.StringVar(&cfg.Debug.Edits, "edits", "", "debug: 'dx,dy,dz,block;...' edits relative to the player, applied once terrain is ready")
+	flag.Float64Var(&cfg.Debug.AutoFly, "autofly", 0, "debug: fly forward automatically at this many blocks/s (streaming stress test)")
+	flag.BoolVar(&cfg.Debug.Verbose, "verbose", false, "print frame stats to stdout")
+	flag.DurationVar(&cfg.Debug.Bench, "bench", 0, "quit after this long and print the mean frame time (runs unfocused, mouse free)")
+	flag.BoolVar(&o.lineup, "lineup", false, "debug: line up one standing creature per species in front of the start position")
+	flag.StringVar(&o.species, "species", "", "debug: only spawn species whose name contains this")
+	flag.StringVar(&o.anim, "anim", "", "debug: force this clip on lined-up creatures")
+	flag.BoolVar(&o.help, "help-screen", false, "start with the F1 help screen open")
+	flag.StringVar(&cfg.VSync, "vsync", "on", "frame pacing: on (vsync), limit (no vsync, sleep to max(display rate, 120Hz)), off (unlimited)")
 	flag.Parse()
 
 	if *cpuprof != "" {
@@ -101,37 +107,16 @@ func main() {
 		pprof.StartCPUProfile(f)
 		defer pprof.StopCPUProfile()
 	}
-	if err := glfw.Init(); err != nil {
-		log.Fatal(err)
+	cfg.Title = "voxellib explorer (F1 help)"
+	if *startPos != "" {
+		var p [3]float64
+		fmt.Sscanf(*startPos, "%f,%f,%f", &p[0], &p[1], &p[2])
+		cfg.Start = &p
 	}
-	defer glfw.Terminate()
-	render.WindowHints()
-	automated := *shot != "" || *autofly > 0 || *bench > 0
-	if automated {
-		// Automated run: don't take focus from whatever the user is doing.
-		glfw.WindowHint(glfw.Focused, glfw.False)
-		glfw.WindowHint(glfw.FocusOnShow, glfw.False)
-	}
-	if *bench > 0 {
-		// On top but unfocused: macOS throttles occluded Metal windows.
-		glfw.WindowHint(glfw.Floating, glfw.True)
-	}
-	win, err := glfw.CreateWindow(1280, 720, "voxellib explorer", nil, nil)
-	if err != nil {
-		log.Fatal(err)
-	}
-	if err := render.Init(win, *vsync == "on"); err != nil {
-		log.Fatal(err)
-	}
-	frameLimit := time.Duration(0)
-	if *vsync != "on" {
-		if *vsync == "limit" {
-			hz := 120 // never pace slower than this: 8.3ms frames
-			if m := glfw.GetPrimaryMonitor(); m != nil && m.GetVideoMode().RefreshRate > hz {
-				hz = m.GetVideoMode().RefreshRate
-			}
-			frameLimit = time.Second / time.Duration(hz)
-		}
+	if *look != "" {
+		var yd, pd float64
+		fmt.Sscanf(*look, "%f,%f", &yd, &pd)
+		cfg.Yaw, cfg.Pitch = yd*math.Pi/180, pd*math.Pi/180
 	}
 
 	var paths []string
@@ -146,11 +131,7 @@ func main() {
 	defer pack.Close()
 
 	reg := voxel.NewRegistry()
-	var generator interface {
-		worldgen.Generator
-		worldgen.Spawner
-	}
-	cfg := engine.Config{
+	cfg.Engine = engine.Config{
 		Registry:       reg,
 		RenderDistance: *dist,
 		WorldDir:       *worldDir,
@@ -165,134 +146,61 @@ func main() {
 			log.Fatal(err)
 		}
 		defer m.Close()
-		cfg.Map, cfg.Dimension, cfg.SaveDir, cfg.WorldDir, cfg.Textures = m, *mapDim, *slot, "", nil
+		c := &cfg.Engine
+		c.Map, c.Dimension, c.SaveDir, c.WorldDir, c.Textures = m, *mapDim, *slot, "", nil
 		if *mapDim == math.MinInt {
-			cfg.Dimension = m.Spawn.Dim
+			c.Dimension = m.Spawn.Dim
 		}
 		hotbar = mapHotbar
-		cfg.RenderOptions.Missing = mcres.MissingTexture
 	} else {
 		reg.Resolver, reg.Faces = pack.Resolver(), pack.FaceResolver()
 		switch *genName {
 		case "overworld":
-			generator = overworld.New(reg, *seed)
+			cfg.Engine.Generator = overworld.New(reg, *seed)
 		case "flat":
-			generator = flat.New(reg)
+			cfg.Engine.Generator = flat.New(reg)
 		default:
 			log.Fatalf("unknown generator %q", *genName)
 		}
-		cfg.Generator = generator
 	}
-	eng, err := engine.New(cfg)
+
+	a, err := app.New(cfg)
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer eng.Close()
-	if cfg.SaveDir != "" && !cfg.ReadOnly {
-		defer func() { // a slot keeps only saved games; the explorer has no state of its own
-			st, err := eng.GameState()
-			if err == nil {
-				err = eng.SaveGame(st)
-			}
-			if err != nil {
-				log.Printf("save: %v", err)
-			}
-		}()
-	}
-
-	g := &game{eng: eng, win: win, verbose: *verbose, edits: *edits, autofly: *autofly,
-		frameLimit: frameLimit, automated: automated, bench: *bench}
-	g.held, g.itemsLeft = *hold, *numItems
-	g.terrain = &terrain{eng: eng}
+	g := &game{App: a, opt: o}
 	for _, n := range hotbar {
-		if cfg.Map != nil {
-			g.hotbar = append(g.hotbar, cfg.Map.State(n))
+		if m := cfg.Engine.Map; m != nil {
+			g.hotbar = append(g.hotbar, m.State(n))
 		} else {
 			g.hotbar = append(g.hotbar, reg.Parse(n))
 		}
 	}
-	g.cam = render.Camera{FOV: 70 * math.Pi / 180, Near: 0.05}
-	var x, y, z float64
-	if *startPos != "" {
-		fmt.Sscanf(*startPos, "%f,%f,%f", &x, &y, &z)
-		g.spawnKnown = true
-	} else if sx, sy, sz, ok := eng.Spawn(); ok {
-		x, y, z = float64(sx)+0.5, float64(sy), float64(sz)+0.5
-		g.spawnKnown, g.findGround = true, true
-	} else if generator != nil {
-		lx, lz := generator.FindLand(0, 0)
-		x, z = float64(lx)+0.5, float64(lz)+0.5
-		g.findGround = true
+	a.Hooks = app.Hooks{
+		Start:         g.start,
+		Tick:          g.tick,
+		Action:        g.action,
+		Render:        g.render,
+		Draw:          g.draw,
+		BlockInteract: g.blockInteract,
+		BreakTicks:    g.breakTicks,
+		HeldBlock:     func() voxel.StateID { return g.hotbar[min(a.Player.Selected, len(g.hotbar)-1)] },
+		Status:        g.status,
 	}
-	g.player = character.New(x, y, z)
-	g.player.Flying = *fly
-	g.spawnX, g.spawnY, g.spawnZ = x, y, z
-	if *look != "" {
-		var yd, pd float64
-		fmt.Sscanf(*look, "%f,%f", &yd, &pd)
-		g.cam.Yaw, g.cam.Pitch = yd*math.Pi/180, pd*math.Pi/180
+	a.HUD = g
+	g.bindKeys()
+	if err := a.Run(); err != nil {
+		log.Fatal(err)
 	}
-	if *night {
-		eng.Renderer.Opt.Daylight = 0.2
-	}
-	if *itemDir != "" {
-		if err := g.loadItems(*itemDir); err != nil {
-			log.Printf("items disabled: %v", err)
-		}
-	}
-	if *signFont != "none" {
-		if err := g.loadSignFont(*signFont); err != nil {
-			log.Printf("sign text disabled: %v", err)
-		}
-	}
-	g.spawnLeft = *numMobs
-	g.mobRand = rand.New(rand.NewSource(7))
-	g.bowModel, g.arrowModel = -1, -1 // set by setupCrossbow
-	g.swordModel = -1                 // set by setupCombat
-	if *pets != "" {
-		g.importPets(*pets)
-	}
-	if *mcAssets != "" {
-		g.importMCAssets(*mcAssets)
-	}
-	g.finishItems()
-	g.filterSpecies(*speciesF)
-	g.lineup, g.lineupAnim = *lineup, *animF
-	if *showHelp {
-		g.toggleHelp()
-	}
-	// -shot runs are automated: never grab the user's mouse or take any
-	// keyboard or mouse input.
-	if *shot == "" {
-		g.setupInput()
-	}
-	g.run(*shot, *shotAt)
 }
 
+// game is the explorer's state on top of the app shell.
 type game struct {
-	eng     *engine.Engine
-	win     *glfw.Window
-	cam     render.Camera
-	terrain *terrain
+	*app.App
+	opt     options
+	hotbar  []voxel.StateID
 	signs   *signText
 	torches torchFX
-	player  *character.Character
-
-	spawnX, spawnY, spawnZ float64
-	findGround             bool // snap to the surface once the chunk is loaded
-	spawnKnown             bool
-	frozen                 bool // waiting for terrain under the player
-
-	hotbar   []voxel.StateID
-	selected int
-	captured bool
-	lastJump time.Time
-	tick     int
-	breakCD  int
-	placeCD  int
-	swing    int // ticks left of the hand swing animation
-	walkDist float64
-	prevWalk float64 // walkDist last tick, for interpolating the bob
 
 	itemsState
 	creaturesState
@@ -301,17 +209,94 @@ type game struct {
 	help     *render.Overlay // F1 help screen
 	showHelp bool
 	debugMsg string // shown in the title (K animation preview)
-	shotReq  bool   // F2: save a screenshot after this frame
-
-	verbose bool
-	edits   string
-	autofly float64
-	// automated runs never grab the mouse; bench > 0 quits after that long.
-	automated bool
-	bench     time.Duration
-	stats     frameStats
-	// frameLimit paces frames without GL vsync (0 = unlimited).
-	frameLimit time.Duration
 }
 
-const tickDur = time.Second / 20
+// start sets up a session: items, creatures, weapons (the app calls it
+// once the engine and the player exist).
+func (g *game) start() {
+	o := &g.opt
+	g.Player.Flying = o.fly
+	g.Player.HotbarSize = len(g.hotbar)
+	if o.night {
+		g.Eng.Renderer.Opt.Daylight = 0.2
+	}
+	g.itemsState = itemsState{held: o.hold, itemsLeft: o.numItems}
+	g.creaturesState = creaturesState{spawnLeft: o.numMobs, mobRand: rand.New(rand.NewSource(7)),
+		lineup: o.lineup, lineupAnim: o.anim}
+	g.crossbowState = crossbowState{bowModel: -1, arrowModel: -1} // set by setupCrossbow
+	g.combatState = combatState{swordModel: -1}                   // set by setupCombat
+	g.torches = torchFX{}
+	if o.itemDir != "" {
+		if err := g.loadItems(o.itemDir); err != nil {
+			log.Printf("items disabled: %v", err)
+		}
+	}
+	if o.signFont != "none" {
+		if err := g.loadSignFont(o.signFont); err != nil {
+			log.Printf("sign text disabled: %v", err)
+		}
+	}
+	if o.pets != "" {
+		g.importPets(o.pets)
+	}
+	if o.mcAssets != "" {
+		g.importMCAssets(o.mcAssets)
+	}
+	g.finishItems()
+	g.filterSpecies(o.species)
+	if o.help && !g.showHelp {
+		g.toggleHelp()
+	}
+}
+
+func (g *game) tick() {
+	if g.crossbowOn() && g.Input.Down(app.ActAttack) {
+		g.fire() // held down: repeat at the reload rate
+	}
+	g.tickItems()
+	g.tickCreatures()
+	g.tickArrows()
+	g.tickTorches()
+	g.tickPlayerHealth()
+}
+
+func (g *game) render(alpha float64, _ *render.Options) { g.animStep() }
+
+// draw adds the explorer's world passes after the terrain and creatures;
+// the held item (which clears depth) comes last.
+func (g *game) draw(alpha float64) {
+	g.drawSigns()
+	g.drawWeapons()
+	g.drawArrows(alpha)
+	g.drawTorches(alpha)
+	g.drawItems(alpha)
+}
+
+// Draw is the explorer's app.HUD: hearts, hurt flash, F1 help.
+func (g *game) Draw(fbW, fbH int) {
+	g.drawHUD(fbW, fbH)
+	g.drawHelp(fbW, fbH)
+}
+
+// blockInteract opens and closes doors (left or right click).
+func (g *game) blockInteract(h physics.Hit, _ app.Action) bool { return g.toggleDoor(h.Block) }
+
+func (g *game) breakTicks(s voxel.StateID) int {
+	if g.Eng.World.Reg.Info(s).Name == "minecraft:bedrock" {
+		return -1
+	}
+	return 0
+}
+
+func (g *game) status() string {
+	name := strings.TrimPrefix(g.Eng.World.Reg.Info(g.hotbar[min(g.Player.Selected, len(g.hotbar)-1)]).Name, "minecraft:")
+	held := g.held
+	if held == "" {
+		held = "-"
+	}
+	s := fmt.Sprintf("[%d] %s | hand %s", g.Player.Selected+1, name, held)
+	if g.debugMsg != "" {
+		s += " | anim " + g.debugMsg
+	}
+	return s
+}

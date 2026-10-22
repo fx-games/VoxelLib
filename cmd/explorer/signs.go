@@ -133,12 +133,12 @@ func signModel(img image.Image) *model.Model {
 // distance) and frees the textures of signs left behind.
 func (g *game) drawSigns() {
 	s := g.signs
-	if s == nil || g.ensureModelRenderer() != nil {
+	if s == nil {
 		return
 	}
 	s.insts = s.insts[:0]
-	w := g.eng.World
-	cx, cz := int(math.Floor(g.cam.X))>>4, int(math.Floor(g.cam.Z))>>4
+	w := g.Eng.World
+	cx, cz := int(math.Floor(g.Cam.X))>>4, int(math.Floor(g.Cam.Z))>>4
 	for dz := -1; dz <= 1; dz++ {
 		for dx := -1; dx <= 1; dx++ {
 			ch := w.Chunk(voxel.ChunkPos{X: cx + dx, Z: cz + dz})
@@ -147,7 +147,7 @@ func (g *game) drawSigns() {
 			}
 			for p, lines := range ch.Signs {
 				x, y, z := float64(p.X)+0.5, float64(p.Y), float64(p.Z)+0.5
-				if ddx, ddy, ddz := x-g.cam.X, y-g.cam.Y, z-g.cam.Z; ddx*ddx+ddy*ddy+ddz*ddz > 16*16 {
+				if ddx, ddy, ddz := x-g.Cam.X, y-g.Cam.Y, z-g.Cam.Z; ddx*ddx+ddy*ddy+ddz*ddz > 16*16 {
 					continue
 				}
 				id := w.Block(p.X, p.Y, p.Z)
@@ -160,7 +160,7 @@ func (g *game) drawSigns() {
 					h = -1
 					if img, any := s.signImage(lines); any {
 						var err error
-						if h, err = g.modelRend.Add(signModel(img)); err != nil {
+						if h, err = g.Models.Add(signModel(img)); err != nil {
 							fmt.Fprintln(os.Stderr, "sign:", err)
 							h = -1
 						}
@@ -180,7 +180,7 @@ func (g *game) drawSigns() {
 				}
 				t := mgl32.HomogRotate3DY(-voxel.SignYaw(props["facing"], props["rotation"]) * math.Pi / 180).
 					Mul4(mgl32.Translate3D(0, float32(ty/16), float32((tz-8)/16+0.002)))
-				sky, blk := g.light(x, y+0.8, z)
+				sky, blk := g.Light(x, y+0.8, z)
 				s.insts = append(s.insts, render.ModelInstance{Model: h, X: x, Y: y, Z: z, Transform: &t, Sky: sky, Block: blk})
 			}
 		}
@@ -188,11 +188,11 @@ func (g *game) drawSigns() {
 	// Free signs well past the draw distance, so walking back and forth
 	// across the edge doesn't re-render them every time.
 	for p, h := range s.handles {
-		dx, dz := float64(p.X)+0.5-g.cam.X, float64(p.Z)+0.5-g.cam.Z
+		dx, dz := float64(p.X)+0.5-g.Cam.X, float64(p.Z)+0.5-g.Cam.Z
 		if dx*dx+dz*dz > 32*32 {
-			g.modelRend.Remove(h)
+			g.Models.Remove(h)
 			delete(s.handles, p)
 		}
 	}
-	g.modelRend.Draw(&g.cam, s.insts)
+	g.Models.Draw(&g.Cam, s.insts)
 }

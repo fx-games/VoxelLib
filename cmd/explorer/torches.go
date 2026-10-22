@@ -6,6 +6,8 @@ package main
 import (
 	"strings"
 
+	"github.com/memmaker/voxellib/app"
+
 	"github.com/memmaker/voxellib/particles"
 	"github.com/memmaker/voxellib/voxel"
 	"github.com/memmaker/voxellib/voxel/render"
@@ -70,8 +72,8 @@ func (g *game) tickTorches() {
 	if t.tips == nil {
 		t.tips = map[*voxel.Chunk]torchScan{}
 	}
-	w := g.eng.World
-	px, py, pz := g.player.X, g.player.Y, g.player.Z
+	w := g.Eng.World
+	px, py, pz := g.Player.X, g.Player.Y, g.Player.Z
 	seen := map[*voxel.Chunk]bool{}
 	for dz := -2; dz <= 2; dz++ {
 		for dx := -2; dx <= 2; dx++ {
@@ -81,8 +83,8 @@ func (g *game) tickTorches() {
 			}
 			seen[ch] = true
 			sc, ok := t.tips[ch]
-			if !ok || g.tick-sc.at >= scanEvery {
-				sc = torchScan{g.tick, scanTorches(w, ch)}
+			if !ok || g.Tick-sc.at >= scanEvery {
+				sc = torchScan{g.Tick, scanTorches(w, ch)}
 				t.tips[ch] = sc
 			}
 			for i, p := range sc.tips {
@@ -90,7 +92,7 @@ func (g *game) tickTorches() {
 					continue
 				}
 				t.parts.Emit(p[0], p[1], p[2], torchFlame)
-				if (g.tick+i)%8 == 0 {
+				if (g.Tick+i)%8 == 0 {
 					t.parts.Emit(p[0], p[1]+0.1, p[2], torchSmoke)
 				}
 			}
@@ -101,7 +103,7 @@ func (g *game) tickTorches() {
 			delete(t.tips, ch)
 		}
 	}
-	t.parts.Tick(tickDur.Seconds(), nil)
+	t.parts.Tick(app.TickDur.Seconds(), nil)
 }
 
 // drawTorches draws the flame particles.
@@ -109,9 +111,9 @@ func (g *game) drawTorches(alpha float64) {
 	t := &g.torches
 	if t.rend == nil {
 		var err error
-		if t.rend, err = render.NewParticleRenderer(g.eng.Renderer); err != nil {
+		if t.rend, err = render.NewParticleRenderer(g.Eng.Renderer); err != nil {
 			return
 		}
 	}
-	t.rend.Draw(&g.cam, t.parts.P, alpha, g.light)
+	t.rend.Draw(&g.Cam, t.parts.P, alpha, g.Light)
 }

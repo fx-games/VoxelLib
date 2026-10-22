@@ -70,10 +70,10 @@ type combatState struct {
 // playerTarget lets arrows hit the player.
 type playerTarget struct{ g *game }
 
-func (p *playerTarget) Box() collide.AABB { return p.g.player.Box() }
+func (p *playerTarget) Box() collide.AABB { return p.g.Player.Box() }
 func (p *playerTarget) Frame() (x, y, z, yaw float64) {
-	pl := p.g.player
-	return pl.X, pl.Y, pl.Z, p.g.cam.Yaw
+	pl := p.g.Player
+	return pl.X, pl.Y, pl.Z, p.g.Cam.Yaw
 }
 
 // setupCombat finds the sword in an imported pack.
@@ -89,11 +89,11 @@ func (g *game) setupCombat(p *mcmodel.Pack) {
 	if sword != nil {
 		paintSword(sword)
 	}
-	if sword == nil || g.ensureModelRenderer() != nil {
+	if sword == nil {
 		return
 	}
 	var err error
-	if g.swordModel, err = g.modelRend.Add(sword); err != nil {
+	if g.swordModel, err = g.Models.Add(sword); err != nil {
 		log.Printf("combat: %v", err)
 		g.swordModel = -1
 	}
@@ -205,7 +205,7 @@ func (g *game) provoke(c *creature) {
 // aimHostiles points hostiles at the player before the mobs tick, and
 // calms down those that lost track.
 func (g *game) aimHostiles() {
-	p := g.player
+	p := g.Player
 	for _, c := range g.creatures {
 		m := c.mob
 		if !m.Hostile || c.dying > 0 {
@@ -223,7 +223,7 @@ func (g *game) aimHostiles() {
 // applyStrikes starts attack clips and applies blows and shots after the
 // mobs ticked.
 func (g *game) applyStrikes() {
-	p := g.player
+	p := g.Player
 	for _, c := range g.creatures {
 		m := c.mob
 		if !m.Hostile || c.dying > 0 {
@@ -257,7 +257,7 @@ func (g *game) applyStrikes() {
 // (outside its own mesh, so it can't hit itself) at the player's chest,
 // aiming high enough to make up for the drop.
 func (g *game) shootAtPlayer(c *creature, w *weapon) {
-	m, p := c.mob, g.player
+	m, p := c.mob, g.Player
 	fx, fz := math.Sin(m.Yaw), -math.Cos(m.Yaw)
 	out := w.front + 0.3
 	sx, sy, sz := m.X+fx*out, m.Y+c.sp.height*shoulderFrac, m.Z+fz*out
@@ -273,10 +273,10 @@ func (g *game) shootAtPlayer(c *creature, w *weapon) {
 // hurtPlayer applies damage with Minecraft's knockback away from x,z and a
 // short invulnerability; at zero health the player respawns.
 func (g *game) hurtPlayer(dmg int, fromX, fromZ float64) {
-	if g.hurt > 0 || g.player.NoClip {
+	if g.hurt > 0 || g.Player.NoClip {
 		return
 	}
-	p := g.player
+	p := g.Player
 	g.health -= dmg
 	g.hurt = hurtTicks
 	dx, dz := p.X-fromX, p.Z-fromZ
@@ -294,7 +294,7 @@ func (g *game) hurtPlayer(dmg int, fromX, fromZ float64) {
 // hostile calms down.
 func (g *game) respawn() {
 	g.health, g.hurt = maxHealth, 0
-	g.player.Teleport(g.spawnX, g.spawnY, g.spawnZ)
+	g.Player.Respawn()
 	for _, c := range g.creatures {
 		if c.mob.Hostile {
 			c.mob.Hostile = false
@@ -346,13 +346,13 @@ func (g *game) drawWeapons() {
 		m := creatureMatrix(0, 0, 0, c.drawYaw, c.drawTilt, c.fallYaw).Mul4(bone).
 			Mul4(mgl32.Translate3D(0, -w.handOff, 0)).Mul4(swordHold)
 		g.weaponMats = append(g.weaponMats, m)
-		sky, blk := g.light(c.drawX, c.drawY+c.sp.height/2, c.drawZ)
+		sky, blk := g.Light(c.drawX, c.drawY+c.sp.height/2, c.drawZ)
 		g.weaponBuf = append(g.weaponBuf, render.ModelInstance{Model: g.swordModel, X: c.drawX, Y: c.drawY, Z: c.drawZ, Sky: sky, Block: blk, Fade: c.drawFade})
 	}
 	for i := range g.weaponBuf {
 		g.weaponBuf[i].Transform = &g.weaponMats[i]
 	}
-	g.modelRend.Draw(&g.cam, g.weaponBuf)
+	g.Models.Draw(&g.Cam, g.weaponBuf)
 }
 
 // unscaled drops the scale from a rigid transform (bone frames carry the

@@ -56,16 +56,12 @@ func (g *game) setupCrossbow(p *mcmodel.Pack) {
 	if bow == nil {
 		return
 	}
-	if err := g.ensureModelRenderer(); err != nil {
-		log.Printf("crossbow: %v", err)
-		return
-	}
 	var err error
-	if g.bowModel, err = g.modelRend.Add(bow); err != nil {
+	if g.bowModel, err = g.Models.Add(bow); err != nil {
 		log.Printf("crossbow: %v", err)
 		return
 	}
-	if g.arrowModel, err = g.modelRend.Add(arrowModel()); err != nil {
+	if g.arrowModel, err = g.Models.Add(arrowModel()); err != nil {
 		log.Printf("crossbow: %v", err)
 		g.bowModel = -1
 		return
@@ -112,12 +108,12 @@ func (g *game) fire() {
 	if !g.crossbowOn() || g.reload > 0 {
 		return
 	}
-	yaw, pitch := g.cam.Yaw, g.cam.Pitch
+	yaw, pitch := g.Cam.Yaw, g.Cam.Pitch
 	// The arrow starts like vanilla's (AbstractArrow): at the shooter, 0.1
 	// below the eyes. Unlike vanilla it doesn't inherit the shooter's
 	// movement, so it flies exactly where the crosshair pointed and doesn't
 	// drift along with a strafing player.
-	ex, ey, ez := g.player.Eye()
+	ex, ey, ez := g.Player.Eye()
 	g.arrows.Shoot(ex, ey-0.1, ez, yaw, pitch, projectile.Speed)
 	g.reload, g.recoil = reloadTicks, recoilTicks
 }
@@ -141,10 +137,10 @@ func (g *game) tickArrows() {
 			targets = append(targets, c)
 		}
 	}
-	if g.playerTgt != nil && !g.player.NoClip {
+	if g.playerTgt != nil && !g.Player.NoClip {
 		targets = append(targets, g.playerTgt)
 	}
-	g.arrows.Tick(g.terrain, targets)
+	g.arrows.Tick(g.Terrain, targets)
 }
 
 // Head shots: an arrow that strikes a creature's head kills it. Hits are
@@ -299,6 +295,7 @@ func (g *game) tickDying() {
 			}
 			if c.dying > deathTicks+lieTicks+fadeTicks {
 				g.dropArrows(c)
+				c.ent.Removed = true
 				continue
 			}
 		}
@@ -317,7 +314,7 @@ func (g *game) fallCorpse(m *mobs.Mob) bool {
 		return true
 	}
 	m.VY = (m.VY - 0.08) * 0.98 // Minecraft entity gravity and drag
-	_, my, _ := collide.Move(g.terrain, m.Box(), 0, m.VY, 0)
+	_, my, _ := collide.Move(g.Terrain, m.Box(), 0, m.VY, 0)
 	m.Y += my
 	if my != m.VY { // hit the ground
 		m.VY, m.OnGround = 0, true
@@ -400,7 +397,7 @@ func (g *game) drawArrows(alpha float64) {
 		// the eye. Vanilla does this for snowballs, fireballs, wind charges
 		// and eyes of ender (tickCount < 2 && distSq < 12.25).
 		if a.Flown < 2 { // counted from launch: a shot can stick at once
-			dx, dy, dz := x-g.cam.X, y-g.cam.Y, z-g.cam.Z
+			dx, dy, dz := x-g.Cam.X, y-g.Cam.Y, z-g.Cam.Z
 			if dx*dx+dy*dy+dz*dz < 3.5*3.5 {
 				continue
 			}
@@ -408,16 +405,16 @@ func (g *game) drawArrows(alpha float64) {
 		// Light the arrow from its middle: a stuck tip sits inside a solid
 		// block, whose light is 0, which drew every stuck arrow black.
 		back := 0.4 * math.Cos(pitch)
-		sky, blk := g.light(x-math.Sin(yaw)*back, y-0.4*math.Sin(pitch), z+math.Cos(yaw)*back)
+		sky, blk := g.Light(x-math.Sin(yaw)*back, y-0.4*math.Sin(pitch), z+math.Cos(yaw)*back)
 		g.modelInsts = append(g.modelInsts, render.ModelInstance{Model: g.arrowModel, X: x, Y: y, Z: z, Yaw: yaw, Pitch: pitch, Sky: sky, Block: blk, Fade: fade})
 	}
-	g.modelRend.Draw(&g.cam, g.modelInsts)
+	g.Models.Draw(&g.Cam, g.modelInsts)
 }
 
 // drawCrossbowHand draws the crossbow in the lower right of the view, with
 // walking bob and a recoil kick after each shot.
 func (g *game) drawCrossbowHand(alpha float64) {
-	t := g.bobPhase(alpha)
+	t := g.Player.BobPhase(alpha)
 	bobX, bobY := float32(math.Sin(t))*0.02, -float32(math.Abs(math.Cos(t)))*0.03
 	kick := float32(0)
 	if g.recoil > 0 {
@@ -428,8 +425,8 @@ func (g *game) drawCrossbowHand(alpha float64) {
 		Mul4(mgl32.HomogRotate3DX(mgl32.DegToRad(4 + 8*kick))).
 		Mul4(bowHold).
 		Mul4(mgl32.Scale3D(0.55, 0.55, 0.55))
-	sky, blk := g.light(g.cam.X, g.cam.Y, g.cam.Z)
-	g.modelRend.DrawHand(g.bowModel, float32(g.cam.Aspect), view, sky, blk)
+	sky, blk := g.Light(g.Cam.X, g.Cam.Y, g.Cam.Z)
+	g.Models.DrawHand(g.bowModel, float32(g.Cam.Aspect), view, sky, blk)
 }
 
 // bowHold turns the cut-out crossbow (flat in its XY plane, stock running

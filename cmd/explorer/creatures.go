@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/go-gl/mathgl/mgl32"
+	"github.com/memmaker/voxellib/app"
 	"github.com/memmaker/voxellib/mobs"
 	"github.com/memmaker/voxellib/model"
 	"github.com/memmaker/voxellib/voxel"
@@ -27,6 +28,7 @@ type species struct {
 }
 
 type creature struct {
+	ent  *app.Entity // drawn by the app; its pose follows mob
 	sp   *species
 	mob  *mobs.Mob
 	anim *model.Animator
@@ -52,12 +54,12 @@ type creature struct {
 // creaturesState is the explorer's creature glue: imported models →
 // render.ModelRenderer, behaviour from package mobs.
 type creaturesState struct {
-	modelRend  *render.ModelRenderer
 	species    []*species
 	creatures  []*creature
 	spawnLeft  int
 	mobRand    *rand.Rand
 	lastAnim   time.Time
+	animDT     float32 // animation time step this frame
 	modelInsts []render.ModelInstance
 	lineup     bool   // debug: species gallery in front of the player
 	lineupAnim string // debug: clip forced on the gallery
@@ -80,44 +82,29 @@ func (g *game) filterSpecies(f string) {
 // spawnLineup places one creature per species in a row 4 blocks in front
 // of the player, facing it, standing still (debug gallery).
 func (g *game) spawnLineup() {
-	p := g.player
-	fx, fz := math.Sin(g.cam.Yaw), -math.Cos(g.cam.Yaw)
+	p := g.Player
+	fx, fz := math.Sin(g.Cam.Yaw), -math.Cos(g.Cam.Yaw)
 	rx, rz := -fz, fx
 	n := len(g.species)
 	for i, sp := range g.species {
 		off := (float64(i) - float64(n-1)/2) * 1.6
 		x, z := p.X+fx*4+rx*off, p.Z+fz*4+rz*off
-		y, _ := g.eng.SurfaceY(int(math.Floor(x)), int(math.Floor(z)))
+		y, _ := g.Eng.SurfaceY(int(math.Floor(x)), int(math.Floor(z)))
 		m := mobs.New(mobs.Walker, x, float64(y), z, sp.width, sp.height)
 		m.WalkSpeed, m.RunSpeed, m.Range = 0, 0, 0
 		m.Static = true
-		m.Yaw = g.cam.Yaw + math.Pi
+		m.Yaw = g.Cam.Yaw + math.Pi
 		m.PrevYaw = m.Yaw
-		cr := &creature{sp: sp, mob: m, anim: model.NewAnimator(sp.model), debugClip: g.lineupAnim}
-		g.creatures = append(g.creatures, cr)
+		g.addCreature(&creature{sp: sp, mob: m, anim: model.NewAnimator(sp.model), debugClip: g.lineupAnim})
 	}
 	g.spawnLeft = 0
-}
-
-// ensureModelRenderer creates the model renderer on first use.
-func (g *game) ensureModelRenderer() error {
-	if g.modelRend != nil {
-		return nil
-	}
-	var err error
-	g.modelRend, err = render.NewModelRenderer(g.eng.Renderer)
-	return err
 }
 
 // addSpecies registers imported models. clipFor maps a behaviour state to a
 // clip name for a model ("" if it has none).
 func (g *game) addSpecies(ms []*model.Model, clipFor func(m *model.Model, s mobs.State) string) {
-	if err := g.ensureModelRenderer(); err != nil {
-		log.Printf("models disabled: %v", err)
-		return
-	}
 	for _, m := range ms {
-		h, err := g.modelRend.Add(m)
+		h, err := g.Models.Add(m)
 		if err != nil {
 			log.Print(err)
 			continue
@@ -156,10 +143,10 @@ func clipByName(m *model.Model, s mobs.State) string {
 }
 
 func (g *game) tickCreatures() {
-	if len(g.species) == 0 || g.frozen || g.findGround {
+	if len(g.species) == 0 || !g.Ready() {
 		return
 	}
-	p := g.player
+	p := g.Player
 	if g.lineup {
 		g.lineup = false
 		g.spawnLineup()
@@ -168,10 +155,10 @@ func (g *game) tickCreatures() {
 		a := g.mobRand.Float64() * 2 * math.Pi
 		r := 4 + g.mobRand.Float64()*16
 		x, z := p.X+math.Cos(a)*r, p.Z+math.Sin(a)*r
-		if !g.eng.ChunkReady(voxel.ChunkPos{X: int(math.Floor(x)) >> 4, Z: int(math.Floor(z)) >> 4}) {
+		if !g.Eng.ChunkReady(voxel.ChunkPos{X: int(math.Floor(x)) >> 4, Z: int(math.Floor(z)) >> 4}) {
 			continue
 		}
-		y, ok := g.eng.SurfaceY(int(math.Floor(x)), int(math.Floor(z)))
+		y, ok := g.Eng.SurfaceY(int(math.Floor(x)), int(math.Floor(z)))
 		if !ok {
 			continue
 		}
@@ -191,7 +178,7 @@ func (g *game) tickCreatures() {
 		}
 		cr := &creature{sp: sp, mob: m, anim: model.NewAnimator(sp.model)}
 		cr.anim.Time = g.mobRand.Float32() * 5
-		g.creatures = append(g.creatures, cr)
+		g.addCreature(cr)
 		g.spawnLeft--
 	}
 	all := make([]*mobs.Mob, 0, len(g.creatures)+1)
@@ -199,14 +186,27 @@ func (g *game) tickCreatures() {
 	g.tickDying()
 	for _, c := range g.creatures {
 		if c.dying == 0 {
-			c.mob.Tick(g.terrain, g.mobRand)
+			c.mob.Tick(g.Terrain, g.mobRand)
 		}
 		all = append(all, c.mob)
 	}
 	// The player shoves mobs aside but isn't shoved back.
 	all = append(all, &mobs.Mob{X: p.X, Y: p.Y, Z: p.Z, Width: p.Width, Height: p.Height, Static: true})
 	g.applyStrikes()
-	mobs.Separate(all, g.terrain)
+	mobs.Separate(all, g.Terrain)
+	for _, c := range g.creatures { // the app interpolates and draws the entity
+		e, m := c.ent, c.mob
+		e.X, e.Y, e.Z, e.Yaw = m.X, m.Y, m.Z, m.Yaw
+		e.PrevX, e.PrevY, e.PrevZ, e.PrevYaw = m.PrevX, m.PrevY, m.PrevZ, m.PrevYaw
+	}
+}
+
+// addCreature adds a creature and its app entity.
+func (g *game) addCreature(c *creature) {
+	m := c.mob
+	c.ent = g.Entities.Add(&app.Entity{X: m.X, Y: m.Y, Z: m.Z, Yaw: m.Yaw, Width: m.Width, Height: m.Height,
+		Model: c.sp.handle, Data: c, Pose: g.poseCreature})
+	g.creatures = append(g.creatures, c)
 }
 
 // cycleAnimation (K) steps the nearest creature through all its clips,
@@ -215,7 +215,7 @@ func (g *game) cycleAnimation() {
 	var best *creature
 	bd := 1e9
 	for _, c := range g.creatures {
-		if d := math.Hypot(c.mob.X-g.player.X, c.mob.Z-g.player.Z); d < bd {
+		if d := math.Hypot(c.mob.X-g.Player.X, c.mob.Z-g.Player.Z); d < bd {
 			best, bd = c, d
 		}
 	}
@@ -239,49 +239,46 @@ func (g *game) cycleAnimation() {
 	}
 }
 
-func (g *game) drawCreatures(alpha float64) {
-	if len(g.creatures) == 0 {
-		return
-	}
+// animStep sets this frame's animation time step (once per frame, before
+// the entities are posed).
+func (g *game) animStep() {
 	now := time.Now()
-	dt := float32(now.Sub(g.lastAnim).Seconds())
-	if g.lastAnim.IsZero() || dt > 0.25 {
-		dt = 0
+	g.animDT = float32(now.Sub(g.lastAnim).Seconds())
+	if g.lastAnim.IsZero() || g.animDT > 0.25 {
+		g.animDT = 0
 	}
 	g.lastAnim = now
-	g.modelInsts = g.modelInsts[:0]
-	for _, c := range g.creatures {
-		x, y, z, yaw := c.mob.Lerp(alpha)
-		if math.Hypot(x-g.cam.X, z-g.cam.Z) > float64(g.eng.Renderer.Opt.RenderDistance*16) {
-			continue
+}
+
+// poseCreature animates a creature's entity for drawing (app.Entity.Pose)
+// and remembers the drawn pose for exact arrow hits.
+func (g *game) poseCreature(e *app.Entity, alpha float64, in *render.ModelInstance) bool {
+	c := e.Data.(*creature)
+	if c.dying == 0 || c.skin == nil { // the dead keep their last pose
+		clip := c.debugClip
+		if clip == "" {
+			clip = g.combatClip(c)
 		}
-		if c.dying == 0 || c.skin == nil { // the dead keep their last pose
-			clip := c.debugClip
+		if clip == "" {
+			clip = c.sp.clips[c.mob.State]
 			if clip == "" {
-				clip = g.combatClip(c)
+				clip = c.sp.clips[mobs.Idle]
 			}
-			if clip == "" {
-				clip = c.sp.clips[c.mob.State]
-				if clip == "" {
-					clip = c.sp.clips[mobs.Idle]
-				}
-			}
-			if clip == "bind" { // debug: no animation
-				c.anim.Clip = nil
-			} else if clip != "" {
-				c.anim.Play(clip, false)
-			}
-			c.anim.Update(dt)
-			if c.debugClip != "" && c.anim.Done() {
-				c.anim.Play(clip, true) // loop one-shots while previewing
-			}
-			c.skin = c.anim.Skin(c.skin)
 		}
-		c.drawn, c.drawX, c.drawY, c.drawZ, c.drawYaw = true, x, y, z, yaw
-		c.drawTilt, c.drawFade = c.deathTilt(alpha), c.deathFade(alpha)
-		c.drawFrame++
-		sky, blk := g.light(x, y+c.sp.height/2, z)
-		g.modelInsts = append(g.modelInsts, render.ModelInstance{Model: c.sp.handle, X: x, Y: y, Z: z, Yaw: yaw, Tilt: c.drawTilt, TiltYaw: c.fallYaw, Fade: c.drawFade, Skin: c.skin, Sky: sky, Block: blk})
+		if clip == "bind" { // debug: no animation
+			c.anim.Clip = nil
+		} else if clip != "" {
+			c.anim.Play(clip, false)
+		}
+		c.anim.Update(g.animDT)
+		if c.debugClip != "" && c.anim.Done() {
+			c.anim.Play(clip, true) // loop one-shots while previewing
+		}
+		c.skin = c.anim.Skin(c.skin)
 	}
-	g.modelRend.Draw(&g.cam, g.modelInsts)
+	c.drawn, c.drawX, c.drawY, c.drawZ, c.drawYaw = true, in.X, in.Y, in.Z, in.Yaw
+	c.drawTilt, c.drawFade = c.deathTilt(alpha), c.deathFade(alpha)
+	c.drawFrame++
+	in.Tilt, in.TiltYaw, in.Fade, in.Skin = c.drawTilt, c.fallYaw, c.drawFade, c.skin
+	return true
 }
