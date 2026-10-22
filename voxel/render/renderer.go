@@ -31,6 +31,8 @@ type Options struct {
 	// Missing returns the placeholder texture; IsGreyscale decides tinting.
 	Missing     func(size int) image.Image
 	IsGreyscale func(image.Image) bool
+	// BlockTint colours tinted blocks by position and biome (mesh.Config).
+	BlockTint func(info *voxel.StateInfo, x, y, z int, biome func(x, z int) uint8) uint32
 }
 
 // Fog is a fog override: colour plus start and end distance in blocks.
@@ -208,7 +210,7 @@ func (r *Renderer) reloadTextures() {
 	}
 	r.tex = newTextureArray(names, r.src, missing, grey)
 	r.texVersion = ver
-	r.cfg = &mesh.Config{Tintable: r.tex.tintable}
+	r.cfg = &mesh.Config{Tintable: r.tex.tintable, BlockTint: r.Opt.BlockTint}
 }
 
 // MeshConfig returns the per-texture data the mesher needs. It changes when

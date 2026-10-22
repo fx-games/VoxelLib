@@ -65,6 +65,12 @@ type Config struct {
 	// coloured by the block's tint (vanilla grass), false when the pack has
 	// already painted it (most third party packs).
 	Tintable []bool
+	// BlockTint, when set, gives the colour (0xRRGGBB) of a tinted block
+	// (not TintFixed) at world position x,y,z, e.g. from its biome: biome
+	// returns the legacy biome id of any column within one block of the
+	// section (world x,z). Without it, or without biome data, TintColors
+	// apply.
+	BlockTint func(info *voxel.StateInfo, x, y, z int, biome func(x, z int) uint8) uint32
 }
 
 // Tint colours (plains biome defaults).
@@ -86,6 +92,11 @@ type Mesher struct {
 	trans [][3]float32
 	mask  [256]uint64
 	ridx  uint32
+	// BlockTint results per block of the section, valid where tintStamp
+	// equals builds (counts Build calls).
+	tintCache [voxel.SectionVolume]uint32
+	tintStamp [voxel.SectionVolume]uint32
+	builds    uint32
 }
 
 func NewMesher() *Mesher { return &Mesher{} }
@@ -125,6 +136,7 @@ var nbOff = func() (o [6]int) {
 // Build meshes the captured snapshot.
 func (m *Mesher) Build(table []voxel.StateInfo, cfg *Config) *Mesh {
 	m.table, m.cfg = table, cfg
+	m.builds++
 	res := &Mesh{Pos: m.Snap.Pos}
 	if m.Snap.Empty {
 		res.Empty = true
@@ -242,7 +254,9 @@ func (m *Mesher) light(x, y, z int, f voxel.Face) (c [4]cornerLight) {
 	return
 }
 
-func (m *Mesher) tint(info *voxel.StateInfo, f voxel.Face, tex uint16) uint32 {
+// tint is the vertex colour of face f with texture tex of the block at
+// x,y,z in the section.
+func (m *Mesher) tint(info *voxel.StateInfo, f voxel.Face, tex uint16, x, y, z int) uint32 {
 	if info.Tint == voxel.TintNone || info.TintMask&(1<<f) == 0 {
 		return 0xFFFFFF
 	}
@@ -250,8 +264,20 @@ func (m *Mesher) tint(info *voxel.StateInfo, f voxel.Face, tex uint16) uint32 {
 		return 0xFFFFFF
 	}
 	c := TintColors[min(int(info.Tint), len(TintColors)-1)]
-	if info.Tint == voxel.TintFixed {
+	switch {
+	case info.Tint == voxel.TintFixed:
 		c = info.TintColor
+	case m.cfg != nil && m.cfg.BlockTint != nil && m.Snap.HasBiomes:
+		i := y<<8 | z<<4 | x
+		if m.tintStamp[i] != m.builds {
+			p := m.Snap.Pos
+			ox, oz := p.X*16, p.Z*16
+			m.tintStamp[i] = m.builds
+			m.tintCache[i] = m.cfg.BlockTint(info, ox+x, p.Y*16+y, oz+z, func(bx, bz int) uint8 {
+				return m.Snap.Biomes[(min(max(bz-oz, -1), 16)+1)*18+min(max(bx-ox, -1), 16)+1]
+			})
+		}
+		c = m.tintCache[i]
 	}
 	return (c>>16)&0xff | (c>>8&0xff)<<8 | (c&0xff)<<16 // to r,g,b byte order
 }
@@ -285,7 +311,7 @@ func (m *Mesher) cubes() {
 						continue // a model face without cullface (FaceCount) is never hidden
 					}
 					cl := m.light(p[0], p[1], p[2], f)
-					tint := m.tint(info, f, info.Tex[f])
+					tint := m.tint(info, f, info.Tex[f], p[0], p[1], p[2])
 					if info.Layer != voxel.LayerTranslucent && cl[0] == cl[1] && cl[1] == cl[2] && cl[2] == cl[3] {
 						// key: tex 12 | layer 2 | ao 2 | sky 8 | blk 8 | tint 24 ; +1 so 0 = empty
 						m.mask[b<<4|a] = (uint64(info.Tex[f]) | uint64(info.Layer)<<12 | uint64(cl[0].ao)<<14 |
@@ -425,7 +451,7 @@ func (m *Mesher) specials() {
 						}
 						c := cornerLight{3, (l >> 4) * 16, (l & 15) * 16}
 						cl := [4]cornerLight{c, c, c, c}
-						tint := m.tint(info, f, info.Tex[f])
+						tint := m.tint(info, f, info.Tex[f], x, y, z)
 						p := [3]int{x, y, z}
 						m.quadTops(f, p, 1, 1, info.Tex[f], tint, info.Layer, cl, top)
 						if f == voxel.FaceUp && info.Layer == voxel.LayerTranslucent {
@@ -437,7 +463,7 @@ func (m *Mesher) specials() {
 				case voxel.ShapeCross:
 					l := li[i]
 					c := cornerLight{3, (l >> 4) * 16, (l & 15) * 16}
-					m.cross(x, y, z, info.Tex[0], m.tint(info, voxel.FaceUp, info.Tex[0]), info.Layer, c)
+					m.cross(x, y, z, info.Tex[0], m.tint(info, voxel.FaceUp, info.Tex[0], x, y, z), info.Layer, c)
 				}
 			}
 		}
@@ -481,7 +507,7 @@ func (m *Mesher) boxes(x, y, z, i int, info *voxel.StateInfo) {
 			}
 			tint := uint32(0xFFFFFF)
 			if b.NoTint&(1<<f) == 0 {
-				tint = m.tint(info, f, tex) // the face's own texture decides whether it is greyscale
+				tint = m.tint(info, f, tex, x, y, z) // the face's own texture decides whether it is greyscale
 			}
 			m.boxFace(f, base, &b, tex, tint, info.Layer, c)
 		}

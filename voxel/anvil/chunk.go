@@ -207,6 +207,9 @@ func EncodeChunk(w *voxel.World, ch *voxel.Chunk) Compound {
 	if ch.Lit {
 		root[litTag] = int8(1)
 	}
+	if len(ch.Biomes) == 256 {
+		root["Biomes"] = append([]byte(nil), ch.Biomes...) // legacy ids, read back by DecodeChunkIDs
+	}
 	return root
 }
 

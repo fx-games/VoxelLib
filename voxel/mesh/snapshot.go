@@ -13,6 +13,12 @@ type Snapshot struct {
 	States [18 * 18 * 18]voxel.StateID
 	Light  [18 * 18 * 18]uint8 // sky<<4 | block
 	Empty  bool                // centre section has only air
+	// Biomes holds the legacy biome id per column of the section and its
+	// border, [(z+1)*18+(x+1)] for x,z in -1..16 (a missing chunk repeats
+	// the nearest captured column); HasBiomes is false when the centre
+	// chunk has none.
+	Biomes    [18 * 18]uint8
+	HasBiomes bool
 }
 
 // idx addresses the padded grid; x,y,z in -1..16.
@@ -44,6 +50,7 @@ func (s *Snapshot) Capture(w *voxel.World, p voxel.SectionPos) {
 	}
 	center := secs[1][1][1]
 	s.Empty = center.IsEmpty()
+	s.captureBiomes(w, p)
 
 	// centre: bulk unpack
 	var buf [voxel.SectionVolume]voxel.StateID
@@ -100,4 +107,31 @@ func sidx(v int) int {
 		return 2
 	}
 	return 1
+}
+
+// captureBiomes fills Biomes from the centre chunk and its neighbours.
+// Caller holds the world read lock.
+func (s *Snapshot) captureBiomes(w *voxel.World, p voxel.SectionPos) {
+	var cols [3][3][]byte
+	for dz := -1; dz <= 1; dz++ {
+		for dx := -1; dx <= 1; dx++ {
+			if c := w.ChunkUnlocked(voxel.ChunkPos{X: p.X + dx, Z: p.Z + dz}); c != nil && len(c.Biomes) == 256 {
+				cols[dx+1][dz+1] = c.Biomes
+			}
+		}
+	}
+	s.HasBiomes = cols[1][1] != nil
+	if !s.HasBiomes {
+		return
+	}
+	for z := -1; z <= 16; z++ {
+		for x := -1; x <= 16; x++ {
+			b := cols[sidx(x)][sidx(z)]
+			lx, lz := x&15, z&15
+			if b == nil { // no neighbour: the nearest centre column
+				b, lx, lz = cols[1][1], min(max(x, 0), 15), min(max(z, 0), 15)
+			}
+			s.Biomes[(z+1)*18+x+1] = b[lz<<4|lx]
+		}
+	}
 }

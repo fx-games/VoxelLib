@@ -61,7 +61,7 @@ type Chunk struct {
 	// Signs holds sign text by absolute block position (read-only: not saved).
 	Signs map[BlockPos][4]string
 	// Biomes holds legacy (pre-1.13) biome ids per column (z<<4|x), nil if
-	// the chunk had none (read-only: not saved).
+	// the chunk had none.
 	Biomes []byte
 	minY   int
 }

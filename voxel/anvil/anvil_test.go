@@ -21,6 +21,8 @@ func TestRoundTrip(t *testing.T) {
 	for i := 0; i < 16; i++ {
 		c := w.NewChunk(voxel.ChunkPos{X: i - 8, Z: 3})
 		g.Generate(w, c)
+		c.Biomes = make([]byte, 256)
+		c.Biomes[255] = byte(i)
 		chunks = append(chunks, c)
 	}
 	t.Logf("generate: %v per chunk", time.Since(start)/16)
@@ -41,6 +43,9 @@ func TestRoundTrip(t *testing.T) {
 		d, err := DecodeChunk(w, nbt)
 		if err != nil {
 			t.Fatal(err)
+		}
+		if len(d.Biomes) != 256 || d.Biomes[255] != c.Biomes[255] {
+			t.Fatalf("%v: biomes not kept", c.Pos)
 		}
 		for y := -64; y < 320; y++ {
 			for z := 0; z < 16; z++ {

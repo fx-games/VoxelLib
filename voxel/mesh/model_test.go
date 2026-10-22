@@ -225,3 +225,35 @@ func TestBoxTextureTint(t *testing.T) {
 		t.Fatalf("%d tinted vertices, want the 4 grey side faces", n)
 	}
 }
+
+// TestBlockTint: Config.BlockTint colours a tinted block from the biome of
+// its column, read across the chunk border.
+func TestBlockTint(t *testing.T) {
+	def := cube("test:biome", voxel.Box{})
+	def.Tint = voxel.TintGrass
+	reg := voxel.NewRegistry()
+	reg.Register(def)
+	w := voxel.NewWorld(reg, 0, 64)
+	for _, p := range []voxel.ChunkPos{{}, {X: -1}} {
+		c := w.NewChunk(p)
+		c.Biomes = make([]byte, 256)
+		for i := range c.Biomes {
+			c.Biomes[i] = byte(10 + p.X) // 10 here, 9 in the west chunk
+		}
+		w.AddChunk(c)
+	}
+	w.SetBlock(0, 1, 0, reg.State(def.Name, nil))
+	m := NewMesher()
+	m.Snap.Capture(w, voxel.SectionPos{})
+	res := m.Build(reg.Table(), &Config{BlockTint: func(_ *voxel.StateInfo, x, y, z int, biome func(x, z int) uint8) uint32 {
+		return uint32(biome(x, z))<<16 | uint32(biome(x-1, z))
+	}})
+	if len(res.Data) == 0 {
+		t.Fatal("no faces")
+	}
+	for i := 0; i+VertexWords <= len(res.Data); i += VertexWords {
+		if got := res.Data[i+2] & 0xFFFFFF; got != 9<<16|10 { // r=10, b=9 in r,g,b byte order
+			t.Fatalf("tint %06x", got)
+		}
+	}
+}
