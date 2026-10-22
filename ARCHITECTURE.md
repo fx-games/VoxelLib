@@ -8,12 +8,13 @@ cmd/explorer ── demo glue: input, character, items, frame loop
    ├── items            drops + pickup rule (needs only collide.Solids)
    ├── mobs             creature behaviour (needs only collide.Solids)
    ├── projectile       arrows: ballistic flight, sticking in blocks and targets
-   ├── audio            positional mixer on oto (pure Go reader, no GL)
+   ├── audio            positional mixer on oto (pure Go reader, no GPU)
    ├── importer/roblox, importer/mcmodel → model (+ model/gltf), via importer/packfs
    ├── items/extrude    sprite → mesh (pure)        items/sheet  sheet cutter (pure)
    ├── worldgen/...     terrain generators (implement worldgen.Generator)
    └── voxel/engine     streaming + threads
-          ├── voxel/render   GL: terrain, sky, lines, items
+          ├── voxel/render   WebGPU: terrain, sky, lines, items
+          ├── voxel/voxelmap VoxelMap reader (ids.json, blocks.json, models, regions)
           ├── voxel/mesh     section → vertices (pure)
           ├── voxel/anvil    load/save .mca
           ├── voxel/mcres    resource packs
@@ -39,6 +40,8 @@ them, as `terrain` does in `cmd/explorer/player.go`.
 ## Engine pipeline (`voxel/engine`)
 The main thread calls `Update(x,y,z)` then `Render(cam)` each frame.
 1. The **load workers** read a chunk from `WorldDir`, or generate it with the `Generator`.
+   With a VoxelMap (`Config.Map`) a chunk is the map's region chunk, else the generator's,
+   with the save slot's edited sections laid over it (`save.go`).
 2. The **light worker** owns every world mutation from streaming (`worldOp` channel)
    and lights a chunk once its neighbours exist.
 3. The **mesh workers** mesh dirty sections whose 3×3 neighbourhood is lit.

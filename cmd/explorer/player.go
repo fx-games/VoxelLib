@@ -6,8 +6,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/memmaker/voxellib/platform/glfw"
 	"github.com/memmaker/voxellib/character"
+	"github.com/memmaker/voxellib/platform/glfw"
 	"github.com/memmaker/voxellib/voxel"
 	"github.com/memmaker/voxellib/voxel/collide"
 	"github.com/memmaker/voxellib/voxel/engine"
@@ -36,10 +36,11 @@ func (t *terrain) Boxes(area collide.AABB, out []collide.AABB) []collide.AABB {
 }
 
 func (t *terrain) Liquid(x, y, z int) character.Liquid {
-	switch t.eng.World.Reg.Info(t.eng.World.Block(x, y, z)).Name {
-	case "minecraft:water":
+	name, _, _ := strings.Cut(t.eng.World.Reg.Info(t.eng.World.Block(x, y, z)).Name, "#") // map block keys
+	switch name {
+	case "minecraft:water", "minecraft:flowing_water":
 		return character.LiquidWater
-	case "minecraft:lava":
+	case "minecraft:lava", "minecraft:flowing_lava":
 		return character.LiquidLava
 	}
 	return character.LiquidNone

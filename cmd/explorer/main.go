@@ -6,6 +6,7 @@
 //	go run ./cmd/explorer                      # generated world saved to saves/demo
 //	go run ./cmd/explorer -gen flat -world ''  # flat test world, not saved
 //	go run ./cmd/explorer -world ~/path/to/mc/world -pack client.jar
+//	go run ./cmd/explorer -map path/to/voxelmap -pos 251,95,-350
 //
 // See README.md for controls and debug keys. Files:
 //
@@ -37,12 +38,17 @@ import (
 	"github.com/memmaker/voxellib/voxel/engine"
 	"github.com/memmaker/voxellib/voxel/mcres"
 	"github.com/memmaker/voxellib/voxel/render"
+	"github.com/memmaker/voxellib/voxel/voxelmap"
 	"github.com/memmaker/voxellib/worldgen"
 	"github.com/memmaker/voxellib/worldgen/flat"
 	"github.com/memmaker/voxellib/worldgen/overworld"
 )
 
 func init() { runtime.LockOSThread() }
+
+// mapHotbar is the hotbar of -map worlds (pre-1.13 block keys).
+var mapHotbar = []string{"minecraft:grass#0", "minecraft:dirt#0", "minecraft:stone#0", "minecraft:cobblestone#0",
+	"minecraft:planks#0", "minecraft:log#0", "minecraft:glass#0", "minecraft:brick_block#0", "minecraft:glowstone#0"}
 
 var hotbarNames = []string{
 	"grass_block[snowy=false]", "dirt", "stone", "cobblestone", "oak_planks", "oak_log[axis=y]",
@@ -80,7 +86,10 @@ func main() {
 		speciesF = flag.String("species", "", "debug: only spawn species whose name contains this")
 		animF    = flag.String("anim", "", "debug: force this clip on lined-up creatures")
 		showHelp = flag.Bool("help-screen", false, "start with the F1 help screen open")
-		vsync    = flag.String("vsync", "on", "frame pacing: on (GL vsync), limit (no GL vsync, sleep to max(display rate, 120Hz)), off (unlimited)")
+		mapDir   = flag.String("map", "", "VoxelMap directory to walk (instead of -world)")
+		mapDim   = flag.Int("dim", math.MinInt, "VoxelMap dimension id (default: the map's spawn dimension)")
+		slot     = flag.String("slot", "", "save slot for -map: only your changes are stored there ('' = not saved)")
+		vsync    = flag.String("vsync", "on", "frame pacing: on (vsync), limit (no vsync, sleep to max(display rate, 120Hz)), off (unlimited)")
 	)
 	flag.Parse()
 
@@ -137,39 +146,70 @@ func main() {
 	defer pack.Close()
 
 	reg := voxel.NewRegistry()
-	reg.Resolver = pack.Resolver()
 	var generator interface {
 		worldgen.Generator
 		worldgen.Spawner
 	}
-	switch *genName {
-	case "overworld":
-		generator = overworld.New(reg, *seed)
-	case "flat":
-		generator = flat.New(reg)
-	default:
-		log.Fatalf("unknown generator %q", *genName)
-	}
-	eng, err := engine.New(engine.Config{
+	cfg := engine.Config{
 		Registry:       reg,
 		RenderDistance: *dist,
-		Generator:      generator,
 		WorldDir:       *worldDir,
 		ReadOnly:       *readOnly,
 		Textures:       pack,
 		RenderOptions:  render.Options{Missing: mcres.MissingTexture, IsGreyscale: mcres.IsGreyscale},
-	})
+	}
+	hotbar := hotbarNames
+	if *mapDir != "" {
+		m, err := voxelmap.Open(*mapDir, reg)
+		if err != nil {
+			log.Fatal(err)
+		}
+		defer m.Close()
+		cfg.Map, cfg.Dimension, cfg.SaveDir, cfg.WorldDir, cfg.Textures = m, *mapDim, *slot, "", nil
+		if *mapDim == math.MinInt {
+			cfg.Dimension = m.Spawn.Dim
+		}
+		hotbar = mapHotbar
+		cfg.RenderOptions.Missing = mcres.MissingTexture
+	} else {
+		reg.Resolver, reg.Faces = pack.Resolver(), pack.FaceResolver()
+		switch *genName {
+		case "overworld":
+			generator = overworld.New(reg, *seed)
+		case "flat":
+			generator = flat.New(reg)
+		default:
+			log.Fatalf("unknown generator %q", *genName)
+		}
+		cfg.Generator = generator
+	}
+	eng, err := engine.New(cfg)
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer eng.Close()
+	if cfg.SaveDir != "" && !cfg.ReadOnly {
+		defer func() { // a slot keeps only saved games; the explorer has no state of its own
+			st, err := eng.GameState()
+			if err == nil {
+				err = eng.SaveGame(st)
+			}
+			if err != nil {
+				log.Printf("save: %v", err)
+			}
+		}()
+	}
 
 	g := &game{eng: eng, win: win, verbose: *verbose, edits: *edits, autofly: *autofly,
 		frameLimit: frameLimit, automated: automated, bench: *bench}
 	g.held, g.itemsLeft = *hold, *numItems
 	g.terrain = &terrain{eng: eng}
-	for _, n := range hotbarNames {
-		g.hotbar = append(g.hotbar, reg.Parse(n))
+	for _, n := range hotbar {
+		if cfg.Map != nil {
+			g.hotbar = append(g.hotbar, cfg.Map.State(n))
+		} else {
+			g.hotbar = append(g.hotbar, reg.Parse(n))
+		}
 	}
 	g.cam = render.Camera{FOV: 70 * math.Pi / 180, Near: 0.05}
 	var x, y, z float64
@@ -179,7 +219,7 @@ func main() {
 	} else if sx, sy, sz, ok := eng.Spawn(); ok {
 		x, y, z = float64(sx)+0.5, float64(sy), float64(sz)+0.5
 		g.spawnKnown, g.findGround = true, true
-	} else {
+	} else if generator != nil {
 		lx, lz := generator.FindLand(0, 0)
 		x, z = float64(lx)+0.5, float64(lz)+0.5
 		g.findGround = true
