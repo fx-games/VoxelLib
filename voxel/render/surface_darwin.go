@@ -1,5 +1,3 @@
-//go:build wgpu && darwin
-
 package render
 
 /*
@@ -21,9 +19,12 @@ static void *vl_metal_layer(void *win) {
 */
 import "C"
 
-import "github.com/memmaker/voxellib/platform/glfw"
+import (
+	"github.com/gogpu/wgpu"
+	"github.com/memmaker/voxellib/platform/glfw"
+)
 
-// metalLayer attaches a CAMetalLayer to the window's content view.
-func metalLayer(win *glfw.Window) uintptr {
-	return uintptr(C.vl_metal_layer(win.GetCocoaWindow()))
+// surfaceTarget attaches a CAMetalLayer to the window's content view.
+func surfaceTarget(win *glfw.Window) wgpu.SurfaceTargetUnsafe {
+	return wgpu.SurfaceTargetFromMetalLayer(uintptr(C.vl_metal_layer(win.GetCocoaWindow())))
 }

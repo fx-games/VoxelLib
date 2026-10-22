@@ -1,8 +1,7 @@
-// Package render draws voxel.World meshes. The default backend is OpenGL 3.3
-// core (files *_gl.go), which needs a current GL context on the calling
-// goroutine. Building with -tags wgpu selects the WebGPU backend
-// (gogpu/wgpu, files *_wgpu.go) instead. Culling, sorting and buffer
-// management are shared (this file, region.go, texarray.go).
+// Package render draws voxel.World meshes with WebGPU (gogpu/wgpu: Metal on
+// macOS, DX12/Vulkan elsewhere; files *_gpu.go, gpu.go, surface_*.go).
+// Culling, sorting and buffer management live in this file, region.go and
+// texarray.go.
 package render
 
 import (
@@ -169,8 +168,7 @@ func lineVertices() []float32 {
 	return append(lv, -1, 0, 0, 1, 0, 0, 0, -1, 0, 0, 1, 0)
 }
 
-// New creates a renderer. With the GL backend a GL 3.3 core context must be
-// current (gl.Init is called here); with wgpu, Init must have been called.
+// New creates a renderer; Init must have been called.
 func New(w *voxel.World, src TextureSource, opt Options) (*Renderer, error) {
 	r := &Renderer{Opt: opt, world: w, src: src,
 		regions: map[[3]int][]*region{}, sections: map[voxel.SectionPos]*section{}, columns: map[voxel.ChunkPos]int{}}

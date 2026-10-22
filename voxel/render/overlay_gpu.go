@@ -1,5 +1,3 @@
-//go:build wgpu
-
 package render
 
 import (

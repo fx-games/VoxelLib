@@ -1,5 +1,3 @@
-//go:build wgpu
-
 package render
 
 import (
@@ -56,9 +54,8 @@ var dev struct {
 	clearNext  bool // next pass clears colour (first pass of the frame)
 	clearDepth bool // next pass clears depth
 
-	multiDraw bool    // FeatureMultiDrawIndirect
-	debug     bool    // VOXELLIB_WGPU_DEBUG: log validation errors per frame
-	layer     uintptr // CAMetalLayer
+	multiDraw bool // FeatureMultiDrawIndirect
+	debug     bool // VOXELLIB_WGPU_DEBUG: log validation errors per frame
 
 	// Capture frames (and every mailbox frame) render offscreen so ReadFrame
 	// can copy them (the swap chain image can't be read back), then blit to
@@ -93,8 +90,7 @@ func Init(win *glfw.Window, vsync bool) error {
 		return fmt.Errorf("wgpu: instance: %w", err)
 	}
 	dev.instance = inst
-	dev.layer = metalLayer(win)
-	if dev.surface, err = inst.CreateSurfaceUnsafe(wgpu.SurfaceTargetFromMetalLayer(dev.layer)); err != nil {
+	if dev.surface, err = inst.CreateSurfaceUnsafe(surfaceTarget(win)); err != nil {
 		return fmt.Errorf("wgpu: surface: %w", err)
 	}
 	if dev.adapter, err = inst.RequestAdapter(&wgpu.RequestAdapterOptions{

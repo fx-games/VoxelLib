@@ -1,5 +1,3 @@
-//go:build wgpu
-
 package render
 
 import (
@@ -45,6 +43,9 @@ func (r *Renderer) drawTerrain(vp mgl32.Mat4) {
 		return
 	}
 	if g.bgFor != r.tex {
+		if g.texBG != nil {
+			g.texBG.Release()
+		}
 		g.texBG = bindGroup("terrain textures", dev.pipes.terrainTex,
 			wgpu.BindGroupEntry{Binding: 0, TextureView: r.tex.gpu.array.view},
 			wgpu.BindGroupEntry{Binding: 1, Sampler: dev.nearestRep},
