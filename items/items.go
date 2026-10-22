@@ -28,6 +28,9 @@ type Drop struct {
 	// it, so a swapped-out item doesn't jump straight back into the hand.
 	PickupDelay int
 	WaitLeave   bool
+	// Payload is the game's item data (e.g. a whole stack with count,
+	// damage and tags); Item stays the key that draws it.
+	Payload any
 }
 
 // Size of a drop's collision box (Minecraft: 0.25).
