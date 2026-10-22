@@ -11,6 +11,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"errors"
+	"fmt"
 	"log"
 	"math"
 	"os"
@@ -18,6 +19,7 @@ import (
 	"runtime"
 	"sort"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/memmaker/voxellib/voxel"
@@ -25,6 +27,8 @@ import (
 	"github.com/memmaker/voxellib/voxel/mesh"
 	"github.com/memmaker/voxellib/voxel/physics"
 	"github.com/memmaker/voxellib/voxel/render"
+	"github.com/memmaker/voxellib/voxel/voxelmap"
+	"github.com/memmaker/voxellib/worldgen"
 )
 
 // Generator fills new chunks; see package worldgen for implementations
@@ -40,7 +44,24 @@ type Config struct {
 	RenderDistance int             // chunks, default 12
 	Generator      Generator       // used for chunks not on disk (nil: void)
 	WorldDir       string          // Minecraft world folder to load/save ("" = memory only)
-	ReadOnly       bool            // never write to WorldDir
+	ReadOnly       bool            // never write to WorldDir or SaveDir
+	// Map, when set, streams dimension Dimension of a VoxelMap instead of
+	// WorldDir. Per chunk, the save slot's changes win over the map's
+	// regions, which win over the generator. Without a Generator, the one
+	// registered (worldgen.Register) under the dimension's "generator"
+	// name is used, made with the map's seed. MinY and Height default to
+	// the map's (0, 256); Textures defaults to the map's.
+	Map       *voxelmap.Map
+	Dimension int
+	// SaveDir is the save slot of a Map world ("" = nothing is saved). It
+	// holds only what the player changed (the edited sections of each
+	// chunk) and the game's state blob (SaveGame); see NewGame.
+	SaveDir string
+	// OnMapChunk, when set, gets the raw NBT ("Level" compound) of every
+	// chunk read from Map: Biomes, Entities, TileEntities and so on. It
+	// runs on the load workers, concurrently, and again each time the
+	// chunk streams back in.
+	OnMapChunk func(p voxel.ChunkPos, level anvil.Compound)
 	// Bounds, when set, limits the world to these chunks (inclusive
 	// corners): nothing outside is loaded, generated or drawn, e.g. a
 	// hand-built level.
@@ -61,6 +82,16 @@ type Engine struct {
 	Renderer *render.Renderer
 	cfg      Config
 	store    *anvil.Store
+	delta    bool // store holds Map deltas (only edited sections)
+	// Map deltas of chunks that streamed out since the last SaveGame
+	// (save.go). ponytail: kept in memory until saved, a few KB per edited
+	// chunk; spill to a scratch store if journeys ever edit that much.
+	unsaved   map[voxel.ChunkPos]*anvil.Compound
+	unsavedMu sync.Mutex
+	fresh     atomic.Bool // the slot holds no save: its regions are ignored
+	slotMu    sync.Mutex  // one SaveGame at a time
+	stageMu   sync.Mutex  // held while chunks move from the world to unsaved
+	journal   *journal    // read-only engine: a save not yet applied to the slot, read through
 
 	center   voxel.ChunkPos
 	viewer   [3]float64
@@ -96,11 +127,30 @@ type Engine struct {
 	Timing [7]time.Duration
 }
 
-// New creates an engine. Must be called on the GL thread with a current
-// context (the renderer is created here).
+// New creates an engine. Must be called on the render thread after
+// render.Init (the renderer is created here).
 func New(cfg Config) (*Engine, error) {
 	if cfg.Registry == nil {
 		cfg.Registry = voxel.NewRegistry()
+	}
+	if m := cfg.Map; m != nil {
+		d := m.Dimension(cfg.Dimension)
+		if d == nil {
+			return nil, fmt.Errorf("engine: map has no dimension %d", cfg.Dimension)
+		}
+		if cfg.Height == 0 {
+			cfg.MinY, cfg.Height = voxelmap.MinY, voxelmap.Height
+		}
+		if cfg.Textures == nil {
+			cfg.Textures = m
+		}
+		if cfg.Generator == nil {
+			if f := worldgen.Lookup(d.Generator); f != nil {
+				cfg.Generator = f(m.Seed, m.State)
+			} else if d.Generator != "" {
+				log.Printf("engine: no generator %q registered; chunks the map lacks stay empty", d.Generator)
+			}
+		}
 	}
 	if cfg.Height == 0 {
 		cfg.MinY, cfg.Height = -64, 384
@@ -133,7 +183,18 @@ func New(cfg Config) (*Engine, error) {
 		staleMesh:  map[voxel.SectionPos]bool{},
 		mainMesher: mesh.NewMesher(), meshCfg: r.MeshConfig(), quit: make(chan struct{}),
 	}
-	if cfg.WorldDir != "" {
+	switch {
+	case cfg.Map != nil:
+		if cfg.SaveDir != "" {
+			st, fresh, j, err := openSlot(cfg.SaveDir, cfg.Dimension, !cfg.ReadOnly)
+			if err != nil {
+				r.Destroy()
+				return nil, err
+			}
+			e.store, e.delta, e.journal = st, true, j
+			e.fresh.Store(fresh)
+		}
+	case cfg.WorldDir != "":
 		e.store = anvil.OpenStore(cfg.WorldDir, !cfg.ReadOnly)
 	}
 	for i := 0; i < cfg.Workers; i++ {
@@ -166,6 +227,9 @@ func (e *Engine) loadWorker() {
 }
 
 func (e *Engine) produce(p voxel.ChunkPos) *voxel.Chunk {
+	if e.cfg.Map != nil {
+		return e.produceMap(p)
+	}
 	if e.store != nil {
 		nbt, err := e.store.Read(p.X, p.Z)
 		if err == nil {
@@ -204,7 +268,17 @@ func (e *Engine) lightWorker() {
 		case <-e.quit:
 			return
 		case op := <-e.worldOps:
-			if len(op.remove) > 0 {
+			if len(op.remove) > 0 && e.delta {
+				// Staged here, under stageMu, so a chunk is always either
+				// in the world or staged when SaveGame looks (save.go).
+				e.stageMu.Lock()
+				for _, c := range e.World.RemoveChunks(op.remove) {
+					if c.Modified {
+						e.stage(c)
+					}
+				}
+				e.stageMu.Unlock()
+			} else if len(op.remove) > 0 {
 				for _, c := range e.World.RemoveChunks(op.remove) {
 					if c.Modified && e.store != nil {
 						select {
@@ -247,6 +321,10 @@ func (e *Engine) saveWorker() {
 
 func (e *Engine) save(c *voxel.Chunk) {
 	if e.store == nil || e.cfg.ReadOnly {
+		return
+	}
+	if e.delta {
+		e.stage(c)
 		return
 	}
 	e.World.RLock()
@@ -295,7 +373,7 @@ func (e *Engine) mark(i int, t *time.Time) {
 }
 
 // Update advances streaming for a viewer at x,y,z. Call once per frame on
-// the GL thread.
+// the render thread.
 func (e *Engine) Update(x, y, z float64) {
 	e.viewer = [3]float64{x, y, z}
 	t := time.Now()
@@ -466,7 +544,7 @@ func (e *Engine) unloadFar(r int) {
 // Regenerate drops every chunk, so the world streams in again from the
 // generator (or WorldDir), e.g. after the generator's input changed.
 // Chunks and meshes still being made from the old world are discarded when
-// they arrive. Call on the GL thread, between Updates.
+// they arrive. Call on the render thread, between Updates.
 func (e *Engine) Regenerate() {
 	for p := range e.pending {
 		e.stale[p] = true
@@ -642,8 +720,13 @@ func (e *Engine) SurfaceY(x, z int) (int, bool) {
 	return e.World.MinY, true
 }
 
-// Spawn reads the spawn point from WorldDir/level.dat if present.
+// Spawn reads the spawn point from the Map (if it is in this dimension)
+// or WorldDir/level.dat.
 func (e *Engine) Spawn() (x, y, z int, ok bool) {
+	if m := e.cfg.Map; m != nil {
+		sp := m.Spawn
+		return sp.X, sp.Y, sp.Z, sp.Dim == e.cfg.Dimension
+	}
 	if e.cfg.WorldDir == "" {
 		return
 	}
@@ -674,7 +757,8 @@ func (e *Engine) Spawn() (x, y, z int, ok bool) {
 	return
 }
 
-// Close stops workers and saves every modified chunk.
+// Close stops workers and saves every modified chunk to WorldDir. A save
+// slot (SaveDir) keeps only what SaveGame saved.
 func (e *Engine) Close() {
 	close(e.quit)
 	e.wg.Wait()
@@ -688,11 +772,13 @@ func (e *Engine) Close() {
 		}
 		break
 	}
-	if e.store != nil && !e.cfg.ReadOnly {
-		// Includes chunks whose unload op was still queued.
-		for _, p := range e.World.Chunks() {
-			if c := e.World.Chunk(p); c != nil && c.Modified {
-				e.save(c)
+	if e.store != nil {
+		if !e.cfg.ReadOnly && !e.delta {
+			// Includes chunks whose unload op was still queued.
+			for _, p := range e.World.Chunks() {
+				if c := e.World.Chunk(p); c != nil && c.Modified {
+					e.save(c)
+				}
 			}
 		}
 		e.store.Close()
@@ -701,7 +787,8 @@ func (e *Engine) Close() {
 }
 
 // Flush writes every modified chunk to the world directory now (an editor's
-// save), instead of waiting for unload or Close.
+// save), instead of waiting for unload or Close. With a save slot it only
+// stages them for the next SaveGame.
 func (e *Engine) Flush() {
 	if e.store == nil || e.cfg.ReadOnly {
 		return
