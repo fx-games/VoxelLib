@@ -71,6 +71,9 @@ func printBenchExtra(ticks, gpu []time.Duration, s render.Stats) {
 	var m runtime.MemStats
 	runtime.ReadMemStats(&m)
 	fmt.Printf("bench: %d ticks %s | gpu %s\n", len(ticks), stat(ticks), stat(gpu))
+	if r := render.GPUMarkReport(); r != "" {
+		fmt.Printf("bench: gpu parts%s\n", r)
+	}
 	fmt.Printf("bench: %d draws (%d terrain, %d ranges), %d/%d visible sections, %d MiB vertices | heap %d MiB, sys %d MiB, %d GCs\n",
 		render.FrameDraws(), s.DrawCalls, s.DrawRanges, s.Visible, s.Sections, s.VertexMemory>>20, m.HeapInuse>>20, m.Sys>>20, m.NumGC)
 }

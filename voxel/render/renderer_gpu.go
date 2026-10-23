@@ -46,13 +46,19 @@ func (r *Renderer) uploadLight() {
 
 // drawTerrain draws the sky, r.batches and Opt.SkyAfter.
 func (r *Renderer) drawTerrain(cam *Camera, vp mgl32.Mat4) {
+	skyCol, fogCol := r.skyColors()
+	// With a sky list the sky pass paints just the fog colour: clear to it
+	// instead when the pass is still to begin.
+	clearSky := r.Opt.Sky != nil && dev.pk == nil && dev.clearNext
+	if clearSky {
+		dev.clearColor = gputypes.Color{R: float64(fogCol[0]), G: float64(fogCol[1]), B: float64(fogCol[2]), A: 1}
+	}
 	p := curPass()
 	if p == nil {
 		return
 	}
 	g := &r.gpu
 	fog := r.CurrentFog()
-	skyCol, fogCol := r.skyColors()
 	if pk := dev.pk; pk != nil { // no sky; translucent terrain at the world's end (packHand)
 		n := len(r.batches)
 		for n > 0 && r.batches[n-1].layer == voxel.LayerTranslucent {
@@ -66,14 +72,18 @@ func (r *Renderer) drawTerrain(cam *Camera, vp mgl32.Mat4) {
 	if r.Opt.Sky != nil { // clear to the fog colour, then the sky draws
 		skyCol, sun = fogCol, mgl32.Vec3{}
 	}
-	p.SetPipeline(dev.pipes.sky)
-	bindUniforms(p, g.u.reset().mat(vp.Inv()).f(fogCol[0], fogCol[1], fogCol[2], 0).f(skyCol[0], skyCol[1], skyCol[2], 0).
-		f(sun[0], sun[1], sun[2], 0))
-	dev.draws++
-
-	p.Draw(gputypes.DrawArgs{VertexCount: 3, InstanceCount: 1})
+	if !clearSky {
+		p.SetPipeline(dev.pipes.sky)
+		bindUniforms(p, g.u.reset().mat(vp.Inv()).f(fogCol[0], fogCol[1], fogCol[2], 0).f(skyCol[0], skyCol[1], skyCol[2], 0).
+			f(sun[0], sun[1], sun[2], 0))
+		dev.draws++
+		p.Draw(gputypes.DrawArgs{VertexCount: 3, InstanceCount: 1})
+	}
+	GPUMark("sky objects")
 	r.drawSky(cam, r.Opt.Sky)
-	r.drawBatches(p, vp, fog, fogCol, r.batches)
+	GPUMark("terrain opaque")
+	r.drawBatches(curPass(), vp, fog, fogCol, r.batches)
+	GPUMark("clouds")
 	r.drawSky(cam, r.Opt.SkyAfter)
 }
 
@@ -90,6 +100,8 @@ func (r *Renderer) drawBatches(p *wgpu.RenderPassEncoder, vp mgl32.Mat4, fog Fog
 		if b.layer != layer {
 			layer = b.layer
 			if layer == voxel.LayerTranslucent {
+				GPUMark("terrain translucent")
+				p = curPass()
 				setPipe(p, dev.pipes.terrainTrans)
 			} else if layer == voxel.LayerSolid || layer == voxel.LayerCutout {
 				setPipe(p, dev.pipes.terrainOpaque)

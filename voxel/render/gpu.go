@@ -252,6 +252,10 @@ func BeginFrame(w, h int, r, g, b float32) {
 	if dev.debug {
 		dev.device.PushErrorScope(wgpu.ErrorFilterValidation)
 	}
+	if gpuMarks {
+		dev.device.WaitIdle()
+		markPart = "clear, sky"
+	}
 }
 
 // curPass returns the render pass to record into, beginning one if needed;
@@ -344,6 +348,7 @@ func EndFrame(*glfw.Window) {
 	if dev.enc == nil {
 		return
 	}
+	GPUMark("")
 	if dev.mailbox && dev.acquiring {
 		select {
 		case st := <-dev.drawable:

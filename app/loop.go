@@ -92,6 +92,7 @@ func (a *App) loop() {
 				if len(benchFrames) == 0 {
 					runtime.ReadMemStats(&benchMem)
 					stopProfile = startProfiles()
+					render.ResetGPUMarks()
 				}
 				benchFrames = append(benchFrames, time.Since(last))
 			}
@@ -105,7 +106,10 @@ func (a *App) loop() {
 		acc = min(acc+now.Sub(last), time.Second)
 		last = now
 		t0 := time.Now()
-		for acc >= TickDur {
+		// A shot is taken at exactly tick ShotAt, alpha 0: the same
+		// pixels each run, whatever the frame timing.
+		atShot := func() bool { return dbg.Shot != "" && a.Tick >= dbg.ShotAt }
+		for acc >= TickDur && !atShot() {
 			tt := time.Now()
 			a.tick()
 			acc -= TickDur
@@ -115,6 +119,9 @@ func (a *App) loop() {
 		}
 		if a.Paused() {
 			acc = time.Duration(a.alpha * float64(TickDur)) // hold the pose
+		}
+		if atShot() {
+			acc = 0
 		}
 		t1 := time.Now()
 		alpha := float64(acc) / float64(TickDur)
@@ -155,6 +162,7 @@ func (a *App) loop() {
 			a.Mixer.SetListener(a.Cam.X, a.Cam.Y, a.Cam.Z, a.Cam.Yaw)
 		}
 		a.Eng.Render(&a.Cam)
+		render.GPUMark("entities, particles, weather")
 		if h, ent, ok := a.Target(); ok && ent == nil && !a.ScreenOpen() {
 			if a.Hooks.SelectBox != nil {
 				if b, ok := a.Hooks.SelectBox(h); ok {
@@ -177,6 +185,7 @@ func (a *App) loop() {
 			a.shotReq = false
 			a.saveDebugShot(fw, fh)
 		}
+		render.GPUMark("hud, screens")
 		if a.HUD != nil {
 			a.HUD.Draw(fw, fh)
 		}
