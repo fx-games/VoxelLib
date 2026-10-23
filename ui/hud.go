@@ -59,6 +59,9 @@ type HUD struct {
 	// Overlay draws over the HUD's own parts, below the chat, unless the
 	// HUD is hidden (a minimap); nil: none.
 	Overlay func(ctx *Context, partial float32)
+	// Underlay draws under all of the HUD (where the helmet overlay
+	// goes: full-screen tints), unless the HUD is hidden; nil: none.
+	Underlay func(ctx *Context, partial float32)
 	// ChatWidth is the chat width in GUI px (320); ChatLines how many
 	// lines show while the chat is closed (10).
 	ChatWidth, ChatLines int
@@ -139,6 +142,9 @@ func (h *HUD) Draw(ctx *Context, partial float32) {
 	c, f := ctx.Canvas, ctx.Font
 	w, ht := ctx.W, ctx.H
 	if !st.Hidden {
+		if h.Underlay != nil {
+			h.Underlay(ctx, partial)
+		}
 		h.drawHotbar(ctx)
 		icons := ctx.Tex("textures/gui/icons.png")
 		if st.Crosshair {

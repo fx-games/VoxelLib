@@ -157,7 +157,9 @@ func (m *Manager) melee(a, t *Actor) {
 		if a.Melee.Bonus != nil {
 			dmg += a.Melee.Bonus(a, t)
 		}
-		m.Attack(a, t, dmg, a.Melee.Knockback)
+		if m.Attack(a, t, dmg, a.Melee.Knockback) && a.Melee.OnHit != nil {
+			a.Melee.OnHit(a, t)
+		}
 	}
 }
 
