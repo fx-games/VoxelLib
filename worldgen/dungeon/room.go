@@ -1,0 +1,717 @@
+package dungeon
+
+import (
+	"cmp"
+	"github.com/memmaker/voxellib/grid"
+	"math"
+	"math/rand"
+	"slices"
+)
+
+type DungeonRoom struct {
+	roomPositionOffset grid.Point
+
+	floorTiles map[grid.Point]bool
+
+	availableConnections    map[grid.Point]RoomConnection
+	connectedRooms          map[grid.Point]*DungeonRoom
+	rotationMatrix          [2][2]int
+	inverseRotationMatrix   [2][2]int
+	rotationOffset          grid.CompassDirection
+	usedTemplate            string
+	roomId                  int
+	wallTiles               []grid.Point
+	poiPositions            []grid.Point
+	usedDecorationLevelName string
+	slotId                  int
+	plugsIntoSlotId         int
+	canBeLit                bool
+	bounds                  grid.Rect
+	doors                   map[grid.Point]bool
+	LastSeenTurn            int
+}
+
+func (r *DungeonRoom) GetFreeConnectionsWithRotatedDirection() map[grid.Point]RoomConnection {
+	result := make(map[grid.Point]RoomConnection)
+	for _, point := range getSortedKeys(r.availableConnections) {
+		roomConnection := r.availableConnections[point]
+		if _, ok := r.connectedRooms[point]; !ok {
+			result[point] = RoomConnection{
+				OutwardDirection: roomConnection.OutwardDirection + r.rotationOffset,
+				ConnectionID:     roomConnection.ConnectionID,
+			}
+		}
+	}
+	return result
+}
+
+func (r *DungeonRoom) HasMatchingConnection(otherConnection RoomConnection) (grid.Point, bool) {
+	neededDirection := otherConnection.OutwardDirection.Opposite()
+	neededId := otherConnection.ConnectionID
+	for _, pos := range getSortedKeys(r.availableConnections) {
+		if _, alreadyConnected := r.connectedRooms[pos]; alreadyConnected {
+			continue
+		}
+		roomConnection := r.availableConnections[pos]
+
+		dir := roomConnection.OutwardDirection
+		dir = dir + r.rotationOffset
+		if dir >= 360 {
+			dir = dir - 360
+		}
+		if dir == neededDirection && ((neededId == 0 && roomConnection.ConnectionID == 0) || roomConnection.ConnectionID == neededId) {
+			return pos, true
+		}
+	}
+	return grid.Point{}, false
+}
+
+func (r *DungeonRoom) SetPositionOffset(offset grid.Point) {
+	r.roomPositionOffset = offset
+}
+
+func (r *DungeonRoom) GetAbsoluteDoorPosition(doorPos grid.Point) grid.Point {
+	return r.ToAbsolutePosition(doorPos)
+}
+
+func (r *DungeonRoom) ToAbsolutePosition(relativePos grid.Point) grid.Point {
+	rotMat := r.rotationMatrix
+	rotatedPos := matrixMul(relativePos, rotMat)
+	return r.roomPositionOffset.Add(rotatedPos)
+}
+
+func (r *DungeonRoom) ToRelativePosition(absolutePos grid.Point) grid.Point {
+	translatedPos := absolutePos.Sub(r.roomPositionOffset)
+	rotMat := r.inverseRotationMatrix
+	unrotatedPos := matrixMul(translatedPos, rotMat)
+	return unrotatedPos
+}
+
+func (r *DungeonRoom) GetAbsoluteFloorTiles() []grid.Point {
+	result := make([]grid.Point, 0)
+	for point, _ := range r.floorTiles {
+		result = append(result, r.ToAbsolutePosition(point))
+	}
+	return result
+}
+func (r *DungeonRoom) GetRelativeFloorTiles() []grid.Point {
+	result := make([]grid.Point, 0)
+	for point, _ := range r.floorTiles {
+		result = append(result, point)
+	}
+	//REMOVE THIS; debug needs only
+	slices.SortStableFunc(result, func(i, j grid.Point) int {
+		idxI := XYToIndex(i.X, i.Y, 20)
+		idxJ := XYToIndex(j.X, j.Y, 20)
+		return cmp.Compare(idxI, idxJ)
+	})
+	return result
+}
+func (r *DungeonRoom) GetAbsoluteRoomTiles() []grid.Point {
+	result := make([]grid.Point, 0)
+	for point, _ := range r.floorTiles {
+		result = append(result, r.ToAbsolutePosition(point))
+	}
+	for _, point := range r.wallTiles {
+		result = append(result, r.ToAbsolutePosition(point))
+	}
+	for point, _ := range r.doors {
+		result = append(result, r.ToAbsolutePosition(point))
+	}
+	return result
+}
+
+func (r *DungeonRoom) GetPOIPositions() []grid.Point {
+	result := make([]grid.Point, 0)
+	for _, point := range r.poiPositions {
+		result = append(result, r.ToAbsolutePosition(point))
+	}
+	return result
+}
+func (r *DungeonRoom) AddConnectedRoom(doorPos grid.Point, room *DungeonRoom) {
+	r.connectedRooms[doorPos] = room
+}
+
+func (r *DungeonRoom) GetUsedAbsoluteDoorTiles() []grid.Point {
+	result := make([]grid.Point, 0)
+	for point, _ := range r.availableConnections {
+		if _, ok := r.connectedRooms[point]; !ok {
+			continue
+		}
+		result = append(result, r.ToAbsolutePosition(point))
+	}
+	return result
+}
+
+/*
+func (r *DungeonRoom) AddCorridor(direction grid.CompassDirection, length int) {
+    // remove door tile from available door tiles
+    doorPos, ok := r.HasFreeRelativeDoorInDirection(direction)
+    if !ok {
+        return
+    }
+    delete(r.availableConnections, doorPos)
+
+    // add corridor tiles
+    for i := 0; i < length; i++ {
+        r.floorTiles[doorPos.AddItem(direction.ToPoint().Mul(i))] = true
+    }
+
+    // add door tile at the end of the corridor
+    newDoorPos := doorPos.AddItem(direction.ToPoint().Mul(length))
+    r.availableConnections[newDoorPos] = direction
+
+    if length > 1 {
+        // add another set of doors at 90 degrees to the corridor
+        startPos := doorPos.AddItem(direction.ToPoint().Mul(length - 1))
+
+        secondDoor := startPos.AddItem(direction.TurnRightBy90().ToPoint())
+        r.availableConnections[secondDoor] = direction.TurnRightBy90()
+
+        thirdDoor := startPos.AddItem(direction.TurnLeftBy90().ToPoint())
+        r.availableConnections[thirdDoor] = direction.TurnLeftBy90()
+    }
+}
+
+*/
+
+func (r *DungeonRoom) Contains(absolutePosition grid.Point) bool {
+	relative := r.ToRelativePosition(absolutePosition)
+	if _, ok := r.floorTiles[relative]; ok {
+		return true
+	}
+	if _, ok := r.doors[relative]; ok {
+		return true
+	}
+	return false
+}
+
+func (r *DungeonRoom) ContainsIncludingWalls(absolutePosition grid.Point) bool {
+	relative := r.ToRelativePosition(absolutePosition)
+	if _, ok := r.floorTiles[relative]; ok {
+		return true
+	}
+	if _, ok := r.doors[relative]; ok {
+		return true
+	}
+	for _, wallPos := range r.wallTiles {
+		if wallPos == relative {
+			return true
+		}
+	}
+	return false
+}
+
+func (r *DungeonRoom) FloorContains(absolutePosition grid.Point) bool {
+	relative := r.ToRelativePosition(absolutePosition)
+	if _, ok := r.floorTiles[relative]; ok {
+		return true
+	}
+	return false
+}
+
+func (r *DungeonRoom) SetRotationCount(count int) {
+	switch count {
+	case 0:
+		r.rotationMatrix = [2][2]int{
+			{1, 0},
+			{0, 1},
+		}
+		r.inverseRotationMatrix = [2][2]int{
+			{1, 0},
+			{0, 1},
+		}
+		r.rotationOffset = 0
+	case 1:
+		r.rotationMatrix = [2][2]int{
+			{0, -1},
+			{1, 0},
+		}
+		r.inverseRotationMatrix = [2][2]int{
+			{0, 1},
+			{-1, 0},
+		}
+		r.rotationOffset = 90
+	case 2:
+		r.rotationMatrix = [2][2]int{
+			{-1, 0},
+			{0, -1},
+		}
+		r.inverseRotationMatrix = [2][2]int{
+			{-1, 0},
+			{0, -1},
+		}
+		r.rotationOffset = 180
+	case 3:
+		r.rotationMatrix = [2][2]int{
+			{0, 1},
+			{-1, 0},
+		}
+		r.inverseRotationMatrix = [2][2]int{
+			{0, -1},
+			{1, 0},
+		}
+		r.rotationOffset = 270
+	}
+}
+
+func (r *DungeonRoom) findCenter() grid.Point {
+	minX := math.MaxInt
+	minY := math.MaxInt
+	maxX := -math.MaxInt
+	maxY := -math.MaxInt
+	for point, _ := range r.floorTiles {
+		if point.X < minX {
+			minX = point.X
+		}
+		if point.Y < minY {
+			minY = point.Y
+		}
+		if point.X > maxX {
+			maxX = point.X
+		}
+		if point.Y > maxY {
+			maxY = point.Y
+		}
+	}
+	return grid.Point{
+		X: (minX + maxX) / 2,
+		Y: (minY + maxY) / 2,
+	}
+}
+
+func NewDungeonRoomFromRect(random *rand.Rand, bounds grid.Rect) *DungeonRoom {
+	rectRoom := &DungeonRoom{
+		floorTiles:     roomTilesFromRect(bounds),
+		wallTiles:      wallTilesFromRect(bounds),
+		bounds:         bounds,
+		doors:          make(map[grid.Point]bool),
+		connectedRooms: make(map[grid.Point]*DungeonRoom),
+		availableConnections: map[grid.Point]RoomConnection{
+			bounds.GetRandomPointOnEdge(random, grid.North).Add(grid.North.ToPoint()): {
+				OutwardDirection: grid.North,
+				ConnectionID:     0,
+			},
+			bounds.GetRandomPointOnEdge(random, grid.South).Add(grid.South.ToPoint()): {
+				OutwardDirection: grid.South,
+				ConnectionID:     0,
+			},
+			bounds.GetRandomPointOnEdge(random, grid.East).Add(grid.East.ToPoint()): {
+				OutwardDirection: grid.East,
+				ConnectionID:     0,
+			},
+			bounds.GetRandomPointOnEdge(random, grid.West).Add(grid.West.ToPoint()): {
+				OutwardDirection: grid.West,
+				ConnectionID:     0,
+			},
+		},
+	}
+	// choose a random direction or none
+
+	/*
+	   switch random.Intn(5) {
+	   case 0:
+	       rectRoom.AddCorridor(grid.North, random.Intn(4)+1)
+	   case 1:
+	       rectRoom.AddCorridor(grid.South, random.Intn(4)+1)
+	   case 2:
+	       rectRoom.AddCorridor(grid.East, random.Intn(4)+1)
+	   case 3:
+	       rectRoom.AddCorridor(grid.West, random.Intn(4)+1)
+	   }
+
+	*/
+	rectRoom.SetRotationCount(0)
+	return rectRoom
+}
+
+func (r *DungeonRoom) SetFloorTiles(tiles []grid.Point) {
+	r.floorTiles = make(map[grid.Point]bool)
+	for _, tile := range tiles {
+		r.floorTiles[tile] = true
+	}
+}
+
+func (r *DungeonRoom) SetConnections(tiles map[grid.Point]RoomConnection) {
+	r.availableConnections = tiles
+}
+
+func (r *DungeonRoom) Clone() *DungeonRoom {
+	newRoom := &DungeonRoom{
+		roomPositionOffset:      r.roomPositionOffset,
+		connectedRooms:          make(map[grid.Point]*DungeonRoom),
+		doors:                   r.doors,
+		rotationMatrix:          r.rotationMatrix,
+		inverseRotationMatrix:   r.inverseRotationMatrix,
+		rotationOffset:          r.rotationOffset,
+		usedTemplate:            r.usedTemplate,
+		usedDecorationLevelName: r.usedDecorationLevelName,
+		wallTiles:               make([]grid.Point, 0),
+		floorTiles:              make(map[grid.Point]bool),
+		availableConnections:    make(map[grid.Point]RoomConnection),
+		poiPositions:            make([]grid.Point, 0),
+		slotId:                  r.slotId,
+		plugsIntoSlotId:         r.plugsIntoSlotId,
+		canBeLit:                r.canBeLit,
+	}
+	for point, _ := range r.floorTiles {
+		newRoom.floorTiles[point] = true
+	}
+	for _, point := range r.wallTiles {
+		newRoom.wallTiles = append(newRoom.wallTiles, point)
+	}
+	for point, direction := range r.availableConnections {
+		newRoom.availableConnections[point] = direction
+	}
+	for _, point := range r.poiPositions {
+		newRoom.poiPositions = append(newRoom.poiPositions, point)
+	}
+	return newRoom
+}
+
+func (r *DungeonRoom) PrintUntransformed() {
+	bounds := r.GetRelativeBoundingRectIncludingConnectors()
+	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
+		for x := bounds.Min.X; x < bounds.Max.X; x++ {
+			relativeRoomPos := grid.Point{X: x, Y: y}
+			if _, ok := r.floorTiles[relativeRoomPos]; ok {
+				print(".")
+			} else if _, ok = r.availableConnections[relativeRoomPos]; ok {
+				print("+")
+			} else {
+				print(" ")
+			}
+		}
+		println()
+	}
+}
+
+func (r *DungeonRoom) GetRelativeBoundingRectIncludingConnectors() grid.Rect {
+	minX := math.MaxInt
+	minY := math.MaxInt
+	maxX := -math.MaxInt
+	maxY := -math.MaxInt
+	for point, _ := range r.floorTiles {
+		if point.X < minX {
+			minX = point.X
+		}
+		if point.Y < minY {
+			minY = point.Y
+		}
+		if point.X > maxX {
+			maxX = point.X
+		}
+		if point.Y > maxY {
+			maxY = point.Y
+		}
+	}
+	for point, _ := range r.availableConnections {
+		if point.X < minX {
+			minX = point.X
+		}
+		if point.Y < minY {
+			minY = point.Y
+		}
+		if point.X > maxX {
+			maxX = point.X
+		}
+		if point.Y > maxY {
+			maxY = point.Y
+		}
+	}
+	return grid.NewRect(minX, minY, maxX+1, maxY+1)
+}
+
+func (r *DungeonRoom) PrintRotated() {
+	bounds := r.GetRelativeBoundingRectIncludingConnectors()
+	transformedBoundsMin := matrixMul(bounds.Min, r.rotationMatrix)
+	transformedBoundsMax := matrixMul(bounds.Max, r.rotationMatrix)
+	transformedBounds := grid.NewRect(transformedBoundsMin.X, transformedBoundsMin.Y, transformedBoundsMax.X, transformedBoundsMax.Y)
+	transformedBounds = transformedBounds.Shift(0, 0, 1, 1)
+	zero := grid.Point{X: 0, Y: 0}
+	for y := transformedBounds.Min.Y; y < transformedBounds.Max.Y; y++ {
+		for x := transformedBounds.Min.X; x < transformedBounds.Max.X; x++ {
+			absTransformedPos := grid.Point{X: x, Y: y}
+			relativePos := matrixMul(absTransformedPos, r.inverseRotationMatrix)
+			if relativePos == zero {
+				print("0")
+			} else if _, ok := r.floorTiles[relativePos]; ok {
+				print(".")
+			} else if _, ok = r.availableConnections[relativePos]; ok {
+				print("+")
+			} else if _, ok = r.connectedRooms[relativePos]; ok {
+				print("=")
+			} else {
+				print(" ")
+			}
+		}
+		println()
+	}
+}
+func (r *DungeonRoom) PrintTransformed() {
+	bounds := r.GetRelativeBoundingRectIncludingConnectors()
+	transformedBoundsMin := r.ToAbsolutePosition(bounds.Min)
+	transformedBoundsMax := r.ToAbsolutePosition(bounds.Max)
+	transformedBounds := grid.NewRect(transformedBoundsMin.X, transformedBoundsMin.Y, transformedBoundsMax.X, transformedBoundsMax.Y)
+	transformedBounds = transformedBounds.Shift(0, 0, 1, 1)
+	zero := grid.Point{X: 0, Y: 0}
+	for y := transformedBounds.Min.Y; y < transformedBounds.Max.Y; y++ {
+		xStart := min(0, transformedBounds.Min.X)
+		for x := xStart; x < transformedBounds.Max.X; x++ {
+			absolutePos := grid.Point{X: x, Y: y}
+			relativePos := r.ToRelativePosition(absolutePos)
+			if absolutePos == zero {
+				print("0")
+			} else if relativePos == zero {
+				print("Q")
+			} else if _, ok := r.floorTiles[relativePos]; ok {
+				print(".")
+			} else if _, ok = r.availableConnections[relativePos]; ok {
+				print("+")
+			} else if _, ok = r.connectedRooms[relativePos]; ok {
+				print("=")
+			} else {
+				print(" ")
+			}
+		}
+		println()
+	}
+}
+
+func (r *DungeonRoom) PrintTransformedWithHighlight(relativePositionForHighlight grid.Point) {
+	bounds := r.GetRelativeBoundingRectIncludingConnectors()
+	transformedBoundsMin := r.ToAbsolutePosition(bounds.Min)
+	transformedBoundsMax := r.ToAbsolutePosition(bounds.Max)
+	transformedBounds := grid.NewRect(transformedBoundsMin.X, transformedBoundsMin.Y, transformedBoundsMax.X, transformedBoundsMax.Y)
+	transformedBounds = transformedBounds.Shift(0, 0, 1, 1)
+	zero := grid.Point{X: 0, Y: 0}
+	for y := transformedBounds.Min.Y; y < transformedBounds.Max.Y; y++ {
+		xStart := min(0, transformedBounds.Min.X)
+		for x := xStart; x < transformedBounds.Max.X; x++ {
+			absolutePos := grid.Point{X: x, Y: y}
+			relativePos := r.ToRelativePosition(absolutePos)
+			if relativePos == relativePositionForHighlight {
+				print("X")
+			} else if absolutePos == zero {
+				print("0")
+			} else if relativePos == zero {
+				print("Q")
+			} else if _, ok := r.floorTiles[relativePos]; ok {
+				print(".")
+			} else if _, ok = r.availableConnections[relativePos]; ok {
+				print("+")
+			} else if _, ok = r.connectedRooms[relativePos]; ok {
+				print("=")
+			} else {
+				print(" ")
+			}
+		}
+		println()
+	}
+}
+
+func (r *DungeonRoom) SetId(id int) {
+	r.roomId = id
+}
+
+func (r *DungeonRoom) GetRotatedRelativeDoorPosition(pos grid.Point) grid.Point {
+	return matrixMul(pos, r.rotationMatrix)
+}
+
+func (r *DungeonRoom) GetPositionOffset() grid.Point {
+	return r.roomPositionOffset
+}
+
+func (r *DungeonRoom) SetIncludedWallTiles(tiles []grid.Point) {
+	r.wallTiles = tiles
+}
+
+func (r *DungeonRoom) SetPOIPositions(points []grid.Point) {
+	r.poiPositions = points
+}
+
+func (r *DungeonRoom) HasDecoratedTemplate() bool {
+	return r.usedTemplate != "" && r.usedDecorationLevelName != ""
+}
+
+func (r *DungeonRoom) GetTemplateName() string {
+	return r.usedTemplate
+}
+
+func (r *DungeonRoom) SetDecorationLevelName(levelName string) {
+	r.usedDecorationLevelName = levelName
+}
+
+func (r *DungeonRoom) GetDecorationLevelName() string {
+	return r.usedDecorationLevelName
+}
+
+func (r *DungeonRoom) HasOnlyZeroIDConnections() bool {
+	for _, connection := range r.availableConnections {
+		if connection.ConnectionID != 0 {
+			return false
+		}
+	}
+	return true
+}
+
+func (r *DungeonRoom) SetSlotId(id int) {
+	r.slotId = id
+}
+func (r *DungeonRoom) GetSlotId() int {
+	return r.slotId
+}
+func (r *DungeonRoom) SetPlugsIntoSlotId(plugsIn int) {
+	r.plugsIntoSlotId = plugsIn
+}
+func (r *DungeonRoom) GetPlugsIntoSlotId() int {
+	return r.plugsIntoSlotId
+}
+
+func (r *DungeonRoom) GetFloorTileCount() int {
+	return len(r.floorTiles)
+}
+
+func (r *DungeonRoom) SetLit(lit bool) {
+	r.canBeLit = lit
+}
+
+func (r *DungeonRoom) IsLit() bool {
+	return r.canBeLit
+}
+
+func (r *DungeonRoom) IsCornerPosition(posOne grid.Point) bool {
+	shifted := posOne.Sub(r.roomPositionOffset)
+	if r.bounds.IsOnCorner(shifted) {
+		return true
+	}
+	return false
+}
+
+func (r *DungeonRoom) IsConnectorPosition(pos grid.Point) bool {
+	shifted := pos.Sub(r.roomPositionOffset)
+	if _, ok := r.availableConnections[shifted]; ok {
+		return true
+	}
+	return false
+}
+
+func (r *DungeonRoom) GetRandomConnectorPosition(random *rand.Rand, direction grid.CompassDirection) grid.Point {
+	return r.bounds.GetRandomPointOnEdge(random, direction).Add(direction.ToPoint())
+}
+
+func (r *DungeonRoom) GetRandomAbsoluteFloorPosition(random *rand.Rand) grid.Point {
+	allFloorTiles := r.GetAbsoluteFloorTiles()
+	return allFloorTiles[random.Intn(len(allFloorTiles))]
+}
+func (r *DungeonRoom) GetRandomAbsoluteFloorPositionWithFilter(random *rand.Rand, isFree func(grid.Point) bool) (grid.Point, bool) {
+	allFloorTiles := r.GetAbsoluteFloorTiles()
+	// randomize the order
+	randomIndices := random.Perm(len(allFloorTiles))
+	for _, idx := range randomIndices {
+		if isFree(allFloorTiles[idx]) {
+			return allFloorTiles[idx], true
+		}
+	}
+	return grid.Point{}, false
+}
+
+func (r *DungeonRoom) HasWallTile(pos grid.Point) bool {
+	for _, wallPos := range r.wallTiles {
+		if wallPos == pos {
+			return true
+		}
+	}
+	return false
+}
+
+func (r *DungeonRoom) SetDoor(pos grid.Point) {
+	r.doors[pos] = true
+	for i := len(r.wallTiles) - 1; i >= 0; i-- {
+		wallPos := r.wallTiles[i]
+		if wallPos == pos {
+			r.wallTiles = append(r.wallTiles[:i], r.wallTiles[i+1:]...)
+		}
+	}
+}
+
+func (r *DungeonRoom) GetWalls() []grid.Point {
+	return r.wallTiles
+}
+
+func (r *DungeonRoom) IsTopLeftWallCorner(pos grid.Point) bool {
+	if pos.X == r.bounds.Min.X-1 && pos.Y == r.bounds.Min.Y-1 {
+		return true
+	}
+	return false
+}
+func (r *DungeonRoom) IsTopRightWallCorner(pos grid.Point) bool {
+	if pos.X == r.bounds.Max.X && pos.Y == r.bounds.Min.Y-1 {
+		return true
+	}
+	return false
+}
+func (r *DungeonRoom) IsBottomLeftWallCorner(pos grid.Point) bool {
+	if pos.X == r.bounds.Min.X-1 && pos.Y == r.bounds.Max.Y {
+		return true
+	}
+	return false
+}
+func (r *DungeonRoom) IsBottomRightWallCorner(pos grid.Point) bool {
+	if pos.X == r.bounds.Max.X && pos.Y == r.bounds.Max.Y {
+		return true
+	}
+	return false
+}
+
+func (r *DungeonRoom) GetCenter() grid.Point {
+	return r.bounds.Center()
+}
+
+func (r *DungeonRoom) GetRandomAbsoluteWallPosition() grid.Point {
+	walls := r.GetWalls()
+	return walls[rand.Intn(len(walls))]
+}
+func NewDungeonRoomFromTemplate(templateName string) *DungeonRoom {
+	rectRoom := &DungeonRoom{
+		usedTemplate:   templateName,
+		doors:          make(map[grid.Point]bool),
+		connectedRooms: make(map[grid.Point]*DungeonRoom),
+	}
+	rectRoom.SetRotationCount(0)
+	return rectRoom
+}
+
+func roomTilesFromRect(bounds grid.Rect) map[grid.Point]bool {
+	result := make(map[grid.Point]bool)
+	for x := bounds.Min.X; x < bounds.Max.X; x++ {
+		for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
+			result[grid.Point{X: x, Y: y}] = true
+		}
+	}
+	return result
+}
+
+func wallTilesFromRect(bounds grid.Rect) []grid.Point {
+	result := make([]grid.Point, 0)
+	minX := bounds.Min.X - 1
+	maxX := bounds.Max.X
+	minY := bounds.Min.Y - 1
+	maxY := bounds.Max.Y
+	for x := minX; x < maxX; x++ {
+		result = append(result, grid.Point{X: x, Y: minY})
+		result = append(result, grid.Point{X: x, Y: maxY})
+	}
+	for y := minY; y < maxY; y++ {
+		result = append(result, grid.Point{X: minX, Y: y})
+		result = append(result, grid.Point{X: maxX, Y: y})
+	}
+	result = append(result, grid.Point{X: maxX, Y: maxY})
+	return result
+}
+func matrixMul(point grid.Point, b [2][2]int) grid.Point {
+	return grid.Point{
+		X: point.X*b[0][0] + point.Y*b[0][1],
+		Y: point.X*b[1][0] + point.Y*b[1][1],
+	}
+}
