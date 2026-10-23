@@ -12,9 +12,11 @@ import (
 // item icons). It samples nearest and repeats, so UVs past 1 tile (the reference's
 // options background).
 type GUITexture struct {
-	tex  texture2D
-	bg   *wgpu.BindGroup
-	w, h int
+	tex   texture2D
+	bg    *wgpu.BindGroup
+	bgLin *wgpu.BindGroup // linear sampling, made on first use
+	depth texture2D       // a target's depth attachment
+	w, h  int
 }
 
 // NewGUITexture uploads img. Call after Init.
@@ -26,7 +28,7 @@ func NewGUITexture(img image.Image) *GUITexture {
 	bg := bindGroup("gui texture", dev.pipes.tex2D,
 		wgpu.BindGroupEntry{Binding: 0, TextureView: t.view},
 		wgpu.BindGroupEntry{Binding: 1, Sampler: dev.nearestRep})
-	return &GUITexture{t, bg, w, h}
+	return &GUITexture{tex: t, bg: bg, w: w, h: h}
 }
 
 // Size returns the image size in pixels.
@@ -52,8 +54,12 @@ func (t *GUITexture) Update(img image.Image) bool {
 func (t *GUITexture) Release() {
 	if t.bg != nil {
 		t.bg.Release()
+		if t.bgLin != nil {
+			t.bgLin.Release()
+		}
 		t.tex.release()
-		t.bg = nil
+		t.depth.release()
+		t.bg, t.bgLin = nil, nil
 	}
 }
 
@@ -71,6 +77,10 @@ type guiSeg struct {
 	tex     *GUITexture
 	scissor [4]int // GUI px x, y, w, h; w <= 0: none
 	invert  bool
+	linear  bool        // sample tex bilinearly
+	target  *GUITexture // nil: the frame
+	clear   bool        // clear the target to clearC first
+	clearC  uint32
 	first   int // vertex
 }
 
@@ -82,7 +92,7 @@ func (b *GUIBatch) Quad(t *GUITexture, x0, y0, x1, y1, u0, v0, u1, v1, skew floa
 	if t == nil {
 		t = whiteTexture()
 	}
-	b.state(t, b.cur.scissor, b.cur.invert)
+	b.withTex(t)
 	ct, cb := argbToRGBA(top), argbToRGBA(bottom)
 	b.verts = append(b.verts,
 		x0+skew, y0, u0, v0, ct, x0-skew, y1, u0, v1, cb, x1+skew, y0, u1, v0, ct,
@@ -90,21 +100,62 @@ func (b *GUIBatch) Quad(t *GUITexture, x0, y0, x1, y1, u0, v0, u1, v1, skew floa
 }
 
 // Scissor clips later quads to x,y,w,h in GUI pixels; w <= 0 turns it off.
-func (b *GUIBatch) Scissor(x, y, w, h int) { b.state(b.cur.tex, [4]int{x, y, w, h}, b.cur.invert) }
+func (b *GUIBatch) Scissor(x, y, w, h int) {
+	n := b.cur
+	n.scissor = [4]int{x, y, w, h}
+	b.state(n)
+}
 
 // Invert switches the blend to colour inversion (the reference's crosshair:
 // ONE_MINUS_DST_COLOR, ONE_MINUS_SRC_COLOR) or back to alpha blending.
-func (b *GUIBatch) Invert(on bool) { b.state(b.cur.tex, b.cur.scissor, on) }
+func (b *GUIBatch) Invert(on bool) {
+	n := b.cur
+	n.invert = on
+	b.state(n)
+}
 
-func (b *GUIBatch) state(t *GUITexture, sc [4]int, inv bool) {
-	if t == b.cur.tex && sc == b.cur.scissor && inv == b.cur.invert {
+// Linear makes later quads sample their texture bilinearly (GL_LINEAR) or
+// back to nearest.
+func (b *GUIBatch) Linear(on bool) {
+	n := b.cur
+	n.linear = on
+	b.state(n)
+}
+
+// Target sends later quads into t (made by NewGUITarget; its pixels are
+// the GUI pixels there), cleared to clear (0xAARRGGBB) first, until
+// Target(nil, 0) goes back to the frame. Into a target, alpha blends as
+// SRC_ALPHA, ONE_MINUS_SRC_ALPHA for colour and ONE, ONE_MINUS_SRC_ALPHA
+// for alpha (the reference minimap's glBlendFuncSeparate(770, 771, 1, 771)).
+func (b *GUIBatch) Target(t *GUITexture, clear uint32) {
+	n := b.cur
+	n.target, n.clear, n.clearC, n.scissor = t, t != nil, clear, [4]int{}
+	b.state(n)
+}
+
+func (b *GUIBatch) withTex(t *GUITexture) {
+	if t != b.cur.tex {
+		n := b.cur
+		n.tex = t
+		b.state(n)
+	}
+}
+
+func (b *GUIBatch) state(next guiSeg) {
+	cur := b.cur
+	cur.first, next.first = 0, 0
+	if cur == next {
 		return
 	}
 	n := len(b.verts) / 5
 	if n > b.cur.first && b.cur.tex != nil {
 		b.segs = append(b.segs, b.cur)
+		if next.target == b.cur.target {
+			next.clear = false // done by the segment just closed
+		}
 	}
-	b.cur = guiSeg{tex: t, scissor: sc, invert: inv, first: n}
+	next.first = n
+	b.cur = next
 }
 
 func argbToRGBA(c uint32) float32 {
@@ -121,7 +172,7 @@ func (b *GUIBatch) Flush(fbW, fbH int, scale float32) {
 	}
 	segs, verts := b.segs, b.verts
 	b.segs, b.verts = b.segs[:0], b.verts[:0]
-	b.cur = guiSeg{scissor: b.cur.scissor, invert: b.cur.invert}
+	b.cur = guiSeg{scissor: b.cur.scissor, invert: b.cur.invert, linear: b.cur.linear, target: b.cur.target}
 	packResolve()
 	p := curPass()
 	if p == nil || len(segs) == 0 || fbW == 0 || fbH == 0 {
@@ -129,17 +180,36 @@ func (b *GUIBatch) Flush(fbW, fbH int, scale float32) {
 	}
 	pipes := guiPipelines()
 	c, off := dev.vertices.alloc(bytesOf(verts), 0)
-	var u ubuf
-	bindUniforms(p, u.f(2*scale/float32(fbW), -2*scale/float32(fbH), -1, 1))
-	p.SetVertexBuffer(0, c.buf, uint64(off))
+	var target *GUITexture
 	inv := -1
+	w, h, sc := fbW, fbH, scale
 	for i, s := range segs {
-		if v := b2i(s.invert); v != inv {
+		if i == 0 || s.target != target || s.clear {
+			if target != nil {
+				endPassOf(p)
+			}
+			target = s.target
+			if target == nil {
+				p, w, h, sc = curPass(), fbW, fbH, scale
+			} else {
+				endPass()
+				p, w, h, sc = target.beginPass(s), target.w, target.h, 1
+			}
+			var u ubuf
+			bindUniforms(p, u.f(2*sc/float32(w), -2*sc/float32(h), -1, 1))
+			p.SetVertexBuffer(0, c.buf, uint64(off))
+			inv = -1
+		}
+		v := b2i(s.invert)
+		if target != nil && !s.invert {
+			v = 2
+		}
+		if v != inv {
 			p.SetPipeline(pipes[v])
 			inv = v
 		}
-		p.SetScissorRect(scissorRect(s.scissor, fbW, fbH, scale))
-		p.SetBindGroup(1, s.tex.bg, nil)
+		p.SetScissorRect(scissorRect(s.scissor, w, h, sc))
+		p.SetBindGroup(1, s.tex.bindGroup(s.linear), nil)
 		end := n
 		if i+1 < len(segs) {
 			end = segs[i+1].first
@@ -147,6 +217,10 @@ func (b *GUIBatch) Flush(fbW, fbH int, scale float32) {
 		dev.draws++
 
 		p.Draw(gputypes.DrawArgs{VertexCount: uint32(end - s.first), InstanceCount: 1, FirstVertex: uint32(s.first)})
+	}
+	if target != nil {
+		endPassOf(p)
+		return
 	}
 	p.SetScissorRect(gputypes.ScissorRect{Width: uint32(fbW), Height: uint32(fbH)})
 }
@@ -191,8 +265,9 @@ fn fs(i: VOut) -> @location(0) vec4f {
 `
 
 var guiState struct {
-	pipes [2]*wgpu.RenderPipeline // alpha, invert
-	white *GUITexture
+	pipes  [3]*wgpu.RenderPipeline // alpha, invert, alpha into a target
+	linear *wgpu.Sampler
+	white  *GUITexture
 }
 
 func whiteTexture() *GUITexture {
@@ -204,7 +279,7 @@ func whiteTexture() *GUITexture {
 	return guiState.white
 }
 
-func guiPipelines() [2]*wgpu.RenderPipeline {
+func guiPipelines() [3]*wgpu.RenderPipeline {
 	if guiState.pipes[0] != nil {
 		return guiState.pipes
 	}
@@ -225,7 +300,9 @@ func guiPipelines() [2]*wgpu.RenderPipeline {
 		{Format: gputypes.VertexFormatFloat32x2, Offset: 0, ShaderLocation: 0},
 		{Format: gputypes.VertexFormatFloat32x2, Offset: 8, ShaderLocation: 1},
 		{Format: gputypes.VertexFormatUnorm8x4, Offset: 16, ShaderLocation: 2}}}}
-	for i, blend := range []*gputypes.BlendState{blendAlpha, invert} {
+	target := &gputypes.BlendState{Color: blendAlpha.Color,
+		Alpha: gputypes.BlendComponent{SrcFactor: gputypes.BlendFactorOne, DstFactor: gputypes.BlendFactorOneMinusSrcAlpha, Operation: gputypes.BlendOperationAdd}}
+	for i, blend := range []*gputypes.BlendState{blendAlpha, invert, target} {
 		if guiState.pipes[i], err = dev.device.CreateRenderPipeline(&wgpu.RenderPipelineDescriptor{
 			Label:     "gui",
 			Layout:    pl,

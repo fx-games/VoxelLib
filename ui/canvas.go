@@ -24,6 +24,7 @@ type Quad struct {
 	U0, V0, U1, V1 float32 // normalized; beyond 1 repeats
 	Skew           float32 // top edge shifted +Skew, bottom -Skew (italics)
 	Top, Bottom    uint32  // 0xAARRGGBB, multiplied with the texture
+	Linear         bool    // sample bilinearly (GL_LINEAR) instead of nearest
 	// Rot turns the placed quad by Rot degrees around RX, RY
 	// (glRotatef about z: clockwise on the y-down screen).
 	Rot, RX, RY float32
@@ -37,6 +38,19 @@ type Canvas interface {
 	SetScissor(r image.Rectangle)
 	// SetInvert switches to colour-inverting blend (crosshair) or back.
 	SetInvert(on bool)
+}
+
+// Targets is a Canvas that draws into offscreen pictures (the reference's
+// frame buffer objects) and then draws those like textures.
+type Targets interface {
+	// NewTarget makes a w x h picture.
+	NewTarget(w, h int) Texture
+	// SetTarget sends later quads into t, its pixels being GUI pixels
+	// there, after clearing it to clear (0xAARRGGBB); nil goes back to
+	// the screen. Into a picture, alpha accumulates as
+	// glBlendFuncSeparate(SRC_ALPHA, ONE_MINUS_SRC_ALPHA, ONE,
+	// ONE_MINUS_SRC_ALPHA).
+	SetTarget(t Texture, clear uint32)
 }
 
 // TextureUpdater is a Canvas that can replace a texture's pixels in place;

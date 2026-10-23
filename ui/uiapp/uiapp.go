@@ -195,6 +195,7 @@ func (c *canvas) UpdateTexture(t ui.Texture, img image.Image) bool {
 
 func (c *canvas) Quad(q ui.Quad) {
 	t, _ := q.Tex.(*render.GUITexture)
+	c.batch.Linear(q.Linear)
 	if q.Rot != 0 {
 		c.batch.QuadRot(t, q.X0, q.Y0, q.X1, q.Y1, q.U0, q.V0, q.U1, q.V1, q.Skew, q.Top, q.Bottom, q.Rot, q.RX, q.RY)
 		return
@@ -211,3 +212,10 @@ func (c *canvas) SetScissor(r image.Rectangle) {
 }
 
 func (c *canvas) SetInvert(on bool) { c.batch.Invert(on) }
+
+func (c *canvas) NewTarget(w, h int) ui.Texture { return render.NewGUITarget(w, h) }
+
+func (c *canvas) SetTarget(t ui.Texture, clear uint32) {
+	g, _ := t.(*render.GUITexture)
+	c.batch.Target(g, clear)
+}

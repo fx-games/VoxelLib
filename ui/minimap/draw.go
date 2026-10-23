@@ -2,7 +2,6 @@ package minimap
 
 import (
 	"fmt"
-	"image"
 	"math"
 	"time"
 
@@ -12,29 +11,46 @@ import (
 // maxPerKind is the reference's entity cap per kind (entityAmount 1).
 const maxPerKind = 100
 
+// fbSide is the side of the reference's scaling and rotation frame
+// buffers in their pixels.
+const fbSide = 512
+
+// origin is the map's top-left corner in units for a GUI scale: the
+// reference's (int)(x * mapScale) + 9 with mapScale = scale / minimapScale
+// in float (X, Y in GUI px).
+func (c *Config) origin(guiScale int, unit float64) (int, int) {
+	ms := float32(guiScale) / float32(unit)
+	return int(float32(c.X)*ms) + 9, int(float32(c.Y)*ms) + 9
+}
+
 // Draw draws the map, its frame, dots, compass, waypoints, crosshair and
-// coordinates for the view Update last followed. Positions follow the
-// reference: the map is laid out in units of `unit` screen px, the map
-// picture in its own pixels (the reference's frame buffer, `unit`/2 screen
-// px each) and blocks are zoom of those.
+// coordinates for the view Update last followed, as MinimapFBORenderer
+// does: the map texture scaled by the zoom into a 512 px picture (nearest,
+// bilinear while the zoom moves), that one turned and moved by the
+// player's place inside the block into a second (bilinear with
+// AntiAliasing), the dots and compass drawn on it, and its view square
+// drawn bilinearly onto the screen at whole units. A map picture pixel is
+// unit/2 screen px. The canvas must implement ui.Targets.
 func (m *Map) Draw(ctx *ui.Context, v *View) {
-	if m.img == nil {
+	tc, ok := ctx.Canvas.(ui.Targets)
+	if m.img == nil || !ok {
 		return
 	}
 	if m.dirty || m.tex == nil {
 		m.tex = ui.UpdateTexture(ctx.Canvas, m.tex, m.img)
 		m.dirty = false
 	}
+	if m.scal == nil {
+		m.scal, m.rot = tc.NewTarget(fbSide, fbSide), tc.NewTarget(fbSide, fbSide)
+	}
 	c := ctx.Canvas
 	sc := float64(ctx.Scale)
 	u := m.unit
 	f := u / sc       // GUI px per unit
-	k := u / 2 / sc   // GUI px per map-picture px
 	half := m.mapHalf // the map's side in units
 	viewW := 2 * half // ... in map-picture px
-	ox, oy := float64(m.Cfg.X+9)*f, float64(m.Cfg.Y+9)*f
-	cx, cy := ox+float64(half)*f/2, oy+float64(half)*f/2
 	zoom := m.animZoom(time.Now())
+	zooming := float64(int(zoom)) != zoom
 
 	locked := m.Cfg.LockNorth || half > 180
 	angle := 90.0
@@ -43,30 +59,48 @@ func (m *Map) Draw(ctx *ui.Context, v *View) {
 	}
 	a := angle * math.Pi / 180
 	ps, pc := math.Sin(math.Pi-a), math.Cos(math.Pi-a)
+	white := uint32(0xFFFFFFFF)
 
-	clip := image.Rect(int(math.Round(ox)), int(math.Round(oy)), int(math.Round(ox+float64(half)*f)), int(math.Round(oy+float64(half)*f)))
-	c.SetScissor(clip)
-	// The map picture, turned so the view points up.
-	d := float64(viewW)
-	if !locked {
-		d *= math.Sqrt2
-	}
+	// The scaling buffer: black, then the map with the player's block's
+	// corner at 256, 256 (its texture coordinates taken modulo the store).
+	xf, zf := math.Floor(v.X), math.Floor(v.Z)
 	n := float64(m.n)
-	r := d / 2 / zoom
-	c.Quad(ui.Quad{Tex: m.tex,
-		X0: float32(cx - d/2*k), Y0: float32(cy - d/2*k), X1: float32(cx + d/2*k), Y1: float32(cy + d/2*k),
-		U0: float32((v.X - r) / n), V0: float32((v.Z - r) / n), U1: float32((v.X + r) / n), V1: float32((v.Z + r) / n),
-		Top: 0xFFFFFFFF, Bottom: 0xFFFFFFFF,
-		Rot: float32(math.Atan2(pc, ps) * 180 / math.Pi), RX: float32(cx), RY: float32(cy)})
+	ux, uz := float64(int(xf)&(m.n-1)), float64(int(zf)&(m.n-1))
+	r := fbSide / 2 / zoom
+	tc.SetTarget(m.scal, 0xFF000000)
+	c.Quad(ui.Quad{Tex: m.tex, X1: fbSide, Y1: fbSide,
+		U0: float32((ux - r) / n), V0: float32((uz - r) / n), U1: float32((ux + r) / n), V1: float32((uz + r) / n),
+		Top: white, Bottom: white, Linear: zooming})
 
-	sheet := ctx.Tex(m.Cfg.Sheet)
-	m.drawDots(c, sheet, v, cx, cy, k, zoom, ps, pc)
-	if m.Cfg.Compass {
-		m.drawCompass(ctx, cx, cy, k, ps, pc, float64(viewW/2-7-3))
+	// The rotation buffer: the scaling buffer turned about the view's
+	// centre, moved by the player's place inside the block.
+	hw := float64(viewW) / 2
+	tc.SetTarget(m.rot, 0)
+	x0, y0 := hw-fbSide/2-(v.X-xf)*zoom, hw-fbSide/2-(v.Z-zf)*zoom
+	q := ui.Quad{Tex: m.scal, X0: float32(x0), Y0: float32(y0), X1: float32(x0 + fbSide), Y1: float32(y0 + fbSide),
+		U1: 1, V1: 1, Top: white, Bottom: white, Linear: m.Cfg.AntiAliasing}
+	if !locked {
+		q.Rot, q.RX, q.RY = float32(math.Atan2(pc, ps)*180/math.Pi), float32(hw), float32(hw)
 	}
-	c.SetScissor(image.Rectangle{})
+	c.Quad(q)
+	sheet := ctx.Tex(m.Cfg.Sheet)
+	m.drawDots(c, sheet, v, hw, hw, 1, zoom, ps, pc)
+	if m.Cfg.Compass {
+		m.drawCompass(ctx, hw, hw, 1, ps, pc, float64(viewW/2-7-3))
+	}
+	tc.SetTarget(nil, 0)
 
-	m.drawFrame(c, sheet, f, half)
+	// Its view square onto the screen, half the view in units.
+	ox, oy := m.Cfg.origin(ctx.Scale, u)
+	sx, sy := ox-9, oy-9
+	gx, gy := float64(ox)*f, float64(oy)*f
+	side := float64(half) * f
+	t := float32(viewW) / fbSide
+	c.Quad(ui.Quad{Tex: m.rot, X0: float32(gx), Y0: float32(gy), X1: float32(gx + side), Y1: float32(gy + side),
+		U1: t, V1: t, Top: white, Bottom: white, Linear: true})
+
+	cx, cy := gx+side/2, gy+side/2
+	m.drawFrame(c, sheet, f, sx, sy, half)
 	m.drawWaypoints(ctx, v, cx, cy, u, sc, zoom, ps, pc, float64(int(float64(half)*u/2))+3*u)
 	if !locked {
 		m.drawCrosshair(c, cx, cy, f/2)
@@ -79,8 +113,8 @@ func (m *Map) Draw(ctx *ui.Context, v *View) {
 			lines = []string{fmt.Sprintf("%d, %d", bx, bz), fmt.Sprint(by)}
 		}
 		for i, s := range lines {
-			x := m.Cfg.X + size/2 - ctx.Font.Width(s)/2
-			y := m.Cfg.Y + size + i*10
+			x := sx + size/2 - ctx.Font.Width(s)/2
+			y := sy + size + i*10
 			ctx.Font.DrawScaled(c, s, 0, 0, float32(f), float32(x), float32(y), 0xFFFFFFFF, true)
 		}
 	}
@@ -108,7 +142,8 @@ func (m *Map) drawDots(c ui.Canvas, sheet ui.Texture, v *View, cx, cy, k, zoom, 
 			ty := pc*dx*zoom + ps*dz*zoom
 			col := m.entityColour(m.Cfg.KindColour[kind], float32(dh))
 			x, y := cx+(tx-5.5)*k, cy+(ty-5.5)*k
-			ui.DrawTexScaled(c, sheet, float32(x), float32(y), float32(11*k), float32(11*k), 0, 117, 11, 11, 256, 256, col)
+			c.Quad(ui.Quad{Tex: sheet, X0: float32(x), Y0: float32(y), X1: float32(x + 11*k), Y1: float32(y + 11*k),
+				U0: 0, V0: 117. / 256, U1: 11. / 256, V1: 128. / 256, Top: col, Bottom: col, Linear: m.Cfg.SmoothDots})
 		}
 	}
 }
@@ -180,8 +215,7 @@ func (m *Map) drawCompass(ctx *ui.Context, cx, cy, k, ps, pc, spec float64) {
 }
 
 // drawFrame is the square frame from the sheet (minimapFrame 0), in units.
-func (m *Map) drawFrame(c ui.Canvas, sheet ui.Texture, f float64, half int) {
-	sx, sy := m.Cfg.X, m.Cfg.Y
+func (m *Map) drawFrame(c ui.Canvas, sheet ui.Texture, f float64, sx, sy, half int) {
 	part := func(x, y, u, v, w, h int) {
 		ui.DrawTexScaled(c, sheet, float32(float64(x)*f), float32(float64(y)*f), float32(float64(w)*f), float32(float64(h)*f),
 			float32(u), float32(v), float32(w), float32(h), 256, 256, 0xFFFFFFFF)

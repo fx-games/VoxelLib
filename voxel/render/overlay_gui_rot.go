@@ -8,7 +8,7 @@ func (b *GUIBatch) QuadRot(t *GUITexture, x0, y0, x1, y1, u0, v0, u1, v1, skew f
 	if t == nil {
 		t = whiteTexture()
 	}
-	b.state(t, b.cur.scissor, b.cur.invert)
+	b.withTex(t)
 	ct, cb := argbToRGBA(top), argbToRGBA(bottom)
 	sn, cs := math.Sincos(float64(deg) * math.Pi / 180)
 	s, c := float32(sn), float32(cs)

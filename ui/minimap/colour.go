@@ -99,6 +99,11 @@ type surfPixel struct {
 	light  uint8 // block light above the block
 	biome  int16 // -1: no tinted block
 	layers []layer
+	// The cached slopes (MapBlock's verticalSlope, diagonalSlope and
+	// !slopeUnknown): set when written, or when coloured if a neighbour
+	// was missing then; cleared when a neighbour's edge changes.
+	vs, ds     int8
+	slopeKnown bool
 }
 
 // nibble reads a 4-bit light value of a section.
@@ -273,12 +278,16 @@ func (src *Source) biomeColour(s surface, kind, wx, y, wz int) uint32 {
 	return uint32(r/n&255)<<16 | uint32(g/n&255)<<8 | uint32(b/n&255)
 }
 
-// slopes is MapBlock.fixHeightType: the height steps to the pixel north
-// and north-west; when one is unknown, those of the next pixel south-east
-// in the chunk (none at the chunk's corner).
-func slopes(s surface, wx, wz, height int) (vertical, diagonal int) {
+// fixSlopes is MapBlock.fixHeightType: px's height steps to the stored
+// pixels north and north-west. When one is unknown, writing leaves the
+// slopes unknown; otherwise those of the next pixel south-east in the chunk
+// are taken (none at the chunk's corner).
+func fixSlopes(s surface, wx, wz, height int, px *surfPixel, writing bool) {
 	ph, pd := heightAt(s, wx, wz-1), heightAt(s, wx-1, wz-1)
 	if ph == -1 || pd == -1 {
+		if writing {
+			return
+		}
 		rx, rz := wx, wz
 		if wx&15 < 15 {
 			rx++
@@ -287,12 +296,14 @@ func slopes(s surface, wx, wz, height int) (vertical, diagonal int) {
 			rz++
 		}
 		if rx == wx && rz == wz {
-			return 0, 0
+			px.vs, px.ds, px.slopeKnown = 0, 0, true
+			return
 		}
-		return slopes(s, rx, rz, heightAt(s, rx, rz))
+		fixSlopes(s, rx, rz, heightAt(s, rx, rz), px, false)
+		return
 	}
-	clamp := func(v int) int { return max(-128, min(127, v)) }
-	return clamp(height - ph), clamp(height - pd)
+	clamp := func(v int) int8 { return int8(max(-128, min(127, v))) }
+	px.vs, px.ds, px.slopeKnown = clamp(height-ph), clamp(height-pd), true
 }
 
 // surfaceColour is MapPixel.getPixelColours for a written pixel: its
@@ -357,11 +368,14 @@ func (src *Source) surfaceColour(s surface, wx, wz int, px *surfPixel, shadow [3
 	if !glowing && height != -1 {
 		d = depth(height)
 	}
-	vs, ds := 0, 0
-	if px.state != voxel.Air {
-		vs, ds = slopes(s, wx, wz, height)
+	if !px.slopeKnown {
+		if px.state != voxel.Air {
+			fixSlopes(s, wx, wz, height, px, false)
+		} else {
+			px.vs, px.ds, px.slopeKnown = 0, 0, true
+		}
 	}
-	sl := slopeLight(vs, ds, glowing, shadow)
+	sl := slopeLight(int(px.vs), int(px.ds), glowing, shadow)
 	for i := range bright {
 		bright[i] = bright[i] * sl[i] * d
 	}
@@ -423,14 +437,15 @@ func caveBrightness(levels int, min float32, sun, level, blockLight int) float32
 	return (min + max(float32(k*float32(sun)), float32(blockLight))) / (15 + min)
 }
 
-// caveHeight is what loadCave reads of its neighbours: the stored height of
-// a column (-1 unknown).
-type caveHeights func(wx, wz int) int
+// caveHeights is what loadCave reads of a neighbour column: when its chunk
+// is stored (stored), the height there and whether it was written for this
+// cave level (same); else the world's height map there (-1 not loaded).
+type caveHeights func(wx, wz int) (h int, stored, same bool)
 
 // loadCave is MinimapWriter.loadBlockColor below a cave roof at caving:
 // down to depth below the player through air first, translucent layers,
 // then the first block, coloured per daylight level.
-func (src *Source) loadCave(c *voxel.Chunk, x, z, caving, playerY, depthBlocks, levels, slopeMode int, shadow [3]float32, heights caveHeights, px *cavePixel) {
+func (src *Source) loadCave(c *voxel.Chunk, x, z, caving, playerY, depthBlocks, levels, slopeMode int, shadow [3]float32, heights caveHeights, px *cavePixel) (success bool) {
 	top := topY(c)
 	low := max(playerY-depthBlocks, 0, c.MinY())
 	wx, wz := c.Pos.X<<4|x, c.Pos.Z<<4|z
@@ -484,15 +499,30 @@ func (src *Source) loadCave(c *voxel.Chunk, x, z, caving, playerY, depthBlocks, 
 		}
 	}
 
-	// Slopes from the stored heights north and north-west (the reference
-	// retries a tile whose neighbours are missing; here they are flat).
+	// The heights north and north-west: stored ones, else the world's
+	// height map under no layers, else flat; the tile is written again
+	// (success false) until both are stored for this cave level.
+	success = true
+	prev := func(qx, qz int) int {
+		h, stored, same := heights(qx, qz)
+		if stored {
+			success = success && same
+			return h
+		}
+		success = false
+		if len(sizes) == 0 && h != -1 {
+			return h
+		}
+		return blockY
+	}
+	ph, pd := prev(wx, wz-1), prev(wx-1, wz-1)
 	vs, ds := 0, 0
 	if slopeMode > 0 {
-		if h := heights(wx, wz-1); h != -1 {
-			vs = max(-128, min(127, blockY-h))
+		if ph != -1 {
+			vs = max(-128, min(127, blockY-ph))
 		}
-		if h := heights(wx-1, wz-1); h != -1 {
-			ds = max(-128, min(127, blockY-h))
+		if pd != -1 {
+			ds = max(-128, min(127, blockY-pd))
 		}
 	}
 
@@ -585,6 +615,7 @@ func (src *Source) loadCave(c *voxel.Chunk, x, z, caving, playerY, depthBlocks, 
 		px.rgb[l] = ch(cr, sec[0], under[l][0])<<16 | ch(cg, sec[1], under[l][1])<<8 | ch(cb, sec[2], under[l][2])
 	}
 	px.height = int16(blockY)
+	return success
 }
 
 // Caving is MinimapWriter.getCaving: the cave roof level above a player at
