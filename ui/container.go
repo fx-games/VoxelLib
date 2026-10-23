@@ -48,6 +48,7 @@ type Label struct {
 	Text     string // lang key or text
 	X, Y     int
 	Centered bool // centred on the GUI's width
+	Raw      bool // Text is shown as it is (a custom name), not translated
 }
 
 // Progress is an animated part: Kind "flame" grows upward (the furnace
@@ -234,7 +235,10 @@ func (s *ContainerScreen) Draw(ctx *Context, mx, my int, partial float32) {
 		}
 	}
 	for _, lb := range l.Labels {
-		txt := ctx.T(lb.Text)
+		txt := lb.Text
+		if !lb.Raw {
+			txt = ctx.T(lb.Text)
+		}
 		x := lb.X
 		if lb.Centered {
 			x = l.W/2 - ctx.Font.Width(txt)/2
