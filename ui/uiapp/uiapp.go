@@ -26,6 +26,9 @@ type UI struct {
 	App *app.App
 	Ctx *ui.Context
 	HUD *ui.HUD // nil: no overlay
+	// Top draws over everything, open screens included (the reference's
+	// achievement window, drawn last in the game loop).
+	Top func(ctx *ui.Context)
 
 	batch    render.GUIBatch
 	mx, my   int
@@ -92,6 +95,9 @@ func (u *UI) Draw(fbW, fbH int) {
 	}
 	u.HUD.State.Crosshair = false // the app draws its own crosshair
 	u.HUD.Draw(u.Ctx, partial)
+	if u.Top != nil && u.Ctx.Screens.Len() == 0 {
+		u.Top(u.Ctx)
+	}
 	u.batch.Flush(fbW, fbH, px)
 }
 
@@ -125,6 +131,9 @@ func (s *screen) Draw(fbW, fbH int) {
 	u := (*UI)(s)
 	px := u.resize(fbW, fbH)
 	u.Ctx.Screens.Draw(u.mx, u.my, float32(u.App.Alpha()))
+	if u.Top != nil {
+		u.Top(u.Ctx)
+	}
 	u.batch.Flush(fbW, fbH, px)
 }
 
