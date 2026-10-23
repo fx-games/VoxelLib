@@ -154,6 +154,7 @@ type TextField struct {
 	MaxLen     int // 0: 32 like the reference
 	Focused    bool
 	NoBorder   bool
+	Color      uint32 // the text colour (setTextColor); 0: 0xE0E0E0
 	OnEnter    func(text string)
 	OnChange   func(text string)
 	cursor     int // rune index
@@ -197,6 +198,9 @@ func (t *TextField) Draw(ctx *Context, mx, my int) {
 		DrawRect(c, t.X, t.Y, t.X+t.W, t.Y+t.H, 0xFF000000)
 	}
 	col := uint32(0xE0E0E0)
+	if t.Color != 0 {
+		col = t.Color
+	}
 	rs := []rune(t.Text)
 	t.fixScroll(f)
 	j := t.cursor - t.scroll
