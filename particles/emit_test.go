@@ -31,3 +31,18 @@ func TestRingTrailFlash(t *testing.T) {
 		t.Errorf("flash %v %v", f.Half(5), f.Alpha(1, 0))
 	}
 }
+
+// TestBurst: speeds stay in [lo, hi], three draws per particle.
+func TestBurst(t *testing.T) {
+	draws, n := 0, 0
+	r := func() float32 { draws++; return float32(draws%7) / 7 }
+	Burst(r, 20, 0.1, 0.15, func(vx, vy, vz float64) {
+		if s := math.Sqrt(vx*vx + vy*vy + vz*vz); s < 0.1-1e-3 || s > 0.15+1e-3 {
+			t.Errorf("speed %v", s)
+		}
+		n++
+	})
+	if n != 20 || draws != 60 {
+		t.Errorf("%d particles, %d draws", n, draws)
+	}
+}

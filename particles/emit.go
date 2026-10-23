@@ -34,3 +34,16 @@ func (f Flash) Half(age int) float32 { return f.Size0 - float32(age)*f.Shrink }
 func (f Flash) Alpha(age int, pt float32) float32 {
 	return max(0, f.Alpha0-(float32(age)+pt-1)*f.Fade)
 }
+
+// Burst emits n particles in random directions on the sphere: per
+// particle a horizontal angle, a vertical angle (both rnd()*2π) and a
+// speed rnd()*(hi-lo)+lo, in that order, with table sines and cosines.
+// The caller adds the source's own motion.
+func Burst(rnd func() float32, n int, lo, hi float32, emit func(vx, vy, vz float64)) {
+	for range n {
+		xz := rnd() * fmath.Pi * 2
+		y := rnd() * fmath.Pi * 2
+		sp := rnd()*(hi-lo) + lo
+		emit(float64(fmath.Cos(xz)*fmath.Cos(y)*sp), float64(fmath.Sin(y)*sp), float64(fmath.Sin(xz)*fmath.Cos(y)*sp))
+	}
+}
