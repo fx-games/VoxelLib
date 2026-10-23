@@ -164,6 +164,9 @@ func (p *Player) tick() {
 		Strafe:  axis(in.Down(ActRight), in.Down(ActLeft)),
 		Jump:    in.Down(ActJump), Sneak: in.Down(ActSneak), Sprint: in.Down(ActSprint)}
 	ci.Using = a.Hooks.UsingItem != nil && a.Hooks.UsingItem()
+	if a.Hooks.Ride != nil && a.Hooks.Ride(ci) {
+		return
+	}
 	sneakEdge := p.OnGround && ci.Sneak // moveEntity's flag, from the last tick's onGround
 	p.Tick(a.Terrain, ci)
 	p.bobTick(a.Cam.Yaw, a.Cam.Pitch, sneakEdge)

@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"github.com/memmaker/voxellib/audio"
+	"github.com/memmaker/voxellib/character"
 	"github.com/memmaker/voxellib/platform/glfw"
 	"github.com/memmaker/voxellib/voxel"
 	"github.com/memmaker/voxellib/voxel/collide"
@@ -133,6 +134,10 @@ type Hooks struct {
 	// BlockPlaced runs after the player placed a block, e.g. to use up
 	// the item.
 	BlockPlaced func(pos voxel.BlockPos, state voxel.StateID)
+	// Ride, when set and returning true, takes the tick's movement input
+	// instead of the player's body: the player rides something the game
+	// moves, and the game seats the body.
+	Ride func(in character.Input) bool
 	// Sound gets the app's sound events ("block.break", "block.place",
 	// "block.hit" while breaking, "block.step" on walking) with the block
 	// and where; play them with App.Mixer.
