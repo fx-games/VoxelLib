@@ -221,16 +221,18 @@ func (m *Map) teVariants(c *voxel.Chunk, level anvil.Compound) {
 		if x < 0 || x > 15 || z < 0 || z > 15 {
 			continue
 		}
-		key := m.Key(c.Get(x, y, z))
-		b := m.Blocks[key]
-		if b == nil || len(b.TE) == 0 {
-			continue
-		}
-		for i, f := range b.TE {
-			key += string("|,"[min(i, 1)]) + strconv.Itoa(t.Int(f))
-		}
-		if _, ok := m.Blocks[key]; ok {
-			c.SetRaw(x, y, z, m.State(key))
+		for dy := range 2 { // the block itself, then one above reading it (te_below)
+			key := m.Key(c.Get(x, y+dy, z))
+			b := m.Blocks[key]
+			if b == nil || len(b.TE) == 0 || b.TEBelow != (dy == 1) {
+				continue
+			}
+			for i, f := range b.TE {
+				key += string("|,"[min(i, 1)]) + strconv.Itoa(t.Int(f))
+			}
+			if _, ok := m.Blocks[key]; ok {
+				c.SetRaw(x, y+dy, z, m.State(key))
+			}
 		}
 	}
 }

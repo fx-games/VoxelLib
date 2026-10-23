@@ -49,6 +49,8 @@ import (
 //   - te: tile-entity fields that pick a variant: a block at a tile entity
 //     becomes the entry "<key>|<v1>,<v2>,..." (the fields' integer values,
 //     0 when absent) when blocks.json has it (Map.ReadChunk).
+//   - te_below: the te fields come from the tile entity one block lower (the
+//     upper half of a two-block piece whose lower half holds it).
 //   - scatter: LOTR fallen-leaf quads (voxel.Scatter: "leaves", "xsize",
 //     "zsize" as [min, max], "shade"); a "none" shape becomes ShapeBoxes.
 //
@@ -76,6 +78,7 @@ type Block struct {
 	UVRotate  [6]uint8        `json:"uvrotate"`
 	Connect   *Connect        `json:"connect"`
 	TE        []string        `json:"te"`
+	TEBelow   bool            `json:"te_below"`
 	Scatter   *voxel.Scatter  `json:"scatter"`
 	Raw       json.RawMessage `json:"-"`
 }
