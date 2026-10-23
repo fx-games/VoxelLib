@@ -237,6 +237,7 @@ type Actor struct {
 	Tags                map[string]string // game data, saved
 	State               State
 	StateTicks          int
+	Ticks               int // ticksExisted: ticks since it was made (not saved)
 	Swing               int // ticks since the last swing started (MC swing: 6)
 	HurtTime, DeathTime int // HurtTime counts 10 → 0 after a hit (red flash)
 	Target              *Actor

@@ -169,6 +169,7 @@ func (m *Manager) Tick() {
 	var gone []*Actor
 	for _, a := range m.Actors {
 		a.PrevYaw, a.PrevHeadYaw = a.Yaw, a.HeadYaw
+		a.Ticks++
 		if a.Boat != nil {
 			continue
 		}
