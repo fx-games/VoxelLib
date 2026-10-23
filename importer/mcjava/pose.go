@@ -82,7 +82,13 @@ func (p *Pose) World(g *Geometry, dst []mgl32.Mat4) []mgl32.Mat4 {
 	ry := mgl32.HomogRotate3DY(math.Pi)
 	base := ry.Mul4(orIdent(p.Corpse)).Mul4(mgl32.Scale3D(-1, -1, 1)).Mul4(orIdent(p.Root)).
 		Mul4(mgl32.Translate3D(0, -Lift, 0))
-	hidden := make([]bool, n)
+	var buf [64]bool // no allocation for the usual model
+	hidden := buf[:0]
+	if n <= len(buf) {
+		hidden = buf[:n]
+	} else {
+		hidden = make([]bool, n)
+	}
 	for i, gp := range g.Parts {
 		pp := p.Parts[i]
 		if gp.Same > 0 && !pp.Own {
