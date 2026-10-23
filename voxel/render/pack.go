@@ -193,3 +193,7 @@ func (s *packState) update(f *PackFrame, cam [3]float64, view, proj mgl32.Mat4, 
 	s.prevMV, s.prevProj, s.prevCam = view, proj, cam
 	return u
 }
+
+// lightCode packs light levels for the pack programs (model light.w,
+// block fogColor.w): sky + 16*block. The plain programs ignore it.
+func lightCode(sky, block uint8) float32 { return float32(min(sky, 15)) + 16*float32(min(block, 15)) }

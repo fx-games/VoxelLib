@@ -122,6 +122,7 @@ func (b *GUIBatch) Flush(fbW, fbH int, scale float32) {
 	segs, verts := b.segs, b.verts
 	b.segs, b.verts = b.segs[:0], b.verts[:0]
 	b.cur = guiSeg{scissor: b.cur.scissor, invert: b.cur.invert}
+	packResolve()
 	p := curPass()
 	if p == nil || len(segs) == 0 || fbW == 0 || fbH == 0 {
 		return

@@ -71,12 +71,16 @@ func (pr *ParticleRenderer) Draw(cam *Camera, ps []particles.Particle, alpha flo
 				}
 				x, y, z, size, col := q.Lerp(alpha)
 				lc := mgl32.Vec3{1, 1, 1}
-				if !additive && light != nil {
-					lc = pr.r.LightColor(light(x, y, z))
-				}
 				flag := float32(0)
 				if sheet > 0 {
 					flag = 1
+				}
+				if pack := pr.r.Opt.Pack != nil; pack && light != nil {
+					flag += 2 * lightCode(light(x, y, z)) // the pack lights them (packParticleWGSL)
+				} else if pack {
+					flag += 2 * 15
+				} else if !additive && light != nil {
+					lc = pr.r.LightColor(light(x, y, z))
 				}
 				pr.buf = append(pr.buf, float32(x-cam.X), float32(y-cam.Y), float32(z-cam.Z), size,
 					col[0]*lc[0], col[1]*lc[1], col[2]*lc[2], col[3], float32(q.Sprite), flag, q.UV[0], q.UV[1], q.UV[2], q.UV[3])

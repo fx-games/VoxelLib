@@ -36,9 +36,9 @@ func (ir *ItemRenderer) drawRange(i int, mvp, model mgl32.Mat4, sky, block uint8
 	}
 	g := &ir.gpu
 	f := g.fog
-	p.SetPipeline(dev.pipes.item)
+	setPipe(p, dev.pipes.item)
 	lc := ir.r.LightColor(sky, block)
-	bindUniforms(p, g.u.reset().mat(clip(mvp)).mat(model).f(lc[0], lc[1], lc[2], 0).
+	bindUniforms(p, g.u.reset().mat(clip(mvp)).mat(model).f(lc[0], lc[1], lc[2], lightCode(sky, block)).
 		f(f.Color[0], f.Color[1], f.Color[2], float32(i)).f(f.Start, f.End, 0, 0))
 	p.SetBindGroup(1, g.bg, nil)
 	p.SetVertexBuffer(0, g.vbo, 0)

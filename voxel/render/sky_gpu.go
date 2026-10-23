@@ -67,9 +67,9 @@ func (r *Renderer) drawSky(cam *Camera, draws []SkyDraw) {
 			fog[0], fog[1], fog[2] = d.Fog.Start, d.Fog.End, 1
 		}
 		if d.Additive {
-			p.SetPipeline(dev.pipes.skyAdd)
+			setPipe(p, dev.pipes.skyAdd)
 		} else {
-			p.SetPipeline(dev.pipes.skyAlpha)
+			setPipe(p, dev.pipes.skyAlpha)
 		}
 		bindUniforms(p, r.gpu.u.reset().mat(clip(c.ViewProj().Mul4(m))).mat(m).f(fc[0], fc[1], fc[2], 0).f(fog[:]...))
 		p.SetBindGroup(1, t.bg, nil)

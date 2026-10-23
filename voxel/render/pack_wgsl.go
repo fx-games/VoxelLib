@@ -1,5 +1,10 @@
 package render
 
+import (
+	"regexp"
+	"strings"
+)
+
 // WGSL ports of the shader pack's programs (see pack.go). The pack's GLSL
 // was preprocessed with its default options (shaders.settings) and
 // translated line by line, keeping its constants and maths; comments name
@@ -462,7 +467,8 @@ fn fs(i: WV) -> WOut {
 	let dPdv = (dp2 * duv1.x - dp1 * duv2.x) / det;
 	let tg = normalize(dPdu);
 	let cr = cross(tg, n);
-	let bn = normalize(cr * select(1.0, -1.0, dot(dPdv, cr) < 0.0));
+	let bs = select(1.0, -1.0, dot(dPdv, cr) < 0.0); // a let: naga's MSL drops the parens of a select operand
+	let bn = normalize(cr * bs);
 	let viewVector = vec2f(dot(tg, i.vd), dot(bn, i.vd)) * 8.25;
 	var albedo = textureSample(tex, samp, i.uv, i.layer) * i.color;
 
@@ -501,20 +507,22 @@ fn fs(i: WV) -> WOut {
 }
 `
 
+// (naga mistakes a call to a function named texture* for a texture
+// type constructor.)
 // packTexturedLightWGSL is the lighting of gbuffers_textured.vsh and the
 // shadowed forward shading of its fsh.
 const packTexturedLightWGSL = `
-fn texturedToD() -> array<vec3f, 7> { return array<vec3f, 7>(vec3f(0.58597, 0.15, 0.02), vec3f(0.58597, 0.35, 0.09), vec3f(0.58597, 0.5, 0.26),
+fn toDTextured() -> array<vec3f, 7> { return array<vec3f, 7>(vec3f(0.58597, 0.15, 0.02), vec3f(0.58597, 0.35, 0.09), vec3f(0.58597, 0.5, 0.26),
 	vec3f(0.58597, 0.5, 0.35), vec3f(0.58597, 0.5, 0.36), vec3f(0.58597, 0.5, 0.37), vec3f(0.58597, 0.5, 0.38)); }
 struct TexLight { amb: vec3f, sun: vec3f, skyL: f32 }
-fn texturedLight(normal: vec3f, lmcoord: vec2f, emissiveMul: f32) -> TexLight {
+fn lightTextured(normal: vec3f, lmcoord: vec2f, emissiveMul: f32) -> TexLight {
 	var torch_lightmap = 16.0 - min(15.0, (lmcoord.x - 0.5 / 16.0) * 16.0 * 16.0 / 15.0);
 	let fallof1 = clamp(1.0 - pow(torch_lightmap / 16.0, 4.0), 0.0, 1.0);
 	torch_lightmap = fallof1 * fallof1 / (torch_lightmap * torch_lightmap + 1.0);
 	let emissiveLightC = vec3f(1.5, 0.42, 0.045) * torch_lightmap * emissiveMul;
 	let finalminlight = select(0.002, 0.075, pu.eye.x > 0.9);
 	let rain = rainStrength();
-	var sunlight = todMix(texturedToD());
+	var sunlight = todMix(toDTextured());
 	sunlight = mix(sunlight, vec3f(0.01) * sunlight, rain);
 	let moonlight = vec3f(0.0024, 0.00432, 0.0078);
 	let sunVec = normalize(pu.sunPos.xyz);
@@ -548,9 +556,9 @@ struct TOut {
 	@location(3) c5: vec4f,
 	@location(4) c6: vec4f,
 }
-// texturedFrag is gbuffers_textured.fsh for albedo (texture * colour),
+// fragTextured is gbuffers_textured.fsh for albedo (texture * colour),
 // the view normal and the vertex lighting.
-fn texturedFrag(albedo: vec4f, normal: vec3f, fragCoord: vec4f, sun: vec3f, amb: vec3f, skyL: f32) -> TOut {
+fn fragTextured(albedo: vec4f, normal: vec3f, fragCoord: vec4f, sun: vec3f, amb: vec3f, skyL: f32) -> TOut {
 	var diffuse = clamp(dot(normalize(pu.shadowLightPos.xyz), normal), 0.0, 1.0);
 	let rain = rainStrength();
 	if (diffuse > 0.0 && rain < 0.9 && albedo.a > 0.01) {
@@ -615,12 +623,13 @@ fn vs(@location(0) pos: vec3f, @location(1) normal: vec3f, @location(2) uv: vec2
 	let wp = u.model * skin * vec4f(pos, 1.0);
 	var o: VOut;
 	o.pos = jitter(u.viewProj * wp);
+	if (HAND) { o.pos.z = o.pos.z * 0.1; } // in front of the world (see packHand)
 	var n = normalize(m3(u.model) * m3(skin) * normal);
 	if (!HAND) { n = normalize(m3(pu.mv) * n); }
 	o.normal = n;
 	o.uv = uv;
 	let lv = u32(u.light.w);
-	var tl: TexLight = texturedLight(n, lmOf(f32(lv >> 4u), f32(lv & 15u)), 1.0);
+	var tl: TexLight = lightTextured(n, lmOf(f32(lv >> 4u), f32(lv & 15u)), 1.0);
 	o.amb = tl.amb;
 	o.sun = tl.sun;
 	o.skyL = tl.skyL;
@@ -640,7 +649,7 @@ fn fs(i: VOut) -> TOut {
 		return o;
 	}
 	c = vec4f(mix(c.rgb, u.overlay.rgb, u.overlay.a), c.a); // entityColor
-	return texturedFrag(c, i.normal, i.pos, i.sun, i.amb, i.skyL);
+	return fragTextured(c, i.normal, i.pos, i.sun, i.amb, i.skyL);
 }
 `
 
@@ -670,12 +679,13 @@ struct VOut {
 fn vs(@location(0) pos: vec3f, @location(1) uv: vec2f, @location(2) normal: vec3f) -> VOut {
 	var o: VOut;
 	o.pos = jitter(u.mvp * vec4f(pos, 1.0));
+	if (HAND) { o.pos.z = o.pos.z * 0.1; } // in front of the world (see packHand)
 	o.uv = uv;
 	var n = normalize(m3(u.model) * normal);
 	if (!HAND) { n = normalize(m3(pu.mv) * n); }
 	o.normal = n;
 	let lv = u32(u.light.w);
-	var tl: TexLight = texturedLight(n, lmOf(f32(lv >> 4u), f32(lv & 15u)), 1.0);
+	var tl: TexLight = lightTextured(n, lmOf(f32(lv >> 4u), f32(lv & 15u)), 1.0);
 	o.amb = tl.amb;
 	o.sun = tl.sun;
 	o.skyL = tl.skyL;
@@ -685,7 +695,7 @@ fn vs(@location(0) pos: vec3f, @location(1) uv: vec2f, @location(2) normal: vec3
 fn fs(i: VOut) -> TOut {
 	let c = textureSample(tex, samp, i.uv, i32(u.fogColor.a));
 	if (c.a < 0.5) { discard; }
-	return texturedFrag(c, i.normal, i.pos, i.sun, i.amb, i.skyL);
+	return fragTextured(c, i.normal, i.pos, i.sun, i.amb, i.skyL);
 }
 `
 
@@ -732,6 +742,7 @@ fn vs(@location(0) d: vec4<u32>) -> VOut {
 	let local = (coarse * 4.0 + fine) * (1.0 / 128.0) - 8.0;
 	var o: VOut;
 	o.pos = jitter(u.mvp * vec4f(local, 1.0));
+	if (HAND) { o.pos.z = o.pos.z * 0.1; } // in front of the world (see packHand)
 	o.uv = vec2f(f32((w1 >> 12u) & 31u), f32((w1 >> 17u) & 31u));
 	if ((w1 & (1u << 25u)) != 0u) { o.uv = o.uv * (1.0 / 16.0); }
 	o.layer = textureLoad(layerMap, vec2<i32>(i32(w1 & 4095u), 0), 0).r;
@@ -740,7 +751,7 @@ fn vs(@location(0) d: vec4<u32>) -> VOut {
 	if (!HAND) { n = normalize(m3(pu.mv) * n); }
 	o.normal = n;
 	let lv = u32(u.fogColor.w);
-	var tl: TexLight = texturedLight(n, lmOf(f32(lv >> 4u), f32(lv & 15u)), 1.0);
+	var tl: TexLight = lightTextured(n, lmOf(f32(lv >> 4u), f32(lv & 15u)), 1.0);
 	o.amb = tl.amb;
 	o.sun = tl.sun;
 	o.skyL = tl.skyL;
@@ -750,7 +761,7 @@ fn vs(@location(0) d: vec4<u32>) -> VOut {
 fn fs(i: VOut) -> TOut {
 	let c = textureSample(tex, samp, i.uv, i.layer) * vec4f(i.color, 1.0);
 	if (c.a <= 0.1) { discard; }
-	return texturedFrag(c, i.normal, i.pos, i.sun, i.amb, i.skyL);
+	return fragTextured(c, i.normal, i.pos, i.sun, i.amb, i.skyL);
 }
 `
 
@@ -798,7 +809,7 @@ fn vs(@location(0) corner: vec2f, @location(1) ipos: vec3f, @location(2) size: f
 	}
 	let lv = code >> 1u;
 	// No glNormal is set for particles: the last one, facing the eye.
-	var tl: TexLight = texturedLight(vec3f(0.0, 0.0, 1.0), lmOf(f32(lv >> 4u), f32(lv & 15u)), 1.0);
+	var tl: TexLight = lightTextured(vec3f(0.0, 0.0, 1.0), lmOf(f32(lv >> 4u), f32(lv & 15u)), 1.0);
 	o.amb = tl.amb;
 	o.sun = tl.sun;
 	o.skyL = tl.skyL;
@@ -810,7 +821,7 @@ fn fs(i: VOut) -> TOut {
 	let t = textureSample(atlas, samp, i.uv);
 	if (i.sprite > 0.5) { c = c * t; }
 	if (c.a <= 0.003921569) { discard; }
-	return texturedFrag(c, vec3f(0.0, 0.0, 1.0), i.pos, i.sun, i.amb, i.skyL);
+	return fragTextured(c, vec3f(0.0, 0.0, 1.0), i.pos, i.sun, i.amb, i.skyL);
 }
 `
 
@@ -990,7 +1001,7 @@ fn c0vars() -> C0V {
 	o.sunlight = todMix(c0ToD());
 	o.tr = trOf(23000.0);
 	let lt = lotrTime();
-	let tr2 = clamp(min(min(distance(lt, 23000.0), 750.0), min(distance(lt, 12700.0), 800.0)) / 800.0 - 0.5, 0.0, 1.0) * 2.0;
+	let tr2 = clamp(min(min(abs(lt - 23000.0), 750.0), min(abs(lt - 12700.0), 800.0)) / 800.0 - 0.5, 0.0, 1.0) * 2.0;
 	let bounced = vec4f(0.5, 0.66, 1.3, 0.27);
 	let sun_ambient = bounced.w * (vec3f(0.25, 0.62, 1.32) - rain * vec3f(0.1, 0.47, 1.17)) * (1.0 + rain * 7.0) + o.sunlight * (bounced.x + bounced.z) * (1.0 - rain * 0.95);
 	let moonlight = vec3f(0.0016, 0.00288, 0.00448);
@@ -1208,7 +1219,7 @@ fn c1vars() -> C1V {
 	let trCalc = min(abs(vec2f(lt) - vec2f(23050.0, 12700.0)), vec2f(750.0));
 	o.tr = max(min(trCalc.x, trCalc.y) / 375.0 - 1.0, 0.0);
 	// the vsh then shadows tr with a local for the rest of main()
-	let tr = clamp(min(min(distance(lt, 23050.0), 750.0), min(distance(lt, 12700.0), 800.0)) / 800.0 - 0.5, 0.0, 1.0) * 2.0;
+	let tr = clamp(min(min(abs(lt - 23050.0), 750.0), min(abs(lt - 12700.0), 800.0)) / 800.0 - 0.5, 0.0, 1.0) * 2.0;
 	let bounced = vec4f(0.5, 0.66, 1.3, 0.27);
 	let sun_ambient = bounced.w * (vec3f(0.25, 0.62, 1.32) - rain * vec3f(0.1, 0.47, 1.17)) * (1.0 + rain * 7.0) + o.sunlight * (bounced.x + bounced.z) * (1.0 - rain * 0.95);
 	let moonlight = vec3f(0.0016, 0.00288, 0.00448);
@@ -1875,3 +1886,64 @@ fn fs(i: VOut) -> GOut {
 	return o;
 }
 `
+
+// The pack's buffer formats that WebGPU can't render to are emulated with
+// RGBA16Float (packFormats); what they would store is clamped on output:
+// R11F_G11F_B10F (composite, gaux2..4 = colortex3, 5..7) has no sign and a
+// 65024 maximum, RGBA16 (gdepth, gaux1 = colortex1, 4) is 0..1. No program
+// reads those buffers' alpha, so it passes through (it drives blending).
+const packStoreWGSL = `
+fn storeR11(v: vec4f) -> vec4f { return vec4f(clamp(v.rgb, vec3f(0.0), vec3f(65024.0)), v.a); }
+fn storeU16(v: vec4f) -> vec4f { return clamp(v, vec4f(0.0), vec4f(1.0)); }
+`
+
+var packFsRe = regexp.MustCompile(`@fragment\s*\nfn fs\(([^)]*)\) -> ([^{]+)\{`)
+
+// packStore wraps a program's fs so its outputs are stored as the pack's
+// formats would: struct fields by buffer name, a single @location(0)
+// output with single ("storeR11", or "" to leave it).
+func packStore(src, single string) string {
+	m := packFsRe.FindStringSubmatchIndex(src)
+	if m == nil {
+		return src
+	}
+	params, ret := src[m[2]:m[3]], strings.TrimSpace(src[m[4]:m[5]])
+	var args []string
+	for _, p := range strings.Split(params, ",") {
+		if f := strings.Fields(strings.TrimSpace(p)); len(f) > 0 {
+			args = append(args, strings.TrimSuffix(f[len(f)-2], ":"))
+		}
+	}
+	call := "fs_raw(" + strings.Join(args, ", ") + ")"
+	var body string
+	if strings.HasPrefix(ret, "@location") {
+		if single == "" {
+			return src
+		}
+		body = "return " + single + "(" + call + ");"
+	} else {
+		sm := regexp.MustCompile(`struct ` + ret + ` \{([^}]*)\}`).FindStringSubmatch(src)
+		if sm == nil {
+			panic("packStore: no struct " + ret)
+		}
+		body = "var o = " + call + ";"
+		n := 0
+		for _, f := range regexp.MustCompile(`\b(c[0-9]):`).FindAllStringSubmatch(sm[1], -1) {
+			fn := map[string]string{"c1": "storeU16", "c4": "storeU16", "c3": "storeR11", "c5": "storeR11", "c6": "storeR11", "c7": "storeR11"}[f[1]]
+			if fn != "" {
+				body += " o." + f[1] + " = " + fn + "(o." + f[1] + ");"
+				n++
+			}
+		}
+		if n == 0 {
+			return src
+		}
+		body += " return o;"
+	}
+	rawRet := ret
+	if i := strings.Index(ret, ")"); strings.HasPrefix(ret, "@location") && i >= 0 {
+		rawRet = strings.TrimSpace(ret[i+1:])
+	}
+	out := src[:m[0]] + "fn fs_raw(" + params + ") -> " + rawRet + " {" + src[m[1]:]
+	return out + packStoreWGSL + "@fragment\nfn fs(" + params + ") -> " + ret + " { " + body + " }\n"
+}

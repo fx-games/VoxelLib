@@ -74,7 +74,7 @@ func (mr *ModelRenderer) begin(l modelLight) {
 	l.vp = clip(l.vp)
 	mr.gpu.light = l
 	if p := curPass(); p != nil {
-		p.SetPipeline(dev.pipes.model)
+		setPipe(p, dev.pipes.model)
 	}
 }
 
@@ -99,7 +99,8 @@ func (mr *ModelRenderer) drawModel(g *gpuModel, model mgl32.Mat4, skin []mgl32.M
 		emissive = 1
 	}
 	lc := mr.r.LightColor(d.sky, d.block) // look agent: lightmap colour (modelWGSL u.light.rgb)
-	u := mr.gpu.u.reset().mat(l.vp).mat(model).f(lc[0], lc[1], lc[2], 0).
+	// light.w: the light levels for the shader pack
+	u := mr.gpu.u.reset().mat(l.vp).mat(model).f(lc[0], lc[1], lc[2], lightCode(d.sky, d.block)).
 		f(l.fog.Color[0], l.fog.Color[1], l.fog.Color[2], d.fade).f(l.fog.Start, l.fog.End, cutoff, emissive).
 		f(color[:]...).f(d.overlay[:]...)
 	for _, b := range bones(skin, g.bones) {
@@ -109,11 +110,11 @@ func (mr *ModelRenderer) drawModel(g *gpuModel, model mgl32.Mat4, skin []mgl32.M
 	// pipeline per draw.
 	switch d.blend {
 	case BlendAlpha:
-		p.SetPipeline(dev.pipes.modelAlpha)
+		setPipe(p, dev.pipes.modelAlpha)
 	case BlendAdditive:
-		p.SetPipeline(dev.pipes.modelAdd)
+		setPipe(p, dev.pipes.modelAdd)
 	default:
-		p.SetPipeline(dev.pipes.model)
+		setPipe(p, dev.pipes.model)
 	}
 	bindUniforms(p, u)
 	p.SetVertexBuffer(0, g.vbo, 0)

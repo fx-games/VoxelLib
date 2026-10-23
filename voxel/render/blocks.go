@@ -92,7 +92,7 @@ func (r *Renderer) DrawBlockItems(cam *Camera, items []BlockItem) {
 	fog := r.CurrentFog()
 	for _, it := range items {
 		model := mgl32.Translate3D(float32(it.X-cam.X), float32(it.Y-cam.Y), float32(it.Z-cam.Z)).Mul4(it.M)
-		r.drawBlock(it.Mesh, vp.Mul4(model), model, r.LightColor(it.Sky, it.Block), fog, itemLights[0], itemLights[1], -1)
+		r.drawBlock(it.Mesh, vp.Mul4(model), model, r.LightColor(it.Sky, it.Block), lightCode(it.Sky, it.Block), fog, itemLights[0], itemLights[1], -1)
 	}
 }
 
@@ -109,7 +109,7 @@ func (r *Renderer) DrawBlockHand(b *BlockMesh, aspect float32, model, lights mgl
 	proj := mgl32.Perspective(mgl32.DegToRad(70), aspect, 0.05, 10)
 	l0 := lights.Mul4x1(itemLights[0].Vec4(0)).Vec3()
 	l1 := lights.Mul4x1(itemLights[1].Vec4(0)).Vec3()
-	r.drawBlock(b, proj.Mul4(model), model, r.LightColor(sky, block), Fog{Start: 1e6, End: 2e6}, l0, l1, -1)
+	r.drawBlock(b, proj.Mul4(model), model, r.LightColor(sky, block), lightCode(sky, block), Fog{Start: 1e6, End: 2e6}, l0, l1, -1)
 }
 
 // SetDamageTextures sets the breaking crack textures, destroy_stage_0..9
@@ -143,5 +143,5 @@ func (r *Renderer) DrawBlockDamage(cam *Camera, b *BlockMesh, origin [3]int, sta
 		return
 	}
 	model := mgl32.Translate3D(float32(float64(origin[0])-cam.X), float32(float64(origin[1])-cam.Y), float32(float64(origin[2])-cam.Z))
-	r.drawBlock(b, cam.ViewProj(), model, mgl32.Vec3{1, 1, 1}, r.CurrentFog(), mgl32.Vec3{}, mgl32.Vec3{}, stage)
+	r.drawBlock(b, cam.ViewProj(), model, mgl32.Vec3{1, 1, 1}, 0, r.CurrentFog(), mgl32.Vec3{}, mgl32.Vec3{}, stage)
 }

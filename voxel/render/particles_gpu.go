@@ -52,7 +52,7 @@ func (pr *ParticleRenderer) drawPass(pf *particleFrame, additive bool, sheet int
 	if additive {
 		pl, add = dev.pipes.particleAdd, 1
 	}
-	p.SetPipeline(pl)
+	setPipe(p, pl)
 	t := pr.gpu.atlas
 	if sheet > 0 {
 		t = nil

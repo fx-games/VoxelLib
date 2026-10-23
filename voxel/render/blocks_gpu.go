@@ -152,7 +152,7 @@ func (r *Renderer) damageBG() *wgpu.BindGroup {
 // drawBlock issues one BlockMesh draw. mvp maps mesh-local blocks to clip
 // space, model to the lights' space; damage >= 0 draws the crack layer
 // (mvp is then the camera-relative view-projection, model the placement).
-func (r *Renderer) drawBlock(b *BlockMesh, mvp, model mgl32.Mat4, lc mgl32.Vec3, fog Fog, l0, l1 mgl32.Vec3, damage int) {
+func (r *Renderer) drawBlock(b *BlockMesh, mvp, model mgl32.Mat4, lc mgl32.Vec3, lv float32, fog Fog, l0, l1 mgl32.Vec3, damage int) {
 	p := curPass()
 	if p == nil || b == nil || b.gpu.vbo == nil || b.quads == 0 {
 		return
@@ -164,10 +164,10 @@ func (r *Renderer) drawBlock(b *BlockMesh, mvp, model mgl32.Mat4, lc mgl32.Vec3,
 		}
 		pl, bg, mode, layer = dev.pipes.blockDamage, r.damageBG(), 1, float32(damage)
 	}
-	p.SetPipeline(pl)
+	setPipe(p, pl)
 	u := &r.gpu.u
 	bindUniforms(p, u.reset().mat(clip(mvp)).mat(model).f(lc[0], lc[1], lc[2], mode).
-		f(fog.Color[0], fog.Color[1], fog.Color[2], 0).f(fog.Start, fog.End, layer, 0).
+		f(fog.Color[0], fog.Color[1], fog.Color[2], lv).f(fog.Start, fog.End, layer, 0).
 		f(l0[0], l0[1], l0[2], 0).f(l1[0], l1[1], l1[2], 0))
 	p.SetBindGroup(1, bg, nil)
 	p.SetIndexBuffer(r.gpu.ebo, gputypes.IndexFormatUint32, 0)

@@ -48,6 +48,10 @@ type Options struct {
 	// to the fog colour and these are drawn before terrain. SkyAfter is
 	// drawn after translucent terrain (e.g. high clouds, rain).
 	Sky, SkyAfter []SkyDraw
+	// Pack, when set, renders the world with the shader pack (pack.go):
+	// shadows, deferred lighting and the pack's sky instead of Sky and
+	// SkyAfter. Set it every frame; nil: the plain renderer.
+	Pack *PackFrame
 	// SkyTextures loads SkyDraw textures by name; nil uses the block
 	// texture source.
 	SkyTextures TextureSource
@@ -534,6 +538,9 @@ func (r *Renderer) Render(cam *Camera) {
 	r.buildBatches()
 	if r.frameLight() {
 		r.uploadLight()
+	}
+	if r.Opt.Pack != nil && dev.enc != nil {
+		r.packFrame(cam)
 	}
 	r.drawTerrain(cam, vp)
 }

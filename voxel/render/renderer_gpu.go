@@ -53,6 +53,15 @@ func (r *Renderer) drawTerrain(cam *Camera, vp mgl32.Mat4) {
 	g := &r.gpu
 	fog := r.CurrentFog()
 	skyCol, fogCol := r.skyColors()
+	if pk := dev.pk; pk != nil { // no sky; translucent terrain at the world's end (packHand)
+		n := len(r.batches)
+		for n > 0 && r.batches[n-1].layer == voxel.LayerTranslucent {
+			n--
+		}
+		pk.vp, pk.fog, pk.fogCol, pk.trans = vp, fog, fogCol, r.batches[n:]
+		r.drawBatches(p, vp, fog, fogCol, r.batches[:n])
+		return
+	}
 	sun := r.Opt.SunDir
 	if r.Opt.Sky != nil { // clear to the fog colour, then the sky draws
 		skyCol, sun = fogCol, mgl32.Vec3{}
@@ -64,26 +73,26 @@ func (r *Renderer) drawTerrain(cam *Camera, vp mgl32.Mat4) {
 
 	p.Draw(gputypes.DrawArgs{VertexCount: 3, InstanceCount: 1})
 	r.drawSky(cam, r.Opt.Sky)
-	r.drawBatches(p, vp, fog, fogCol)
+	r.drawBatches(p, vp, fog, fogCol, r.batches)
 	r.drawSky(cam, r.Opt.SkyAfter)
 }
 
-func (r *Renderer) drawBatches(p *wgpu.RenderPassEncoder, vp mgl32.Mat4, fog Fog, fogCol mgl32.Vec3) {
+func (r *Renderer) drawBatches(p *wgpu.RenderPassEncoder, vp mgl32.Mat4, fog Fog, fogCol mgl32.Vec3, batches []drawBatch) {
 	g := &r.gpu
-	if len(r.batches) == 0 {
+	if len(batches) == 0 {
 		return
 	}
 	r.terrainBG()
 	cvp := clip(vp)
 	dt := r.Opt.DynamicTint
 	layer := voxel.LayerCount
-	for _, b := range r.batches {
+	for _, b := range batches {
 		if b.layer != layer {
 			layer = b.layer
 			if layer == voxel.LayerTranslucent {
-				p.SetPipeline(dev.pipes.terrainTrans)
+				setPipe(p, dev.pipes.terrainTrans)
 			} else if layer == voxel.LayerSolid || layer == voxel.LayerCutout {
-				p.SetPipeline(dev.pipes.terrainOpaque)
+				setPipe(p, dev.pipes.terrainOpaque)
 			}
 			p.SetBindGroup(1, g.texBG, nil)
 			p.SetIndexBuffer(g.ebo, gputypes.IndexFormatUint32, 0)
@@ -167,11 +176,14 @@ func (r *Renderer) DrawCrosshair(aspect float32) {
 }
 
 func (r *Renderer) drawLines(pl *wgpu.RenderPipeline, first, n uint32, mvp mgl32.Mat4, col mgl32.Vec4) {
+	if pl == dev.pipes.crosshair {
+		packResolve()
+	}
 	p := curPass()
 	if p == nil {
 		return
 	}
-	p.SetPipeline(pl)
+	setPipe(p, pl)
 	bindUniforms(p, r.gpu.u.reset().mat(mvp).f(col[:]...))
 	p.SetVertexBuffer(0, r.gpu.lineVBO, 0)
 	dev.draws++

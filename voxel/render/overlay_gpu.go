@@ -29,6 +29,7 @@ func (o *Overlay) setPixels(px []byte, w, h int, same bool) {
 }
 
 func (o *Overlay) drawRect(rect [4]float32) {
+	packResolve()
 	p := curPass()
 	if p == nil {
 		return

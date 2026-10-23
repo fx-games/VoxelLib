@@ -351,6 +351,8 @@ type pipelines struct {
 	overlay                     *wgpu.RenderPipeline
 	blockItem, blockDamage      *wgpu.RenderPipeline
 	blit                        *wgpu.RenderPipeline
+
+	specs map[*wgpu.RenderPipeline]pipeSpec // what each was made from (shader pack variants)
 }
 
 var (
@@ -462,6 +464,7 @@ func (ps *pipelines) init() error {
 		{&ps.blit, pipeSpec{"capture blit", blitWGSL, nil, nil, tri, none, nil, false, false, true}},
 	}
 	modules := map[string]*wgpu.ShaderModule{}
+	ps.specs = map[*wgpu.RenderPipeline]pipeSpec{}
 	for _, s := range specs {
 		sp := s.spec
 		mod := modules[sp.wgsl]
@@ -505,6 +508,7 @@ func (ps *pipelines) init() error {
 		}); err != nil {
 			return fmt.Errorf("pipeline %s: %w", sp.label, err)
 		}
+		ps.specs[*s.dst] = sp
 	}
 	return nil
 }

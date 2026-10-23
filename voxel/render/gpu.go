@@ -74,6 +74,7 @@ var dev struct {
 	nearestClp *wgpu.Sampler         // sprites, models, HUD
 	linearClp  *wgpu.Sampler         // lightmap
 	pipes      pipelines
+	pk         *packGPU // the shader pack frame in progress (pack_gpu.go)
 }
 
 // uniformSlot is the bound size of a dynamic uniform block; every shader's
@@ -292,6 +293,10 @@ func endPass() {
 // clearDepth makes later draws start from a cleared depth buffer (first-
 // person hand over the world).
 func clearDepth() {
+	if dev.pk != nil {
+		packHand()
+		return
+	}
 	endPass()
 	dev.clearDepth = true
 }
@@ -301,6 +306,7 @@ func submit(final bool) {
 	if dev.enc == nil {
 		return
 	}
+	packResolve()
 	if dev.clearNext || dev.clearDepth {
 		curPass() // nothing drawn since a clear was requested: still clear
 	}
@@ -393,6 +399,7 @@ func ReadFrame(w, h int) *image.NRGBA {
 	if !dev.capturing || dev.enc == nil {
 		return img
 	}
+	packResolve()
 	if dev.clearNext {
 		curPass()
 	}
