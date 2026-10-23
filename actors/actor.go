@@ -109,6 +109,9 @@ type Melee struct {
 	Knockback int
 	// Speed is the AI speed factor while chasing (0 = 1).
 	Speed float64
+	// Bonus, when set, adds damage that depends on the target (weapon
+	// enchantments against a kind of creature) to each blow.
+	Bonus func(src, t *Actor) float64
 }
 
 // Ranged is a bow or other launcher, as 1.7.10's EntityAIArrowAttack.

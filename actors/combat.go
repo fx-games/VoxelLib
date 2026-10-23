@@ -153,7 +153,11 @@ func (m *Manager) melee(a, t *Actor) {
 	m.face(a, t)
 	if d2 <= r2 && a.attackCool <= 0 {
 		a.attackCool = max(1, a.Melee.Cooldown)
-		m.Attack(a, t, a.Melee.Damage, a.Melee.Knockback)
+		dmg := a.Melee.Damage
+		if a.Melee.Bonus != nil {
+			dmg += a.Melee.Bonus(a, t)
+		}
+		m.Attack(a, t, dmg, a.Melee.Knockback)
 	}
 }
 
