@@ -169,3 +169,39 @@ func TestSwimAcross(t *testing.T) {
 		t.Fatal("no swim path")
 	}
 }
+
+// TestStepSlices: a search run in slices of one expansion finds the same
+// path as Path, and the cell cache never changes an answer.
+func TestStepSlices(t *testing.T) {
+	m := floor()
+	for z := 0; z < 9; z++ { // a wall with a gap at z=9
+		m[Pos{5, 1, z}], m[Pos{5, 2, z}] = true, true
+	}
+	g := &Graph{W: m}
+	want, ok := g.Path(Pos{0, 1, 0}, Pos{9, 1, 0}, 0)
+	if !ok {
+		t.Fatal("no path")
+	}
+	if !g.Begin(Pos{0, 1, 0}, Pos{9, 1, 0}, 0) {
+		t.Fatal("Begin")
+	}
+	var got []Pos
+	steps := 0
+	for done := false; !done; steps++ {
+		got, done = g.Step(1)
+	}
+	if steps < 10 || len(got) != len(want) {
+		t.Fatalf("sliced: %d steps, path %v, want %v", steps, got, want)
+	}
+	for i := range got {
+		if got[i] != want[i] {
+			t.Fatalf("sliced path %v, want %v", got, want)
+		}
+	}
+	// unreachable: ends with no path after maxNodes expansions
+	m[Pos{5, 1, 9}], m[Pos{5, 2, 9}] = true, true
+	g.Begin(Pos{0, 1, 0}, Pos{9, 1, 0}, 7)
+	if p, done := g.Step(100); !done || p != nil || g.Expanded() != 7 {
+		t.Fatalf("capped search: path %v done %v expanded %d", p, done, g.Expanded())
+	}
+}

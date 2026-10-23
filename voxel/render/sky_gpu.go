@@ -75,6 +75,8 @@ func (r *Renderer) drawSky(cam *Camera, draws []SkyDraw) {
 		p.SetBindGroup(1, t.bg, nil)
 		vc, off := dev.vertices.alloc(bytesOf(r.skyVerts), 0)
 		p.SetVertexBuffer(0, vc.buf, uint64(off))
+		dev.draws++
+
 		p.Draw(gputypes.DrawArgs{VertexCount: uint32(len(r.skyVerts)), InstanceCount: 1})
 	}
 }

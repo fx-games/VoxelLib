@@ -128,6 +128,8 @@ func (mr *ModelRenderer) drawModel(g *gpuModel, model mgl32.Mat4, skin []mgl32.M
 			group = mr.skins[d.texture-1].group
 		}
 		p.SetBindGroup(1, group, nil)
+		dev.draws++
+
 		p.DrawIndexed(gputypes.DrawIndexedArgs{IndexCount: uint32(pt.count), InstanceCount: 1, FirstIndex: uint32(pt.first)})
 	}
 }

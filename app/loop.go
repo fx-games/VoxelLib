@@ -62,8 +62,11 @@ func (a *App) loop() {
 	acc := time.Duration(0)
 	st.fpsTime = time.Now()
 	start := time.Now()
-	var benchFrames, benchCPU []time.Duration
+	var benchFrames, benchCPU, benchGPU []time.Duration
 	var benchMem runtime.MemStats // at the first measured frame
+	var benchTicks []time.Duration
+	gpuWait := dbg.Bench > 0 && os.Getenv("VOXELLIB_BENCH_GPU") != ""
+	var stopProfile func()
 	for !a.Win.ShouldClose() && !a.quit && !a.restart {
 		if dbg.Verbose && !a.readyLogged && a.Ready() {
 			a.readyLogged = true
@@ -71,11 +74,16 @@ func (a *App) loop() {
 		}
 		if dbg.Bench > 0 {
 			if el := time.Since(start); el > dbg.Bench {
+				if stopProfile != nil {
+					stopProfile()
+				}
 				printBench(benchFrames, benchCPU, &benchMem)
+				printBenchExtra(benchTicks, benchGPU, a.Eng.Renderer.Stats)
 				return
 			} else if el > 3*time.Second { // skip startup
 				if len(benchFrames) == 0 {
 					runtime.ReadMemStats(&benchMem)
+					stopProfile = startProfiles()
 				}
 				benchFrames = append(benchFrames, time.Since(last))
 			}
@@ -90,8 +98,12 @@ func (a *App) loop() {
 		last = now
 		t0 := time.Now()
 		for acc >= TickDur {
+			tt := time.Now()
 			a.tick()
 			acc -= TickDur
+			if stopProfile != nil {
+				benchTicks = append(benchTicks, time.Since(tt))
+			}
 		}
 		if a.Paused() {
 			acc = time.Duration(a.alpha * float64(TickDur)) // hold the pose
@@ -170,6 +182,10 @@ func (a *App) loop() {
 			benchCPU = append(benchCPU, t3.Sub(st.frameStart)-acquire)
 		}
 		render.EndFrame(a.Win)
+		if gpuWait && stopProfile != nil {
+			render.FinishGPU()
+			benchGPU = append(benchGPU, time.Since(t3))
+		}
 		tSwap := time.Now()
 		if a.frameLimit > 0 {
 			// Sleep most of the remainder, spin the last bit for precision.

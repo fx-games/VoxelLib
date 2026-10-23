@@ -579,13 +579,31 @@ func (r *Renderer) buildBatches() {
 			for _, s := range reg.visible {
 				o := s.pos.Origin()
 				ox, oy, oz := float64(o.X)-r.camX, float64(o.Y)-r.camY, float64(o.Z)-r.camZ
+				// One span from the first to the last visible group: the
+				// culled groups between face away from the camera, so the
+				// back-face cull drops them and the pixels are the same, at
+				// far fewer draws.
+				lo, hi := -1, 0
 				for g := 0; g < mesh.GroupCount; g++ {
 					rg := s.ranges[layer][g]
 					if rg.Count == 0 || !groupVisible(g, ox, oy, oz) {
 						continue
 					}
-					r.counts = append(r.counts, int32(rg.Count/4*6))
-					r.bases = append(r.bases, int32(s.off+rg.First))
+					if lo < 0 {
+						lo = rg.First
+					}
+					hi = rg.First + rg.Count
+				}
+				if lo >= 0 && hi-lo <= maxQuadsPerDraw*4 {
+					r.counts = append(r.counts, int32((hi-lo)/4*6))
+					r.bases = append(r.bases, int32(s.off+lo))
+				} else if lo >= 0 {
+					for g := 0; g < mesh.GroupCount; g++ {
+						if rg := s.ranges[layer][g]; rg.Count > 0 && groupVisible(g, ox, oy, oz) {
+							r.counts = append(r.counts, int32(rg.Count/4*6))
+							r.bases = append(r.bases, int32(s.off+rg.First))
+						}
+					}
 				}
 			}
 			r.mergeRanges(first)

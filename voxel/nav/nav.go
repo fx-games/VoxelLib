@@ -34,6 +34,45 @@ type Graph struct {
 	nodes map[Pos]*node
 	gen   uint32
 	open  nodeHeap
+
+	// cells caches solid/water answers for the cells around one search
+	// (W, Door and Water are callbacks into the game and cost far more
+	// than a byte lookup; Neighbors asks about the same cells many times).
+	cells      []uint8
+	cx, cy, cz int // window origin
+	caching    bool
+
+	// the search Begin started
+	to                 Pos
+	maxNodes, expanded int
+}
+
+// Cache window: x and z within cacheR of the search's centre, y within
+// cacheH/2 of it.
+const (
+	cacheR = 48
+	cacheW = 2*cacheR + 1
+	cacheH = 48
+)
+
+const (
+	cellSolidKnown uint8 = 1 << iota
+	cellSolid
+	cellWaterKnown
+	cellWater
+)
+
+// cell returns the cache byte for (x,y,z), or nil outside the window or
+// when no search runs.
+func (g *Graph) cell(x, y, z int) *uint8 {
+	if !g.caching {
+		return nil
+	}
+	x, y, z = x-g.cx, y-g.cy, z-g.cz
+	if uint(x) >= cacheW || uint(z) >= cacheW || uint(y) >= cacheH {
+		return nil
+	}
+	return &g.cells[(y*cacheW+z)*cacheW+x]
 }
 
 type node struct {
@@ -71,10 +110,37 @@ func (g *Graph) maxDrop() int {
 
 // solid is W.Solid with doors open.
 func (g *Graph) solid(x, y, z int) bool {
-	return g.W.Solid(x, y, z) && (g.Door == nil || !g.Door(x, y, z))
+	c := g.cell(x, y, z)
+	if c != nil && *c&cellSolidKnown != 0 {
+		return *c&cellSolid != 0
+	}
+	v := g.W.Solid(x, y, z) && (g.Door == nil || !g.Door(x, y, z))
+	if c != nil {
+		*c |= cellSolidKnown
+		if v {
+			*c |= cellSolid
+		}
+	}
+	return v
 }
 
-func (g *Graph) water(x, y, z int) bool { return g.Water != nil && g.Water(x, y, z) }
+func (g *Graph) water(x, y, z int) bool {
+	if g.Water == nil {
+		return false
+	}
+	c := g.cell(x, y, z)
+	if c != nil && *c&cellWaterKnown != 0 {
+		return *c&cellWater != 0
+	}
+	v := g.Water(x, y, z)
+	if c != nil {
+		*c |= cellWaterKnown
+		if v {
+			*c |= cellWater
+		}
+	}
+	return v
+}
 
 // clear reports whether cells y..y+h-1 at (x,z) are non-solid.
 func (g *Graph) clear(x, y, z, h int) bool {
@@ -95,14 +161,14 @@ func (g *Graph) Walkable(p Pos) bool {
 func (g *Graph) Neighbors(p Pos, buf []Pos) []Pos {
 	buf = buf[:0]
 	md := g.maxDrop()
+	// Step up needs 3 clear cells above the current floor.
+	canUp := g.clear(p.X, p.Y, p.Z, 3)
 	for dx := -1; dx <= 1; dx++ {
 		for dz := -1; dz <= 1; dz++ {
 			if dx == 0 && dz == 0 {
 				continue
 			}
 			tx, tz := p.X+dx, p.Z+dz
-			// Step up needs 3 clear cells above the current floor.
-			canUp := g.clear(p.X, p.Y, p.Z, 3)
 			if dx != 0 && dz != 0 {
 				// No corner cutting: both orthogonal columns must be clear.
 				if !g.clear(p.X+dx, p.Y, p.Z, 2) || !g.clear(p.X, p.Y, p.Z+dz, 2) {
@@ -197,12 +263,35 @@ func (g *Graph) get(p Pos) *node {
 
 // Path runs A* from..to (both included). maxNodes caps expansions (0 = 20000).
 func (g *Graph) Path(from, to Pos, maxNodes int) ([]Pos, bool) {
+	if !g.Begin(from, to, maxNodes) {
+		return nil, false
+	}
+	path, _ := g.Step(g.maxNodes)
+	return path, path != nil
+}
+
+// Begin starts an A* search from..to that Step runs in slices, so a long
+// search can spread over several ticks. maxNodes caps expansions (0 =
+// 20000). It reports false, ending the search, when either end isn't
+// walkable. One search runs per Graph; Begin abandons an unfinished one.
+// The world's answers are cached for the whole search: block changes
+// made meanwhile may go unseen until the next one.
+func (g *Graph) Begin(from, to Pos, maxNodes int) bool {
 	if maxNodes <= 0 {
 		maxNodes = 20000
 	}
+	g.caching = false
+	g.open = g.open[:0]
 	if !g.Walkable(from) || !g.Walkable(to) {
-		return nil, false
+		return false
 	}
+	if g.cells == nil {
+		g.cells = make([]uint8, cacheW*cacheW*cacheH)
+	} else {
+		clear(g.cells)
+	}
+	g.cx, g.cy, g.cz = (from.X+to.X)/2-cacheR, (from.Y+to.Y)/2-cacheH/2, (from.Z+to.Z)/2-cacheR
+	g.caching = true
 	if g.nodes == nil {
 		g.nodes = map[Pos]*node{}
 	}
@@ -210,21 +299,34 @@ func (g *Graph) Path(from, to Pos, maxNodes int) ([]Pos, bool) {
 	if len(g.nodes) > 200000 { // bound memory of the reuse cache
 		g.nodes = map[Pos]*node{}
 	}
-	g.open = g.open[:0]
-	var buf [8]Pos
+	g.to, g.maxNodes, g.expanded = to, maxNodes, 0
 	s := g.get(from)
 	s.g, s.f = 0, h(from, to)
 	heap.Push(&g.open, s)
-	for exp := 0; g.open.Len() > 0 && exp < maxNodes; exp++ {
+	return true
+}
+
+// Step expands at most budget nodes of the search Begin started. done
+// reports that the search has ended: with the path (from..to) or, when
+// path is nil, without one.
+func (g *Graph) Step(budget int) (path []Pos, done bool) {
+	to := g.to
+	var buf [8]Pos
+	for ; budget > 0; budget-- {
+		if g.open.Len() == 0 || g.expanded >= g.maxNodes {
+			g.open = g.open[:0]
+			return nil, true
+		}
+		g.expanded++
 		cur := heap.Pop(&g.open).(*node)
 		if cur.pos == to {
-			var path []Pos
 			for n := cur; n != nil; n = n.parent {
 				path = append(path, n.pos)
 			}
 			for i, j := 0, len(path)-1; i < j; i, j = i+1, j-1 {
 				path[i], path[j] = path[j], path[i]
 			}
+			g.open = g.open[:0]
 			return path, true
 		}
 		cur.closed = true
@@ -255,8 +357,11 @@ func (g *Graph) Path(from, to Pos, maxNodes int) ([]Pos, bool) {
 			}
 		}
 	}
-	return nil, false
+	return nil, g.open.Len() == 0
 }
+
+// Expanded is the number of nodes the current search has expanded.
+func (g *Graph) Expanded() int { return g.expanded }
 
 // Smooth drops path cells a walker can skip by heading straight for a later
 // one: on the same level, over walkable cells only, keeping every cell next

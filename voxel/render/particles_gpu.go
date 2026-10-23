@@ -49,6 +49,8 @@ func (pr *ParticleRenderer) drawPass(pf *particleFrame, additive bool, buf []flo
 	c, off := dev.vertices.alloc(bytesOf(buf), 0)
 	p.SetVertexBuffer(0, pr.gpu.quad, 0)
 	p.SetVertexBuffer(1, c.buf, uint64(off))
+	dev.draws++
+
 	p.Draw(gputypes.DrawArgs{VertexCount: 6, InstanceCount: uint32(len(buf) / particleStride)})
 }
 

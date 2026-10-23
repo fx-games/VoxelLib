@@ -127,6 +127,8 @@ func (b *GUIBatch) Flush(fbW, fbH int, scale float32) {
 		if i+1 < len(segs) {
 			end = segs[i+1].first
 		}
+		dev.draws++
+
 		p.Draw(gputypes.DrawArgs{VertexCount: uint32(end - s.first), InstanceCount: 1, FirstVertex: uint32(s.first)})
 	}
 	p.SetScissorRect(gputypes.ScissorRect{Width: uint32(fbW), Height: uint32(fbH)})

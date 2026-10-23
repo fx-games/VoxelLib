@@ -36,5 +36,7 @@ func (o *Overlay) drawRect(rect [4]float32) {
 	p.SetPipeline(dev.pipes.overlay)
 	bindUniforms(p, o.gpu.u.reset().f(rect[:]...))
 	p.SetBindGroup(1, o.gpu.bg, nil)
+	dev.draws++
+
 	p.Draw(gputypes.DrawArgs{VertexCount: 4, InstanceCount: 1})
 }

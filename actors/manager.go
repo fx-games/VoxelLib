@@ -41,6 +41,14 @@ type Manager struct {
 	prevHit  func(*projectile.Arrow, projectile.Target)
 	graph    nav.Graph
 	ticks    int
+
+	// path searches (pump): one runs on search at a time, the rest queue
+	search          nav.Graph
+	searching       *Actor
+	queue           []*Actor
+	budget          int // expansions left this tick
+	doorFn, waterFn func(x, y, z int) bool
+	costFn          func(nav.Pos) int
 }
 
 // NewManager returns a Manager. If arrows is not nil, the Manager installs
@@ -86,6 +94,7 @@ func (m *Manager) Remove(a *Actor) {
 	}
 	delete(m.byID, a.ID)
 	delete(m.tracks, a.ID)
+	m.cancelSearch(a)
 	for i, o := range m.Actors {
 		if o == a {
 			m.Actors = append(m.Actors[:i], m.Actors[i+1:]...)
@@ -118,6 +127,8 @@ func (m *Manager) Tick() {
 			leaders[a.Brain.Leader] = true
 		}
 	}
+	m.budget = pathBudget // after occupied: searches cost occupied cells
+	m.pump()
 	for id := range leaders {
 		if l := m.byID[id]; l != nil {
 			m.record(l)

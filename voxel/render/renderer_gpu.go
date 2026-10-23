@@ -59,6 +59,8 @@ func (r *Renderer) drawTerrain(cam *Camera, vp mgl32.Mat4) {
 	p.SetPipeline(dev.pipes.sky)
 	bindUniforms(p, g.u.reset().mat(vp.Inv()).f(fogCol[0], fogCol[1], fogCol[2], 0).f(skyCol[0], skyCol[1], skyCol[2], 0).
 		f(sun[0], sun[1], sun[2], 0))
+	dev.draws++
+
 	p.Draw(gputypes.DrawArgs{VertexCount: 3, InstanceCount: 1})
 	r.drawSky(cam, r.Opt.Sky)
 	r.drawBatches(p, vp, fog, fogCol)
@@ -117,6 +119,8 @@ func (r *Renderer) multiDraw(p *wgpu.RenderPassEncoder, b drawBatch) {
 	counts, bases := r.counts[b.first:b.first+b.n], r.bases[b.first:b.first+b.n]
 	if !dev.multiDraw {
 		for i, c := range counts {
+			dev.draws++
+
 			p.DrawIndexed(gputypes.DrawIndexedArgs{IndexCount: uint32(c), InstanceCount: 1, BaseVertex: bases[i]})
 		}
 		return
@@ -131,6 +135,8 @@ func (r *Renderer) multiDraw(p *wgpu.RenderPassEncoder, b drawBatch) {
 		g.ind = binary.LittleEndian.AppendUint32(g.ind, 0)
 	}
 	c, off := dev.indirect.alloc(g.ind, 0)
+	dev.draws++
+
 	p.MultiDrawIndexedIndirect(c.buf, uint64(off), uint32(len(counts)))
 }
 
@@ -153,6 +159,8 @@ func (r *Renderer) drawLines(pl *wgpu.RenderPipeline, first, n uint32, mvp mgl32
 	p.SetPipeline(pl)
 	bindUniforms(p, r.gpu.u.reset().mat(mvp).f(col[:]...))
 	p.SetVertexBuffer(0, r.gpu.lineVBO, 0)
+	dev.draws++
+
 	p.Draw(gputypes.DrawArgs{VertexCount: n, InstanceCount: 1, FirstVertex: first})
 }
 

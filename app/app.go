@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"log"
 	"math"
+	"os"
 	"time"
 
 	"github.com/memmaker/voxellib/audio"
@@ -162,6 +163,9 @@ type App struct {
 func New(cfg Config) (*App, error) {
 	if cfg.Width == 0 {
 		cfg.Width, cfg.Height = 1280, 720
+	}
+	if v := os.Getenv("VOXELLIB_VSYNC"); v != "" { // bench: "off" measures the uncapped frame
+		cfg.VSync = v
 	}
 	if cfg.VSync == "" {
 		cfg.VSync = "on"

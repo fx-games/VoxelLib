@@ -55,6 +55,8 @@ var dev struct {
 	clearDepth bool // next pass clears depth
 
 	multiDraw bool // FeatureMultiDrawIndirect
+	draws     int  // draw commands this frame (an indirect multidraw counts once)
+	lastDraws int
 	debug     bool // VOXELLIB_WGPU_DEBUG: log validation errors per frame
 
 	// Capture frames (and every mailbox frame) render offscreen so ReadFrame
@@ -239,6 +241,7 @@ func BeginFrame(w, h int, r, g, b float32) {
 			dev.capW, dev.capH = w, h
 		}
 	}
+	dev.lastDraws, dev.draws = dev.draws, 0
 	var err error
 	if dev.enc, err = dev.device.CreateCommandEncoder(&wgpu.CommandEncoderDescriptor{Label: "frame"}); err != nil {
 		panic(err)
@@ -310,6 +313,8 @@ func submit(final bool) {
 		}
 		p.SetPipeline(dev.pipes.blit)
 		p.SetBindGroup(0, dev.capBG, nil)
+		dev.draws++
+
 		p.Draw(gputypes.DrawArgs{VertexCount: 3, InstanceCount: 1})
 		dev.pass = p
 	}
@@ -679,6 +684,9 @@ func acquireLoop() {
 		dev.drawable <- nextDrawable()
 	}
 }
+
+// FrameDraws is the number of draw commands of the last finished frame.
+func FrameDraws() int { return dev.lastDraws }
 
 // FinishGPU blocks until the GPU has finished all submitted work. For
 // benchmarks only (it serialises CPU and GPU).

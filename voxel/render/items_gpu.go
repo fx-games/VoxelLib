@@ -42,6 +42,8 @@ func (ir *ItemRenderer) drawRange(i int, mvp, model mgl32.Mat4, sky, block uint8
 		f(f.Color[0], f.Color[1], f.Color[2], float32(i)).f(f.Start, f.End, 0, 0))
 	p.SetBindGroup(1, g.bg, nil)
 	p.SetVertexBuffer(0, g.vbo, 0)
+	dev.draws++
+
 	p.Draw(gputypes.DrawArgs{VertexCount: uint32(ir.ranges[i][1]), InstanceCount: 1, FirstVertex: uint32(ir.ranges[i][0])})
 }
 

@@ -19,35 +19,51 @@ type navigator struct {
 	stuck  int       // stuck checks failed in a row
 	opened []nav.Pos // doors this actor opened and must close behind it
 	in     character.Input
+	// pending: a search for from..to is queued or running (Manager.pump);
+	// the actor keeps its old path until it ends.
+	pending  bool
+	from, to nav.Pos
 }
 
 // Planning limits: A* reaches at most planRange blocks ahead (a far goal is
 // approached in legs), and a path is replanned every replan ticks while the
 // goal moves.
+//
+// pathBudget caps the A* expansions of all actors in one tick (about 1 ms):
+// a search that needs more continues next tick, so one unreachable goal
+// (6000 expansions) no longer stalls a tick for 10-30 ms.
 const (
-	planRange = 40
-	replan    = 40
-	turnRate  = 30 * math.Pi / 180 // EntityMoveHelper turns at most 30° a tick
+	planRange  = 40
+	replan     = 40
+	pathBudget = 2000
+	maxNodes   = 6000
+	turnRate   = 30 * math.Pi / 180 // EntityMoveHelper turns at most 30° a tick
 )
 
 func (m *Manager) graphFor(a *Actor) *nav.Graph {
-	g := &m.graph
-	g.W = m.W
-	g.Door = func(x, y, z int) bool { d, _ := m.W.Door(x, y, z); return d }
-	if !a.OpensDoors {
-		g.Door = nil
-	}
-	g.Water = nil
-	if a.CanSwim {
-		g.Water = func(x, y, z int) bool { return m.W.Liquid(x, y, z) == character.LiquidWater }
-	}
-	g.Cost = func(p nav.Pos) int {
-		if m.occupied[p] {
-			return 30
+	m.setGraph(&m.graph, a)
+	return &m.graph
+}
+
+// setGraph points g's callbacks at the world as a walker sees it.
+func (m *Manager) setGraph(g *nav.Graph, a *Actor) {
+	if m.doorFn == nil { // made once: closures made per call would allocate
+		m.doorFn = func(x, y, z int) bool { d, _ := m.W.Door(x, y, z); return d }
+		m.waterFn = func(x, y, z int) bool { return m.W.Liquid(x, y, z) == character.LiquidWater }
+		m.costFn = func(p nav.Pos) int {
+			if m.occupied[p] {
+				return 30
+			}
+			return 0
 		}
-		return 0
 	}
-	return g
+	g.W, g.Door, g.Water, g.Cost = m.W, nil, nil, m.costFn
+	if a.OpensDoors {
+		g.Door = m.doorFn
+	}
+	if a.CanSwim {
+		g.Water = m.waterFn
+	}
 }
 
 // ground finds the feet cell for a point.
@@ -58,7 +74,7 @@ func (m *Manager) ground(g *nav.Graph, v Vec) (nav.Pos, bool) {
 func (m *Manager) plan(a *Actor, goal Vec) {
 	c := a.carrier()
 	n := &a.nav
-	n.goal, n.has, n.age, n.path, n.i = goal, true, 0, nil, 0
+	n.goal, n.has, n.age = goal, true, 0
 	g := m.graphFor(c)
 	from, ok1 := m.ground(g, c.Pos())
 	leg := goal
@@ -68,11 +84,71 @@ func (m *Manager) plan(a *Actor, goal Vec) {
 	}
 	to, ok2 := m.ground(g, leg)
 	if !ok1 || !ok2 {
+		m.cancelSearch(a)
+		n.path, n.i = nil, 0
 		return
 	}
-	if p, ok := g.Path(from, to, 6000); ok {
-		n.path = g.Smooth(p)
+	n.from, n.to = from, to
+	if !n.pending { // else the queued or running search takes the new ends
+		n.pending = true
+		m.queue = append(m.queue, a)
+	}
+	m.pump()
+}
+
+// pump runs queued path searches, one at a time, until this tick's
+// expansion budget is spent; an unfinished search continues next tick.
+func (m *Manager) pump() {
+	for m.budget > 0 {
+		if m.searching == nil {
+			if len(m.queue) == 0 {
+				return
+			}
+			a := m.queue[0]
+			m.queue = m.queue[:copy(m.queue, m.queue[1:])]
+			n := &a.nav
+			if !n.pending {
+				continue
+			}
+			m.setGraph(&m.search, a.carrier())
+			if !m.search.Begin(n.from, n.to, maxNodes) {
+				m.finish(a, nil)
+				continue
+			}
+			m.searching = a
+		}
+		before := m.search.Expanded()
+		p, done := m.search.Step(m.budget)
+		m.budget -= m.search.Expanded() - before
+		if !done {
+			return
+		}
+		a := m.searching
+		m.searching = nil
+		if p != nil {
+			p = m.search.Smooth(p)
+		}
+		m.finish(a, p)
+	}
+}
+
+func (m *Manager) finish(a *Actor, p []nav.Pos) {
+	n := &a.nav
+	if !n.pending {
+		return
+	}
+	n.pending = false
+	n.path, n.i = p, 0
+	if p != nil {
 		n.i = 1
+	}
+}
+
+// cancelSearch drops a's queued or running search.
+func (m *Manager) cancelSearch(a *Actor) {
+	a.nav.pending = false
+	if m.searching == a {
+		m.searching = nil
 	}
 }
 
@@ -92,6 +168,10 @@ func (m *Manager) moveTo(a *Actor, goal Vec, mul float64) bool {
 	if !n.has || (goal.dist2(n.goal) > 2.25 && n.age > 10) || (goal != n.goal && n.age > replan) ||
 		(n.path != nil && n.i >= len(n.path) && pos.hdist(goal) > 2) {
 		m.plan(a, goal)
+	}
+	if n.pending && n.path == nil { // wait for the search rather than walk blind
+		c.nav.in = character.Input{Yaw: c.Yaw, Jump: c.Body.InWater && c.CanSwim}
+		return false
 	}
 	next := goal
 	var nextCell *nav.Pos
@@ -160,6 +240,7 @@ func (m *Manager) moveTo(a *Actor, goal Vec, mul float64) bool {
 func (m *Manager) stop(a *Actor) {
 	c := a.carrier()
 	a.nav.has, a.nav.path = false, nil
+	m.cancelSearch(a)
 	c.nav.in = character.Input{Yaw: c.Yaw, Jump: c.Body.InWater && c.CanSwim}
 }
 
