@@ -83,6 +83,7 @@ type Input struct {
 
 	a        *App
 	suppress map[string]bool // consumed press, until release
+	virt     map[string]bool // actions held by Hold
 	lastJump time.Time
 	lastX    float64
 	lastY    float64
@@ -95,9 +96,26 @@ func newInput(a *App) *Input {
 // Bind sets an action's buttons.
 func (in *Input) Bind(action string, bs ...Button) { in.Bindings[action] = bs }
 
+// Hold presses (down) or releases an action in-process, as a button bound
+// to it would: the press or release is dispatched and Down reports it held
+// until released. For scripted play, demos and tests.
+func (in *Input) Hold(action string, down bool) {
+	if in.virt == nil {
+		in.virt = map[string]bool{}
+	}
+	if in.virt[action] == down {
+		return
+	}
+	in.virt[action] = down
+	in.dispatch(action, down)
+}
+
 // Down reports whether a button of the action is held (always false while
-// the mouse is free).
+// the mouse is free) or Hold holds it.
 func (in *Input) Down(action string) bool {
+	if in.virt[action] {
+		return true
+	}
 	if !in.a.Captured {
 		return false
 	}

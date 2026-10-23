@@ -74,6 +74,7 @@ type Player struct {
 	breakTicks, breakCD    int
 	damage                 float32 // PlayerControllerMP.curBlockDamageMP
 	placeCD                int
+	useDelay               int // ticks until a held use repeats into the air
 	swing                  int
 	walkDist, prevWalk     float64 // distanceWalkedModified
 	// View bobbing (EntityPlayer.cameraYaw, EntityLivingBase.cameraPitch)
@@ -107,6 +108,19 @@ func (p *Player) Respawn() {
 func (p *Player) Swing() { p.swing = SwingTicks }
 
 func (p *Player) click(act Action) { p.clicks[act] = true }
+
+// Headless is an App with input and a player but no window or engine, for
+// tests that drive the input path: Input.Hold, then TickInput per tick
+// (nothing is targeted, so use goes to Hooks.UseItem).
+func Headless() *App {
+	a := &App{}
+	a.Input = newInput(a)
+	a.Player = &Player{Character: character.New(0, 0, 0), a: a}
+	return a
+}
+
+// TickInput runs the player's held-button step of a tick (attack, use).
+func (a *App) TickInput() { a.Player.interact() }
 
 // tick runs one 20 Hz step: terrain readiness, held buttons, then the
 // character controller.
@@ -183,6 +197,9 @@ func (p *Player) interact() {
 	a, in := p.a, p.a.Input
 	clicks := p.clicks
 	p.clicks = [2]bool{}
+	if p.useDelay > 0 {
+		p.useDelay--
+	}
 	attack := (clicks[Attack] || in.Down(ActAttack)) && !in.suppress[ActAttack]
 	use := (clicks[Use] || in.Down(ActUse)) && !in.suppress[ActUse]
 	if !attack {
@@ -210,6 +227,10 @@ func (p *Player) interact() {
 	}
 	if !ok {
 		p.Progress = 0
+		if use && a.Hooks.UseItem != nil && (clicks[Use] || p.useDelay == 0 && (a.Hooks.UsingItem == nil || !a.Hooks.UsingItem())) {
+			p.useDelay = 4
+			a.Hooks.UseItem()
+		}
 		return
 	}
 	if clicks[Attack] && attack && a.Hooks.BlockInteract != nil && a.Hooks.BlockInteract(hit, Attack) {
@@ -329,6 +350,9 @@ func (p *Player) sound(ev string, pos voxel.BlockPos, st voxel.StateID) {
 // if it is nearer than the block, else the block (ok).
 func (a *App) Target() (hit physics.Hit, ent *Entity, ok bool) {
 	p := a.Player
+	if a.Eng == nil { // headless
+		return
+	}
 	ex, ey, ez := p.Eye()
 	f := a.Cam.Forward()
 	dx, dy, dz := float64(f[0]), float64(f[1]), float64(f[2])
