@@ -112,6 +112,9 @@ type Container struct {
 	Drop func(*Stack)
 	// OnClose runs after the cursor was dropped on Close.
 	OnClose func(c *Container)
+	// Deny, if set, is a slotClick override: a click it denies does nothing
+	// and returns nil (LOTRContainerPouch locks the open pouch's slot).
+	Deny func(slot, button, mode int) bool
 
 	dragKind, dragStage int
 	dragSlots           []*Slot
@@ -153,6 +156,9 @@ func (c *Container) inDrag(sl *Slot) bool {
 // Click is Container.slotClick: it returns a copy of the clicked slot's stack
 // before the click (nil for none), as 1.7.10 does.
 func (c *Container) Click(slot, button, mode int) *Stack {
+	if c.Deny != nil && c.Deny(slot, button, mode) {
+		return nil
+	}
 	var ret *Stack
 	p := c.Player
 	if mode == Drag {
