@@ -372,7 +372,13 @@ func TestArcherShootsWithInterval(t *testing.T) {
 	man.Brain = Brain{Mode: Stand, Home: man.Pos()}
 	m.Add(sk)
 	m.Add(man)
-	hits := 0
+	hits, fired := 0, 0
+	m.OnFire = func(a, tg *Actor) {
+		if a != sk || tg != man {
+			t.Error("OnFire", a, tg)
+		}
+		fired++
+	}
 	man.OnHurt = func(a, src *Actor, n float64) {
 		if src != sk || n < 1 || n > 6 {
 			t.Errorf("hit by %v for %.1f", src, n)
@@ -389,6 +395,9 @@ func TestArcherShootsWithInterval(t *testing.T) {
 	}
 	// The archer closes in for the first second (seeTime < 20), then
 	// shoots every floor(d/15*40+20) ticks: about 40 at 7.5 blocks.
+	if fired < hits || fired > hits+1 {
+		t.Fatalf("%d shots fired for %d hits", fired, hits)
+	}
 	if hits < 7 || hits > 10 {
 		t.Fatalf("%d arrow hits in 400 ticks, want about 9", hits)
 	}

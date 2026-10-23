@@ -292,6 +292,9 @@ func (m *Manager) fire(a, t *Actor, power float64) {
 	arrow := m.Arrows.Shoot(x, y, z, yaw, pitch, r.Speed)
 	dmg := power*r.Damage + m.Rand.NormFloat64()*0.25 + float64(m.Difficulty)*0.11
 	m.shots[arrow] = shot{a, dmg, r.Speed}
+	if m.OnFire != nil {
+		m.OnFire(a, t)
+	}
 }
 
 // arrowHit is installed as the projectile world's Hit callback: an arrow

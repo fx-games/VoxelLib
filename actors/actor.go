@@ -113,6 +113,8 @@ type Actor struct {
 	Speed                  float64 // movementSpeed attribute (player 0.1, zombie 0.23)
 	CanSwim, OpensDoors    bool
 	FleeWhenHurt           bool // panics when hit (animals)
+	FireImmune             bool // isImmuneToFire
+	FireResist             int  // fireResistance: 1 (0 means 1), player 20
 	AggroRange             float64
 	Melee                  Melee
 	Ranged                 *Ranged
@@ -128,6 +130,7 @@ type Actor struct {
 	RideInput              RideInput // the rider's steering, set each tick for a player rider
 	OnHurt                 func(a, src *Actor, amount float64)
 	hurtResist             int
+	fire                   int // Entity.fire: > 0 burning ticks left, < 0 contact ticks to catch
 	lastDamage             float64
 	fall                   float64
 	attackCool, rangedCool int

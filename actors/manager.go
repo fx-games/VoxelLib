@@ -30,6 +30,12 @@ type Manager struct {
 	// OnRemove is called when an actor leaves the Manager (after its death
 	// animation, by Remove, or by a despawn).
 	OnRemove func(a *Actor)
+	// OnFire is called when an actor's ranged attack launches an arrow at
+	// t (attackEntityWithRangedAttack: the shot's sound).
+	OnFire func(a, t *Actor)
+	// OnExtinguish is called when water or rain puts a burning actor out
+	// (random.fizz 0.7, 1.6 + (r - r) * 0.4).
+	OnExtinguish func(a *Actor)
 	// ArrowDamage, if set, tells who shot an arrow the Manager did not
 	// fire (the player's bow) and its base damage and launch speed.
 	ArrowDamage func(*projectile.Arrow) (from *Actor, damage, speed float64)
@@ -161,7 +167,8 @@ func (m *Manager) Tick() {
 			}
 			continue
 		}
-		if a.Player || (a.Rider != nil) {
+		m.fireTick(a)
+		if !a.Alive() || a.Player || (a.Rider != nil) {
 			continue
 		}
 		m.think(a)
