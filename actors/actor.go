@@ -65,6 +65,12 @@ func (m *Manager) body() character.World {
 	return m.W
 }
 
+// Fits reports whether a's body overlaps no block box it collides with
+// (EntityLiving.getCanSpawnHere: getCollidingBoundingBoxes(boundingBox)
+// is empty). A body placed overlapping blocks ignores those boxes but can
+// be shut in by the next ones, as in Minecraft.
+func (m *Manager) Fits(a *Actor) bool { return collide.Fits(m.body(), a.Body.Box()) }
+
 // Vec is a world position.
 type Vec struct{ X, Y, Z float64 }
 
