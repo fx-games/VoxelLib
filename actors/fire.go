@@ -26,9 +26,17 @@ func (a *Actor) OnFire() bool { return !a.FireImmune && a.fire > 0 }
 // Extinguish is Entity.extinguish: stop burning.
 func (a *Actor) Extinguish() { a.fire = 0 }
 
+// FireTime, if set, shortens a new burn of ticks for a
+// (EnchantmentProtection.getFireTimeForEntity: fire protection).
+var FireTime func(a *Actor, ticks int) int
+
 // SetFire is Entity.setFire: burn for at least sec seconds.
 func (a *Actor) SetFire(sec int) {
-	if j := sec * 20; a.fire < j {
+	j := sec * 20
+	if FireTime != nil {
+		j = FireTime(a, j)
+	}
+	if a.fire < j {
 		a.fire = j
 	}
 }

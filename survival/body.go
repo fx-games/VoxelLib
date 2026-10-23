@@ -30,6 +30,11 @@ type Body struct {
 	// Protection returns the summed enchantment protection (EPF) of the
 	// worn items against d, before capping; nil means none.
 	Protection func(d *Damage) int
+	// ProtectionAdjust changes the randomised protection i before the cap
+	// of 20 (a hook on getEnchantmentModifierDamage's return).
+	ProtectionAdjust func(d *Damage, i int) int
+	// FireTime shortens a new burn of ticks (getFireTimeForEntity).
+	FireTime func(ticks int) int
 	// OnHurt may change the damage before armour (ForgeHooks.onLivingHurt).
 	OnHurt func(d *Damage, amount float32) float32
 	// OnDamaged runs after health was lost; OnDeath when health reached 0.
@@ -216,11 +221,16 @@ func (b *Body) potionReduce(d *Damage, amount float32) float32 {
 	if amount <= 0 {
 		return 0
 	}
-	if b.Protection != nil {
-		m := min(b.Protection(d), 25)
-		i := (m+1)>>1 + b.intn(m>>1+1)
-		i = min(i, 20)
-		if i > 0 {
+	if b.Protection != nil || b.ProtectionAdjust != nil {
+		i := 0
+		if b.Protection != nil {
+			m := min(b.Protection(d), 25)
+			i = (m+1)>>1 + b.intn(m>>1+1)
+		}
+		if b.ProtectionAdjust != nil {
+			i = b.ProtectionAdjust(d, i)
+		}
+		if i = min(i, 20); i > 0 {
 			amount = amount * float32(25-i) / 25
 		}
 	}
@@ -399,7 +409,51 @@ func (b *Body) Tick(e Env) {
 }
 
 // SetFire sets the entity burning for at least sec seconds.
-func (b *Body) SetFire(sec int) { b.Fire = max(b.Fire, sec*20) }
+func (b *Body) SetFire(sec int) {
+	j := sec * 20
+	if b.FireTime != nil {
+		j = b.FireTime(j)
+	}
+	b.Fire = max(b.Fire, j)
+}
+
+// ProtectionEPF is EnchantmentProtection.calcModifierDamage: the
+// protection of a level of the reference's protection enchantment kind
+// (0 all, 1 fire, 2 fall, 3 blast, 4 projectile) against d.
+func ProtectionEPF(kind, level int, d *Damage) int {
+	if d.CreativeOK {
+		return 0
+	}
+	f := float32(6+level*level) / 3
+	switch {
+	case kind == 0:
+		return floorf(f * 0.75)
+	case kind == 1 && d.Fire:
+		return floorf(f * 1.25)
+	case kind == 2 && d.Type == "fall":
+		return floorf(f * 2.5)
+	case kind == 3 && d.Explosion, kind == 4 && d.Projectile:
+		return floorf(f * 1.5)
+	}
+	return 0
+}
+
+// floorf is MathHelper.floor_float.
+func floorf(f float32) int {
+	i := int(f)
+	if f < float32(i) {
+		i--
+	}
+	return i
+}
+
+// FireTimeLeft is getFireTimeForEntity's cut for a fire protection level.
+func FireTimeLeft(ticks, level int) int {
+	if level > 0 {
+		ticks -= floorf(float32(ticks) * float32(level) * 0.15)
+	}
+	return ticks
+}
 
 // Burning reports isBurning.
 func (b *Body) Burning() bool { return !b.FireImmune && b.Fire > 0 }

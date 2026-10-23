@@ -193,10 +193,16 @@ func (m *Manager) Attack(src, t *Actor, damage float64, knockback int) bool {
 type HurtKind int
 
 const (
-	HurtOther HurtKind = iota
-	HurtMelee          // a blow (Attack)
-	HurtFire           // fire or lava (isFireDamage)
+	HurtOther      HurtKind = iota
+	HurtMelee               // a blow (Attack)
+	HurtFire                // fire or lava (isFireDamage)
+	HurtProjectile          // a projectile's hit (isProjectile)
 )
+
+// HurtAs is Hurt with the kind of hurt the Protection hooks see.
+func (m *Manager) HurtAs(k HurtKind, t, src *Actor, amount float64, unblockable bool) bool {
+	return m.hurtAs(k, t, src, amount, unblockable)
+}
 
 func (m *Manager) hurtAs(k HurtKind, t, src *Actor, amount float64, unblockable bool) bool {
 	m.hurtKind = k
@@ -241,11 +247,17 @@ func (m *Manager) Hurt(t, src *Actor, amount float64, unblockable bool) bool {
 	if t.Resistance > 0 { // applyPotionDamageCalculations
 		dealt = float64(float32(dealt) * float32(25-t.Resistance*5) / 25)
 	}
-	if m.Protection != nil && dealt > 0 { // getEnchantmentModifierDamage
-		if p := min(m.Protection(t, src, m.hurtKind), 25); p > 0 {
-			if i := min((p+1)>>1+m.Rand.Intn(p>>1+1), 20); i > 0 {
-				dealt = float64(float32(dealt) * float32(25-i) / 25)
-			}
+	if (m.Protection != nil || m.ProtectionAdjust != nil) && dealt > 0 { // getEnchantmentModifierDamage
+		i := 0
+		if m.Protection != nil {
+			p := min(m.Protection(t, src, m.hurtKind), 25)
+			i = (p+1)>>1 + m.Rand.Intn(p>>1+1)
+		}
+		if m.ProtectionAdjust != nil {
+			i = m.ProtectionAdjust(t, src, m.hurtKind, i)
+		}
+		if i = min(i, 20); i > 0 {
+			dealt = float64(float32(dealt) * float32(25-i) / 25)
 		}
 	}
 	t.Health -= dealt

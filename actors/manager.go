@@ -52,6 +52,10 @@ type Manager struct {
 	// against a hurt from src (nil: no attacker) of the kind how; Hurt
 	// reduces the damage by it as applyPotionDamageCalculations.
 	Protection func(t, src *Actor, how HurtKind) int
+	// ProtectionAdjust, if set, changes the randomised protection i
+	// (getEnchantmentModifierDamage's result) before the cap of 20, as a
+	// hook on its return would.
+	ProtectionAdjust func(t, src *Actor, how HurtKind, i int) int
 	// Effects are the status effect kinds, in the order they tick.
 	Effects []EffectRule
 
