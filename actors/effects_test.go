@@ -5,7 +5,7 @@ import "testing"
 // TestEffects: poison hurts every 25>>amp ticks of its duration but never
 // below 1 health, a weaker effect does not replace a stronger one,
 // slowness scales the move speed while it lasts, Refuse turns effects
-// down, and the colour mixes the effects by level.
+// down, ClearEffects ends them all, and the colour mixes the effects by level.
 func TestEffects(t *testing.T) {
 	m := NewManager(flat(10), nil, nil, 1)
 	m.Effects = []EffectRule{
@@ -47,6 +47,12 @@ func TestEffects(t *testing.T) {
 	}
 	if a.moveSpeed() != a.Speed || m.EffectColor(a) != 0 {
 		t.Fatalf("after: speed %v colour %d", a.moveSpeed(), m.EffectColor(a))
+	}
+
+	m.AddEffect(a, "moveSlowdown", 40, 0)
+	m.ClearEffects(a)
+	if len(a.Effects) != 0 || a.moveSpeed() != a.Speed {
+		t.Fatal("cleared effects remain")
 	}
 
 	a.Refuse = func(_ *Actor, e string) bool { return e == "poison" }

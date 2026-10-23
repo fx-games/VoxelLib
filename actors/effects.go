@@ -137,3 +137,9 @@ func (m *Manager) EffectColor(a *Actor) int {
 	}
 	return int(r/n*255)<<16 | int(g/n*255)<<8 | int(b/n*255)
 }
+
+// ClearEffects is curePotionEffects: every running effect ends at once.
+func (m *Manager) ClearEffects(a *Actor) {
+	clear(a.Effects)
+	m.applyEffects(a)
+}
