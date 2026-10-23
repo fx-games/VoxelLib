@@ -26,4 +26,4 @@ require (
 	golang.org/x/text v0.21.0 // indirect
 )
 
-replace github.com/gogpu/wgpu => github.com/memmaker/wgpu v0.0.0-20261017184224-2a1548dbc903
+replace github.com/gogpu/wgpu => github.com/memmaker/wgpu v0.0.0-20261023072902-870db13ffc75

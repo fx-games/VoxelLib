@@ -20,8 +20,8 @@ github.com/jfreymuth/oggvorbis v1.0.5 h1:u+Ck+R0eLSRhgq8WTmffYnrVtSztJcYrl588DM4
 github.com/jfreymuth/oggvorbis v1.0.5/go.mod h1:1U4pqWmghcoVsCJJ4fRBKv9peUJMBHixthRlBeD6uII=
 github.com/jfreymuth/vorbis v1.0.2 h1:m1xH6+ZI4thH927pgKD8JOH4eaGRm18rEE9/0WKjvNE=
 github.com/jfreymuth/vorbis v1.0.2/go.mod h1:DoftRo4AznKnShRl1GxiTFCseHr4zR9BN3TWXyuzrqQ=
-github.com/memmaker/wgpu v0.0.0-20261017184224-2a1548dbc903 h1:R4vGq0l5Z3crvSyaZHU1JVNkGwWi2IkTm22rEewnqNM=
-github.com/memmaker/wgpu v0.0.0-20261017184224-2a1548dbc903/go.mod h1:erhaIjD9psJKjHqAhn5MWdJETcACR1NGoqLhkTAHkFM=
+github.com/memmaker/wgpu v0.0.0-20261023072902-870db13ffc75 h1:PoFFlNe2dzowo1ZdxeDECo5ghHFFI3RHe8y5yTfVdMI=
+github.com/memmaker/wgpu v0.0.0-20261023072902-870db13ffc75/go.mod h1:erhaIjD9psJKjHqAhn5MWdJETcACR1NGoqLhkTAHkFM=
 golang.org/x/image v0.23.0 h1:HseQ7c2OpPKTPVzNjG5fwJsOTCiiwS4QdsYi5XU6H68=
 golang.org/x/image v0.23.0/go.mod h1:wJJBTdLfCCf3tiHa1fNxpZmUI4mmoZvwMCPP0ddoNKY=
 golang.org/x/sys v0.47.0 h1:o7XGOvZQCADBQQ4Y7VNq2dRWQR7JmOUW8Kxx4ZsNgWs=
