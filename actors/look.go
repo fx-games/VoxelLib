@@ -95,7 +95,7 @@ func (m *Manager) closestLiving(a *Actor) *Actor {
 	p := a.Pos()
 	for _, o := range m.Actors {
 		q := o.Pos()
-		if o == a || !o.Alive() || math.Abs(q.X-p.X) > 5+a.Body.Width/2+o.Body.Width/2 || math.Abs(q.Z-p.Z) > 5+a.Body.Width/2+o.Body.Width/2 ||
+		if o == a || !o.Alive() || o.Boat != nil || math.Abs(q.X-p.X) > 5+a.Body.Width/2+o.Body.Width/2 || math.Abs(q.Z-p.Z) > 5+a.Body.Width/2+o.Body.Width/2 ||
 			q.Y > p.Y+a.Body.Height+3 || q.Y+o.Body.Height < p.Y-3 {
 			continue
 		}

@@ -60,12 +60,14 @@ func (a *Actor) JumpBar() float64 { return a.jump.power }
 // Mount puts rider on mount. It fails if the mount is not rideable or
 // already carries someone.
 func (m *Manager) Mount(rider, mount *Actor) bool {
-	if mount.Mount == nil || mount.Rider != nil || rider.Riding != nil || rider == mount || !mount.Alive() {
+	if mount.Mount == nil && mount.Boat == nil || mount.Rider != nil || rider.Riding != nil || rider == mount || !mount.Alive() {
 		return false
 	}
 	rider.Riding, mount.Rider = mount, rider
-	m.stop(mount)
-	mount.Mount.Eating, mount.Mount.rearing = false, false // EntityHorse.func_110237_h
+	if mount.Mount != nil {
+		m.stop(mount)
+		mount.Mount.Eating, mount.Mount.rearing = false, false // EntityHorse.func_110237_h
+	}
 	rider.jump = jumpCharge{}
 	m.seat(rider)
 	rider.Body.PrevX, rider.Body.PrevY, rider.Body.PrevZ = rider.Body.X, rider.Body.Y, rider.Body.Z
@@ -142,8 +144,11 @@ func solidTop(w character.World, x, y, z int) bool {
 func (m *Manager) seat(r *Actor) {
 	mt := r.Riding
 	rb, mb := r.Body, mt.Body
-	ox, oy, oz := 0.0, mt.Mount.RideHeight, 0.0
-	if a := mt.Mount.Anim.PrevRear; a > 0 {
+	var ox, oy, oz float64
+	if mt.Boat != nil {
+		ox, oy, oz = boatSeat(r, mt)
+	} else if oy = mt.Mount.RideHeight; mt.Mount.Anim.PrevRear > 0 {
+		a := mt.Mount.Anim.PrevRear
 		ox, oy, oz = -math.Sin(mt.Yaw)*0.7*a, oy+0.15*a, math.Cos(mt.Yaw)*0.7*a
 	}
 	rb.PrevX, rb.PrevY, rb.PrevZ = mb.PrevX+ox, mb.PrevY+oy, mb.PrevZ+oz

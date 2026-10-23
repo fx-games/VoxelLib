@@ -219,6 +219,9 @@ func (m *Manager) Hurt(t, src *Actor, amount float64, unblockable bool) bool {
 	if !t.Alive() {
 		return false
 	}
+	if t.Boat != nil {
+		return m.HitBoat(t, amount, false)
+	}
 	if t.Ward != nil {
 		amount = t.Ward(t, src, amount)
 	}

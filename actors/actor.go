@@ -231,6 +231,7 @@ type Actor struct {
 	Melee               Melee
 	Ranged              *Ranged
 	Mount               *MountStats // non-nil: rideable
+	Boat                *Boat       // non-nil: a vehicle (rideable, not living)
 	Fly                 *Flight     // non-nil: a flier (Think replaces the Brain)
 	Brain               Brain
 	Tags                map[string]string // game data, saved
@@ -303,7 +304,7 @@ func (a *Actor) Box() collide.AABB { return a.Body.Box() }
 func (a *Actor) Frame() (x, y, z, yaw float64) { return a.Body.X, a.Body.Y, a.Body.Z, a.Yaw }
 
 // Alive reports whether the actor has health left.
-func (a *Actor) Alive() bool { return a.Health > 0 }
+func (a *Actor) Alive() bool { return a.Health > 0 && (a.Boat == nil || !a.Boat.broken) }
 
 // Lerp interpolates position and yaw for rendering.
 func (a *Actor) Lerp(alpha float64) (x, y, z, yaw float64) {

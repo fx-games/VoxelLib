@@ -66,6 +66,7 @@ type Manager struct {
 	byID     map[string]*Actor
 	occupied map[nav.Pos]bool
 	tracks   map[string][]Vec
+	wrecks   []*Actor // boats broken this tick
 	shots    map[*projectile.Arrow]shot
 	prevHit  func(*projectile.Arrow, projectile.Target)
 	graph    nav.Graph
@@ -168,6 +169,9 @@ func (m *Manager) Tick() {
 	var gone []*Actor
 	for _, a := range m.Actors {
 		a.PrevYaw, a.PrevHeadYaw = a.Yaw, a.HeadYaw
+		if a.Boat != nil {
+			continue
+		}
 		a.StateTicks++
 		a.age++
 		a.Swing++
@@ -224,6 +228,12 @@ func (m *Manager) Tick() {
 		if a.Riding != nil || (a.Player && a.Riding == nil) {
 			continue
 		}
+		if a.Boat != nil {
+			if !a.Boat.broken {
+				m.boatTick(a)
+			}
+			continue
+		}
 		in := a.nav.in
 		a.Body.StepHeight, a.Body.AirAccel = 0, 0
 		if s := a.Mount; s != nil && a.Alive() {
@@ -250,9 +260,10 @@ func (m *Manager) Tick() {
 			m.closeDoors(a)
 		}
 	}
-	for _, a := range gone {
+	for _, a := range append(gone, m.wrecks...) {
 		m.Remove(a)
 	}
+	m.wrecks = m.wrecks[:0]
 }
 
 // moveBody ticks one body with the 1.7.10 living physics, applies fall
