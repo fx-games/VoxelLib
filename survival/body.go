@@ -105,9 +105,7 @@ func (b *Body) TotalArmor() int {
 	t := b.NaturalArmor
 	if b.Armor != nil {
 		for _, s := range b.Armor {
-			if s != nil && s.Item.Armor != nil {
-				t += s.Item.Armor.Points
-			}
+			t += s.ArmorValue()
 		}
 	}
 	return t
@@ -246,7 +244,7 @@ func (b *Body) forgeArmor(d *Damage, amount float32) float32 {
 	var props []armorProp
 	for i, s := range b.Armor {
 		if s != nil && s.Item.Armor != nil {
-			props = append(props, armorProp{i, float64(s.Item.Armor.Points) / 25, s.Item.MaxDamage + 1 - s.Damage})
+			props = append(props, armorProp{i, float64(s.ArmorValue()) / 25, s.Item.MaxDamage + 1 - s.Damage})
 		}
 	}
 	if len(props) == 0 {

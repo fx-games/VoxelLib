@@ -243,6 +243,11 @@ func (s *Stack) AddDamage(n int) bool {
 	if !s.Damageable() || n <= 0 {
 		return false
 	}
+	if WearNegated != nil {
+		if n -= WearNegated(s, n); n <= 0 {
+			return false
+		}
+	}
 	s.Damage += n
 	if s.Damage <= s.Item.MaxDamage {
 		return false

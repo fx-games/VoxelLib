@@ -198,9 +198,7 @@ func (p *Player) Add(s *Stack) bool {
 func (p *Player) TotalArmor() int {
 	t := 0
 	for _, s := range p.Armor {
-		if s != nil && s.Item.Armor != nil {
-			t += s.Item.Armor.Points
-		}
+		t += s.ArmorValue()
 	}
 	return t
 }

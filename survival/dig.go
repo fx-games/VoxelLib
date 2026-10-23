@@ -36,6 +36,9 @@ type Dig struct {
 	Efficiency   int // enchantment level
 	Haste        int // amplifier+1, 0 none
 	Fatigue      int // amplifier+1, 0 none
+	// ToolFactor, when non-zero, multiplies the final speed if the held
+	// tool's own speed on the block is > 1 (a tool-speed modifier).
+	ToolFactor float32
 }
 
 func toolSpeed(t *inventory.Tool, b *Block) float32 {
@@ -84,6 +87,7 @@ func Speed(b *Block, held *inventory.Stack, d Dig) float32 {
 	if held != nil && held.Item.Tool != nil {
 		f = toolSpeed(held.Item.Tool, b)
 	}
+	base := f
 	if f > 1 && d.Efficiency > 0 && held != nil {
 		f += float32(d.Efficiency*d.Efficiency + 1)
 	}
@@ -98,6 +102,9 @@ func Speed(b *Block, held *inventory.Stack, d Dig) float32 {
 	}
 	if !d.OnGround {
 		f /= 5
+	}
+	if base > 1 && d.ToolFactor != 0 {
+		f *= d.ToolFactor
 	}
 	return max(f, 0)
 }
