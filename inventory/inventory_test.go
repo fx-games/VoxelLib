@@ -284,3 +284,28 @@ func TestDamage(t *testing.T) {
 		t.Fatal("wooden pickaxe must break on use 60")
 	}
 }
+
+// TestHorseContainer: ContainerHorseInventory's shift-click routes armour
+// to slot 1, a saddle to slot 0 (once), the rest into the chest.
+func TestHorseContainer(t *testing.T) {
+	p := &Player{}
+	inv := NewChest(2) // 18 slots, 17 used
+	saddle := &Item{ID: 329, Key: "test:saddle", MaxStack: 1}
+	armour := &Item{ID: 417, Key: "test:horse_armor", MaxStack: 1}
+	isSaddle := func(s *Stack) bool { return s.Item == saddle }
+	isArmour := func(s *Stack) bool { return s.Item == armour }
+	c := NewHorseContainer(p, inv, true, isSaddle, isArmour)
+	if len(c.Slots) != 17+36 {
+		t.Fatalf("%d slots", len(c.Slots))
+	}
+	p.Main[0], p.Main[1], p.Main[2], p.Main[3] = New(armour, 1), New(saddle, 1), New(saddle, 1), New(stone, 3)
+	for i := 0; i < 4; i++ {
+		c.Click(17+27+i, 0, QuickMove)
+	}
+	if inv.Get(1) == nil || inv.Get(0) == nil || inv.Get(2) == nil || inv.Get(2).Item != saddle || inv.Get(3) == nil || inv.Get(3).Item != stone {
+		t.Fatalf("routing: %v %v %v %v", inv.Get(0), inv.Get(1), inv.Get(2), inv.Get(3))
+	}
+	if c := NewHorseContainer(p, NewChest(1), false, isSaddle, nil); len(c.Slots) != 2+36 || c.Slots[1].Accept(New(armour, 1)) {
+		t.Fatal("chestless, armourless mount")
+	}
+}

@@ -248,9 +248,9 @@ func TestHorseJumpCharge(t *testing.T) {
 	var j jumpCharge
 	got := 0.0
 	for i := 0; i < 6; i++ { // press, then hold 5 ticks: power 0.5
-		got = j.update(true)
+		got, _ = j.update(true)
 	}
-	got = j.update(false)
+	got, _ = j.update(false)
 	if want := 0.4 + 0.4*50/90.0; math.Abs(got-want) > 1e-9 {
 		t.Fatalf("jump power %.4f, want %.4f", got, want)
 	}
@@ -258,9 +258,9 @@ func TestHorseJumpCharge(t *testing.T) {
 		j.update(false)
 	}
 	for i := 0; i < 11; i++ {
-		got = j.update(true)
+		got, _ = j.update(true)
 	}
-	if got = j.update(false); got != 1 {
+	if got, _ = j.update(false); got != 1 {
 		t.Fatalf("full charge gives %.2f, want 1", got)
 	}
 }
@@ -272,7 +272,7 @@ func TestRidingSteersMount(t *testing.T) {
 	p.Player = true
 	pony := New("pony", "pony", 0.5, 1, 0.5)
 	pony.Body.Width, pony.Body.Height = 1.4, 1.6
-	pony.Speed, pony.Mount = 0.3, &MountStats{JumpStrength: 0.7, RideHeight: 1}
+	pony.Speed, pony.Mount = 0.3, &MountStats{JumpStrength: 0.7, RideHeight: 1, Tame: true, Saddled: true}
 	m.Add(p)
 	m.Add(pony)
 	if !m.Mount(p, pony) {
@@ -308,7 +308,8 @@ func TestSaveLoadRoundTrip(t *testing.T) {
 	a.Brain = Brain{Mode: Route, Points: []Vec{{1, 1, 1}, {4, 1, 4}}, Next: 1, Lead: "player"}
 	a.Tags["dialog"] = "d42"
 	pony := New("pony", "pony", 2.5, 1, 3.5)
-	pony.Mount = &MountStats{JumpStrength: 0.5, RideHeight: 1}
+	pony.Mount = &MountStats{JumpStrength: 0.83, RideHeight: 1, Tame: true, Temper: 15, Saddled: true}
+	pony.MaxHealth, pony.Speed = 27, 0.31
 	m.Add(a)
 	m.Add(pony)
 	m.Mount(a, pony)
@@ -334,6 +335,10 @@ func TestSaveLoadRoundTrip(t *testing.T) {
 	if b == nil || b.Health != 13 || b.Name != "npc.gandalf" || !b.ShowName || b.Brain.Next != 1 ||
 		b.Brain.Lead != "player" || len(b.Brain.Points) != 2 || b.Tags["dialog"] != "d42" || b.Riding != m2.Get("pony") {
 		t.Fatalf("round trip lost state: %+v", b)
+	}
+	if q := m2.Get("pony"); q.MaxHealth != 27 || q.Speed != 0.31 || q.Mount.JumpStrength != 0.83 || !q.Mount.Tame ||
+		q.Mount.Temper != 15 || !q.Mount.Saddled || q.Mount.RideHeight != 1 {
+		t.Fatalf("pony stats lost: %+v %+v", q, q.Mount)
 	}
 	if m2.Factions.Points("men") != 25 {
 		t.Fatalf("standing %d, want 25", m2.Factions.Points("men"))

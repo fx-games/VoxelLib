@@ -37,8 +37,13 @@ type HUDState struct {
 	Debug []string
 }
 
-// MountBar is the ridden animal's health (half hearts).
-type MountBar struct{ Health, MaxHealth float64 }
+// MountBar is the ridden animal's health (half hearts). A horse
+// (JumpBar) shows its jump charge Jump (0..1) instead of the XP bar.
+type MountBar struct {
+	Health, MaxHealth float64
+	JumpBar           bool
+	Jump              float64
+}
 
 // BossBar is the boss health bar at the top.
 type BossBar struct {
@@ -161,7 +166,11 @@ func (h *HUD) Draw(ctx *Context, partial float32) {
 				h.drawMount(ctx, icons, &right)
 			}
 			h.drawAir(ctx, icons, &right)
-			if st.ShowXP {
+			if st.Mount != nil && st.Mount.JumpBar {
+				if st.ShowXP {
+					h.drawJump(ctx, icons)
+				}
+			} else if st.ShowXP {
 				h.drawXP(ctx, icons)
 			}
 		}
@@ -357,6 +366,15 @@ func (h *HUD) drawAir(ctx *Context, icons Texture, rightH *int) {
 		DrawTexturedModalRect(ctx.Canvas, icons, left-i*8-9, top, u, 18, 9, 9)
 	}
 	*rightH += 10
+}
+
+// drawJump is GuiIngameForge.renderJumpBar.
+func (h *HUD) drawJump(ctx *Context, icons Texture) {
+	left, top := ctx.W/2-91, ctx.H-32+3
+	DrawTexturedModalRect(ctx.Canvas, icons, left, top, 0, 84, 182, 5)
+	if filled := int(float32(h.State.Mount.Jump) * 183); filled > 0 {
+		DrawTexturedModalRect(ctx.Canvas, icons, left, top, 0, 89, filled, 5)
+	}
 }
 
 func (h *HUD) drawXP(ctx *Context, icons Texture) {

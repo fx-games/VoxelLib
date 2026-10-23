@@ -146,10 +146,40 @@ type Ranged struct {
 	Tactic          int
 }
 
-// MountStats make an actor rideable, as 1.7.10's EntityHorse.
+// MountStats make an actor rideable, as 1.7.10's EntityHorse. A player
+// rider steers only a Saddled mount; otherwise the mount's own AI moves it,
+// and an untamed one bucks (see buck).
 type MountStats struct {
-	JumpStrength float64 // horse 0.4..1.0
-	RideHeight   float64 // rider's feet above the mount's feet
+	JumpStrength float64 `json:"jump,omitempty"` // horse 0.4..1.0
+	RideHeight   float64 `json:"-"`              // rider's feet above the mount's feet
+	// Horse is the vanilla horse's riding: the jump bar, rearing, and fall
+	// damage ceil(d*0.5-3) dealt to the rider too (EntityHorse.fall).
+	Horse bool `json:"-"`
+	// SwimUp: a player-ridden mount sinking in water with nothing below
+	// rises 0.05 at a 55% chance a tick (LOTREntityHorse.onLivingUpdate).
+	SwimUp    bool   `json:"-"`
+	MaxTemper int    `json:"-"` // 100 for tameable mounts; 0 never tames by riding
+	Tame      bool   `json:"tame,omitempty"`
+	Temper    int    `json:"temper,omitempty"`
+	Saddled   bool   `json:"saddled,omitempty"`
+	Owner     string `json:"owner,omitempty"` // the taming actor's ID
+	Eating    bool   `json:"eating,omitempty"`
+	// Graze reports whether the block under an idle horse is grass, where
+	// it starts eating at 1 in 300 a tick (nil: never).
+	Graze      func(mt *Actor) bool           `json:"-"`
+	OnEvent    func(mt *Actor, ev MountEvent) `json:"-"`
+	Anim       HorseAnim                      `json:"-"`
+	rearing    bool
+	jumpRear   bool // reared by a jump: does not stop the ridden horse
+	rearTicks  int
+	eatTicks   int
+	mouthTicks int
+}
+
+// HorseAnim are EntityHorse's client animation values (0..1), with the
+// previous tick's for interpolation.
+type HorseAnim struct {
+	Rear, PrevRear, HeadLean, PrevHeadLean, Mouth, PrevMouth float64
 }
 
 // Actor is one living thing. The player is an actor too (Player set), so
@@ -213,7 +243,6 @@ type Actor struct {
 	age                    int // ticks since spawn or last fight (despawn)
 	nav                    navigator
 	jump                   jumpCharge
-	jumpPower              float64
 	routeWait              int
 	look                   lookState
 }

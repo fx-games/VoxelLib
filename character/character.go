@@ -80,6 +80,10 @@ type Character struct {
 	// NoSprint stops sprinting from starting (EntityPlayerSP: blindness);
 	// a sprint already going continues.
 	NoSprint bool
+	// StepHeight and AirAccel override stepHeight 0.5 and the air
+	// acceleration 0.02 (jumpMovementFactor) when > 0; a ridden horse
+	// steps 1.0 and accelerates movementSpeed*0.1 in the air.
+	StepHeight, AirAccel float64
 
 	// State from the last tick.
 	OnGround            bool
@@ -275,6 +279,9 @@ func (c *Character) Tick(w World, in Input) {
 		if sprint {
 			a = sprintAirAcc
 		}
+		if c.AirAccel > 0 {
+			a = c.AirAccel
+		}
 		if c.OnGround {
 			a, drag = walkAccel, groundDrag
 			if sprint {
@@ -344,14 +351,18 @@ func (c *Character) move(w World, in Input) {
 	// the ground, retry raised by stepHeight, then settle back down; keep
 	// whichever goes further horizontally.
 	if (c.OnGround || my != dy && dy < 0) && (mx != dx || mz != dz) {
-		boxes := collide.Colliders(w, box.Expand(dx, stepHeight, dz), nil)
-		b, sy := box, collide.ClipY(boxes, box, stepHeight)
+		step := stepHeight
+		if c.StepHeight > 0 {
+			step = c.StepHeight
+		}
+		boxes := collide.Colliders(w, box.Expand(dx, step, dz), nil)
+		b, sy := box, collide.ClipY(boxes, box, step)
 		b = b.Offset(0, sy, 0)
 		sx := collide.ClipX(boxes, b, dx)
 		b = b.Offset(sx, 0, 0)
 		sz := collide.ClipZ(boxes, b, dz)
 		b = b.Offset(0, 0, sz)
-		sy += collide.ClipY(boxes, b, -stepHeight)
+		sy += collide.ClipY(boxes, b, -step)
 		if mx*mx+mz*mz < sx*sx+sz*sz {
 			mx, my, mz = sx, sy, sz
 		}

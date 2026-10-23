@@ -1,6 +1,7 @@
 package actors
 
 import (
+	"github.com/memmaker/voxellib/voxel/collide"
 	"math"
 	"math/rand"
 
@@ -177,8 +178,23 @@ func (m *Manager) Tick() {
 			continue
 		}
 		m.fireTick(a)
-		if !a.Alive() || a.Player || (a.Rider != nil) {
+		if !a.Alive() || a.Player {
 			continue
+		}
+		if a.Mount != nil {
+			m.mountTick(a)
+		}
+		if r := a.Rider; r != nil {
+			// an NPC rider steers; a player steers a saddled mount, an
+			// untamed one bucks, any other carries the player on its own
+			if !r.Player || a.Controlled() {
+				continue
+			}
+			a.Target = nil
+			if !a.Mount.Tame {
+				m.buck(a)
+				continue
+			}
 		}
 		m.think(a)
 	}
@@ -187,8 +203,13 @@ func (m *Manager) Tick() {
 			continue
 		}
 		in := a.nav.in
-		if r := a.Rider; r != nil && r.Player && a.Alive() {
-			in = m.rideInput(a)
+		a.Body.StepHeight, a.Body.AirAccel = 0, 0
+		if s := a.Mount; s != nil && a.Alive() {
+			if a.Controlled() {
+				in = m.rideInput(a)
+			} else if s.Eating || s.rearing { // isMovementBlocked
+				in.Forward, in.Strafe, in.Jump = 0, 0, false
+			}
 		}
 		in.Yaw = a.Yaw
 		m.moveBody(a, in)
@@ -228,10 +249,24 @@ func (m *Manager) moveBody(a *Actor, in character.Input) {
 			b.VY *= f.Hover
 		}
 	}
+	if s := a.Mount; s != nil && s.SwimUp && b.InWater && b.VY < 0 && a.Rider != nil && a.Rider.Player &&
+		collide.Fits(m.body(), collide.Box(b.X, b.Y-1, b.Z, b.Width, b.Height+1)) && m.Rand.Float64() < 0.55 {
+		b.VY += 0.05
+	}
 	if b.InWater || b.InLava || f != nil {
 		a.fall = 0
 	} else if b.OnGround {
-		if a.fall > 3 {
+		if s := a.Mount; s != nil && s.Horse { // EntityHorse.fall
+			if a.fall > 1 {
+				s.event(a, MountLanded)
+			}
+			if d := math.Ceil(a.fall*0.5 - 3); d > 0 {
+				m.Hurt(a, nil, d, true)
+				if r := a.Rider; r != nil {
+					m.Hurt(r, nil, d, true)
+				}
+			}
+		} else if a.fall > 3 {
 			m.Hurt(a, nil, math.Ceil(a.fall-3), true)
 		}
 		a.fall = 0

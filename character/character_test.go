@@ -146,6 +146,12 @@ func TestStepUp(t *testing.T) {
 			t.Errorf("h %.4f: z %.3f y %.4f, want past %v y %.4f", tc.h, c.Z, c.Y, tc.past, tc.wantY)
 		}
 	}
+	c := New(0.5, 0, 0.5) // a ridden horse's stepHeight 1.0 climbs a full block
+	c.StepHeight = 1
+	run(c, ledge{h: 1}, Input{Forward: 1}, 40)
+	if c.Z > -2.5 || c.Y != 1 {
+		t.Errorf("step 1.0: z %.3f y %.4f, want past at y 1", c.Z, c.Y)
+	}
 }
 
 // TestNoSprint: blindness (NoSprint) keeps a sprint from starting; one

@@ -381,3 +381,28 @@ func DrawTooltip(ctx *Context, lines []string, mx, my int) {
 		y += 10
 	}
 }
+
+// HorseLayout is GuiScreenHorseInventory (LOTRGuiNPCMountInventory with
+// armourSlot always): slots as NewHorseContainer; chest draws the 5x3
+// chest background, armourSlot the armour slot's (a hidden armour slot
+// sits off the GUI). Extra may draw the mount at (left+51, top+60).
+func HorseLayout(title string, chest, armourSlot bool) ContainerLayout {
+	parts := []TexPart{{0, 0, 0, 0, 176, 166}}
+	s := [][2]int{{8, 18}, {8, 36}}
+	if !armourSlot {
+		s[1] = [2]int{-10000, -10000}
+	} else {
+		parts = append(parts, TexPart{7, 35, 0, 166 + 54, 18, 18})
+	}
+	if chest {
+		parts = append(parts, TexPart{79, 17, 0, 166, 90, 54})
+		for r := 0; r < 3; r++ {
+			for c := 0; c < 5; c++ {
+				s = append(s, [2]int{80 + c*18, 18 + r*18})
+			}
+		}
+	}
+	return ContainerLayout{Texture: "textures/gui/container/horse.png", W: 176, H: 166, Parts: parts,
+		Labels: []Label{{Text: title, X: 8, Y: 6}, {Text: "container.inventory", X: 8, Y: 166 - 96 + 2}},
+		Slots:  playerSlots(s, 84)}
+}

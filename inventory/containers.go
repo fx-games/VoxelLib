@@ -189,3 +189,37 @@ func NewFurnaceContainer(p *Player, furnace Inventory, r FurnaceRules) *Containe
 	}
 	return c
 }
+
+// NewHorseContainer is ContainerHorseInventory (LOTR's mount containers):
+// 0 saddle, 1 armour, then with chest 15 chest slots (inventory indices
+// 2..16), then 27 main and 9 hotbar. saddle and armour decide what the
+// two gear slots take; armour nil (a mount that wears none) takes nothing.
+// Shift-click: armour to slot 1 when empty, saddles to slot 0, the rest
+// into the chest.
+func NewHorseContainer(p *Player, inv Inventory, chest bool, saddle, armour func(*Stack) bool) *Container {
+	c := &Container{Player: p}
+	c.Add(&Slot{Inv: inv, Index: 0, Accept: func(s *Stack) bool { return saddle(s) && inv.Get(0) == nil }})
+	c.Add(&Slot{Inv: inv, Index: 1, Accept: func(s *Stack) bool { return armour != nil && armour(s) }})
+	n := 2
+	if chest {
+		for i := 2; i < 17; i++ {
+			c.Add(&Slot{Inv: inv, Index: i})
+		}
+		n = 17
+	}
+	addPlayerSlots(c, p)
+	c.Transfer = func(c *Container, i int) *Stack {
+		return transferWith(c, i, func(s *Stack) bool {
+			switch {
+			case i < n:
+				return c.Merge(s, n, len(c.Slots), true)
+			case c.Slots[1].Accept(s) && !c.Slots[1].Has():
+				return c.Merge(s, 1, 2, false)
+			case c.Slots[0].Accept(s):
+				return c.Merge(s, 0, 1, false)
+			}
+			return n > 2 && c.Merge(s, 2, n, false)
+		}, false)
+	}
+	return c
+}
