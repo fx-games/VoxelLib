@@ -46,6 +46,16 @@ type bodyWorld struct {
 	b BodySolids
 }
 
+// FlowMaterial passes the World's character.FlowMaterial on (Solid for
+// both without it).
+func (b bodyWorld) FlowMaterial(x, y, z int) (bool, bool, bool) {
+	if fm, ok := b.World.(character.FlowMaterial); ok {
+		return fm.FlowMaterial(x, y, z)
+	}
+	s := b.World.Solid(x, y, z)
+	return s, s, false
+}
+
 // LiquidMeta passes the World's character.LiquidMeta on (0 without it).
 func (b bodyWorld) LiquidMeta(x, y, z int) int {
 	if lm, ok := b.World.(LiquidMeta); ok {

@@ -13,6 +13,14 @@ type LiquidMeta interface {
 	LiquidMeta(x, y, z int) int
 }
 
+// FlowMaterial is an optional World method: a cell's Material
+// blocksMovement and isSolid, and whether it is ice (the one solid
+// material falling water does not turn down beside). Without it Solid
+// stands in for both, and there is no ice.
+type FlowMaterial interface {
+	FlowMaterial(x, y, z int) (blocksMovement, solid, ice bool)
+}
+
 // WaterPush is Entity.handleWaterMovement's World.handleMaterialAcceleration
 // for an entity box: whether water is in the box shrunk 0.4 from top and
 // bottom and 0.001 all round (its height test always holds, so any water
@@ -57,21 +65,25 @@ func decay(w World, lm LiquidMeta, x, y, z int) int {
 // flow is BlockLiquid.getFlowVector: toward lower neighbours (or over an
 // open edge to water below), straight down beside a solid face when the
 // water is falling, normalized.
-// ponytail: Solid stands in for Material.blocksMovement and isSolid (ice's
-// exception and webs are not told apart).
 func flow(w World, x, y, z int) (vx, vy, vz float64) {
 	lm, _ := w.(LiquidMeta)
+	fm, _ := w.(FlowMaterial)
+	mat := func(x, y, z int) (blocks, solid, ice bool) {
+		if fm != nil {
+			return fm.FlowMaterial(x, y, z)
+		}
+		s := w.Solid(x, y, z)
+		return s, s, false
+	}
 	l := decay(w, lm, x, y, z)
 	for _, d := range [4][2]int{{-1, 0}, {0, -1}, {1, 0}, {0, 1}} {
 		nx, nz := x+d[0], z+d[1]
 		n := decay(w, lm, nx, y, nz)
-		var j int
-		switch {
-		case n >= 0:
-			j = n - l
-		case w.Solid(nx, y, nz):
-			continue
-		default:
+		j := n - l
+		if n < 0 {
+			if blocks, _, _ := mat(nx, y, nz); blocks {
+				continue
+			}
 			if n = decay(w, lm, nx, y-1, nz); n < 0 {
 				continue
 			}
@@ -80,7 +92,11 @@ func flow(w World, x, y, z int) (vx, vy, vz float64) {
 		vx, vz = vx+float64(d[0]*j), vz+float64(d[1]*j)
 	}
 	if lm != nil && lm.LiquidMeta(x, y, z) >= 8 {
-		side := func(x, y, z int) bool { return w.Liquid(x, y, z) != LiquidWater && w.Solid(x, y, z) }
+		// func_149747_d for sides 2..5: not water, not ice, Material.isSolid
+		side := func(x, y, z int) bool {
+			_, solid, ice := mat(x, y, z)
+			return w.Liquid(x, y, z) != LiquidWater && solid && !ice
+		}
 		for dy := 0; dy <= 1; dy++ {
 			if side(x, y+dy, z-1) || side(x, y+dy, z+1) || side(x-1, y+dy, z) || side(x+1, y+dy, z) {
 				vx, vy, vz = normalize(vx, vy, vz)
