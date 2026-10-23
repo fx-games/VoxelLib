@@ -21,6 +21,8 @@ require (
 	github.com/go-webgpu/webgpu v0.5.5 // indirect
 	github.com/gogpu/gpucontext v0.31.3 // indirect
 	github.com/gogpu/naga v0.19.0 // indirect
+	github.com/jfreymuth/oggvorbis v1.0.5
+	github.com/jfreymuth/vorbis v1.0.2 // indirect
 	golang.org/x/text v0.21.0 // indirect
 )
 
