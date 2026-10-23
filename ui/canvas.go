@@ -24,6 +24,9 @@ type Quad struct {
 	U0, V0, U1, V1 float32 // normalized; beyond 1 repeats
 	Skew           float32 // top edge shifted +Skew, bottom -Skew (italics)
 	Top, Bottom    uint32  // 0xAARRGGBB, multiplied with the texture
+	// Rot turns the placed quad by Rot degrees around RX, RY
+	// (glRotatef about z: clockwise on the y-down screen).
+	Rot, RX, RY float32
 }
 
 // Canvas receives the GUI's draw calls in order.

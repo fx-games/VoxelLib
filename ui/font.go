@@ -32,7 +32,7 @@ type Font struct {
 
 	// render state (renderStringAtPos)
 	posX, posY                              float32
-	ox, oy, scale                           float32
+	ox, oy, scale, rot                      float32
 	red, green, blue, alpha                 float32
 	color                                   uint32
 	random, bold, strike, underline, italic bool
@@ -232,6 +232,14 @@ func (f *Font) DrawScaled(c Canvas, s string, ox, oy, scale, x, y float32, color
 	return f.render(s, x, y, color, false)
 }
 
+// DrawTurned is DrawScaled turned by deg degrees around ox, oy
+// (glTranslate, glScale, glRotatef about z).
+func (f *Font) DrawTurned(c Canvas, s string, ox, oy, scale, deg, x, y float32, color uint32, shadow bool) int {
+	f.rot = deg
+	defer func() { f.rot = 0 }()
+	return f.DrawScaled(c, s, ox, oy, scale, x, y, color, shadow)
+}
+
 func (f *Font) render(s string, x, y float32, color uint32, shadow bool) int {
 	if color&0xFC000000 == 0 {
 		color |= 0xFF000000
@@ -343,7 +351,7 @@ func (f *Font) quad(t Texture, x0, y0, x1, y1, u0, v0, u1, v1, skew float32) {
 	}
 	s := f.scale
 	f.canvas.Quad(Quad{Tex: t, X0: f.ox + x0*s, Y0: f.oy + y0*s, X1: f.ox + x1*s, Y1: f.oy + y1*s,
-		U0: u0, V0: v0, U1: u1, V1: v1, Skew: skew * s, Top: f.color, Bottom: f.color})
+		U0: u0, V0: v0, U1: u1, V1: v1, Skew: skew * s, Top: f.color, Bottom: f.color, Rot: f.rot, RX: f.ox, RY: f.oy})
 }
 
 func (f *Font) renderChar(j int, c rune, italic bool) float32 {

@@ -29,6 +29,7 @@ type UI struct {
 
 	batch    render.GUIBatch
 	mx, my   int
+	px       float64 // framebuffer pixels per GUI pixel (resize)
 	lastTick int64
 	open     bool
 }
@@ -76,7 +77,7 @@ func (u *UI) Draw(fbW, fbH int) {
 	if u.HUD == nil {
 		return
 	}
-	u.Ctx.Resize(fbW, fbH)
+	px := u.resize(fbW, fbH)
 	// The app has no HUD tick; follow its tick counter.
 	t := int64(u.App.Tick)
 	if u.lastTick == 0 || t < u.lastTick {
@@ -91,7 +92,23 @@ func (u *UI) Draw(fbW, fbH int) {
 	}
 	u.HUD.State.Crosshair = false // the app draws its own crosshair
 	u.HUD.Draw(u.Ctx, partial)
-	u.batch.Flush(fbW, fbH, float32(u.Ctx.Scale))
+	u.batch.Flush(fbW, fbH, px)
+}
+
+// resize runs ScaledResolution over the window size in points, as LWJGL2's
+// Display size is (so the GUI has MC's size on a 2x display), and returns
+// the framebuffer pixels per GUI pixel to draw with (Scale * the
+// backing scale, sharp at 2x).
+func (u *UI) resize(fbW, fbH int) float32 {
+	ww, wh := fbW, fbH
+	if u.App != nil && u.App.Win != nil {
+		if w, h := u.App.Win.GetSize(); w > 0 && h > 0 {
+			ww, wh = w, h
+		}
+	}
+	u.Ctx.Resize(ww, wh)
+	u.px = float64(u.Ctx.Scale) * float64(fbW) / float64(ww)
+	return float32(u.px)
 }
 
 type screen UI
@@ -106,14 +123,26 @@ func (s *screen) Update() {
 
 func (s *screen) Draw(fbW, fbH int) {
 	u := (*UI)(s)
-	u.Ctx.Resize(fbW, fbH)
+	px := u.resize(fbW, fbH)
 	u.Ctx.Screens.Draw(u.mx, u.my, float32(u.App.Alpha()))
-	u.batch.Flush(fbW, fbH, float32(u.Ctx.Scale))
+	u.batch.Flush(fbW, fbH, px)
+}
+
+// PausesGame forwards the top ui screen's PausesGame (GuiScreen's
+// doesGuiPauseGame); screens without one pause.
+func (s *screen) PausesGame() bool {
+	if p, ok := s.Ctx.Screens.Top().(interface{ PausesGame() bool }); ok {
+		return p.PausesGame()
+	}
+	return true
 }
 
 func (s *screen) HandleInput(ev app.Event) bool {
 	u := (*UI)(s)
-	sc := float64(max(u.Ctx.Scale, 1))
+	sc := u.px // the events are in framebuffer pixels
+	if sc <= 0 {
+		sc = float64(max(u.Ctx.Scale, 1))
+	}
 	e := ui.Event{X: u.mx, Y: u.my, Mods: int(ev.Mods)}
 	switch ev.Type {
 	case app.KeyEvent:
@@ -152,6 +181,10 @@ func (c *canvas) NewTexture(img image.Image) ui.Texture { return render.NewGUITe
 
 func (c *canvas) Quad(q ui.Quad) {
 	t, _ := q.Tex.(*render.GUITexture)
+	if q.Rot != 0 {
+		c.batch.QuadRot(t, q.X0, q.Y0, q.X1, q.Y1, q.U0, q.V0, q.U1, q.V1, q.Skew, q.Top, q.Bottom, q.Rot, q.RX, q.RY)
+		return
+	}
 	c.batch.Quad(t, q.X0, q.Y0, q.X1, q.Y1, q.U0, q.V0, q.U1, q.V1, q.Skew, q.Top, q.Bottom)
 }
 

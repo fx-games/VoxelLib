@@ -71,6 +71,12 @@ type ContainerLayout struct {
 	// Extra draws over the background (the player model); left, top is
 	// the GUI's corner.
 	Extra func(ctx *Context, left, top, mx, my int)
+	// Foreground draws after the slots and labels, under the held stack and
+	// the tooltip (drawGuiContainerForegroundLayer).
+	Foreground func(ctx *Context, left, top, mx, my int)
+	// NoBackground skips drawDefaultBackground (CustomNPC GUIs:
+	// GuiContainerNPCInterface.drawDefaultBackground = false).
+	NoBackground bool
 }
 
 func playerSlots(slots [][2]int, y int) [][2]int {
@@ -170,8 +176,10 @@ func (s *ContainerScreen) slotAt(mx, my int) int {
 
 func (s *ContainerScreen) Draw(ctx *Context, mx, my int, partial float32) {
 	c := ctx.Canvas
-	ctx.DrawBackground()
 	l := &s.Layout
+	if !l.NoBackground {
+		ctx.DrawBackground()
+	}
 	t := ctx.Tex(l.Texture)
 	parts := l.Parts
 	if len(parts) == 0 {
@@ -218,6 +226,9 @@ func (s *ContainerScreen) Draw(ctx *Context, mx, my int, partial float32) {
 			x = l.W/2 - ctx.Font.Width(txt)/2
 		}
 		ctx.Font.Draw(c, txt, s.left+x, s.top+lb.Y, 0x404040, false)
+	}
+	if l.Foreground != nil {
+		l.Foreground(ctx, s.left, s.top, mx, my)
 	}
 	if cur := s.Model.Cursor(); !cur.Empty() {
 		DrawItem(ctx, cur, mx-8, my-8)

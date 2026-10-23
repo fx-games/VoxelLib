@@ -54,6 +54,9 @@ func (a *App) tick() {
 	a.Entities.sweep() // removed by the game's tick
 }
 
+// procStart is about when the process started (package init).
+var procStart = time.Now()
+
 // loop runs frames until the window closes, Quit or NewGame.
 func (a *App) loop() {
 	st := &a.stats
@@ -66,11 +69,16 @@ func (a *App) loop() {
 	var benchMem runtime.MemStats // at the first measured frame
 	var benchTicks []time.Duration
 	gpuWait := dbg.Bench > 0 && os.Getenv("VOXELLIB_BENCH_GPU") != ""
+	warm := 3 * time.Second // bench: skip startup; VOXELLIB_BENCH_WARMUP=30s waits until meshing is done
+	if d, err := time.ParseDuration(os.Getenv("VOXELLIB_BENCH_WARMUP")); err == nil {
+		warm = d
+	}
 	var stopProfile func()
 	for !a.Win.ShouldClose() && !a.quit && !a.restart {
 		if dbg.Verbose && !a.readyLogged && a.Ready() {
 			a.readyLogged = true
-			log.Printf("startup: terrain ready %v after the session started (tick %d)", time.Since(a.sessionStart).Round(time.Millisecond), a.Tick)
+			log.Printf("startup: terrain ready %v after the session started (tick %d), %v after process start",
+				time.Since(a.sessionStart).Round(time.Millisecond), a.Tick, time.Since(procStart).Round(time.Millisecond))
 		}
 		if dbg.Bench > 0 {
 			if el := time.Since(start); el > dbg.Bench {
@@ -80,7 +88,7 @@ func (a *App) loop() {
 				printBench(benchFrames, benchCPU, &benchMem)
 				printBenchExtra(benchTicks, benchGPU, a.Eng.Renderer.Stats)
 				return
-			} else if el > 3*time.Second { // skip startup
+			} else if el > warm {
 				if len(benchFrames) == 0 {
 					runtime.ReadMemStats(&benchMem)
 					stopProfile = startProfiles()
@@ -178,7 +186,7 @@ func (a *App) loop() {
 			return
 		}
 		t3 := time.Now()
-		if dbg.Bench > 0 && time.Since(start) > 3*time.Second {
+		if dbg.Bench > 0 && time.Since(start) > warm {
 			benchCPU = append(benchCPU, t3.Sub(st.frameStart)-acquire)
 		}
 		render.EndFrame(a.Win)
