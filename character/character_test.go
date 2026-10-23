@@ -253,3 +253,32 @@ func TestQuakeFriction(t *testing.T) {
 		t.Fatal("no friction in the air")
 	}
 }
+
+// bodyWorld forwards Boxes to a body index, which is all a game needs for its
+// characters to bump into props, doors and mobs.
+type bodyWorld struct {
+	grid
+	b *collide.Bodies
+}
+
+func (w bodyWorld) Boxes(area collide.AABB, out []collide.AABB) []collide.AABB {
+	return w.b.Boxes(area, out)
+}
+
+func TestCharacterBumpsIntoBodies(t *testing.T) {
+	b := collide.NewBodies()
+	door := b.Add(collide.Body{Box: collide.AABB{MinX: -1, MinZ: -2.2, MaxX: 2, MaxY: 2, MaxZ: -2}, Solid: true})
+	w := bodyWorld{b: b}
+	c := New(0.5, 0, 0.5)
+	run(c, w, Input{Forward: 1}, 40)
+	if c.Z < -2.2+PlayerWidth/2-0.01 || !c.HorizontalCollision {
+		t.Fatalf("walked through the shut door to z %.3f", c.Z)
+	}
+	open := *b.Get(door)
+	open.Solid = false
+	b.Set(door, open)
+	run(c, w, Input{Forward: 1}, 40)
+	if c.Z > -3 {
+		t.Fatalf("an open door held the character at z %.3f", c.Z)
+	}
+}

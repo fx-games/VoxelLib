@@ -4,7 +4,9 @@
 //
 // It knows nothing about worlds, chunks or block types: callers describe the
 // grid with the one-method Solids interface. The character controller and
-// dropped items both build on it.
+// dropped items both build on it. Bodies indexes things that are not blocks
+// (props, doors, mobs) and Mover sweeps boxes through blocks and bodies with
+// sliding and step-up, for games that resolve collision by time of impact.
 package collide
 
 import "math"
