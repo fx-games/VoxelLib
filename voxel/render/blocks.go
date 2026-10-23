@@ -78,6 +78,10 @@ type BlockItem struct {
 	X, Y, Z    float64
 	M          mgl32.Mat4
 	Sky, Block uint8 // light levels 0..15 at the item
+	// Flash draws the block again in white at this alpha, texturing and
+	// lighting off, blended glBlendFunc(GL_SRC_ALPHA, GL_DST_ALPHA) over an
+	// opaque target (e.g. a primed explosive's blink); 0: none.
+	Flash float32
 }
 
 // DrawBlockItems draws blocks as items in the world with the reference's
@@ -93,6 +97,9 @@ func (r *Renderer) DrawBlockItems(cam *Camera, items []BlockItem) {
 	for _, it := range items {
 		model := mgl32.Translate3D(float32(it.X-cam.X), float32(it.Y-cam.Y), float32(it.Z-cam.Z)).Mul4(it.M)
 		r.drawBlock(it.Mesh, vp.Mul4(model), model, r.LightColor(it.Sky, it.Block), lightCode(it.Sky, it.Block), fog, itemLights[0], itemLights[1], -1)
+		if it.Flash > 0 {
+			r.drawBlockMode(it.Mesh, vp.Mul4(model), model, r.LightColor(it.Sky, it.Block), lightCode(it.Sky, it.Block), fog, itemLights[0], itemLights[1], -1, it.Flash)
+		}
 	}
 }
 

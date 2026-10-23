@@ -350,6 +350,7 @@ type pipelines struct {
 	particleAlpha, particleAdd  *wgpu.RenderPipeline
 	overlay                     *wgpu.RenderPipeline
 	blockItem, blockDamage      *wgpu.RenderPipeline
+	blockFlash                  *wgpu.RenderPipeline
 	blit                        *wgpu.RenderPipeline
 
 	specs map[*wgpu.RenderPipeline]pipeSpec // what each was made from (shader pack variants)
@@ -461,6 +462,7 @@ func (ps *pipelines) init() error {
 		{&ps.overlay, pipeSpec{"overlay", overlayWGSL, ps.tex2D, nil, gputypes.PrimitiveTopologyTriangleStrip, none, blendAlpha, false, false, false}},
 		{&ps.blockItem, pipeSpec{"block item", blockWGSL, ps.terrainTex, terrainBuf, tri, back, blendAlpha, true, true, false}},
 		{&ps.blockDamage, pipeSpec{"block damage", blockWGSL, ps.terrainTex, terrainBuf, tri, back, blendDamage, true, true, false}},
+		{&ps.blockFlash, pipeSpec{"block flash", blockWGSL, ps.terrainTex, terrainBuf, tri, back, blendSrcAlphaOne, true, false, false}},
 		{&ps.blit, pipeSpec{"capture blit", blitWGSL, nil, nil, tri, none, nil, false, false, true}},
 	}
 	modules := map[string]*wgpu.ShaderModule{}

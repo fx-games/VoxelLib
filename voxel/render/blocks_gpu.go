@@ -15,7 +15,7 @@ const damagePull = 0.002;
 struct U {
 	mvp: mat4x4f,    // mesh local (blocks) -> clip; overlay: camera-relative -> clip
 	model: mat4x4f,  // mesh local -> the lights' space (normals, fog distance)
-	light: vec4f,    // lightmap colour; w: 1 = breaking overlay
+	light: vec4f,    // lightmap colour; w: 1 = breaking overlay, 2 = white flash (alpha l0.w)
 	fogColor: vec4f,
 	fog: vec4f,      // start, end, overlay texture layer
 	l0: vec4f,       // GL_LIGHT0 / GL_LIGHT1 directions (RenderHelper)
@@ -46,7 +46,7 @@ fn vs(@location(0) d: vec4<u32>) -> VOut {
 	let local = (coarse * 4.0 + fine) * (1.0 / 128.0) - 8.0;
 	var o: VOut;
 	o.pos = u.mvp * vec4f(local, 1.0);
-	if (u.light.w > 0.5) {
+	if (u.light.w > 0.5 && u.light.w < 1.5) {
 		// The overlay's mvp is the camera-relative view-projection and model
 		// places the block: pull it towards the eye along its own view ray
 		// (same pixels) by damagePull of its distance, so it always wins the
@@ -56,7 +56,7 @@ fn vs(@location(0) d: vec4<u32>) -> VOut {
 	o.uv = vec2f(f32((w1 >> 12u) & 31u), f32((w1 >> 17u) & 31u));
 	if ((w1 & (1u << 25u)) != 0u) { o.uv = o.uv * (1.0 / 16.0); }
 	o.dist = length((u.model * vec4f(local, 1.0)).xz);
-	if (u.light.w > 0.5) { // RenderGlobal.drawBlockDamageTexture: colour array and lighting off
+	if (u.light.w > 0.5) { // RenderGlobal.drawBlockDamageTexture, the flash: colour array and lighting off
 		o.layer = u32(u.fog.z);
 		o.color = vec3f(1.0);
 		return o;
@@ -76,6 +76,12 @@ fn vs(@location(0) d: vec4<u32>) -> VOut {
 
 @fragment
 fn fs(i: VOut) -> @location(0) vec4f {
+	if (u.light.w > 1.5) {
+		// The flash: texturing and lighting off, glColor4f(1, 1, 1, a), the
+		// alpha test, fogged.
+		if (u.l0.w <= 0.1) { discard; }
+		return vec4f(mix(vec3f(1.0), u.fogColor.rgb, fogFactor(i.dist, u.fog)), u.l0.w);
+	}
 	var c = blockTex(i.uv, i.layer);
 	if (u.light.w > 0.5) { c.a = c.a * 0.5; } // glColor4f(1, 1, 1, 0.5)
 	if (c.a <= 0.1) { discard; }              // glAlphaFunc(GL_GREATER, 0.1)
@@ -153,11 +159,23 @@ func (r *Renderer) damageBG() *wgpu.BindGroup {
 // space, model to the lights' space; damage >= 0 draws the crack layer
 // (mvp is then the camera-relative view-projection, model the placement).
 func (r *Renderer) drawBlock(b *BlockMesh, mvp, model mgl32.Mat4, lc mgl32.Vec3, lv float32, fog Fog, l0, l1 mgl32.Vec3, damage int) {
+	r.drawBlockMode(b, mvp, model, lc, lv, fog, l0, l1, damage, 0)
+}
+
+// drawBlockMode is drawBlock; flash > 0 draws the mesh as the white flash
+// of that alpha instead.
+func (r *Renderer) drawBlockMode(b *BlockMesh, mvp, model mgl32.Mat4, lc mgl32.Vec3, lv float32, fog Fog, l0, l1 mgl32.Vec3, damage int, flash float32) {
 	p := curPass()
 	if p == nil || b == nil || b.gpu.vbo == nil || b.quads == 0 {
 		return
 	}
 	pl, bg, mode, layer := dev.pipes.blockItem, r.terrainBG(), float32(0), float32(0)
+	if flash > 0 {
+		if dev.pk != nil { // ponytail: no flash in a shader pack frame (its world pass has the pack's targets)
+			return
+		}
+		pl, mode = dev.pipes.blockFlash, 2
+	}
 	if damage >= 0 {
 		if r.damage.tex.tex == nil {
 			return
@@ -168,13 +186,13 @@ func (r *Renderer) drawBlock(b *BlockMesh, mvp, model mgl32.Mat4, lc mgl32.Vec3,
 	u := &r.gpu.u
 	bindUniforms(p, u.reset().mat(clip(mvp)).mat(model).f(lc[0], lc[1], lc[2], mode).
 		f(fog.Color[0], fog.Color[1], fog.Color[2], lv).f(fog.Start, fog.End, layer, 0).
-		f(l0[0], l0[1], l0[2], 0).f(l1[0], l1[1], l1[2], 0))
+		f(l0[0], l0[1], l0[2], flash).f(l1[0], l1[1], l1[2], 0))
 	p.SetBindGroup(1, bg, nil)
 	p.SetIndexBuffer(r.gpu.ebo, gputypes.IndexFormatUint32, 0)
 	p.SetVertexBuffer(0, b.gpu.vbo, 0)
 	dev.draws++
 	p.DrawIndexed(gputypes.DrawIndexedArgs{IndexCount: uint32(b.quads * 6), InstanceCount: 1})
-	if damage < 0 {
+	if damage < 0 && flash == 0 {
 		packCast(bg, b.gpu.vbo, r.gpu.ebo, 0, uint32(b.quads*6), model, 8*1.7321) // mesh coordinates lie in -8..8
 	}
 }
