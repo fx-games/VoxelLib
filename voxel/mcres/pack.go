@@ -266,18 +266,24 @@ type modelFace struct {
 type element struct {
 	From     [3]float32 `json:"from"`
 	To       [3]float32 `json:"to"`
-	Rotation *struct {
-		Origin  [3]float32
-		Axis    string
-		Angle   float32
-		Rescale bool
-		// Shear: voxel.Rot.Shear (an extension, ignored by Minecraft).
-		Shear [2]float32
-	} `json:"rotation"`
+	Rotation *elemRot `json:"rotation"`
+	// MoreRotations turn the element further, in order, after Rotation:
+	// a compound rotation such as a ModelRenderer's z-y-x turn (an
+	// extension, ignored by Minecraft).
+	MoreRotations []elemRot `json:"more_rotations"`
 	Faces map[string]modelFace `json:"faces"`
 	// PlantTurn: voxel.Box.PlantTurn (an extension, ignored by Minecraft).
 	PlantTurn bool  `json:"plant_turn"`
 	Shade     *bool `json:"shade"`
+}
+
+type elemRot struct {
+	Origin  [3]float32
+	Axis    string
+	Angle   float32
+	Rescale bool
+	// Shear: voxel.Rot.Shear (an extension, ignored by Minecraft).
+	Shear [2]float32
 }
 
 type model struct {
@@ -567,9 +573,13 @@ func (p *Pack) ModelBoxes(id string, vars map[string]string) ([]voxel.Box, error
 		if hasUV {
 			b.UV = &uv
 		}
-		if r := e.Rotation; r != nil && (r.Angle != 0 || r.Shear != [2]float32{}) {
-			if axis := strings.Index("xyz", r.Axis); axis >= 0 {
-				b.Rot = []voxel.Rot{{Axis: axis, Deg: r.Angle, Origin: r.Origin, Rescale: r.Rescale, Shear: r.Shear}}
+		rs := e.MoreRotations
+		if e.Rotation != nil {
+			rs = append([]elemRot{*e.Rotation}, rs...)
+		}
+		for _, r := range rs {
+			if axis := strings.Index("xyz", r.Axis); axis >= 0 && (r.Angle != 0 || r.Shear != [2]float32{}) {
+				b.Rot = append(b.Rot, voxel.Rot{Axis: axis, Deg: r.Angle, Origin: r.Origin, Rescale: r.Rescale, Shear: r.Shear})
 			}
 		}
 		b.PlantTurn = e.PlantTurn
