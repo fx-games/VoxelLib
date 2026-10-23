@@ -497,7 +497,9 @@ func (r *Renderer) cullVisible(fr *frustum) {
 				continue
 			}
 			np := n.pos.Offset(d)
-			if !inRange(np) || !inFrustum(np) {
+			// Visited first: it is cheaper than the frustum test and push
+			// would drop the node anyway.
+			if !inRange(np) || r.visited[vidx(np)] == gen || !inFrustum(np) {
 				continue
 			}
 			push(np, int8(d.Opposite()), n.dirs|1<<d)
