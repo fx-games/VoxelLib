@@ -287,6 +287,29 @@ func (m *Manager) Hurt(t, src *Actor, amount float64, unblockable bool) bool {
 	return true
 }
 
+// Blow is attackEntityFrom with no damage (an override that zeroes the
+// amount but still calls the reference's): outside the second half of the
+// invulnerability window it starts the window and the hurt flash, sets the
+// revenge target and the panic and knocks t back from src, and OnHurt runs
+// with 0. It reports whether it counted.
+func (m *Manager) Blow(t, src *Actor) bool {
+	if !t.Alive() || float64(t.hurtResist) > MaxHurtResist/2 {
+		return false
+	}
+	t.lastDamage, t.hurtResist, t.HurtTime, t.age = 0, MaxHurtResist, MaxHurtTime, 0
+	if src != nil && src != t {
+		t.revenge, t.revengeTicks = src, 100
+		if t.FleeWhenHurt {
+			t.panic = 60
+		}
+		m.knockBack(t, src.Pos().X-t.Pos().X, src.Pos().Z-t.Pos().Z)
+	}
+	if t.OnHurt != nil {
+		t.OnHurt(t, src, 0)
+	}
+	return true
+}
+
 // knockBack is EntityLivingBase.knockBack: dx,dz point from the victim to
 // the attacker.
 func (m *Manager) knockBack(t *Actor, dx, dz float64) {

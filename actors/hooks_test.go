@@ -28,6 +28,15 @@ func TestHurtHooks(t *testing.T) {
 		t.Fatal("warded hurt counted")
 	}
 	a.Ward = nil
+	// a blow: flash and knockback without damage, not again in the window
+	a.hurtResist, a.HurtTime = 0, 0
+	h, hurt := a.Health, 0
+	a.OnHurt = func(_, _ *Actor, n float64) { hurt++ }
+	src := New("s", "s", 2.5, 10, 0.5)
+	if !m.Blow(a, src) || a.Health != h || a.HurtTime != MaxHurtTime || a.Body.VX >= 0 || hurt != 1 || m.Blow(a, src) {
+		t.Fatalf("blow: health %v hurt %d vx %v", a.Health, hurt, a.Body.VX)
+	}
+	a.OnHurt = nil
 	a.hurtResist = 0
 	if !m.Hurt(a, nil, 100, true) || !a.Alive() || a.MaxHealth != 40 || a.Health != 40 {
 		t.Fatalf("cheat death: alive %v health %v/%v", a.Alive(), a.Health, a.MaxHealth)

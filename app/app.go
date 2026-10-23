@@ -131,6 +131,9 @@ type Hooks struct {
 	BlockBroken func(pos voxel.BlockPos, state voxel.StateID)
 	// HeldBlock is the block "use" places (voxel.Air: nothing).
 	HeldBlock func() voxel.StateID
+	// CanPlace, when set, may refuse placing state at pos
+	// (Block.canPlaceBlockAt, e.g. a block that needs support).
+	CanPlace func(pos voxel.BlockPos, state voxel.StateID) bool
 	// BlockPlaced runs after the player placed a block, e.g. to use up
 	// the item.
 	BlockPlaced func(pos voxel.BlockPos, state voxel.StateID)

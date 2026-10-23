@@ -335,6 +335,9 @@ func (p *Player) place(hit physics.Hit) {
 	if reg.Info(id).Collides && !p.NoClip && p.Box().Intersects(collide.Block(pos.X, pos.Y, pos.Z)) {
 		return
 	}
+	if a.Hooks.CanPlace != nil && !a.Hooks.CanPlace(pos, id) {
+		return
+	}
 	p.Swing()
 	a.Eng.SetBlock(pos.X, pos.Y, pos.Z, id)
 	p.sound("block.place", pos, id)
