@@ -2,6 +2,7 @@ package voxelmap
 
 import (
 	"encoding/json"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -102,6 +103,8 @@ type Connect struct {
 // holding part per face. A part with set (and no model) raises that
 // block-local flag for the parts after it when it holds; the when key
 // "flags" tests such flags like tags (voxel.Part.Set, voxel.Cond.Flag).
+// The when key "pos" tests the block's world position ("sum", "half",
+// negated with "!": voxel.Cond.Pos).
 type Part struct {
 	When      map[string]json.RawMessage `json:"when"`
 	Model     string                     `json:"model"`
@@ -261,7 +264,7 @@ func (m *Map) parts(d *voxel.BlockDef, b *Block) {
 	switch d.Shape {
 	case voxel.ShapeBoxes:
 	case voxel.ShapeNone:
-		d.Shape, d.Boxes, d.Replaceable = voxel.ShapeBoxes, []voxel.Box{}, false
+		d.Shape, d.Boxes, d.Replaceable = voxel.ShapeBoxes, []voxel.Box{}, slices.Contains(b.Flags, "replaceable")
 		if d.Collision == nil {
 			d.Collision = []voxel.Box{}
 		}
@@ -298,10 +301,10 @@ func (m *Map) parts(d *voxel.BlockDef, b *Block) {
 // conds parses a part's when (see Part).
 func conds(name string, when map[string]json.RawMessage) (cs []voxel.Cond) {
 	for face, raw := range when {
-		flag := face == "flags"
+		flag, pos := face == "flags", face == "pos"
 		side, dy, _ := strings.Cut(face, "+") // "north+down": the block below the north one
 		f, ok := faceNames[side]
-		ok = flag || ok && (dy == "" || f >= voxel.FaceNorth && (dy == "up" || dy == "down"))
+		ok = flag || pos || ok && (dy == "" || f >= voxel.FaceNorth && (dy == "up" || dy == "down"))
 		if !ok {
 			logf("%s: part condition on unknown face %q", name, face)
 			continue
@@ -319,7 +322,7 @@ func conds(name string, when map[string]json.RawMessage) (cs []voxel.Cond) {
 			logf("%s: bad part condition %s", name, raw)
 		}
 		for _, tests := range groups {
-			c := voxel.Cond{Face: f, Dy: map[string]int8{"up": 1, "down": -1}[dy], Flag: flag}
+			c := voxel.Cond{Face: f, Dy: map[string]int8{"up": 1, "down": -1}[dy], Flag: flag, Pos: pos}
 			for _, t := range tests {
 				not := strings.HasPrefix(t, "!")
 				c.Any = append(c.Any, voxel.TagTest{Tag: strings.TrimPrefix(t, "!"), Not: not})

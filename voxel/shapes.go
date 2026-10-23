@@ -494,11 +494,14 @@ func (nb Nb) At(f Face) *StateInfo { return nb(f.Off()) }
 
 // Connected returns a state's elements in context, as Minecraft works them
 // out from the neighbours (nb.At(f) is the state beside it on face f): fence
-// arms, stair corners, double chests.
-func Connected(info *StateInfo, nb Nb) []Box {
+// arms, stair corners, double chests. It is ConnectedAt the origin.
+func Connected(info *StateInfo, nb Nb) []Box { return ConnectedAt(info, nb, [3]int{}) }
+
+// ConnectedAt is Connected for the block at world position pos (Cond.Pos).
+func ConnectedAt(info *StateInfo, nb Nb, pos [3]int) []Box {
 	switch {
 	case len(info.Parts) > 0:
-		return info.partBoxes(nb, false)
+		return info.partBoxes(nb, pos, false)
 	case info.Connects:
 		out := append([]Box(nil), info.Boxes...)
 		for f := FaceNorth; f <= FaceEast; f++ {
@@ -583,7 +586,7 @@ func stairShape(info *StateInfo, nb Nb) string {
 
 // partBoxes gathers the elements (or, with collision, the collision boxes)
 // of a block with Parts in context.
-func (info *StateInfo) partBoxes(nb Nb, collision bool) []Box {
+func (info *StateInfo) partBoxes(nb Nb, pos [3]int, collision bool) []Box {
 	out := info.Boxes
 	if collision && info.Collision != nil {
 		out = info.Collision
@@ -593,7 +596,7 @@ func (info *StateInfo) partBoxes(nb Nb, collision bool) []Box {
 	var flags uint32
 	for i := range info.Parts {
 		p := &info.Parts[i]
-		if p.Group != "" && slicesContains(done, p.Group) || !holds(p.When, nb, flags) {
+		if p.Group != "" && slicesContains(done, p.Group) || !holds(p.When, nb, pos, flags) {
 			continue
 		}
 		if p.set != 0 {
@@ -630,16 +633,35 @@ func slicesContains(s []string, v string) bool {
 func (info *StateInfo) FaceTex(f Face, nb Nb) uint16 {
 	for i := range info.Retex {
 		x := &info.Retex[i]
-		if x.Tex[f] != "" && holds(x.When, nb, 0) {
+		if x.Tex[f] != "" && holds(x.When, nb, [3]int{}, 0) {
 			return x.ids[f]
 		}
 	}
 	return info.Tex[f]
 }
 
-func holds(cs []Cond, nb Nb, flags uint32) bool {
+func holds(cs []Cond, nb Nb, pos [3]int, flags uint32) bool {
 	for _, c := range cs {
 		ok := false
+		if c.Pos {
+			for _, t := range c.Any {
+				v := false
+				switch t.id {
+				case 0:
+					v = (pos[0]+pos[1]+pos[2])&1 == 1
+				case 1:
+					v = (pos[0]/2+pos[1]/2+pos[2]/2)&1 == 1
+				}
+				if v != t.Not {
+					ok = true
+					break
+				}
+			}
+			if !ok {
+				return false
+			}
+			continue
+		}
 		if c.Flag {
 			for _, t := range c.Any {
 				if (flags>>t.id&1 != 0) != t.Not {
@@ -692,7 +714,7 @@ func (w *World) Boxes(area collide.AABB, out []collide.AABB) []collide.AABB {
 		if len(info.Parts) > 0 {
 			boxes = info.partBoxes(func(d [3]int) *StateInfo {
 				return w.Reg.Info(w.Block(x+d[0], y+d[1], z+d[2]))
-			}, true)
+			}, [3]int{x, y, z}, true)
 		} else if boxes == nil {
 			if info.Shape != ShapeBoxes || !collidable(info.Name) {
 				return
@@ -700,7 +722,7 @@ func (w *World) Boxes(area collide.AABB, out []collide.AABB) []collide.AABB {
 			nb := func(d [3]int) *StateInfo {
 				return w.Reg.Info(w.Block(x+d[0], y+d[1], z+d[2]))
 			}
-			boxes = Connected(info, nb)
+			boxes = ConnectedAt(info, nb, [3]int{x, y, z})
 		}
 		for _, b := range boxes {
 			if len(b.Rot) > 0 {

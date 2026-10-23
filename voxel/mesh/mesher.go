@@ -587,15 +587,14 @@ const projectedUV = 1 << 25
 // Cull, when it lies on the block boundary facing that neighbour.
 func (m *Mesher) boxes(x, y, z, i int, info *voxel.StateInfo) {
 	t, st, li := m.table, &m.Snap.States, &m.Snap.Light
-	bs := voxel.Connected(info, m.nb(i))
+	sp := m.Snap.Pos
+	bs := voxel.ConnectedAt(info, m.nb(i), [3]int{sp.X*16 + x, sp.Y*16 + y, sp.Z*16 + z})
 	if info.Scatter != nil {
-		sp := m.Snap.Pos
 		bs = append(bs[:len(bs):len(bs)], scatterBoxes(info.Scatter, sp.X*16+x, sp.Y*16+y, sp.Z*16+z)...)
 	}
 	base := [3]float32{float32(x * 16), float32(y * 16), float32(z * 16)}
 	turn := float32(0)                        // a sunflower head's turn (PlantTurn boxes)
 	if info.PlantOffset != voxel.OffsetNone { // a plant model (cross with overlay, a double plant's top)
-		sp := m.Snap.Pos
 		wx, wy, wz := sp.X*16+x, sp.Y*16+y, sp.Z*16+z
 		off := plantOffset(info.PlantOffset, wx, wy, wz)
 		for a := range 3 {

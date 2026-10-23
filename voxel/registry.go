@@ -2,6 +2,7 @@ package voxel
 
 import (
 	"fmt"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -144,12 +145,21 @@ type Retex struct {
 //
 // With Flag, the tests name flags raised by earlier parts (Part.Set)
 // instead of neighbour tags, and Face/Dy are unused.
+//
+// With Pos, the tests are on the block's own world position (Face/Dy
+// unused), as Minecraft 1.7's RenderBlocks.renderBlockFire picks icons:
+// "sum" holds when (x+y+z)&1 == 1, "half" when (x/2+y/2+z/2)&1 == 1
+// (Java's truncating division).
 type Cond struct {
 	Face Face
 	Dy   int8
 	Flag bool
+	Pos  bool
 	Any  []TagTest
 }
+
+// posTests are the Cond.Pos test names, by TagTest.id.
+var posTests = []string{"sum", "half"}
 
 // TagTest is true when the neighbour carries Tag (or, with Not, doesn't).
 // Built-in tags: "air" (the neighbour is air) and "opaque" (an opaque full
@@ -363,6 +373,10 @@ func (r *Registry) conds(cs []Cond, flags map[string]uint16) []Cond {
 		for k := range c.Any {
 			if c.Flag {
 				c.Any[k].id = flagBit(flags, c.Any[k].Tag)
+				continue
+			}
+			if c.Pos {
+				c.Any[k].id = uint16(slices.Index(posTests, c.Any[k].Tag)) // unknown: never holds
 				continue
 			}
 			c.Any[k].id = r.tagID(c.Any[k].Tag)
