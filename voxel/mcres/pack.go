@@ -111,7 +111,7 @@ func (p *Pack) Texture(name string) (image.Image, error) {
 // W pixels wide (entity textures; scaled for higher resolution packs).
 func (p *Pack) TextureFrames(name string) ([]image.Image, int, error) {
 	if base, region, ok := strings.Cut(name, "#"); ok {
-		img, err := p.Texture(base)
+		frames, ticks, err := p.TextureFrames(base)
 		if err != nil {
 			return nil, 0, err
 		}
@@ -119,12 +119,17 @@ func (p *Pack) TextureFrames(name string) ([]image.Image, int, error) {
 		if _, err := fmt.Sscanf(region, "%d:%d,%d,%d,%d", &sw, &x, &y, &w, &h); err != nil || sw <= 0 {
 			return nil, 0, fmt.Errorf("mcres: bad region %q", name)
 		}
-		b := img.Bounds()
-		k := float64(b.Dx()) / float64(sw)
-		r := image.Rect(int(float64(x)*k), int(float64(y)*k), int(float64(x+w)*k), int(float64(y+h)*k)).Add(b.Min)
-		out := image.NewNRGBA(image.Rect(0, 0, r.Dx(), r.Dy()))
-		draw.Draw(out, out.Bounds(), img, r.Min, draw.Src)
-		return []image.Image{out}, 0, nil
+		// the region of every frame: an animated icon stays animated
+		out := make([]image.Image, len(frames))
+		for i, img := range frames {
+			b := img.Bounds()
+			k := float64(b.Dx()) / float64(sw)
+			r := image.Rect(int(float64(x)*k), int(float64(y)*k), int(float64(x+w)*k), int(float64(y+h)*k)).Add(b.Min)
+			o := image.NewNRGBA(image.Rect(0, 0, r.Dx(), r.Dy()))
+			draw.Draw(o, o.Bounds(), img, r.Min, draw.Src)
+			out[i] = o
+		}
+		return out, ticks, nil
 	}
 	ns, rel := splitID(name)
 	file := path.Join("assets", ns, "textures", rel+".png")
