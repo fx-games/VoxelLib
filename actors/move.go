@@ -82,6 +82,16 @@ func (m *Manager) ground(g *nav.Graph, v Vec) (nav.Pos, bool) {
 	return g.Ground(int(math.Floor(v.X-o)), int(math.Floor(v.Y+0.01)), int(math.Floor(v.Z-o)))
 }
 
+// start is the search's start for a walker at v: its ground cell, else the
+// cell it hangs in (caught in leaves, mid-jump), as PathFinder takes it.
+func (m *Manager) start(g *nav.Graph, v Vec) nav.Pos {
+	if p, ok := m.ground(g, v); ok {
+		return p
+	}
+	o := float64(g.Size[0]-1) / 2
+	return nav.Pos{X: int(math.Floor(v.X - o)), Y: int(math.Floor(v.Y + 0.01)), Z: int(math.Floor(v.Z - o))}
+}
+
 // Detours: the long search reaches longRange blocks with longNodes
 // expansions (spread over ticks by pathBudget); a turned leg is detourLen
 // blocks long and held for detourTicks.
@@ -100,7 +110,7 @@ func (m *Manager) plan(a *Actor, goal Vec) {
 	n := &a.nav
 	n.goal, n.has, n.age = goal, true, 0
 	g := m.graphFor(c)
-	from, ok1 := m.ground(g, c.Pos())
+	from := m.start(g, c.Pos())
 	leg, reach := goal, float64(planRange)
 	n.nodes = maxNodes
 	d := c.Pos().hdist(goal)
@@ -116,7 +126,7 @@ func (m *Manager) plan(a *Actor, goal Vec) {
 		leg = Vec{c.Body.X + (goal.X-c.Body.X)*f, c.Body.Y + 4, c.Body.Z + (goal.Z-c.Body.Z)*f}
 	}
 	to, ok2 := m.ground(g, leg)
-	if !ok1 || !ok2 {
+	if !ok2 {
 		m.cancelSearch(a)
 		n.path, n.i = nil, 0
 		return

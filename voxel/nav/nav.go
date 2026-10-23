@@ -302,8 +302,9 @@ func (g *Graph) Path(from, to Pos, maxNodes int) ([]Pos, bool) {
 
 // Begin starts an A* search from..to that Step runs in slices, so a long
 // search can spread over several ticks. maxNodes caps expansions (0 =
-// 20000). It reports false, ending the search, when either end isn't
-// walkable. One search runs per Graph; Begin abandons an unfinished one.
+// 20000). It reports false, ending the search, when to isn't walkable or
+// from is inside something solid; from needs no floor (PathFinder starts at
+// the walker's cell, wherever it hangs). One search runs per Graph; Begin abandons an unfinished one.
 // The world's answers are cached for the whole search: block changes
 // made meanwhile may go unseen until the next one.
 func (g *Graph) Begin(from, to Pos, maxNodes int) bool {
@@ -312,7 +313,8 @@ func (g *Graph) Begin(from, to Pos, maxNodes int) bool {
 	}
 	g.caching = false
 	g.open = g.open[:0]
-	if !g.Walkable(from) || !g.Walkable(to) {
+	_, ht := g.size()
+	if !g.clear(from.X, from.Y, from.Z, ht) || !g.Walkable(to) {
 		return false
 	}
 	if g.cells == nil {

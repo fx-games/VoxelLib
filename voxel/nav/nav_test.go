@@ -264,3 +264,17 @@ func TestClosest(t *testing.T) {
 		t.Error("without Closest an unreachable goal gave a path")
 	}
 }
+
+// TestStartInAir: a search may start from a clear cell without a floor (a
+// walker caught in leaves), not from inside a solid one.
+func TestStartInAir(t *testing.T) {
+	m := floor()
+	p, ok := (&Graph{W: m}).Path(Pos{2, 3, 2}, Pos{6, 1, 2}, 0)
+	if !ok || p[len(p)-1] != (Pos{6, 1, 2}) {
+		t.Errorf("from the air: %v %v", p, ok)
+	}
+	m[Pos{2, 3, 2}] = true
+	if _, ok := (&Graph{W: m}).Path(Pos{2, 3, 2}, Pos{6, 1, 2}, 0); ok {
+		t.Error("search started inside a solid cell")
+	}
+}
