@@ -1,5 +1,7 @@
 package voxel
 
+import "sync/atomic"
+
 // Section is a 16^3 cube of a chunk column.
 type Section struct {
 	Blocks *PalettedContainer
@@ -63,11 +65,25 @@ type Chunk struct {
 	// Biomes holds legacy (pre-1.13) biome ids per column (z<<4|x), nil if
 	// the chunk had none.
 	Biomes []byte
-	minY   int
+	// version changes with a live chunk's blocks, light and height map
+	// (World.SetBlock, light passes; not SetRaw while generating), so
+	// readers can skip a chunk unchanged since they last read it. Unique
+	// across chunks; atomic: light passes set it under the read lock, after
+	// writing.
+	version uint64
+	minY    int
 }
 
+var versions atomic.Uint64
+
+// Changed gives the chunk a new version after a write.
+func (c *Chunk) Changed() { atomic.StoreUint64(&c.version, versions.Add(1)) }
+
+// Version identifies the chunk's contents; read it before reading them.
+func (c *Chunk) Version() uint64 { return atomic.LoadUint64(&c.version) }
+
 func newChunk(pos ChunkPos, minY, height int) *Chunk {
-	c := &Chunk{Pos: pos, Sections: make([]*Section, height/16), minY: minY}
+	c := &Chunk{Pos: pos, Sections: make([]*Section, height/16), minY: minY, version: versions.Add(1)}
 	for i := range c.Sections {
 		c.Sections[i] = NewSection()
 	}
@@ -129,6 +145,7 @@ func (c *Chunk) RecomputeHeights(t []StateInfo) {
 			c.Height[z<<4|x] = int32(h)
 		}
 	}
+	c.Changed()
 }
 
 // MinY returns the lowest block y of the column.

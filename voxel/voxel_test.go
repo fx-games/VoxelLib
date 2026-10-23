@@ -126,3 +126,24 @@ func TestLightBlockIsInvisibleAndEmits(t *testing.T) {
 		t.Fatalf("light: shape %v collides %v opaque %v emission %d", i.Shape, i.Collides, i.Opaque, i.Emission)
 	}
 }
+
+// TestVersion: SetBlock gives the column and its neighbours (whose light it
+// may change) new versions, others keep theirs; a light pass does the same.
+func TestVersion(t *testing.T) {
+	w, stone := flatWorld(t)
+	ver := func(x, z int) uint64 { return w.Chunk(ChunkPos{x, z}).Version() }
+	a, b, far := ver(0, 0), ver(1, 1), ver(-2, 0)
+	w.SetBlock(3, 70, 3, stone)
+	if ver(0, 0) == a || ver(1, 1) == b || ver(-2, 0) != far {
+		t.Fatalf("after SetBlock: %d->%d, %d->%d, far %d->%d", a, ver(0, 0), b, ver(1, 1), far, ver(-2, 0))
+	}
+	if ver(0, 0) == ver(1, 1) {
+		t.Fatal("versions not unique")
+	}
+	b = ver(-1, -2)
+	w.Chunk(ChunkPos{-1, -1}).Lit = false
+	w.TryLightChunk(ChunkPos{-1, -1})
+	if ver(-1, -2) == b {
+		t.Fatal("light pass kept the neighbour's version")
+	}
+}

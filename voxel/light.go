@@ -338,6 +338,7 @@ func (w *World) lightChunk(c *Chunk) {
 	w.propagate(false, t)
 
 	c.Lit = true
+	w.changedAround(c.Pos)
 	// Mark this column's and its neighbours' sections for meshing.
 	for dx := -1; dx <= 1; dx++ {
 		for dz := -1; dz <= 1; dz++ {

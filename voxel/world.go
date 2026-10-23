@@ -238,7 +238,20 @@ func (w *World) SetBlock(x, y, z int, id StateID) bool {
 	if c.Lit {
 		w.relight(x, y, z, t[old], t[id], t)
 	}
+	w.changedAround(c.Pos)
 	return true
+}
+
+// changedAround bumps the Version of p's column and its 8 neighbours: light
+// (at most 15 blocks) spreads no further.
+func (w *World) changedAround(p ChunkPos) {
+	for dx := -1; dx <= 1; dx++ {
+		for dz := -1; dz <= 1; dz++ {
+			if n := w.chunks[ChunkPos{X: p.X + dx, Z: p.Z + dz}]; n != nil {
+				n.Changed()
+			}
+		}
+	}
 }
 
 // markDirty records a section for remeshing; caller holds the write lock.

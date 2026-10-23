@@ -114,3 +114,63 @@ func TestOrigin(t *testing.T) {
 		}
 	}
 }
+
+// TestSkipUnchanged: skipping the round-robin rewrite of chunks unchanged
+// since their write (themselves and their neighbours) gives the image of
+// rewriting them, frame by frame, through edits, a chunk added, removed
+// and replaced.
+func TestSkipUnchanged(t *testing.T) {
+	var ps []voxel.ChunkPos
+	for z := -3; z <= 3; z++ {
+		for x := -3; x <= 3; x++ {
+			ps = append(ps, voxel.ChunkPos{X: x, Z: z})
+		}
+	}
+	w, skip := slopeWorld(ps...)
+	_, all := slopeWorld()
+	skip.Cfg.Size, all.Cfg.Size = 55, 55
+	v := &View{X: 8, Y: 64, Z: 8, Sun: 1}
+	column := func(c *voxel.Chunk, x, z, h int) {
+		for y := 0; y < 120; y++ {
+			id := voxel.StateID(0)
+			if y <= h {
+				id = 1
+			}
+			c.SetRaw(x, y, z, id)
+		}
+		c.Height[z<<4|x] = int32(h + 1)
+		c.Changed()
+	}
+	for f := 0; f < 700; f++ {
+		switch f {
+		case 100:
+			column(w.Chunk(voxel.ChunkPos{}), 15, 0, 90)
+		case 150:
+			c, _ := slopeWorld(voxel.ChunkPos{X: 4, Z: 0})
+			w.AddChunk(c.Chunk(voxel.ChunkPos{X: 4, Z: 0}))
+		case 250:
+			w.RemoveChunk(voxel.ChunkPos{X: -1, Z: 2})
+		case 400:
+			c := w.NewChunk(voxel.ChunkPos{X: 0, Z: -1})
+			column(c, 3, 3, 70)
+			w.RemoveChunk(c.Pos)
+			w.AddChunk(c)
+		}
+		skip.Update(w, v, 800, 600)
+		skipUnchanged = false // rewrite as before
+		all.Update(w, v, 800, 600)
+		skipUnchanged = true
+		if string(skip.img.Pix) != string(all.img.Pix) {
+			t.Fatalf("frame %d: the images differ", f)
+		}
+	}
+	n := 0
+	for _, p := range ps {
+		if c := w.Chunk(p); c != nil && skip.unchanged(c) {
+			n++
+		}
+	}
+	if n < len(ps)/2 {
+		t.Errorf("%d of %d chunks skippable", n, len(ps))
+	}
+}

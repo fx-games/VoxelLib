@@ -80,14 +80,21 @@ type Map struct {
 	Cfg Config
 	Src *Source
 
-	n         int // store side in blocks, a power of two
-	surf      []surfPixel
-	lit       []uint32 // surface: alpha<<24 | rgb
-	cave      []cavePixel
-	tags      []voxel.ChunkPos
-	have      []bool
-	cavL      []int  // the cave level a chunk was written at
-	retry     []bool // a cave chunk read a neighbour not stored for its level
+	n     int // store side in blocks, a power of two
+	surf  []surfPixel
+	lit   []uint32 // surface: alpha<<24 | rgb
+	cave  []cavePixel
+	tags  []voxel.ChunkPos
+	have  []bool
+	cavL  []int  // the cave level a chunk was written at
+	retry []bool // a cave chunk read a neighbour not stored for its level
+	// What a surface chunk was written from: its version and its
+	// neighbours' seq; seq changes when a write changes what a neighbour
+	// reads (pixelKey).
+	ver       []uint64
+	seq       []uint32
+	nbs       [][8]uint32
+	seqN      uint32
 	caveMode  bool
 	img       *image.NRGBA
 	tex       ui.Texture
@@ -168,6 +175,9 @@ func (m *Map) resize(half int, unit float64) {
 	m.have = make([]bool, c*c)
 	m.cavL = make([]int, c*c)
 	m.retry = make([]bool, c*c)
+	m.ver = make([]uint64, c*c)
+	m.seq = make([]uint32, c*c)
+	m.nbs = make([][8]uint32, c*c)
 	m.img = image.NewNRGBA(image.Rect(0, 0, n, n))
 	black(m.img.Pix)
 	m.day = 0
@@ -294,9 +304,39 @@ func (m *Map) Update(w *voxel.World, v *View, fbW, fbH int) {
 		}
 	}
 	for _, p := range todo {
-		m.write(w, w.ChunkUnlocked(p), by, levels)
+		if c := w.ChunkUnlocked(p); !skipUnchanged || !m.unchanged(c) {
+			m.write(w, c, by, levels)
+		}
 	}
 	w.RUnlock()
+}
+
+// skipUnchanged is off in the test that compares against rewriting all.
+var skipUnchanged = true
+
+// neighbours is the seq of the 8 chunks around p, 0 where not stored.
+func (m *Map) neighbours(p voxel.ChunkPos) (out [8]uint32) {
+	i := 0
+	for dz := -1; dz <= 1; dz++ {
+		for dx := -1; dx <= 1; dx++ {
+			if dx == 0 && dz == 0 {
+				continue
+			}
+			if q := (voxel.ChunkPos{X: p.X + dx, Z: p.Z + dz}); m.written(q.X<<4, q.Z<<4) {
+				out[i] = m.seq[m.cell(q.X, q.Z)]
+			}
+			i++
+		}
+	}
+	return out
+}
+
+// unchanged reports whether rewriting stored surface chunk c would give
+// the same pixels: neither it nor what it reads of its neighbours changed.
+func (m *Map) unchanged(c *voxel.Chunk) bool {
+	ci := m.cell(c.Pos.X, c.Pos.Z)
+	return !m.caveMode && m.have[ci] && m.tags[ci] == c.Pos &&
+		m.ver[ci] == c.Version() && m.nbs[ci] == m.neighbours(c.Pos)
 }
 
 func contains(a []voxel.ChunkPos, p voxel.ChunkPos) bool {
@@ -337,7 +377,9 @@ func (m *Map) write(w *voxel.World, c *voxel.Chunk, playerY, levels int) {
 		m.retry[ci] = !ok
 		return
 	}
+	m.ver[ci], m.nbs[ci] = c.Version(), m.neighbours(c.Pos)
 	var bottom, right [16]bool // pixel (x, 15), (15, z) changed
+	moved := false
 	x0, z0 := c.Pos.X<<4, c.Pos.Z<<4
 	for z := 0; z < 16; z++ {
 		for x := 0; x < 16; x++ {
@@ -345,9 +387,14 @@ func (m *Map) write(w *voxel.World, c *voxel.Chunk, playerY, levels int) {
 			old := pixelKey{px.state, px.height, px.light, px.biome}
 			m.Src.loadSurface(c, x, z, px)
 			changed := !was || old != pixelKey{px.state, px.height, px.light, px.biome}
+			moved = moved || changed
 			bottom[x] = bottom[x] || z == 15 && changed
 			right[z] = right[z] || x == 15 && changed
 		}
+	}
+	if moved {
+		m.seqN++
+		m.seq[ci] = m.seqN
 	}
 	// MapWriter: slopes from the stored heights, unknown while a neighbour
 	// is missing (MapPixel then takes the next pixel's).
