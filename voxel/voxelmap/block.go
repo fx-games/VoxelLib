@@ -31,9 +31,9 @@ import (
 //     (default for cross, liquid and none); "opaque" makes a model or
 //     non-solid block hide its neighbours' faces like a full cube;
 //     "neighbour_light" lights it from its brightest neighbour;
-//     "offset_grass", "offset_flower" and "offset_double" shift a cross
-//     plant like 1.7's tall grass, flowers and double plants
-//     (voxel.BlockDef.PlantOffset).
+//     "offset_grass", "offset_flower", "offset_double" and "offset_clover"
+//     shift a cross plant like 1.7's tall grass, flowers, double plants and
+//     LOTR clovers (voxel.BlockDef.PlantOffset).
 //   - uvrandom: faces whose texture turns by a position-dependent quarter
 //     turn (voxel.BlockDef.UVRandom); uvseed, six side indices (down, up,
 //     north, south, west, east), picks each face's hash side
@@ -48,6 +48,8 @@ import (
 //   - te: tile-entity fields that pick a variant: a block at a tile entity
 //     becomes the entry "<key>|<v1>,<v2>,..." (the fields' integer values,
 //     0 when absent) when blocks.json has it (Map.ReadChunk).
+//   - scatter: LOTR fallen-leaf quads (voxel.Scatter: "leaves", "xsize",
+//     "zsize" as [min, max], "shade"); a "none" shape becomes ShapeBoxes.
 //
 // Every other field (sounds, ...) is left to the game in Raw.
 type Block struct {
@@ -73,6 +75,7 @@ type Block struct {
 	UVRotate  [6]uint8        `json:"uvrotate"`
 	Connect   *Connect        `json:"connect"`
 	TE        []string        `json:"te"`
+	Scatter   *voxel.Scatter  `json:"scatter"`
 	Raw       json.RawMessage `json:"-"`
 }
 
@@ -87,7 +90,8 @@ type Connect struct {
 
 // Part is a neighbour-dependent piece of a block (see voxel.Part): the model
 // (turned by x/y, textures defaulting to the block's) is added when, for
-// every face named in when, the neighbour there carries the tag ("tag"),
+// every face named in when ("north+up", "north+down": the diagonal
+// neighbour above or below that one), the neighbour there carries the tag ("tag"),
 // lacks it ("!tag"), passes any of a list of such tests, or passes each
 // list of a list of lists. Built-in tags:
 // "air", "opaque". replace swaps out everything gathered before; group lets
@@ -95,7 +99,9 @@ type Connect struct {
 // part's collision ("none" or boxes in 1/16). A cube's parts have no model:
 // their textures (as a cube's: all, side, end, top, bottom, face names)
 // replace its faces' while they hold (voxel.BlockDef.Retex), the first
-// holding part per face.
+// holding part per face. A part with set (and no model) raises that
+// block-local flag for the parts after it when it holds; the when key
+// "flags" tests such flags like tags (voxel.Part.Set, voxel.Cond.Flag).
 type Part struct {
 	When      map[string]json.RawMessage `json:"when"`
 	Model     string                     `json:"model"`
@@ -105,6 +111,7 @@ type Part struct {
 	Collision json.RawMessage            `json:"collision"`
 	Replace   bool                       `json:"replace"`
 	Group     string                     `json:"group"`
+	Set       string                     `json:"set"`
 }
 
 // def builds the definition of key from entry b (meta is the key's meta).
@@ -194,6 +201,8 @@ func (m *Map) def(key string, b *Block, meta int) *voxel.BlockDef {
 			d.PlantOffset = voxel.OffsetFlower
 		case "offset_double":
 			d.PlantOffset = voxel.OffsetDouble
+		case "offset_clover":
+			d.PlantOffset = voxel.OffsetClover
 		case "opaque": // a model or cutout block that still hides its neighbours' faces
 			d.Opaque = true
 			if b.Opacity == nil {
@@ -222,6 +231,12 @@ func (m *Map) def(key string, b *Block, meta int) *voxel.BlockDef {
 				d.Connect.Plane = *c.Plane
 			}
 		}
+	}
+	if b.Scatter != nil {
+		if d.Shape == voxel.ShapeNone {
+			d.Shape, d.Boxes, d.Textures = voxel.ShapeBoxes, []voxel.Box{}, tex
+		}
+		d.Scatter = b.Scatter
 	}
 	if len(b.Parts) > 0 {
 		m.parts(d, b)
@@ -255,6 +270,10 @@ func (m *Map) parts(d *voxel.BlockDef, b *Block) {
 		return
 	}
 	for _, p := range b.Parts {
+		if p.Set != "" {
+			d.Parts = append(d.Parts, voxel.Part{When: conds(d.Name, p.When), Set: p.Set, Group: p.Group})
+			continue
+		}
 		tex := p.Textures
 		if len(tex) == 0 {
 			tex = b.Textures
@@ -279,7 +298,10 @@ func (m *Map) parts(d *voxel.BlockDef, b *Block) {
 // conds parses a part's when (see Part).
 func conds(name string, when map[string]json.RawMessage) (cs []voxel.Cond) {
 	for face, raw := range when {
-		f, ok := faceNames[face]
+		flag := face == "flags"
+		side, dy, _ := strings.Cut(face, "+") // "north+down": the block below the north one
+		f, ok := faceNames[side]
+		ok = flag || ok && (dy == "" || f >= voxel.FaceNorth && (dy == "up" || dy == "down"))
 		if !ok {
 			logf("%s: part condition on unknown face %q", name, face)
 			continue
@@ -297,7 +319,7 @@ func conds(name string, when map[string]json.RawMessage) (cs []voxel.Cond) {
 			logf("%s: bad part condition %s", name, raw)
 		}
 		for _, tests := range groups {
-			c := voxel.Cond{Face: f}
+			c := voxel.Cond{Face: f, Dy: map[string]int8{"up": 1, "down": -1}[dy], Flag: flag}
 			for _, t := range tests {
 				not := strings.HasPrefix(t, "!")
 				c.Any = append(c.Any, voxel.TagTest{Tag: strings.TrimPrefix(t, "!"), Not: not})

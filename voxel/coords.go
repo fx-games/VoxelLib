@@ -62,7 +62,10 @@ var faceNames = [6]string{"down", "up", "north", "south", "west", "east"}
 
 func (f Face) Normal() BlockPos { return faceNormals[f] }
 func (f Face) Opposite() Face   { return f ^ 1 }
-func (f Face) String() string   { return faceNames[f] }
+
+// Off is the face's normal as an offset.
+func (f Face) Off() [3]int    { n := faceNormals[f]; return [3]int{n.X, n.Y, n.Z} }
+func (f Face) String() string { return faceNames[f] }
 
 // Axis returns 0 for X, 1 for Y, 2 for Z.
 func (f Face) Axis() int {

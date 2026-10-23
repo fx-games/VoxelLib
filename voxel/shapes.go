@@ -47,6 +47,14 @@ type Box struct {
 	// (a model's "ambientocclusion": false; Minecraft 1.7's renderers
 	// that don't use renderStandardBlock).
 	Flat bool
+	// PlantTurn turns the box about the block's vertical axis by the
+	// plant's position hash (1.7 renderBlockDoublePlant's sunflower head:
+	// cos(hash*0.8)*0.1*pi), after Rot (the model's "plant_turn").
+	PlantTurn bool
+	// NoShade draws the box without the per-face directional shade (a
+	// model element's "shade": false; Minecraft 1.7's renderers that set
+	// one tessellator colour for every face, as panes, ladders and vines).
+	NoShade bool
 }
 
 func bx(x0, y0, z0, x1, y1, z1 float32) Box {
@@ -470,17 +478,23 @@ func prop(props, key string) string {
 	return ""
 }
 
+// Nb gives the state at offset d from a block.
+type Nb func(d [3]int) *StateInfo
+
+// At is the neighbour on face f.
+func (nb Nb) At(f Face) *StateInfo { return nb(f.Off()) }
+
 // Connected returns a state's elements in context, as Minecraft works them
-// out from the neighbours (nb(f) is the state beside it on face f): fence
+// out from the neighbours (nb.At(f) is the state beside it on face f): fence
 // arms, stair corners, double chests.
-func Connected(info *StateInfo, nb func(Face) *StateInfo) []Box {
+func Connected(info *StateInfo, nb Nb) []Box {
 	switch {
 	case len(info.Parts) > 0:
 		return info.partBoxes(nb, false)
 	case info.Connects:
 		out := append([]Box(nil), info.Boxes...)
 		for f := FaceNorth; f <= FaceEast; f++ {
-			o := nb(f)
+			o := nb.At(f)
 			if !o.Opaque && !o.Connects {
 				continue
 			}
@@ -505,7 +519,7 @@ func Connected(info *StateInfo, nb func(Face) *StateInfo) []Box {
 	case info.Name == "minecraft:chest":
 		f := chestFacing(info)
 		same := func(dir string) bool {
-			o := nb(faceOf[dir])
+			o := nb.At(faceOf[dir])
 			return o.Def == info.Def && chestFacing(o) == f
 		}
 		if same(clockwise[f]) {
@@ -527,7 +541,7 @@ func chestFacing(info *StateInfo) string {
 }
 
 // stairShape is StairBlock.getStairsShape.
-func stairShape(info *StateInfo, nb func(Face) *StateInfo) string {
+func stairShape(info *StateInfo, nb Nb) string {
 	f, h := prop(info.Props, "facing"), prop(info.Props, "half")
 	if _, ok := faceOf[f]; !ok {
 		return ""
@@ -535,10 +549,10 @@ func stairShape(info *StateInfo, nb func(Face) *StateInfo) string {
 	isStairs := func(o *StateInfo) bool { return strings.HasSuffix(o.Name, "_stairs") }
 	ns := func(dir string) bool { return dir == "north" || dir == "south" }
 	canTake := func(dir string) bool {
-		o := nb(faceOf[dir])
+		o := nb.At(faceOf[dir])
 		return !isStairs(o) || prop(o.Props, "facing") != f || prop(o.Props, "half") != h
 	}
-	if o := nb(faceOf[f]); isStairs(o) && prop(o.Props, "half") == h {
+	if o := nb.At(faceOf[f]); isStairs(o) && prop(o.Props, "half") == h {
 		of := prop(o.Props, "facing")
 		if _, ok := faceOf[of]; ok && ns(of) != ns(f) && canTake(opposite[of]) {
 			if of == ccw[f] {
@@ -547,7 +561,7 @@ func stairShape(info *StateInfo, nb func(Face) *StateInfo) string {
 			return "outer_right"
 		}
 	}
-	if o := nb(faceOf[opposite[f]]); isStairs(o) && prop(o.Props, "half") == h {
+	if o := nb.At(faceOf[opposite[f]]); isStairs(o) && prop(o.Props, "half") == h {
 		of := prop(o.Props, "facing")
 		if _, ok := faceOf[of]; ok && ns(of) != ns(f) && canTake(of) {
 			if of == ccw[f] {
@@ -561,16 +575,21 @@ func stairShape(info *StateInfo, nb func(Face) *StateInfo) string {
 
 // partBoxes gathers the elements (or, with collision, the collision boxes)
 // of a block with Parts in context.
-func (info *StateInfo) partBoxes(nb func(Face) *StateInfo, collision bool) []Box {
+func (info *StateInfo) partBoxes(nb Nb, collision bool) []Box {
 	out := info.Boxes
 	if collision && info.Collision != nil {
 		out = info.Collision
 	}
 	out = append([]Box(nil), out...)
 	var done []string
+	var flags uint32
 	for i := range info.Parts {
 		p := &info.Parts[i]
-		if p.Group != "" && slicesContains(done, p.Group) || !p.holds(nb) {
+		if p.Group != "" && slicesContains(done, p.Group) || !holds(p.When, nb, flags) {
+			continue
+		}
+		if p.set != 0 {
+			flags |= p.set
 			continue
 		}
 		if p.Group != "" {
@@ -598,24 +617,36 @@ func slicesContains(s []string, v string) bool {
 	return false
 }
 
-func (p *Part) holds(nb func(Face) *StateInfo) bool { return holds(p.When, nb) }
-
 // FaceTex is the texture of cube face f with the neighbours nb: Tex[f]
 // unless a Retex entry holds.
-func (info *StateInfo) FaceTex(f Face, nb func(Face) *StateInfo) uint16 {
+func (info *StateInfo) FaceTex(f Face, nb Nb) uint16 {
 	for i := range info.Retex {
 		x := &info.Retex[i]
-		if x.Tex[f] != "" && holds(x.When, nb) {
+		if x.Tex[f] != "" && holds(x.When, nb, 0) {
 			return x.ids[f]
 		}
 	}
 	return info.Tex[f]
 }
 
-func holds(cs []Cond, nb func(Face) *StateInfo) bool {
+func holds(cs []Cond, nb Nb, flags uint32) bool {
 	for _, c := range cs {
-		o := nb(c.Face)
 		ok := false
+		if c.Flag {
+			for _, t := range c.Any {
+				if (flags>>t.id&1 != 0) != t.Not {
+					ok = true
+					break
+				}
+			}
+			if !ok {
+				return false
+			}
+			continue
+		}
+		d := c.Face.Off()
+		d[1] += int(c.Dy)
+		o := nb(d)
 		for _, t := range c.Any {
 			if o.hasTag(t.id) != t.Not {
 				ok = true
@@ -651,17 +682,15 @@ func (w *World) Boxes(area collide.AABB, out []collide.AABB) []collide.AABB {
 		info := w.Reg.Info(w.Block(x, y, z))
 		boxes := info.Collision
 		if len(info.Parts) > 0 {
-			boxes = info.partBoxes(func(f Face) *StateInfo {
-				n := f.Normal()
-				return w.Reg.Info(w.Block(x+n.X, y+n.Y, z+n.Z))
+			boxes = info.partBoxes(func(d [3]int) *StateInfo {
+				return w.Reg.Info(w.Block(x+d[0], y+d[1], z+d[2]))
 			}, true)
 		} else if boxes == nil {
 			if info.Shape != ShapeBoxes || !collidable(info.Name) {
 				return
 			}
-			nb := func(f Face) *StateInfo {
-				n := f.Normal()
-				return w.Reg.Info(w.Block(x+n.X, y+n.Y, z+n.Z))
+			nb := func(d [3]int) *StateInfo {
+				return w.Reg.Info(w.Block(x+d[0], y+d[1], z+d[2]))
 			}
 			boxes = Connected(info, nb)
 		}

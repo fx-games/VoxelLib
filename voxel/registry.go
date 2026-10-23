@@ -97,6 +97,9 @@ type BlockDef struct {
 	// models) by a position hash (RenderBlocks.renderCrossedSquares and
 	// friends).
 	PlantOffset PlantOffset
+	// Scatter, when set, adds LOTR's scattered fallen-leaf quads
+	// (ShapeBoxes).
+	Scatter *Scatter
 	// UVRandom marks faces (1<<Face) whose texture the mesher turns by a
 	// position-dependent uvRotate (Minecraft 1.7 RenderBlocks), as LOTR's
 	// randomly rotated natural blocks (see mesh.RenderBlocksSides).
@@ -114,13 +117,17 @@ type BlockDef struct {
 
 // Part is a group of elements drawn when every condition holds. A Replace
 // part replaces everything gathered before it; within a Group only the
-// first matching part counts.
+// first matching part counts. A part with Set adds nothing but raises that
+// block-local flag for the parts after it (Cond.Flag): several such parts
+// make an "any of" across different neighbours.
 type Part struct {
 	When      []Cond
 	Boxes     []Box
 	Collision []Box // nil: Boxes collide
 	Replace   bool
 	Group     string
+	Set       string
+	set       uint32
 }
 
 // Retex is one neighbour-dependent set of face textures (see
@@ -131,9 +138,16 @@ type Retex struct {
 	ids  [6]uint16
 }
 
-// Cond holds when the neighbour on Face passes any of the tests.
+// Cond holds when the neighbour on Face (Dy blocks higher or lower: a
+// diagonal neighbour, e.g. redstone wire climbing a block) passes any of
+// the tests.
+//
+// With Flag, the tests name flags raised by earlier parts (Part.Set)
+// instead of neighbour tags, and Face/Dy are unused.
 type Cond struct {
 	Face Face
+	Dy   int8
+	Flag bool
 	Any  []TagTest
 }
 
@@ -183,6 +197,7 @@ type StateInfo struct {
 	Retex          []Retex
 	NeighbourLight bool
 	PlantOffset    PlantOffset
+	Scatter        *Scatter
 	UVRandom       uint8
 	UVSeed         *[6]uint8
 	UVRotate       [6]uint8
@@ -341,11 +356,15 @@ func (r *Registry) State(name string, props map[string]string) StateID {
 }
 
 // conds copies cs with their tags interned.
-func (r *Registry) conds(cs []Cond) []Cond {
+func (r *Registry) conds(cs []Cond, flags map[string]uint16) []Cond {
 	cs = append([]Cond(nil), cs...)
 	for j, c := range cs {
 		c.Any = append([]TagTest(nil), c.Any...)
 		for k := range c.Any {
+			if c.Flag {
+				c.Any[k].id = flagBit(flags, c.Any[k].Tag)
+				continue
+			}
 			c.Any[k].id = r.tagID(c.Any[k].Tag)
 		}
 		cs[j] = c
@@ -360,7 +379,7 @@ func (r *Registry) bake(def *BlockDef, canon string, props map[string]string) St
 		Opaque: def.Opaque, Collides: def.Collides, Emission: def.LightEmission,
 		Opacity: def.LightOpacity, CullSelf: def.CullSelf, Connects: def.Connects,
 		Collision: def.Collision, TintColor: def.TintColor, Level: def.Level,
-		NeighbourLight: def.NeighbourLight, PlantOffset: def.PlantOffset, UVRandom: def.UVRandom, UVSeed: def.UVSeed, UVRotate: def.UVRotate,
+		NeighbourLight: def.NeighbourLight, PlantOffset: def.PlantOffset, Scatter: def.Scatter, UVRandom: def.UVRandom, UVSeed: def.UVSeed, UVRotate: def.UVRotate,
 	}
 	for _, t := range def.Tags {
 		info.Tags = append(info.Tags, r.tagID(t))
@@ -370,8 +389,12 @@ func (r *Registry) bake(def *BlockDef, canon string, props map[string]string) St
 	}
 	if len(def.Parts) > 0 {
 		info.Parts = make([]Part, len(def.Parts))
+		flags := map[string]uint16{}
 		for i, p := range def.Parts {
-			p.When = r.conds(p.When)
+			p.When = r.conds(p.When, flags)
+			if p.Set != "" {
+				p.set = 1 << flagBit(flags, p.Set)
+			}
 			p.Boxes = append([]Box(nil), p.Boxes...)
 			for j := range p.Boxes {
 				for f, t := range p.Boxes[j].Tex {
@@ -384,7 +407,7 @@ func (r *Registry) bake(def *BlockDef, canon string, props map[string]string) St
 		}
 	}
 	for _, x := range def.Retex {
-		x.When = r.conds(x.When)
+		x.When = r.conds(x.When, map[string]uint16{})
 		for f, t := range x.Tex {
 			if t != "" {
 				x.ids[f] = r.texture(t)
@@ -494,6 +517,16 @@ func (r *Registry) tagID(t string) uint16 {
 	return i
 }
 
+// flagBit numbers a block-local part flag (at most 32 per block).
+func flagBit(flags map[string]uint16, name string) uint16 {
+	b, ok := flags[name]
+	if !ok {
+		b = uint16(len(flags) % 32)
+		flags[name] = b
+	}
+	return b
+}
+
 // texture interns a texture name; caller holds mu (or is the constructor).
 func (r *Registry) texture(name string) uint16 {
 	if name == "" {
@@ -579,6 +612,18 @@ func canonicalProps(props map[string]string) string {
 	return b.String()
 }
 
+// Scatter draws a block as LOTR's LOTRRenderBlocks.renderFallenLeaves:
+// Leaves (a random count in [0]..[1]) single-sided, up-facing quads of the
+// block's up texture, each XSize x ZSize texels (random in their ranges)
+// cut from a random spot of the icon, at a random place and turn, from a
+// java.util.Random seeded by the block position; Shade scales the colour.
+type Scatter struct {
+	Leaves [2]int32 `json:"leaves"`
+	XSize  [2]int32 `json:"xsize"`
+	ZSize  [2]int32 `json:"zsize"`
+	Shade  float32  `json:"shade"`
+}
+
 // PlantOffset is how Minecraft 1.7 moves a plant off its block's centre.
 type PlantOffset uint8
 
@@ -587,4 +632,5 @@ const (
 	OffsetGrass              // tall grass: x, z by ±0.25, y by -0.2..0
 	OffsetFlower             // flowers: x, z by ±0.15
 	OffsetDouble             // double plants: x, z by ±0.15, the same for both halves
+	OffsetClover             // LOTR clovers: x, z by ±0.25 (the grass hash), y kept
 )

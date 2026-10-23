@@ -259,6 +259,9 @@ type element struct {
 		Rescale bool
 	} `json:"rotation"`
 	Faces map[string]modelFace `json:"faces"`
+	// PlantTurn: voxel.Box.PlantTurn (an extension, ignored by Minecraft).
+	PlantTurn bool  `json:"plant_turn"`
+	Shade     *bool `json:"shade"`
 }
 
 type model struct {
@@ -553,6 +556,8 @@ func (p *Pack) ModelBoxes(id string, vars map[string]string) ([]voxel.Box, error
 				b.Rot = []voxel.Rot{{Axis: axis, Deg: r.Angle, Origin: r.Origin, Rescale: r.Rescale}}
 			}
 		}
+		b.PlantTurn = e.PlantTurn
+		b.NoShade = e.Shade != nil && !*e.Shade
 		out = append(out, b)
 	}
 	return out, nil

@@ -77,7 +77,7 @@ func (c *ConnectInfo) Joins(d [3]int, o *StateInfo) bool {
 }
 
 // Tex is the texture of face f with the neighbours nb (by offset).
-func (c *ConnectInfo) Tex(f Face, nb func(d [3]int) *StateInfo) uint16 {
+func (c *ConnectInfo) Tex(f Face, nb Nb) uint16 {
 	var m uint8
 	for k, d := range ConnectOffsets[f] {
 		if c.Joins(d, nb(d)) {

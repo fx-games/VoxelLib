@@ -1,6 +1,7 @@
 package mesh
 
 import (
+	"math"
 	"testing"
 	"time"
 
@@ -107,12 +108,26 @@ func TestPlantOffset(t *testing.T) {
 		{voxel.OffsetGrass, 0, 64, 0, [3]int{-23, -12, 15}},
 		{voxel.OffsetGrass, -123, 70, 4567, [3]int{19, -9, -19}},
 		{voxel.OffsetFlower, 1000, 3, -77, [3]int{-12, 0, 17}},
+		{voxel.OffsetClover, 0, 64, 0, [3]int{-23, 0, 15}}, // the grass hash, y kept
 		{voxel.OffsetDouble, 5, 9, -6, [3]int{-1, 0, -12}},
 		{voxel.OffsetDouble, 5, 10, -6, [3]int{-1, 0, -12}},
 		{voxel.OffsetNone, 5, 10, -6, [3]int{}},
 	} {
 		if got := plantOffset(c.o, c.x, c.y, c.z); got != c.want {
 			t.Errorf("%d at %d,%d,%d: %v, want %v", c.o, c.x, c.y, c.z, got, c.want)
+		}
+	}
+}
+
+// TestPlantTurn: the sunflower head turn (renderBlockDoublePlant), values
+// from a Python transcription of the Java long/double arithmetic.
+func TestPlantTurn(t *testing.T) {
+	for _, c := range []struct {
+		x, z int
+		want float64
+	}{{0, 0, -18}, {5, -6, 13.179454553040834}} {
+		if got := plantTurn(c.x, c.z); math.Abs(float64(got)-c.want) > 1e-3 {
+			t.Errorf("%d,%d: %v, want %v", c.x, c.z, got, c.want)
 		}
 	}
 }
@@ -203,5 +218,45 @@ func TestBoxSmoothLight(t *testing.T) {
 				t.Errorf("flat %v: corner %v ao %d", flat, pos32(v), ao)
 			}
 		}
+	}
+}
+
+// A NoShade box ("shade": false) is drawn with the unshaded normal entry.
+func TestBoxNoShade(t *testing.T) {
+	for _, no := range []bool{false, true} {
+		reg := voxel.NewRegistry()
+		reg.Register(&voxel.BlockDef{Name: "test:pane", Shape: voxel.ShapeBoxes, Layer: voxel.LayerSolid,
+			Textures: [6]string{"a", "a", "a", "a", "a", "a"}, Boxes: []voxel.Box{{Min: [3]float32{0, 0, 8}, Max: [3]float32{16, 16, 8}, NoShade: no}}})
+		m := NewMesher()
+		i := idx(4, 4, 4)
+		m.Snap.States[i] = reg.State("test:pane", nil)
+		m.table = reg.Table()
+		m.boxes(4, 4, 4, i, &m.table[m.Snap.States[i]])
+		d := m.out[voxel.LayerSolid][voxel.FaceNorth]
+		if len(d) == 0 {
+			t.Fatal("no north face")
+		}
+		want := uint32(voxel.FaceNorth)
+		if no {
+			want = 6
+		}
+		if n := d[1] >> 22 & 7; n != want {
+			t.Errorf("NoShade %v: normal %d, want %d", no, n, want)
+		}
+	}
+}
+
+// TestScatterBoxes: the first fallen leaf at 10,64,-3 (LOTR's
+// renderFallenLeaves), from a Python transcription of java.util.Random.
+func TestScatterBoxes(t *testing.T) {
+	bs := scatterBoxes(&voxel.Scatter{Leaves: [2]int32{6, 10}, XSize: [2]int32{2, 6}, ZSize: [2]int32{2, 6}}, 10, 64, -3)
+	if len(bs) != 7 {
+		t.Fatalf("%d leaves, want 7", len(bs))
+	}
+	b := bs[0]
+	near := func(a, b float32) bool { return math.Abs(float64(a-b)) < 1e-3 }
+	if !near(b.Min[0], 4.224-2) || !near(b.Max[2], 3.6934+2) || !near(b.Min[1], 0.16) ||
+		b.UV[voxel.FaceUp] != [4]float32{10, 12, 14, 16} || !near(b.Rot[0].Deg, 266.4302) {
+		t.Errorf("first leaf: %+v %v %+v", b, b.UV[voxel.FaceUp], b.Rot)
 	}
 }

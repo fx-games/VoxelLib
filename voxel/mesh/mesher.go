@@ -5,6 +5,7 @@ import (
 	"sort"
 
 	"github.com/memmaker/voxellib/voxel"
+	"github.com/memmaker/voxellib/voxel/javarand"
 )
 
 // Region layout shared with the renderer: sections are grouped into regions of
@@ -374,7 +375,7 @@ func (m *Mesher) cubes() {
 					cl := m.light(p[0], p[1], p[2], f)
 					tex := info.Tex[f]
 					if info.Retex != nil {
-						tex = info.FaceTex(f, func(g voxel.Face) *voxel.StateInfo { return &t[st[i+nbOff[g]]] })
+						tex = info.FaceTex(f, m.nb(i))
 					}
 					if info.Connect != nil { // a differing icon is a differing key: no merge across it
 						tex = m.connectTex(info, i, f)
@@ -582,17 +583,27 @@ const projectedUV = 1 << 25
 // Cull, when it lies on the block boundary facing that neighbour.
 func (m *Mesher) boxes(x, y, z, i int, info *voxel.StateInfo) {
 	t, st, li := m.table, &m.Snap.States, &m.Snap.Light
-	bs := voxel.Connected(info, func(f voxel.Face) *voxel.StateInfo { return &t[st[i+nbOff[f]]] })
+	bs := voxel.Connected(info, m.nb(i))
+	if info.Scatter != nil {
+		sp := m.Snap.Pos
+		bs = append(bs[:len(bs):len(bs)], scatterBoxes(info.Scatter, sp.X*16+x, sp.Y*16+y, sp.Z*16+z)...)
+	}
 	base := [3]float32{float32(x * 16), float32(y * 16), float32(z * 16)}
+	turn := float32(0)                        // a sunflower head's turn (PlantTurn boxes)
 	if info.PlantOffset != voxel.OffsetNone { // a plant model (cross with overlay, a double plant's top)
 		sp := m.Snap.Pos
-		off := plantOffset(info.PlantOffset, sp.X*16+x, sp.Y*16+y, sp.Z*16+z)
+		wx, wy, wz := sp.X*16+x, sp.Y*16+y, sp.Z*16+z
+		off := plantOffset(info.PlantOffset, wx, wy, wz)
 		for a := range 3 {
 			base[a] += float32(off[a]) / 8
 		}
+		turn = plantTurn(wx, wz)
 	}
 	smooth := info.Emission == 0 // RenderBlocks: AO only for blocks giving no light
 	for _, b := range bs {
+		if b.PlantTurn {
+			b.Rot = append(append([]voxel.Rot(nil), b.Rot...), voxel.Rot{Axis: 1, Deg: turn, Origin: [3]float32{8, 8, 8}})
+		}
 		for f := voxel.Face(0); f < voxel.FaceCount; f++ {
 			if b.Skip&(1<<f) != 0 {
 				continue
@@ -636,6 +647,9 @@ func (m *Mesher) boxes(x, y, z, i int, info *voxel.StateInfo) {
 			if b.NoTint&(1<<f) == 0 {
 				tint = m.tint(info, f, tex, x, y, z) // the face's own texture decides whether it is greyscale
 			}
+			if info.Scatter != nil && info.Scatter.Shade != 0 {
+				tint = scaleTint(tint, info.Scatter.Shade)
+			}
 			m.boxFace(f, base, &b, tex, tint, info.Layer, &cl, m.uvRotate(info, [3]int{x, y, z}, f), info.UVRandom&(1<<f) != 0 || info.UVRotate[f] != 0)
 		}
 	}
@@ -644,8 +658,13 @@ func (m *Mesher) boxes(x, y, z, i int, info *voxel.StateInfo) {
 // connectTex is face f's connected texture (voxel.Connect) of the block
 // at snapshot index i.
 func (m *Mesher) connectTex(info *voxel.StateInfo, i int, f voxel.Face) uint16 {
+	return info.Connect.Tex(f, m.nb(i))
+}
+
+// nb reads the neighbours of snapshot index i (offsets up to 1 per axis).
+func (m *Mesher) nb(i int) voxel.Nb {
 	t, st := m.table, &m.Snap.States
-	return info.Connect.Tex(f, func(d [3]int) *voxel.StateInfo { return &t[st[i+d[0]+d[2]*18+d[1]*18*18]] })
+	return func(d [3]int) *voxel.StateInfo { return &t[st[i+d[0]+d[2]*18+d[1]*18*18]] }
 }
 
 // aoShade is the brightness of each cornerLight.ao level (shaders_gpu.go).
@@ -749,12 +768,15 @@ func (m *Mesher) boxFace(f voxel.Face, base [3]float32, b *voxel.Box, tex uint16
 		uv = rbUV(f, b.Min, b.Max, rot)
 	}
 	group, normal := int(f), uint32(f)
+	if b.NoShade {
+		normal = 6 // the shader's unshaded entry
+	}
 	if len(b.Rot) > 0 {
 		for k := range q {
 			q[k] = voxel.RotatePoint(q[k], b.Rot)
 		}
 		group, normal = GroupUnassigned, 6
-		if n := voxel.RotateFace(f, b.Rot); n < voxel.FaceCount {
+		if n := voxel.RotateFace(f, b.Rot); n < voxel.FaceCount && !b.NoShade {
 			normal = uint32(n)
 		}
 	}
@@ -883,20 +905,78 @@ func plantOffset(o voxel.PlantOffset, x, y, z int) (off [3]int) {
 	if o == voxel.OffsetNone {
 		return
 	}
-	s := int64(int32(x)*3129871) ^ int64(z)*116129781
-	if o != voxel.OffsetDouble {
-		s ^= int64(y)
+	if o == voxel.OffsetDouble {
+		y = 0
 	}
-	s = s*s*42317861 + s*11
+	s := plantHash(x, y, z)
 	n := func(sh uint) float64 { return float64(float32(s>>sh&15) / 15) }
 	q := func(d float64) int { return int(math.Floor(d*128 + 0.5)) }
 	k := 0.3
-	if o == voxel.OffsetGrass {
+	switch o {
+	case voxel.OffsetGrass:
 		k = 0.5
 		off[1] = q((n(20) - 1) * 0.2)
+	case voxel.OffsetClover:
+		k = 0.5
 	}
 	off[0], off[2] = q((n(16)-0.5)*k), q((n(24)-0.5)*k)
 	return
+}
+
+// scatterBoxes are the leaf quads of LOTRRenderBlocks.renderFallenLeaves
+// for the block at world x, y, z, as flat unshaded up faces (1/16 units,
+// block-local).
+func scatterBoxes(s *voxel.Scatter, x, y, z int) []voxel.Box {
+	seed := int64(x)*237690503 ^ int64(z)*2689286 ^ int64(y)
+	seed = seed*seed*1732965593 + seed*673
+	var r javarand.Random
+	r.SetSeed(seed)
+	in := func(r0 [2]int32) int32 { // MathHelper.getRandomIntegerInRange
+		if r0[0] >= r0[1] {
+			return r0[0]
+		}
+		return r.NextInt(r0[1]-r0[0]+1) + r0[0]
+	}
+	n := in(s.Leaves)
+	bs := make([]voxel.Box, 0, n)
+	for l := range n {
+		px, pz := r.NextFloat()*16, r.NextFloat()*16
+		py := (0.01 + float32(l)/float32(n)*0.1) * 16
+		turn := r.NextFloat() * math.Pi * 2
+		xs, zs := in(s.XSize), in(s.ZSize)
+		u, v := in([2]int32{0, 16 - xs}), in([2]int32{0, 16 - zs})
+		hx, hz := float32(xs)/2, float32(zs)/2
+		uv := [6][4]float32{voxel.FaceUp: {float32(u), float32(v), float32(u + xs), float32(v + zs)}}
+		bs = append(bs, voxel.Box{
+			Min: [3]float32{px - hx, py, pz - hz}, Max: [3]float32{px + hx, py, pz + hz},
+			UV: &uv, Skip: 0x3f &^ (1 << voxel.FaceUp), Flat: true, NoShade: true,
+			// Vec3.rotateAroundY(turn) is the engine's y rotation by +turn
+			Rot: []voxel.Rot{{Axis: 1, Deg: turn * 180 / math.Pi, Origin: [3]float32{px, py, pz}}},
+		})
+	}
+	return bs
+}
+
+// scaleTint multiplies a tint's colour (not its top byte) by k.
+func scaleTint(t uint32, k float32) uint32 {
+	c := t & 0xff000000
+	for sh := uint(0); sh < 24; sh += 8 {
+		c |= uint32(float32(t>>sh&0xff)*k) << sh
+	}
+	return c
+}
+
+// plantHash is 1.7's plant position hash (y = 0 leaves it out).
+func plantHash(x, y, z int) int64 {
+	s := int64(int32(x)*3129871) ^ int64(z)*116129781 ^ int64(y)
+	return s*s*42317861 + s*11
+}
+
+// plantTurn is the engine y rotation (degrees) of a sunflower head at
+// world x, z: renderBlockDoublePlant turns it by cos(hash*0.8)*0.1*pi from
+// x toward z, the opposite sense of voxel.RotatePoint.
+func plantTurn(x, z int) float32 {
+	return float32(-math.Cos(float64(plantHash(x, 0, z))*0.8) * 0.1 * 180)
 }
 
 // SortTranslucent returns the translucent vertices ordered back to front for

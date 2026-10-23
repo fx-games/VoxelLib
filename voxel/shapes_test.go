@@ -22,34 +22,34 @@ func TestShapeBoxes(t *testing.T) {
 	// a north-facing stair in front of an east-facing one makes an outer corner
 	north := r.Info(r.State("oak_stairs", map[string]string{"facing": "north", "half": "bottom"}))
 	air := r.Info(Air)
-	got := Connected(stairs, func(f Face) *StateInfo {
+	got := Connected(stairs, faces(func(f Face) *StateInfo {
 		if f == FaceEast {
 			return north
 		}
 		return air
-	})
+	}))
 	if len(got) != 2 || !same(got[1], bx(8, 8, 0, 16, 16, 8)) {
 		t.Fatalf("outer corner = %v", got)
 	}
 	fence := r.Info(r.Default("oak_fence"))
 	stone := r.Info(r.Default("stone"))
-	got = Connected(fence, func(f Face) *StateInfo {
+	got = Connected(fence, faces(func(f Face) *StateInfo {
 		if f == FaceNorth {
 			return stone
 		}
 		return air
-	})
+	}))
 	if len(got) != 3 || got[1].Min[2] != 0 {
 		t.Fatalf("fence arms = %v", got)
 	}
 	// two south-facing chests side by side become the halves of a double chest
 	chest := r.Info(r.State("chest", map[string]string{"facing": "south"}))
-	got = Connected(chest, func(f Face) *StateInfo {
+	got = Connected(chest, faces(func(f Face) *StateInfo {
 		if f == FaceWest {
 			return chest
 		}
 		return air
-	})
+	}))
 	if !same(got[0], bx(0, 0, 1, 15, 10, 15)) {
 		t.Fatalf("left chest half = %v", got[0])
 	}
