@@ -166,3 +166,90 @@ func TestNoSprint(t *testing.T) {
 		t.Fatalf("sprint before blindness: sprinting %v at %.3f b/s, want 5.612", c.Sprinting, s)
 	}
 }
+
+type ladderWorld struct{ grid }
+
+func (ladderWorld) Climbable(x, y, z int) bool { return x == 0 && z == 0 && y >= 0 && y < 10 }
+
+// ladder at x=z=0 against a wall at x=1.
+func ladder() ladderWorld {
+	return ladderWorld{grid{solid: func(x, y, z int) bool { return y < 0 || x == 1 && z == 0 && y >= 0 }}}
+}
+
+func TestLadderClimbUp(t *testing.T) {
+	c := New(0.5, 2, 0.5)
+	run(c, ladder(), Input{Forward: 1, Yaw: math.Pi / 2}, 30) // yaw 90deg walks +X into the wall
+	if c.Y < 4 || c.VY <= 0 {
+		t.Fatalf("y=%.2f vy=%.2f, want climbing", c.Y, c.VY)
+	}
+}
+
+func TestLadderSlowFall(t *testing.T) {
+	c := New(0.5, 9, 0.5)
+	for i := 0; i < 30; i++ {
+		y := c.Y
+		c.Tick(ladder(), Input{})
+		if y-c.Y > 0.15+1e-9 {
+			t.Fatalf("fell %.3f in one tick, want at most 0.15", y-c.Y)
+		}
+	}
+	if c.Y > 5 {
+		t.Fatalf("y=%.2f, did not fall", c.Y)
+	}
+}
+
+func TestLadderSneakHolds(t *testing.T) {
+	c := New(0.5, 5, 0.5)
+	run(c, ladder(), Input{Sneak: true}, 30)
+	if math.Abs(c.Y-5) > 0.01 {
+		t.Fatalf("y=%.3f, want held at 5", c.Y)
+	}
+}
+
+func TestQuakeStrafeJumpGainsSpeed(t *testing.T) {
+	c := New(0.5, 0, 0.5)
+	c.Model = MoveQuake
+	w := grid{}
+	run(c, w, Input{}, 5)
+	run(c, w, Input{Forward: 1}, 40)
+	start := speed(c) * 20
+	if math.Abs(start-pmSpeed) > 0.1 {
+		t.Fatalf("ground speed %.2f, want %.2f", start, pmSpeed)
+	}
+	// Airborne, look 45 degrees off the travel direction and strafe.
+	c.Tick(w, Input{Forward: 1, Jump: true})
+	for i := 0; i < 8; i++ {
+		c.Tick(w, Input{Forward: 1, Strafe: 1, Yaw: 0.9})
+	}
+	if c.OnGround {
+		t.Fatal("expected to be airborne")
+	}
+	if s := math.Hypot(c.VX, c.VZ) * 20; s <= start {
+		t.Fatalf("air speed %.2f, want more than %.2f", s, start)
+	}
+}
+
+func TestQuakeJumpNeedsRelease(t *testing.T) {
+	c := New(0.5, 0, 0.5)
+	c.Model = MoveQuake
+	run(c, grid{}, Input{}, 5)
+	c.Tick(grid{}, Input{Jump: true})
+	if math.Abs(c.VY*20-(pmJumpVelocity-q3Gravity*0.05)) > 0.01 {
+		t.Fatalf("jump vy %.3f", c.VY*20)
+	}
+	run(c, grid{}, Input{Jump: true}, 60) // held: lands, does not rejump
+	if !c.OnGround || c.VY != 0 && c.Y > 0.01 {
+		t.Fatalf("held jump key rejumped: y=%.2f", c.Y)
+	}
+}
+
+func TestQuakeFriction(t *testing.T) {
+	vx, vz := pmoveSingle(pmSpeed, 0, 0, 0, true, false, 1)
+	if vx != 0 || vz != 0 {
+		t.Fatal("friction should stop the player")
+	}
+	vx, _ = pmoveSingle(pmSpeed, 0, 0, 0, false, false, 1)
+	if vx != pmSpeed {
+		t.Fatal("no friction in the air")
+	}
+}

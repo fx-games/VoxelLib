@@ -31,6 +31,11 @@ type Graph struct {
 	// Cost, if set, adds a cost (10 = one straight step) for entering p,
 	// e.g. for cells other walkers stand in.
 	Cost func(p Pos) int
+	// Links, if set, appends extra cells reachable from p beyond the
+	// walking steps (ladders: bottom to top and back). They are not
+	// checked against Passable. A link costs the normal step plus 10 per
+	// block of height difference.
+	Links func(p Pos, buf []Pos) []Pos
 	// Size is the walker's footprint width and height in cells; 0 = 1 and 2.
 	// The reference's PathFinder: floor(width+1) x floor(height+1), cells from
 	// the Pos corner toward +x and +z (SizeOf).
@@ -188,6 +193,12 @@ func (g *Graph) Walkable(p Pos) bool {
 
 // Neighbors appends the cells reachable from p in one step to buf[:0].
 func (g *Graph) Neighbors(p Pos, buf []Pos) []Pos {
+	buf, _ = g.neighbors(p, buf)
+	return buf
+}
+
+// neighbors is Neighbors; the cells from index walk on came from Links.
+func (g *Graph) neighbors(p Pos, buf []Pos) (all []Pos, walk int) {
 	buf = buf[:0]
 	md := g.maxDrop()
 	_, ht := g.size()
@@ -246,7 +257,11 @@ func (g *Graph) Neighbors(p Pos, buf []Pos) []Pos {
 			}
 		}
 	}
-	return buf
+	walk = len(buf)
+	if g.Links != nil {
+		buf = g.Links(p, buf)
+	}
+	return buf, walk
 }
 
 // Ground finds the nearest walkable feet cell at or below (x,y,z), searching
@@ -364,12 +379,13 @@ func (g *Graph) Step(budget int) (path []Pos, done bool) {
 			g.best = cur
 		}
 		cur.closed = true
-		for _, np := range g.Neighbors(cur.pos, buf[:0]) {
+		ns, walk := g.neighbors(cur.pos, buf[:0])
+		for i, np := range ns {
 			n := g.get(np)
 			if n.closed {
 				continue
 			}
-			if ng := cur.g + g.stepCost(cur.pos, np); ng < n.g {
+			if ng := cur.g + g.stepCost(cur.pos, np) + g.linkCost(i >= walk, cur.pos, np); ng < n.g {
 				n.g, n.f, n.parent = ng, ng+h(np, to), cur
 				if n.idx >= 0 {
 					heap.Fix(&g.open, n.idx)
@@ -403,6 +419,14 @@ func (g *Graph) stepCost(a, b Pos) int {
 	return c
 }
 
+// linkCost is the extra cost of a link step: 10 per block of height.
+func (g *Graph) linkCost(link bool, a, b Pos) int {
+	if !link {
+		return 0
+	}
+	return 10 * abs(b.Y-a.Y)
+}
+
 // Reach floods from "from" with the step costs of Path and returns every
 // cell reachable within maxCost: its cost and the cell it is entered from
 // (from itself has none). Trace a path back through prev. It does not
@@ -416,8 +440,9 @@ func (g *Graph) Reach(from Pos, maxCost int) (cost map[Pos]int, prev map[Pos]Pos
 		if cur.c > cost[cur.p] {
 			continue // stale entry
 		}
-		for _, np := range g.Neighbors(cur.p, buf[:0]) {
-			c := cur.c + g.stepCost(cur.p, np)
+		ns, walk := g.neighbors(cur.p, buf[:0])
+		for i, np := range ns {
+			c := cur.c + g.stepCost(cur.p, np) + g.linkCost(i >= walk, cur.p, np)
 			if old, seen := cost[np]; c > maxCost || seen && c >= old {
 				continue
 			}

@@ -306,3 +306,36 @@ func TestReach(t *testing.T) {
 		n++
 	}
 }
+
+// A ledge three blocks up that only a link (a ladder) reaches, both ways.
+func TestLinks(t *testing.T) {
+	m := floor()
+	for y := 1; y <= 3; y++ { // a tower with its top at y=3, feet on it at y=4
+		m[Pos{5, y, 5}] = true
+	}
+	from, top := Pos{5, 1, 4}, Pos{5, 4, 5}
+	g := &Graph{W: m}
+	if _, ok := g.Path(from, top, 0); ok {
+		t.Fatal("ledge reachable without link")
+	}
+	g.Links = func(p Pos, buf []Pos) []Pos {
+		switch p {
+		case from:
+			return append(buf, top)
+		case top:
+			return append(buf, from)
+		}
+		return buf
+	}
+	path, ok := g.Path(from, top, 0)
+	if !ok || len(path) != 2 {
+		t.Fatalf("path %v ok=%v, want the one link step", path, ok)
+	}
+	cost, _ := g.Reach(from, 100)
+	if cost[top] != 15+30 {
+		t.Fatalf("Reach cost of ledge %d, want 45", cost[top])
+	}
+	if _, ok := g.Path(top, from, 0); !ok {
+		t.Fatal("no way back down")
+	}
+}

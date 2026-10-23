@@ -34,6 +34,18 @@ type World interface {
 	Liquid(x, y, z int) Liquid
 }
 
+// Climber is optionally implemented by a World to mark climbable blocks
+// (ladders, vines). Worlds without it have none.
+type Climber interface{ Climbable(x, y, z int) bool }
+
+// MoveModel selects how the character accelerates on foot.
+type MoveModel uint8
+
+const (
+	MoveVanilla MoveModel = iota // the reference's (default)
+	MoveQuake                    // Quake 3 bg_pmove: friction, weak air control, strafe-jumping
+)
+
 // Input is one tick of player intent.
 type Input struct {
 	Forward, Strafe float64 // -1..1; +Forward walks along Yaw, +Strafe to the right
@@ -55,6 +67,9 @@ type Character struct {
 
 	Width, Height, EyeHeight float64
 
+	// Model picks the on-foot movement model; the zero value is the reference's.
+	Model MoveModel
+
 	Flying bool // creative flight
 	NoClip bool // fly through blocks (debug); implies Flying
 
@@ -73,6 +88,9 @@ type Character struct {
 	EyeIn               Liquid // liquid at eye height (for underwater fog)
 	Swimming            bool   // sprint-swimming underwater
 	Sprinting           bool   // sprinting this tick (Input.Sprint walking forward, no item in use)
+	OnLadder            bool   // in a Climber block this tick
+
+	jumpHeld bool // Quake model: jump key was down last tick
 }
 
 // Player dimensions, as the reference's.
@@ -128,7 +146,9 @@ const (
 	flyAccel     = 0.05
 	jumpVelocity = 0.42
 	liquidAccel  = 0.02
-	stepHeight   = 0.5 // EntityLivingBase.stepHeight
+	ladderSpeed  = 0.15 // fall and sideways clamp on a climbable block
+	ladderClimb  = 0.2  // upward speed when pushing into a wall on one
+	stepHeight   = 0.5  // EntityLivingBase.stepHeight
 )
 
 // Tick advances one 50 ms step.
@@ -235,6 +255,22 @@ func (c *Character) Tick(w World, in Input) {
 		c.climbOut(w, y0)
 
 	default:
+		c.OnLadder = false
+		if cl, ok := w.(Climber); ok {
+			c.OnLadder = cl.Climbable(int(math.Floor(c.X)), int(math.Floor(c.Y)), int(math.Floor(c.Z)))
+		}
+		if c.OnLadder { // EntityLivingBase: clamp to 0.15, sneaking holds on
+			c.VX = math.Max(-ladderSpeed, math.Min(ladderSpeed, c.VX))
+			c.VZ = math.Max(-ladderSpeed, math.Min(ladderSpeed, c.VZ))
+			c.VY = math.Max(c.VY, -ladderSpeed)
+			if in.Sneak && c.VY < 0 {
+				c.VY = 0
+			}
+		}
+		if c.Model == MoveQuake {
+			c.quakeTick(w, in)
+			return
+		}
 		a, drag := airAccel, airFriction
 		if sprint {
 			a = sprintAirAcc
@@ -260,6 +296,9 @@ func (c *Character) Tick(w World, in Input) {
 			}
 		}
 		c.move(w, in)
+		if c.OnLadder && c.HorizontalCollision {
+			c.VY = ladderClimb
+		}
 		c.VY = (c.VY - gravity) * airDrag
 		c.VX *= drag
 		c.VZ *= drag
