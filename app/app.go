@@ -118,9 +118,10 @@ type Hooks struct {
 	// BlockHit runs every tick the player digs at a block, cooldown
 	// included (Minecraft.sendClickBlockToController: the hit particles).
 	BlockHit func(hit physics.Hit)
-	// BreakTicks is how many ticks of holding attack break a block
-	// (0 = at once, <0 = unbreakable). nil: everything breaks at once.
-	BreakTicks func(state voxel.StateID) int
+	// BreakStrength is the progress one tick of holding attack adds; the
+	// block breaks at 1 (Block.getPlayerRelativeBlockHardness: +Inf at
+	// once, 0 unbreakable). nil: everything breaks at once.
+	BreakStrength func(state voxel.StateID) float32
 	// BlockBroken runs after the player broke a block (now air), e.g. to
 	// drop items. A plant standing on it pops too, with its own call.
 	BlockBroken func(pos voxel.BlockPos, state voxel.StateID)

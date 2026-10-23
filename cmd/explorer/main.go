@@ -183,7 +183,7 @@ func main() {
 		Render:        g.render,
 		Draw:          g.draw,
 		BlockInteract: g.blockInteract,
-		BreakTicks:    g.breakTicks,
+		BreakStrength: g.breakStrength,
 		HeldBlock:     func() voxel.StateID { return g.hotbar[min(a.Player.Selected, len(g.hotbar)-1)] },
 		Status:        g.status,
 	}
@@ -281,11 +281,11 @@ func (g *game) Draw(fbW, fbH int) {
 // blockInteract opens and closes doors (left or right click).
 func (g *game) blockInteract(h physics.Hit, _ app.Action) bool { return g.toggleDoor(h.Block) }
 
-func (g *game) breakTicks(s voxel.StateID) int {
+func (g *game) breakStrength(s voxel.StateID) float32 {
 	if g.Eng.World.Reg.Info(s).Name == "minecraft:bedrock" {
-		return -1
+		return 0
 	}
-	return 0
+	return float32(math.Inf(1))
 }
 
 func (g *game) status() string {

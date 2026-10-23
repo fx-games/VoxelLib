@@ -64,13 +64,14 @@ type Player struct {
 	// Frozen: the chunk under the player isn't ready; the player waits.
 	Frozen bool
 	// Breaking is the block being broken and its progress 0..1 (for a
-	// crack overlay); Progress 0 = none.
+	// crack overlay, see BreakStage); Progress 0 = none.
 	Breaking voxel.BlockPos
 	Progress float64
 
 	findGround, spawnKnown bool
 	clicks                 [2]bool // attack/use pressed since the last tick
 	breakTicks, breakCD    int
+	damage                 float32 // PlayerControllerMP.curBlockDamageMP
 	placeCD                int
 	swing                  int
 	walkDist, prevWalk     float64 // distanceWalkedModified
@@ -241,31 +242,32 @@ func (p *Player) breakStep(hit physics.Hit) {
 		p.breakCD--
 		return
 	}
-	need := 0
-	if a.Hooks.BreakTicks != nil {
-		need = a.Hooks.BreakTicks(hit.State)
+	str := float32(math.Inf(1))
+	if a.Hooks.BreakStrength != nil {
+		str = a.Hooks.BreakStrength(hit.State)
 	}
-	if need < 0 {
+	if str <= 0 {
 		p.Progress = 0
 		return
 	}
-	if hit.Block != p.Breaking || p.Progress == 0 {
-		p.Breaking, p.breakTicks = hit.Block, 0
+	if hit.Block != p.Breaking || p.breakTicks == 0 {
+		p.Breaking, p.breakTicks, p.damage = hit.Block, 0, 0
 	}
 	p.breakTicks++
+	p.damage += str // curBlockDamageMP
 	if p.swing == 0 {
 		p.Swing() // swing on while breaking
 	}
-	if p.breakTicks < need {
-		p.Progress = float64(p.breakTicks) / float64(need)
+	if p.damage < 1 {
+		p.Progress = float64(p.damage)
 		if p.breakTicks%4 == 1 {
 			p.sound("block.hit", hit.Block, hit.State)
 		}
 		return
 	}
-	p.Progress, p.breakTicks = 0, 0
+	p.Progress, p.breakTicks, p.damage = 0, 0, 0
 	p.breakCD = 5 // Minecraft's delay before the next block
-	if need == 0 {
+	if math.IsInf(float64(str), 1) {
 		p.breakCD = 4 // instant breaking repeats every 5 ticks
 	}
 	p.BreakBlock(hit.Block)
@@ -454,4 +456,13 @@ func (a *App) applyEdits() {
 		a.Eng.SetBlock(bx+dx, by+dy, bz+dz, id)
 	}
 	a.Config.Debug.Edits = ""
+}
+
+// BreakStage is the crack overlay stage 0..9 of Breaking, -1 for none
+// (PlayerControllerMP: (int)(curBlockDamageMP*10)-1).
+func (p *Player) BreakStage() int {
+	if p.Progress <= 0 {
+		return -1
+	}
+	return int(p.damage*10) - 1
 }
