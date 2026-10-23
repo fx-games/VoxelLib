@@ -51,6 +51,9 @@ type BossBar struct {
 // bar, titles and the chat.
 type HUD struct {
 	State HUDState
+	// Overlay draws over the HUD's own parts, below the chat, unless the
+	// HUD is hidden (a minimap); nil: none.
+	Overlay func(ctx *Context, partial float32)
 	// ChatWidth is the chat width in GUI px (320); ChatLines how many
 	// lines show while the chat is closed (10).
 	ChatWidth, ChatLines int
@@ -181,6 +184,9 @@ func (h *HUD) Draw(ctx *Context, partial float32) {
 		h.drawTitle(ctx, partial)
 		for i, l := range st.Debug {
 			f.Draw(c, l, 2, 2+10*i, 0xE0E0E0, true)
+		}
+		if h.Overlay != nil {
+			h.Overlay(ctx, partial)
 		}
 	}
 	h.drawChat(ctx)

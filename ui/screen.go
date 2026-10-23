@@ -75,6 +75,9 @@ type Context struct {
 	Lang   *i18n.Catalog
 	// W, H are the GUI size, Scale the framebuffer pixels per GUI pixel.
 	W, H, Scale int
+	// DisplayW, DisplayH are the size Resize was given (the reference's
+	// display size).
+	DisplayW, DisplayH int
 	// GUIScale is the setting (0 auto, 1..3); see ScaledResolution.
 	GUIScale int
 	// InWorld: a world is drawn behind the screens (translucent dark
@@ -173,6 +176,7 @@ func missingTexture() image.Image {
 // Resize sets the GUI size for a framebuffer (ScaledResolution); it
 // re-lays out the open screen when the size changed.
 func (ctx *Context) Resize(fbW, fbH int) {
+	ctx.DisplayW, ctx.DisplayH = fbW, fbH
 	w, h, s := ScaledResolution(fbW, fbH, ctx.GUIScale, ctx.Font.Unicode)
 	if w == ctx.W && h == ctx.H && s == ctx.Scale {
 		return
