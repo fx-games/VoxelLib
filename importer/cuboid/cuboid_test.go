@@ -127,3 +127,22 @@ func TestItem2D(t *testing.T) {
 		t.Fatalf("%v %v", q[0].pos, q[1].pos)
 	}
 }
+
+func TestLocalExcludesPre(t *testing.T) {
+	g := biped()
+	p := g.RestPose()
+	p.Parts[1].Pre = mgl32.Scale3D(2, 2, 2) // render()'s glScalef around the arm
+	p.Parts[1].Rot[0] = -math.Pi / 2
+	// postRender(0.0625): T(pivot/16)·Rx, the scale not included.
+	want := mgl32.Translate3D(-5.0/16, 2.0/16, 0).Mul4(mgl32.HomogRotate3DX(-math.Pi / 2))
+	if l := p.Parts[1].Local(); !matNear(l, want) {
+		t.Errorf("Local = %v, want %v", l, want)
+	}
+	// World still applies Pre before it.
+	w := p.World(g, nil)[1]
+	w0 := p.World(g, nil)[0]
+	base := w0.Mul4(mgl32.Scale3D(16, 16, 16)) // head is at the root with identity local
+	if !matNear(w, base.Mul4(mgl32.Scale3D(2, 2, 2)).Mul4(want).Mul4(mgl32.Scale3D(1.0/16, 1.0/16, 1.0/16))) {
+		t.Error("World does not compose Pre·Local")
+	}
+}

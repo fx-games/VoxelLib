@@ -110,10 +110,7 @@ func (p *Pose) World(g *Geometry, dst []mgl32.Mat4) []mgl32.Mat4 {
 		// ModelRenderer translates by rotationPoint*scale, so children of a
 		// part live in the part's frame scaled by 1/16 as well. Work in GL
 		// units throughout: T(offset) · T(pivot/16) · Rz·Ry·Rx, boxes /16.
-		local := orIdent(pp.Pre).Mul4(mgl32.Translate3D(pp.Offset[0], pp.Offset[1], pp.Offset[2])).
-			Mul4(mgl32.Translate3D(pp.Pivot[0]/16, pp.Pivot[1]/16, pp.Pivot[2]/16)).
-			Mul4(eulerMC(pp.Rot).Mat4()).Mul4(orIdent(pp.Post))
-		dst[i] = parent.Mul4(local)
+		dst[i] = parent.Mul4(orIdent(pp.Pre)).Mul4(pp.Local())
 	}
 	// The bones' frames are in pixels: append the 1/16 box scale.
 	s := mgl32.Scale3D(1.0/16, 1.0/16, 1.0/16)
@@ -123,6 +120,17 @@ func (p *Pose) World(g *Geometry, dst []mgl32.Mat4) []mgl32.Mat4 {
 		}
 	}
 	return dst
+}
+
+// Local is the part's own placement in its parent's frame, in GL units
+// (blocks), without Pre: T(offset) · T(pivot/16) · Rz·Ry·Rx · Post. As
+// ModelRenderer.postRender(0.0625) it places things held by the part
+// (renderers' equipped items), which render()'s GL transforms do not
+// move.
+func (pp PartPose) Local() mgl32.Mat4 {
+	return mgl32.Translate3D(pp.Offset[0], pp.Offset[1], pp.Offset[2]).
+		Mul4(mgl32.Translate3D(pp.Pivot[0]/16, pp.Pivot[1]/16, pp.Pivot[2]/16)).
+		Mul4(eulerMC(pp.Rot).Mat4()).Mul4(orIdent(pp.Post))
 }
 
 // Skin computes skinning matrices for a model built from g by Build.
