@@ -62,6 +62,9 @@ type Character struct {
 	// (sprinting adds 30%); 0 means the player's 0.1. A ridden horse uses
 	// its movementSpeed attribute; package actors sets AI walkers'.
 	MoveSpeed float64
+	// NoSprint stops sprinting from starting (EntityPlayerSP: blindness);
+	// a sprint already going continues.
+	NoSprint bool
 
 	// State from the last tick.
 	OnGround            bool
@@ -141,7 +144,7 @@ func (c *Character) Tick(w World, in Input) {
 		fwd, strafe = fwd/l, strafe/l
 	}
 	fwd, strafe = fwd*0.98, strafe*0.98 // Minecraft scales input by 0.98
-	sprint := in.Sprint && in.Forward > 0
+	sprint := in.Sprint && in.Forward > 0 && (c.Sprinting || !c.NoSprint)
 	if in.Sneak && !c.Flying && !c.InWater && !c.InLava {
 		fwd, strafe = fwd*0.3, strafe*0.3
 	}

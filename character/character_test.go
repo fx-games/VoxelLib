@@ -147,3 +147,22 @@ func TestStepUp(t *testing.T) {
 		}
 	}
 }
+
+// TestNoSprint: blindness (NoSprint) keeps a sprint from starting; one
+// already running goes on (EntityPlayerSP.onLivingUpdate).
+func TestNoSprint(t *testing.T) {
+	c := New(0.5, 0, 0.5)
+	run(c, grid{}, Input{}, 5)
+	c.NoSprint = true
+	run(c, grid{}, Input{Forward: 1, Sprint: true}, 60)
+	if s := speed(c) * 20; c.Sprinting || math.Abs(s-4.317) > 0.05 {
+		t.Fatalf("blind: sprinting %v at %.3f b/s, want a 4.317 walk", c.Sprinting, s)
+	}
+	c.NoSprint = false
+	run(c, grid{}, Input{Forward: 1, Sprint: true}, 1)
+	c.NoSprint = true
+	run(c, grid{}, Input{Forward: 1, Sprint: true}, 60)
+	if s := speed(c) * 20; !c.Sprinting || math.Abs(s-5.612) > 0.05 {
+		t.Fatalf("sprint before blindness: sprinting %v at %.3f b/s, want 5.612", c.Sprinting, s)
+	}
+}

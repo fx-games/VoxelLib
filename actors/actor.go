@@ -160,21 +160,25 @@ type Actor struct {
 	Name, Title string // name tag lines (i18n keys or plain text: the game decides)
 	ShowName    bool
 
-	Body                   *character.Character
-	Yaw, Pitch, HeadYaw    float64 // radians, as character.Input
-	PrevYaw, PrevHeadYaw   float64
-	Player                 bool // body driven by the game (input), not by a brain
-	Sprinting              bool // set by the game for a sprinting player (+1 knockback)
-	Persistent             bool // never despawns
-	Faction                string
-	Health, MaxHealth      float64
-	Armor                  float64 // armour points 0..20
-	KnockbackResist        float64 // 0..1
-	Speed                  float64 // movementSpeed attribute (player 0.1, zombie 0.23)
-	CanSwim, OpensDoors    bool
-	FleeWhenHurt           bool // panics when hit (animals)
-	FireImmune             bool // isImmuneToFire
-	FireResist             int  // fireResistance: 1 (0 means 1), player 20
+	Body                 *character.Character
+	Yaw, Pitch, HeadYaw  float64 // radians, as character.Input
+	PrevYaw, PrevHeadYaw float64
+	Player               bool // body driven by the game (input), not by a brain
+	Sprinting            bool // set by the game for a sprinting player (+1 knockback)
+	Persistent           bool // never despawns
+	Faction              string
+	Health, MaxHealth    float64
+	Armor                float64 // armour points 0..20
+	KnockbackResist      float64 // 0..1
+	Speed                float64 // movementSpeed attribute (player 0.1, zombie 0.23)
+	CanSwim, OpensDoors  bool
+	FleeWhenHurt         bool // panics when hit (animals)
+	FireImmune           bool // isImmuneToFire
+	FireResist           int  // fireResistance: 1 (0 means 1), player 20
+	// Potion effects the game keeps up to date: Resistance is the
+	// resistance amplifier+1 (0 none), FireProof fireResistance.
+	Resistance             int
+	FireProof              bool
 	AggroRange             float64
 	Melee                  Melee
 	Ranged                 *Ranged

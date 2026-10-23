@@ -206,6 +206,9 @@ func (m *Manager) Hurt(t, src *Actor, amount float64, unblockable bool) bool {
 	if !unblockable {
 		dealt = amount * (25 - math.Min(20, t.Armor)) / 25
 	}
+	if t.Resistance > 0 { // applyPotionDamageCalculations
+		dealt = float64(float32(dealt) * float32(25-t.Resistance*5) / 25)
+	}
 	t.Health -= dealt
 	t.age = 0
 	if src != nil && src != t {

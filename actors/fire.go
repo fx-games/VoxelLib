@@ -30,9 +30,10 @@ func (a *Actor) SetFire(sec int) {
 	}
 }
 
-// fireDamage is Entity.dealFireDamage (DamageSource.inFire: armour counts).
+// fireDamage is Entity.dealFireDamage (DamageSource.inFire: armour counts;
+// fire resistance ignores fire damage).
 func (m *Manager) fireDamage(a *Actor, n float64) {
-	if !a.FireImmune {
+	if !a.FireImmune && !a.FireProof {
 		m.Hurt(a, nil, n, false)
 	}
 }
@@ -54,7 +55,7 @@ func (m *Manager) fireTick(a *Actor) {
 		if a.FireImmune {
 			a.fire = max(a.fire-4, 0)
 		} else {
-			if a.fire%20 == 0 {
+			if a.fire%20 == 0 && !a.FireProof {
 				m.Hurt(a, nil, 1, true) // DamageSource.onFire
 			}
 			a.fire--
