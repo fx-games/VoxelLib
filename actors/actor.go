@@ -137,6 +137,9 @@ type Ranged struct {
 	// and a ranged task that its attack mode swaps.
 	MoveSpeed float64
 	Switch    bool
+	// MeleeRange overrides the attack mode's melee distance (0: 4 plus
+	// the width squared, longer when riding).
+	MeleeRange float64
 	// CustomNPC DataStats/DataAI: FireRate and BurstCount, RangeAndMelee
 	// (0 ranged only, 1 melee within DistanceToMelee, 2 both),
 	// FireIndirect (0 never, 1 beyond half the range, 2 when unseen),
@@ -217,22 +220,22 @@ type Actor struct {
 	FireProof  bool
 	// Blocking: a raised blade lets blockable damage through as
 	// weapon.Blocked before armour (the game sets it while in use).
-	Blocking               bool
-	AggroRange             float64
-	Melee                  Melee
-	Ranged                 *Ranged
-	Mount                  *MountStats // non-nil: rideable
-	Fly                    *Flight     // non-nil: a flier (Think replaces the Brain)
-	Brain                  Brain
-	Tags                   map[string]string // game data, saved
-	State                  State
-	StateTicks             int
-	Swing                  int // ticks since the last swing started (MC swing: 6)
-	HurtTime, DeathTime    int // HurtTime counts 10 → 0 after a hit (red flash)
-	Target                 *Actor
-	Riding, Rider          *Actor
-	RideInput              RideInput // the rider's steering, set each tick for a player rider
-	OnHurt                 func(a, src *Actor, amount float64)
+	Blocking            bool
+	AggroRange          float64
+	Melee               Melee
+	Ranged              *Ranged
+	Mount               *MountStats // non-nil: rideable
+	Fly                 *Flight     // non-nil: a flier (Think replaces the Brain)
+	Brain               Brain
+	Tags                map[string]string // game data, saved
+	State               State
+	StateTicks          int
+	Swing               int // ticks since the last swing started (MC swing: 6)
+	HurtTime, DeathTime int // HurtTime counts 10 → 0 after a hit (red flash)
+	Target              *Actor
+	Riding, Rider       *Actor
+	RideInput           RideInput // the rider's steering, set each tick for a player rider
+	OnHurt              func(a, src *Actor, amount float64)
 	// Ward, if set, is an attackEntityFrom override: it gets each hurt
 	// first and returns the amount to apply (<= 0: the hurt is ignored).
 	Ward func(a, src *Actor, amount float64) float64
@@ -245,7 +248,7 @@ type Actor struct {
 	OnLand func(a *Actor, fall float64) float64
 	// Blocked is isMovementBlocked: the brain does not run and the body
 	// has no drive (the game sets it).
-	Blocked bool
+	Blocked                bool
 	hurtResist             int
 	fire                   int // Entity.fire: > 0 burning ticks left, < 0 contact ticks to catch
 	lastDamage             float64

@@ -114,3 +114,17 @@ func TestCNPCRangedBurst(t *testing.T) {
 		t.Errorf("indirect: %v", *fs)
 	}
 }
+
+// TestMeleeRange: a class with both tasks (Switch) shoots a target 10
+// away with the default melee distance (4 + width²) but closes in for
+// melee when getMeleeRange is overridden to 12.
+func TestMeleeRange(t *testing.T) {
+	r := &Ranged{AI: RangedLOTR, MinInterval: 20, MaxInterval: 30, MaxRange: 24, MoveSpeed: 1.2, Switch: true}
+	if _, _, _, ticks, _ := rangedPair(t, r, 10.5, true); len(*ticks) == 0 {
+		t.Fatal("no shots at 10 with the default melee range")
+	}
+	r.MeleeRange = 12
+	if _, _, _, ticks, _ := rangedPair(t, r, 10.5, true); len(*ticks) != 0 {
+		t.Fatalf("shots at %v inside a melee range of 12", *ticks)
+	}
+}

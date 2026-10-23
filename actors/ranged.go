@@ -116,6 +116,9 @@ func (m *Manager) lotrFight(a, t *Actor) {
 	if a.Riding != nil {
 		mr *= 1.5 // MOUNT_RANGE_BONUS
 	}
+	if r.MeleeRange > 0 {
+		mr = r.MeleeRange
+	}
 	d2 := a.Pos().dist2(t.Pos())
 	far := a.AggroRange * 0.95
 	if d2 >= mr*mr {
