@@ -23,6 +23,14 @@ type navigator struct {
 	// the actor keeps its old path until it ends.
 	pending  bool
 	from, to nav.Pos
+	// detour: ticks left on a detour, taken after the walker stuck twice (a
+	// partial plan's dead end behind a hill); tries picks the next of
+	// detourAngles. Angle 0 is one long search for the goal itself, walked
+	// to its end; the others a leg turned that far away from the goal.
+	detour int
+	detAng float64
+	tries  int
+	nodes  int // the search's expansion cap
 }
 
 // Planning limits: A* reaches at most planRange blocks ahead (a far goal is
@@ -58,6 +66,7 @@ func (m *Manager) setGraph(g *nav.Graph, a *Actor) {
 		}
 	}
 	g.W, g.Door, g.Water, g.Cost = m.W, nil, nil, m.costFn
+	g.Size, g.Closest = nav.SizeOf(a.Body.Width, a.Body.Height), true
 	if a.OpensDoors {
 		g.Door = m.doorFn
 	}
@@ -66,10 +75,25 @@ func (m *Manager) setGraph(g *nav.Graph, a *Actor) {
 	}
 }
 
-// ground finds the feet cell for a point.
+// ground finds the feet cell (footprint corner) for a point under the
+// footprint's centre.
 func (m *Manager) ground(g *nav.Graph, v Vec) (nav.Pos, bool) {
-	return g.Ground(int(math.Floor(v.X)), int(math.Floor(v.Y+0.01)), int(math.Floor(v.Z)))
+	o := float64(g.Size[0]-1) / 2
+	return g.Ground(int(math.Floor(v.X-o)), int(math.Floor(v.Y+0.01)), int(math.Floor(v.Z-o)))
 }
+
+// Detours: the long search reaches longRange blocks with longNodes
+// expansions (spread over ticks by pathBudget); a turned leg is detourLen
+// blocks long and held for detourTicks.
+const (
+	detourTicks = 200
+	longTicks   = 1200 // the long path is walked to its end, at most this long
+	detourLen   = 20
+	longRange   = 4 * planRange
+	longNodes   = 10 * maxNodes
+)
+
+var detourAngles = [...]float64{0, 60, -60, 120, -120, 180}
 
 func (m *Manager) plan(a *Actor, goal Vec) {
 	c := a.carrier()
@@ -77,9 +101,18 @@ func (m *Manager) plan(a *Actor, goal Vec) {
 	n.goal, n.has, n.age = goal, true, 0
 	g := m.graphFor(c)
 	from, ok1 := m.ground(g, c.Pos())
-	leg := goal
-	if d := c.Pos().hdist(goal); d > planRange { // a leg toward a far goal
-		f := planRange / d
+	leg, reach := goal, float64(planRange)
+	n.nodes = maxNodes
+	d := c.Pos().hdist(goal)
+	switch {
+	case n.detour > 0 && n.detAng == 0:
+		reach, n.nodes = longRange, longNodes
+	case n.detour > 0 && d > 0:
+		s, co := math.Sincos(math.Atan2(goal.Z-c.Body.Z, goal.X-c.Body.X) + n.detAng*math.Pi/180)
+		leg, d = Vec{c.Body.X + co*detourLen, c.Body.Y + 4, c.Body.Z + s*detourLen}, 0
+	}
+	if d > reach { // a leg toward a far goal
+		f := reach / d
 		leg = Vec{c.Body.X + (goal.X-c.Body.X)*f, c.Body.Y + 4, c.Body.Z + (goal.Z-c.Body.Z)*f}
 	}
 	to, ok2 := m.ground(g, leg)
@@ -111,7 +144,7 @@ func (m *Manager) pump() {
 				continue
 			}
 			m.setGraph(&m.search, a.carrier())
-			if !m.search.Begin(n.from, n.to, maxNodes) {
+			if !m.search.Begin(n.from, n.to, n.nodes) {
 				m.finish(a, nil)
 				continue
 			}
@@ -154,6 +187,13 @@ func (m *Manager) cancelSearch(a *Actor) {
 
 func center(p nav.Pos) Vec { return Vec{float64(p.X) + 0.5, float64(p.Y), float64(p.Z) + 0.5} }
 
+// footCenter is where a walker of a's size stands on path cell p: the
+// footprint's centre (PathEntity.getVectorFromIndex: x + (int)(width+1)*0.5).
+func footCenter(a *Actor, p nav.Pos) Vec {
+	o := float64(nav.SizeOf(a.Body.Width, a.Body.Height)[0]) / 2
+	return Vec{float64(p.X) + o, float64(p.Y), float64(p.Z) + o}
+}
+
 // moveTo steers a (or its mount) one tick toward goal at the speed factor
 // mul and reports whether it has arrived (within 0.4 blocks).
 func (m *Manager) moveTo(a *Actor, goal Vec, mul float64) bool {
@@ -165,6 +205,12 @@ func (m *Manager) moveTo(a *Actor, goal Vec, mul float64) bool {
 		return true
 	}
 	n.age++
+	if n.detour > 0 {
+		n.detour--
+		if n.detour == 0 || n.path != nil && n.i >= len(n.path) { // detour walked
+			n.detour, n.has = 0, false
+		}
+	}
 	if !n.has || (goal.dist2(n.goal) > 2.25 && n.age > 10) || (goal != n.goal && n.age > replan) ||
 		(n.path != nil && n.i >= len(n.path) && pos.hdist(goal) > 2) {
 		m.plan(a, goal)
@@ -177,7 +223,7 @@ func (m *Manager) moveTo(a *Actor, goal Vec, mul float64) bool {
 	var nextCell *nav.Pos
 	if n.path != nil {
 		for n.i < len(n.path) {
-			cc := center(n.path[n.i])
+			cc := footCenter(c, n.path[n.i])
 			if pos.hdist(cc) < 0.5 && math.Abs(pos.Y-cc.Y) < 1.1 {
 				n.i++
 				continue
@@ -185,7 +231,7 @@ func (m *Manager) moveTo(a *Actor, goal Vec, mul float64) bool {
 			break
 		}
 		if n.i < len(n.path) {
-			next = center(n.path[n.i])
+			next = footCenter(c, n.path[n.i])
 			nextCell = &n.path[n.i]
 			if n.i == len(n.path)-1 && goal.hdist(next) < 1 {
 				next = goal
@@ -224,10 +270,17 @@ func (m *Manager) moveTo(a *Actor, goal Vec, mul float64) bool {
 	// Stuck check every 20 ticks: no progress means a new plan, and a hop.
 	n.checkT++
 	if n.checkT >= 20 {
-		if pos.dist2(n.check) < 0.09 {
+		if pos.hdist(n.check) < 0.3 { // horizontal: a walker hopping on the spot is stuck too
 			n.stuck++
 			n.has = false
 			n2.in.Jump = b.OnGround
+			if n.stuck >= 2 && n.detour == 0 {
+				n.detAng, n.detour, n.stuck, n.path = detourAngles[n.tries%len(detourAngles)], detourTicks, 0, nil
+				if n.detAng == 0 {
+					n.detour = longTicks
+				}
+				n.tries++
+			}
 		} else {
 			n.stuck = 0
 		}

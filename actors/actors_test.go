@@ -457,3 +457,63 @@ func TestNPCRidesRoute(t *testing.T) {
 		t.Fatalf("pony at %+v, done %v", pony.Pos(), d.Brain.Done)
 	}
 }
+
+// pocket: flat ground with a 3-high U-shaped wall around the start, open
+// toward -x, too big for one 6000-node search to leave (70 x 120 cells).
+func pocket() *testWorld {
+	w := flat(90)
+	for y := 1; y <= 3; y++ {
+		for z := -60; z <= 60; z++ {
+			w.solid[nav.Pos{X: 10, Y: y, Z: z}] = true
+		}
+		for x := -60; x <= 10; x++ {
+			w.solid[nav.Pos{X: x, Y: y, Z: -60}] = true
+			w.solid[nav.Pos{X: x, Y: y, Z: 60}] = true
+		}
+	}
+	return w
+}
+
+// TestStuckBehindWallDetours: the walker's partial plans end at the wall;
+// after sticking there it takes the long search out of the pocket.
+func TestStuckBehindWallDetours(t *testing.T) {
+	m := NewManager(pocket(), nil, nil, 1)
+	a := New("walker", "npc", 0.5, 1, 0.5)
+	goal := Vec{40.5, 1, 0.5}
+	a.Brain = Brain{Mode: Route, Points: []Vec{goal}}
+	m.Add(a)
+	for i := 0; i < 6000 && !a.Brain.Done; i++ {
+		m.Tick()
+	}
+	if !a.Brain.Done {
+		t.Fatalf("stuck at %+v (tries %d)", a.Pos(), a.nav.tries)
+	}
+	if a.nav.tries == 0 {
+		t.Error("arrived without a detour: the pocket no longer tests one")
+	}
+}
+
+// TestBigWalkerTakesWideGap: a troll-sized walker (1.6 wide -> 2x2 cells)
+// takes the far 2-wide opening, not the near 1-wide one.
+func TestBigWalkerTakesWideGap(t *testing.T) {
+	w := flat(30)
+	for z := -30; z < 30; z++ {
+		if z != 0 && z != 10 && z != 11 {
+			for y := 1; y <= 5; y++ {
+				w.solid[nav.Pos{X: 5, Y: y, Z: z}] = true
+			}
+		}
+	}
+	m := NewManager(w, nil, nil, 1)
+	a := New("troll", "troll", 1.5, 1, 0.5)
+	a.Body.Width, a.Body.Height = 1.6, 3.2
+	goal := Vec{10, 1, 1}
+	a.Brain = Brain{Mode: Route, Points: []Vec{goal}}
+	m.Add(a)
+	for i := 0; i < 1200 && !a.Brain.Done; i++ {
+		m.Tick()
+	}
+	if !a.Brain.Done {
+		t.Fatalf("troll stuck at %+v", a.Pos())
+	}
+}

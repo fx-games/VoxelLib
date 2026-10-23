@@ -205,3 +205,62 @@ func TestStepSlices(t *testing.T) {
 		t.Fatalf("capped search: path %v done %v expanded %d", p, done, g.Expanded())
 	}
 }
+
+// TestSize: a troll (1.6 x 3.2 -> 2x4 cells) does not fit a one-wide gap or
+// under a 3-high ceiling that a humanoid passes.
+func TestSize(t *testing.T) {
+	if s := SizeOf(1.6, 3.2); s != [2]int{2, 4} {
+		t.Fatalf("SizeOf troll = %v", s)
+	}
+	if s := SizeOf(0.6, 1.8); s != [2]int{1, 2} {
+		t.Fatalf("SizeOf humanoid = %v", s)
+	}
+	gap := func() grid { // wall at z 4 with a one-wide gap at x 4
+		m := floor()
+		for x := 0; x < 10; x++ {
+			if x != 4 {
+				for y := 1; y <= 5; y++ {
+					m[Pos{x, y, 4}] = true
+				}
+			}
+		}
+		return m
+	}
+	if _, ok := (&Graph{W: gap()}).Path(Pos{1, 1, 1}, Pos{1, 1, 7}, 0); !ok {
+		t.Error("humanoid: no path through the gap")
+	}
+	if _, ok := (&Graph{W: gap(), Size: [2]int{2, 4}}).Path(Pos{1, 1, 1}, Pos{1, 1, 7}, 0); ok {
+		t.Error("troll squeezed through a one-wide gap")
+	}
+	low := floor() // roof at y 4 over z 4..5: 3 cells of headroom
+	for x := 0; x < 10; x++ {
+		low[Pos{x, 4, 4}], low[Pos{x, 4, 5}] = true, true
+	}
+	if _, ok := (&Graph{W: low, Size: [2]int{2, 4}}).Path(Pos{1, 1, 1}, Pos{1, 1, 7}, 0); ok {
+		t.Error("troll walked under a 3-high roof")
+	}
+	if _, ok := (&Graph{W: low, Size: [2]int{2, 3}}).Path(Pos{1, 1, 1}, Pos{1, 1, 7}, 0); !ok {
+		t.Error("2x3 walker: no path under a 3-high roof")
+	}
+	// a 2x2 footprint stands on a ledge that only one of its cells touches
+	m := grid{Pos{0, 0, 0}: true}
+	if !(&Graph{W: m, Size: [2]int{2, 4}}).Walkable(Pos{-1, 1, -1}) {
+		t.Error("troll footprint over one solid cell not walkable")
+	}
+}
+
+// TestClosest: an unreachable goal yields the path to the nearest cell.
+func TestClosest(t *testing.T) {
+	m := floor()
+	for x := 0; x < 10; x++ {
+		m[Pos{x, 1, 5}], m[Pos{x, 2, 5}] = true, true
+	}
+	g := &Graph{W: m, Closest: true}
+	p, ok := g.Path(Pos{0, 1, 0}, Pos{5, 1, 8}, 0)
+	if !ok || p[len(p)-1] != (Pos{5, 1, 4}) {
+		t.Errorf("closest path ends at %v (ok %v), want {5 1 4}", p, ok)
+	}
+	if _, ok := (&Graph{W: m}).Path(Pos{0, 1, 0}, Pos{5, 1, 8}, 0); ok {
+		t.Error("without Closest an unreachable goal gave a path")
+	}
+}
