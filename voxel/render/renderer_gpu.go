@@ -73,18 +73,7 @@ func (r *Renderer) drawBatches(p *wgpu.RenderPassEncoder, vp mgl32.Mat4, fog Fog
 	if len(r.batches) == 0 {
 		return
 	}
-	if g.bgFor != r.tex || g.bgGen != r.tex.gen {
-		if g.texBG != nil {
-			g.texBG.Release()
-		}
-		g.texBG = bindGroup("terrain textures", dev.pipes.terrainTex,
-			wgpu.BindGroupEntry{Binding: 0, TextureView: r.tex.gpu.array.view},
-			wgpu.BindGroupEntry{Binding: 1, Sampler: dev.nearestRep},
-			wgpu.BindGroupEntry{Binding: 2, TextureView: r.tex.gpu.layerMap.view},
-			wgpu.BindGroupEntry{Binding: 3, TextureView: g.lightTex.view},
-			wgpu.BindGroupEntry{Binding: 4, Sampler: dev.linearClp})
-		g.bgFor, g.bgGen = r.tex, r.tex.gen
-	}
+	r.terrainBG()
 	cvp := clip(vp)
 	dt := r.Opt.DynamicTint
 	layer := voxel.LayerCount
@@ -112,6 +101,25 @@ func (r *Renderer) drawBatches(p *wgpu.RenderPassEncoder, vp mgl32.Mat4, fog Fog
 		p.SetVertexBuffer(0, b.reg.gpu.vbo, 0)
 		r.multiDraw(p, b)
 	}
+}
+
+// terrainBG (re)creates the terrain textures' bind group when the texture
+// array changed.
+func (r *Renderer) terrainBG() *wgpu.BindGroup {
+	g := &r.gpu
+	if g.bgFor != r.tex || g.bgGen != r.tex.gen {
+		if g.texBG != nil {
+			g.texBG.Release()
+		}
+		g.texBG = bindGroup("terrain textures", dev.pipes.terrainTex,
+			wgpu.BindGroupEntry{Binding: 0, TextureView: r.tex.gpu.array.view},
+			wgpu.BindGroupEntry{Binding: 1, Sampler: dev.nearestRep},
+			wgpu.BindGroupEntry{Binding: 2, TextureView: r.tex.gpu.layerMap.view},
+			wgpu.BindGroupEntry{Binding: 3, TextureView: g.lightTex.view},
+			wgpu.BindGroupEntry{Binding: 4, Sampler: dev.linearClp})
+		g.bgFor, g.bgGen = r.tex, r.tex.gen
+	}
+	return g.texBG
 }
 
 // multiDraw issues a batch as one indirect multidraw when the device
@@ -175,4 +183,5 @@ func (r *Renderer) destroyGPU() {
 	r.gpu.ebo.Release()
 	r.gpu.lineVBO.Release()
 	r.gpu.lightTex.release()
+	r.releaseDamage()
 }

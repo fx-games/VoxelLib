@@ -128,6 +128,7 @@ type Mesher struct {
 	tintCache [voxel.SectionVolume]uint32
 	tintStamp [voxel.SectionVolume]uint32
 	builds    uint32
+	only      int // BuildCell: 1 + the padded index of the one cell to mesh; 0 = all
 }
 
 func NewMesher() *Mesher { return &Mesher{} }
@@ -362,7 +363,7 @@ func (m *Mesher) cubes() {
 					m.mask[b<<4|a] = 0
 					i := idx(p[0], p[1], p[2])
 					info := &t[st[i]]
-					if info.Shape != voxel.ShapeCube {
+					if info.Shape != voxel.ShapeCube || m.only != 0 && i != m.only-1 {
 						continue
 					}
 					if info.Cull == nil {
@@ -532,6 +533,9 @@ func (m *Mesher) specials() {
 		for z := 0; z < 16; z++ {
 			for x := 0; x < 16; x++ {
 				i := idx(x, y, z)
+				if m.only != 0 && i != m.only-1 {
+					continue
+				}
 				info := &t[st[i]]
 				switch info.Shape {
 				case voxel.ShapeLiquid:

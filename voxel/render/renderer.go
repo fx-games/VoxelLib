@@ -168,7 +168,8 @@ type Renderer struct {
 	texVersion uint64
 	cfg        *mesh.Config
 
-	gpu gpuRenderer // backend state
+	gpu    gpuRenderer // backend state
+	damage gpuDamage   // breaking crack textures (SetDamageTextures)
 
 	regions  map[[3]int][]*region // pages per region key
 	sections map[voxel.SectionPos]*section

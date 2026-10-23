@@ -349,6 +349,7 @@ type pipelines struct {
 	modelAlpha, modelAdd        *wgpu.RenderPipeline
 	particleAlpha, particleAdd  *wgpu.RenderPipeline
 	overlay                     *wgpu.RenderPipeline
+	blockItem, blockDamage      *wgpu.RenderPipeline
 	blit                        *wgpu.RenderPipeline
 }
 
@@ -456,6 +457,8 @@ func (ps *pipelines) init() error {
 		{&ps.particleAlpha, pipeSpec{"particles", particleWGSL, ps.tex2D, particleBuf, tri, none, blendAlpha, true, false, false}},
 		{&ps.particleAdd, pipeSpec{"particles additive", particleWGSL, ps.tex2D, particleBuf, tri, none, blendAdd, true, false, false}},
 		{&ps.overlay, pipeSpec{"overlay", overlayWGSL, ps.tex2D, nil, gputypes.PrimitiveTopologyTriangleStrip, none, blendAlpha, false, false, false}},
+		{&ps.blockItem, pipeSpec{"block item", blockWGSL, ps.terrainTex, terrainBuf, tri, back, blendAlpha, true, true, false}},
+		{&ps.blockDamage, pipeSpec{"block damage", blockWGSL, ps.terrainTex, terrainBuf, tri, back, blendDamage, true, true, false}},
 		{&ps.blit, pipeSpec{"capture blit", blitWGSL, nil, nil, tri, none, nil, false, false, true}},
 	}
 	modules := map[string]*wgpu.ShaderModule{}
@@ -483,6 +486,9 @@ func (ps *pipelines) init() error {
 			DepthCompare: gputypes.CompareFunctionLessEqual}
 		if !sp.depthTest {
 			depth.DepthCompare = gputypes.CompareFunctionAlways
+		}
+		if s.dst == &ps.blockDamage { // glPolygonOffset(-3, -3)
+			depth.DepthBias, depth.DepthBiasSlopeScale = -3, -3
 		}
 		if sp.blit {
 			depth = nil

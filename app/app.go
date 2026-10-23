@@ -66,6 +66,9 @@ type Debug struct {
 	// Edits: "dx,dy,dz,block;..." block edits relative to the player,
 	// applied once the terrain under the player is ready.
 	Edits string
+	// Crack 1..10 draws the breaking cracks of stage Crack-1 on the
+	// targeted block, as if it were being broken (0: off).
+	Crack int
 }
 
 // Action is what a player does to a block or an entity.
@@ -175,6 +178,7 @@ type App struct {
 	alpha         float64
 	sessionStart  time.Time
 	readyLogged   bool
+	damage        damageOverlay
 }
 
 // New opens the window and the GPU. Call it on the main thread (lock it in
