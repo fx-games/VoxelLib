@@ -4,6 +4,7 @@ import (
 	"math"
 
 	"github.com/memmaker/voxellib/projectile"
+	"github.com/memmaker/voxellib/weapon"
 )
 
 // 1.7.10 EntityLivingBase timings.
@@ -201,6 +202,9 @@ func (m *Manager) Hurt(t, src *Actor, amount float64, unblockable bool) bool {
 		t.lastDamage = amount
 		t.hurtResist = MaxHurtResist
 		t.HurtTime = MaxHurtTime
+	}
+	if t.Blocking && !unblockable {
+		amount = float64(weapon.Blocked(float32(amount)))
 	}
 	dealt := amount
 	if !unblockable {

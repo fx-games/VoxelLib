@@ -177,8 +177,11 @@ type Actor struct {
 	FireResist           int  // fireResistance: 1 (0 means 1), player 20
 	// Potion effects the game keeps up to date: Resistance is the
 	// resistance amplifier+1 (0 none), FireProof fireResistance.
-	Resistance             int
-	FireProof              bool
+	Resistance int
+	FireProof  bool
+	// Blocking: a raised blade lets blockable damage through as
+	// weapon.Blocked before armour (the game sets it while in use).
+	Blocking               bool
 	AggroRange             float64
 	Melee                  Melee
 	Ranged                 *Ranged

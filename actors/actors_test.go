@@ -526,3 +526,21 @@ func TestBigWalkerTakesWideGap(t *testing.T) {
 		t.Fatalf("troll stuck at %+v", a.Pos())
 	}
 }
+
+// A raised blade takes (1 + d) / 2 before armour; unblockable damage
+// passes.
+func TestBlocking(t *testing.T) {
+	m := NewManager(flat(8), nil, nil, 1)
+	a := New("p", "p", 1, 1, 1)
+	a.Health, a.MaxHealth, a.Blocking, a.Armor = 20, 20, true, 5
+	m.Add(a)
+	m.Hurt(a, nil, 9, false)
+	if a.Health != 20-5*20.0/25 {
+		t.Errorf("blocked hit left %v", a.Health)
+	}
+	a.Health, a.hurtResist = 20, 0
+	m.Hurt(a, nil, 9, true)
+	if a.Health != 11 {
+		t.Errorf("unblockable hit left %v", a.Health)
+	}
+}
