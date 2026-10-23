@@ -299,7 +299,8 @@ func (a *App) startSession() error {
 			log.Printf("load: %v", err)
 		}
 	}
-	a.Input.Capture(!a.Config.automated())
+	// the Load hook may have opened a screen (a main menu): keep its cursor
+	a.Input.Capture(!a.Config.automated() && !a.ScreenOpen())
 	return nil
 }
 
