@@ -34,7 +34,7 @@ func (a *Actor) SetFire(sec int) {
 // fire resistance ignores fire damage).
 func (m *Manager) fireDamage(a *Actor, n float64) {
 	if !a.FireImmune && !a.FireProof {
-		m.Hurt(a, nil, n, false)
+		m.hurtAs(HurtFire, a, nil, n, false)
 	}
 }
 
@@ -56,7 +56,7 @@ func (m *Manager) fireTick(a *Actor) {
 			a.fire = max(a.fire-4, 0)
 		} else {
 			if a.fire%20 == 0 && !a.FireProof {
-				m.Hurt(a, nil, 1, true) // DamageSource.onFire
+				m.hurtAs(HurtFire, a, nil, 1, true) // DamageSource.onFire
 			}
 			a.fire--
 		}

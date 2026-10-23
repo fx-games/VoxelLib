@@ -171,9 +171,7 @@ func (m *Manager) Attack(src, t *Actor, damage float64, knockback int) bool {
 	if src.Sprinting {
 		knockback++
 	}
-	m.inAttack = true
-	hurt := m.Hurt(t, src, damage, false)
-	m.inAttack = false
+	hurt := m.hurtAs(HurtMelee, t, src, damage, false)
 	if !hurt {
 		return false
 	}
@@ -187,6 +185,21 @@ func (m *Manager) Attack(src, t *Actor, damage float64, knockback int) bool {
 		src.Body.VZ *= 0.6
 	}
 	return true
+}
+
+// HurtKind tells the Protection hook what kind of hurt it is.
+type HurtKind int
+
+const (
+	HurtOther HurtKind = iota
+	HurtMelee          // a blow (Attack)
+	HurtFire           // fire or lava (isFireDamage)
+)
+
+func (m *Manager) hurtAs(k HurtKind, t, src *Actor, amount float64, unblockable bool) bool {
+	m.hurtKind = k
+	defer func() { m.hurtKind = HurtOther }()
+	return m.Hurt(t, src, amount, unblockable)
 }
 
 // Hurt applies damage as 1.7.10's EntityLivingBase.attackEntityFrom: during
@@ -221,7 +234,7 @@ func (m *Manager) Hurt(t, src *Actor, amount float64, unblockable bool) bool {
 		dealt = float64(float32(dealt) * float32(25-t.Resistance*5) / 25)
 	}
 	if m.Protection != nil && dealt > 0 { // getEnchantmentModifierDamage
-		if p := min(m.Protection(t, src, m.inAttack), 25); p > 0 {
+		if p := min(m.Protection(t, src, m.hurtKind), 25); p > 0 {
 			if i := min((p+1)>>1+m.Rand.Intn(p>>1+1), 20); i > 0 {
 				dealt = float64(float32(dealt) * float32(25-i) / 25)
 			}

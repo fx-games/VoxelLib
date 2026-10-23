@@ -49,9 +49,9 @@ type Manager struct {
 	// fire (the player's bow) and its base damage and launch speed.
 	ArrowDamage func(*projectile.Arrow) (from *Actor, damage, speed float64)
 	// Protection, if set, is t's summed enchantment protection (EPF)
-	// against a blow from src (nil: no attacker), melee for an Attack;
-	// Hurt reduces the damage by it as applyPotionDamageCalculations.
-	Protection func(t, src *Actor, melee bool) int
+	// against a hurt from src (nil: no attacker) of the kind how; Hurt
+	// reduces the damage by it as applyPotionDamageCalculations.
+	Protection func(t, src *Actor, how HurtKind) int
 
 	byID     map[string]*Actor
 	occupied map[nav.Pos]bool
@@ -60,7 +60,7 @@ type Manager struct {
 	prevHit  func(*projectile.Arrow, projectile.Target)
 	graph    nav.Graph
 	ticks    int
-	inAttack bool // inside Attack
+	hurtKind HurtKind // of the Hurt in progress
 
 	// path searches (pump): one runs on search at a time, the rest queue
 	search          nav.Graph

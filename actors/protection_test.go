@@ -6,8 +6,8 @@ import "testing"
 // EPF of 1 takes off 1/25.
 func TestProtection(t *testing.T) {
 	m := NewManager(flat(10), nil, nil, 1)
-	m.Protection = func(_, _ *Actor, melee bool) int {
-		if melee {
+	m.Protection = func(_, _ *Actor, how HurtKind) int {
+		if how == HurtMelee {
 			return 1
 		}
 		return 0
