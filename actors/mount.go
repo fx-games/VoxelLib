@@ -317,13 +317,14 @@ func (m *Manager) rideInput(mt *Actor) character.Input {
 	return character.Input{Forward: fwd, Strafe: strafe, Yaw: mt.Yaw, Jump: jump}
 }
 
-// moveSpeed is the movementSpeed attribute's value: Speed, times 1.3
-// while sprinting (EntityLivingBase.setSprinting's modifier).
+// moveSpeed is the movementSpeed attribute's value: Speed, times the
+// effects' modifiers and 1.3 while sprinting (setSprinting's modifier).
 func (a *Actor) moveSpeed() float64 {
+	v := a.Speed * (1 + a.speedOff)
 	if a.Sprinting {
-		return a.Speed * 1.3
+		return v * 1.3
 	}
-	return a.Speed
+	return v
 }
 
 // HorseStats rolls 1.7.10 EntityHorse attributes: movement speed

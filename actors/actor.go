@@ -218,6 +218,12 @@ type Actor struct {
 	// resistance amplifier+1 (0 none), FireProof fireResistance.
 	Resistance int
 	FireProof  bool
+	// Effects are a non-player actor's running status effects (see
+	// Manager.Effects; the Manager keeps Resistance and FireProof from
+	// them); Refuse, if set, turns an effect down (isPotionApplicable).
+	Effects  map[string]*Effect
+	Refuse   func(a *Actor, effect string) bool
+	speedOff float64 // the effects' speed modifiers: their product - 1
 	// Blocking: a raised blade lets blockable damage through as
 	// weapon.Blocked before armour (the game sets it while in use).
 	Blocking            bool

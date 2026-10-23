@@ -52,6 +52,8 @@ type Manager struct {
 	// against a hurt from src (nil: no attacker) of the kind how; Hurt
 	// reduces the damage by it as applyPotionDamageCalculations.
 	Protection func(t, src *Actor, how HurtKind) int
+	// Effects are the status effect kinds, in the order they tick.
+	Effects []EffectRule
 
 	byID     map[string]*Actor
 	occupied map[nav.Pos]bool
@@ -183,6 +185,9 @@ func (m *Manager) Tick() {
 			continue
 		}
 		m.fireTick(a)
+		if !a.Player {
+			m.effectTick(a)
+		}
 		if !a.Alive() || a.Player {
 			continue
 		}

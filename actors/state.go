@@ -18,9 +18,10 @@ type Saved struct {
 	Riding   string            `json:"riding,omitempty"`
 	Tags     map[string]string `json:"tags,omitempty"`
 	// Rolled per actor (a horse's stats), so not from the template.
-	MaxHealth float64     `json:"maxHealth,omitempty"`
-	Speed     float64     `json:"speed,omitempty"`
-	Mount     *MountStats `json:"mount,omitempty"`
+	MaxHealth float64            `json:"maxHealth,omitempty"`
+	Speed     float64            `json:"speed,omitempty"`
+	Mount     *MountStats        `json:"mount,omitempty"`
+	Effects   map[string]*Effect `json:"effects,omitempty"`
 }
 
 // Snapshot is the Manager's part of the save blob. Players are not saved
@@ -39,7 +40,7 @@ func (m *Manager) Save() Snapshot {
 		}
 		v := Saved{ID: a.ID, Kind: a.Kind, Category: a.Category, Name: a.Name, Title: a.Title,
 			ShowName: a.ShowName, Pos: a.Pos(), Yaw: a.Yaw, Health: a.Health, Faction: a.Faction,
-			Brain: a.Brain, Tags: a.Tags, MaxHealth: a.MaxHealth, Speed: a.Speed, Mount: a.Mount}
+			Brain: a.Brain, Tags: a.Tags, MaxHealth: a.MaxHealth, Speed: a.Speed, Mount: a.Mount, Effects: a.Effects}
 		if a.Riding != nil {
 			v.Riding = a.Riding.ID
 		}
@@ -82,6 +83,10 @@ func (m *Manager) Load(s Snapshot, make func(id, kind string) *Actor) {
 		a.Health, a.Faction, a.Brain = v.Health, v.Faction, v.Brain
 		if v.Tags != nil {
 			a.Tags = v.Tags
+		}
+		if v.Effects != nil {
+			a.Effects = v.Effects
+			m.applyEffects(a)
 		}
 		m.Add(a)
 		if v.Riding != "" {
