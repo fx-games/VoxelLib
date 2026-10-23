@@ -255,6 +255,15 @@ func New(id, kind string, x, y, z float64) *Actor {
 		Melee: Melee{Cooldown: 20}, Swing: 100, Tags: map[string]string{}}
 }
 
+// Revenge is the actor that last hurt this one, for 100 ticks
+// (getAITarget), else nil.
+func (a *Actor) Revenge() *Actor {
+	if a.revengeTicks > 0 {
+		return a.revenge
+	}
+	return nil
+}
+
 // Pos returns the feet position.
 func (a *Actor) Pos() Vec { return Vec{a.Body.X, a.Body.Y, a.Body.Z} }
 
