@@ -5,7 +5,7 @@ import (
 	"github.com/memmaker/voxellib/voxel/javarand"
 )
 
-// Minecraft 1.7's RenderBlocks texture mapping. 1.8 block models (uvTab,
+// the 1.7 reference's RenderBlocks texture mapping. 1.8 block models (uvTab,
 // projUV) project textures differently: 1.7 draws the bottom with v along
 // +z, mirrors north and east faces within the box's own extent, and turns
 // faces by its uvRotate fields, each with its own mirroring.

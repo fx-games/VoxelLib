@@ -26,7 +26,7 @@ type Blocks interface {
 }
 
 // BoxFunc appends to buf a block's ray boxes in world coordinates; none
-// when the ray passes through the block (Minecraft: canCollideCheck, then
+// when the ray passes through the block (the reference game: canCollideCheck, then
 // the bounds collisionRayTrace tests, several for stairs).
 type BoxFunc func(x, y, z int, id voxel.StateID, buf []collide.AABB) []collide.AABB
 

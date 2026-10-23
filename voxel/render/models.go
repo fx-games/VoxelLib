@@ -72,7 +72,7 @@ type ModelInstance struct {
 	// Blend selects BlendNone, BlendAlpha or BlendAdditive.
 	Blend uint8
 	// AlphaCutoff discards texels with alpha at or below it (glAlphaFunc
-	// GL_GREATER); 0 means 0.5. Minecraft entities use 0.1.
+	// GL_GREATER); 0 means 0.5. Reference entities use 0.1.
 	AlphaCutoff float32
 }
 

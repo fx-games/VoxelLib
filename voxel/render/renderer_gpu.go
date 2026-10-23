@@ -158,7 +158,7 @@ func (r *Renderer) multiDraw(p *wgpu.RenderPassEncoder, b drawBatch) {
 	p.MultiDrawIndexedIndirect(c.buf, uint64(off), uint32(len(counts)))
 }
 
-// DrawBlockOutline draws a wireframe box around a block (Minecraft's
+// DrawBlockOutline draws a wireframe box around a block (the reference's
 // selection outline).
 func (r *Renderer) DrawBlockOutline(cam *Camera, x, y, z int) {
 	r.drawLines(dev.pipes.outline, 0, 24, clip(outlineMVP(cam, x, y, z)), mgl32.Vec4{0, 0, 0, 0.6})

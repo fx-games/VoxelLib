@@ -37,7 +37,7 @@ const (
 	ActHotbar = "hotbar."
 )
 
-// DefaultBindings are Minecraft's default controls (plus F2/F3 for the
+// DefaultBindings are the reference's default controls (plus F2/F3 for the
 // app's screenshot and frame stats).
 func DefaultBindings() map[string][]Button {
 	b := map[string][]Button{

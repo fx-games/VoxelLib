@@ -2,7 +2,7 @@ package voxel
 
 import "math/bits"
 
-// PalettedContainer stores 4096 block states the way Minecraft's
+// PalettedContainer stores 4096 block states the way the reference's
 // PalettedContainer does:
 //
 //   - bits == 0: single value, no data array at all (a section of pure air or

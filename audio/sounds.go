@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+
+	"github.com/memmaker/voxellib/resloc"
 )
 
 // Sounds plays sound events from a sound directory:
@@ -49,7 +51,7 @@ func Open(dir string, m *Mixer) (*Sounds, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := s.Events.Load("minecraft", data, nil); err != nil {
+	if err := s.Events.Load(resloc.Default, data, nil); err != nil {
 		return nil, err
 	}
 	if data, err := os.ReadFile(filepath.Join(dir, "blocksounds.json")); err == nil {
@@ -69,10 +71,10 @@ func (s *Sounds) File(name string) string {
 // Play plays a sound event like 1.7.10's SoundManager.playSound: a random variant, volume
 // clamp(p.Volume × variant × category, 0, 1) × master, pitch clamp(p.Pitch × variant, 0.5, 2),
 // linear attenuation over 16 × max(1, p.Volume) blocks. Names without a domain are
-// "minecraft:". It returns nil when nothing plays (unknown or empty event, zero volume, delayed).
+// the default namespace prefix. It returns nil when nothing plays (unknown or empty event, zero volume, delayed).
 // Files are decoded in the background; the voice starts when ready.
 func (s *Sounds) Play(name string, p Params) *Voice {
-	name = qualify("minecraft", name)
+	name = qualify(resloc.Default, name)
 	if p.Delay > 0 {
 		s.mu.Lock()
 		s.delayed = append(s.delayed, delayedSound{name, p, p.Delay})
@@ -175,7 +177,7 @@ func DistanceDelay(lx, ly, lz, x, y, z float64) int {
 	return int(math.Sqrt(d2) / 40 * 20)
 }
 
-// BlockSound is a Minecraft Block.SoundType: event names and the type's volume and pitch.
+// BlockSound is a reference Block.SoundType: event names and the type's volume and pitch.
 // Its methods return the event and Params vanilla uses at a block centre, for example
 // s.Play(b.Broken(x, y, z)).
 type BlockSound struct {

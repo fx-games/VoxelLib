@@ -1,4 +1,4 @@
-// Package anvil reads and writes Minecraft Java Edition worlds: NBT, region
+// Package anvil reads and writes Java Edition worlds: NBT, region
 // files (.mca) and chunk NBT for the 1.13 - 1.21+ layouts.
 package anvil
 

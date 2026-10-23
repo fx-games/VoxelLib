@@ -1,12 +1,12 @@
-// Package ui is a native 2D GUI layer in the style of Minecraft 1.7.10:
+// Package ui is a native 2D GUI layer in the style of the 1.7.10 reference:
 // bitmap fonts (FontRenderer), sprites, widgets, a screen manager, container
 // views, dialogs, a quest log, a world map and the in-game HUD. Everything is
-// drawn in GUI pixels (Minecraft's scaled resolution) onto a Canvas; textures
+// drawn in GUI pixels (the reference's scaled resolution) onto a Canvas; textures
 // come from the game's resource packs (an fs.FS with the assets/<domain>/...
 // layout). The package is pure Go: voxellib/ui/uiapp draws it with the GPU
 // and plugs it into app; SoftCanvas renders to an image for tests.
 //
-// Colours are Minecraft's 0xAARRGGBB ints.
+// Colours are the reference's 0xAARRGGBB ints.
 package ui
 
 import (
@@ -57,7 +57,7 @@ func UpdateTexture(c Canvas, t Texture, img image.Image) Texture {
 	return c.NewTexture(img)
 }
 
-// ScaledResolution is Minecraft 1.7.10's GUI scale: guiScale 0 is auto,
+// ScaledResolution is the 1.7.10 reference's GUI scale: guiScale 0 is auto,
 // 1..3 small, normal, large; the factor grows while the GUI stays at least
 // 320x240, and the unicode font forces an even factor. It returns the GUI
 // size (rounded up) and the factor.
@@ -114,7 +114,7 @@ func DrawTexScaled(c Canvas, t Texture, x, y, w, h, u, v, sw, sh, tw, th float32
 }
 
 // Sprite is a part of a texture sheet. TW, TH are the sheet's size in the
-// units U..H use (256 for Minecraft GUI sheets; 0 means the real size).
+// units U..H use (256 for the reference GUI sheets; 0 means the real size).
 type Sprite struct {
 	Tex                            Texture
 	U, V, W, H                     float32

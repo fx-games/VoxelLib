@@ -39,7 +39,7 @@ func NewParticleRenderer(r *Renderer) (*ParticleRenderer, error) {
 }
 
 // SetAtlas sets the sprite atlas Particle.Sprite indexes: 16 x 16 cells
-// like Minecraft's particles.png.
+// like the reference's particles.png.
 func (pr *ParticleRenderer) SetAtlas(img image.Image) { pr.setAtlas(img) }
 
 // SetSheet sets sheet i (1..255) that particles with Sheet i sample by

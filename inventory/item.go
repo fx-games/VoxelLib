@@ -1,4 +1,4 @@
-// Package inventory holds the item rules of a Minecraft 1.7.10 style game:
+// Package inventory holds the item rules of a 1.7.10 reference game:
 // an item registry, item stacks, inventories and containers with the exact
 // slot click semantics of 1.7.10's Container.slotClick.
 //
@@ -72,7 +72,7 @@ type Ctx struct {
 // Item is one registered item type.
 type Item struct {
 	ID          int
-	Key         string // registry name, e.g. "minecraft:stone_pickaxe"
+	Key         string // registry name, e.g. "test:stone_pickaxe"
 	MaxStack    int    // 0 means 64
 	MaxDamage   int    // durability; 0 = not damageable
 	HasSubtypes bool   // meta is a subtype, not damage

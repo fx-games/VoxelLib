@@ -1,4 +1,4 @@
-// Package character is a first-person character controller with Minecraft's
+// Package character is a first-person character controller with the reference's
 // movement model: 20 Hz ticks, walking/sprinting/sneaking, jumping, creative
 // flight, swimming and diving in water, wading through lava.
 //
@@ -75,7 +75,7 @@ type Character struct {
 	Sprinting           bool   // sprinting this tick (Input.Sprint walking forward, no item in use)
 }
 
-// Player dimensions, as Minecraft's.
+// Player dimensions, as the reference's.
 const (
 	PlayerWidth     = 0.6
 	PlayerHeight    = 1.8
@@ -115,7 +115,7 @@ func (c *Character) ToggleFly() {
 	}
 }
 
-// Movement constants (blocks/tick), from Minecraft's LivingEntity.travel.
+// Movement constants (blocks/tick), from the reference's LivingEntity.travel.
 const (
 	gravity      = 0.08
 	airDrag      = 0.98 // vertical, per tick
@@ -143,7 +143,7 @@ func (c *Character) Tick(w World, in Input) {
 	if l := math.Hypot(fwd, strafe); l > 1 {
 		fwd, strafe = fwd/l, strafe/l
 	}
-	fwd, strafe = fwd*0.98, strafe*0.98 // Minecraft scales input by 0.98
+	fwd, strafe = fwd*0.98, strafe*0.98 // the reference scales input by 0.98
 	sprint := in.Sprint && in.Forward > 0 && (c.Sprinting || !c.NoSprint)
 	if in.Sneak && !c.Flying && !c.InWater && !c.InLava {
 		fwd, strafe = fwd*0.3, strafe*0.3

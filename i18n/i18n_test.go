@@ -44,7 +44,7 @@ func TestCatalog(t *testing.T) {
 }
 
 func TestLoadFSPriority(t *testing.T) {
-	low := fstest.MapFS{"assets/minecraft/lang/en_US.lang": {Data: []byte("a=low\nb=low\n")}}
+	low := fstest.MapFS{"assets/test/lang/en_US.lang": {Data: []byte("a=low\nb=low\n")}}
 	high := fstest.MapFS{"assets/mod/lang/en_US.lang": {Data: []byte("a=high\n")}}
 	c := New()
 	if err := c.LoadFS(low, high); err != nil {

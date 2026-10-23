@@ -7,7 +7,7 @@ import "github.com/memmaker/voxellib/voxel"
 // Snapshot is a padded 18^3 copy of a section plus a one-block border of its
 // 26 neighbours (states and packed light). Meshing reads only the snapshot, so
 // the world lock is held just long enough to copy - the same idea as
-// Minecraft's RenderChunkRegion.
+// The reference's RenderChunkRegion.
 type Snapshot struct {
 	Pos    voxel.SectionPos
 	States [18 * 18 * 18]voxel.StateID

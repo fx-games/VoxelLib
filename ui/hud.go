@@ -13,7 +13,7 @@ type HUDState struct {
 
 	// Survival bars; Creative hides them.
 	Creative bool
-	// Health and MaxHealth in half hearts (Minecraft's 20 = ten hearts);
+	// Health and MaxHealth in half hearts (the reference's 20 = ten hearts);
 	// LastHealth is the health before the latest damage (the flashing
 	// part), HurtTime the hurt-resistance ticks left (10..20 flash).
 	Health, MaxHealth, LastHealth, Absorption float64
@@ -118,7 +118,7 @@ func (h *HUD) Message(text string) {
 func (h *HUD) ActionBar(text string) { h.action, h.actionT = text, 60 }
 
 // Title shows a big title and a subtitle in the middle, fading in, staying
-// and fading out over the given ticks (Minecraft 1.8's /title; 10, 70, 20).
+// and fading out over the given ticks (the 1.8 reference's /title; 10, 70, 20).
 func (h *HUD) Title(title, sub string, fadeIn, stay, fadeOut int) {
 	h.title, h.sub = title, sub
 	h.tIn, h.tStay, h.tOut = fadeIn, stay, fadeOut

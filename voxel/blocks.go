@@ -1,6 +1,6 @@
 package voxel
 
-// Built-in block definitions using Minecraft ids and Minecraft texture names, so
+// Built-in block definitions using reference ids and reference texture names, so
 // a vanilla resource pack (or anything laid out like one) skins them directly.
 
 func all6(t string) [6]string { return [6]string{t, t, t, t, t, t} }

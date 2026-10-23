@@ -1,4 +1,4 @@
-package mcmodel
+package bbmodel
 
 import (
 	"encoding/json"
@@ -155,7 +155,7 @@ func (a *Animation) Bind(m *model.Model) (c *model.Clip, ok bool) {
 	return c, len(c.Channels) > 0
 }
 
-// boneAliases folds the common Minecraft humanoid naming schemes together
+// boneAliases folds the common humanoid naming schemes together
 // (Java "bipedHead", GeckoLib "head", player "Head"...).
 var boneAliases = map[string]string{
 	"bipedhead": "head", "bipedbody": "torso", "body": "torso", "bipedrightarm": "rightarm",
@@ -186,7 +186,7 @@ func ParseAnimationFile(data []byte) ([]*Animation, error) {
 		return nil, err
 	}
 	if f.Animations == nil {
-		return nil, fmt.Errorf("mcmodel: not a Bedrock animation file")
+		return nil, fmt.Errorf("bbmodel: not a Bedrock animation file")
 	}
 	var out []*Animation
 	for name, a := range f.Animations {
@@ -218,7 +218,7 @@ func ParseAnimationFile(data []byte) ([]*Animation, error) {
 				}
 				tr, err := parseChannel(v, mul)
 				if err != nil {
-					return nil, fmt.Errorf("mcmodel: %s/%s/%s: %w", name, bone, ch, err)
+					return nil, fmt.Errorf("bbmodel: %s/%s/%s: %w", name, bone, ch, err)
 				}
 				*dst = tr
 				if an.Length == 0 {

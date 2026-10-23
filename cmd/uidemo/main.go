@@ -1,7 +1,7 @@
 // Command uidemo renders ui screens to PNG on the CPU (ui.SoftCanvas), with
 // resource packs stacked like in game, to check the GUI without a window.
 //
-//	uidemo -jar minecraft-1.7.10.jar -packs a.zip,b.zip -lang de_DE -out /tmp/ui
+//	uidemo -jar client.jar -packs a.zip,b.zip -lang de_DE -out /tmp/ui
 //
 // Packs are listed lowest priority first (options.txt order: the last wins).
 package main
@@ -20,12 +20,13 @@ import (
 	"testing/fstest"
 
 	"github.com/memmaker/voxellib/i18n"
+	"github.com/memmaker/voxellib/resloc"
 	"github.com/memmaker/voxellib/ui"
 )
 
 func main() {
 	home, _ := os.UserHomeDir()
-	jar := flag.String("jar", filepath.Join(home, "Library/Application Support/PrismLauncher/libraries/com/mojang/minecraft/1.7.10/minecraft-1.7.10-client.jar"), "Minecraft client jar (vanilla assets)")
+	jar := flag.String("jar", "", "client jar (vanilla assets)")
 	packs := flag.String("packs", "", "comma-separated resource packs (zip or dir), lowest priority first")
 	lang := flag.String("lang", "en_US", "language")
 	out := flag.String("out", ".", "output directory")
@@ -34,6 +35,9 @@ func main() {
 	scale := flag.Int("scale", 0, "GUI scale (0 auto)")
 	index := flag.String("index", filepath.Join(home, "Library/Application Support/PrismLauncher/assets/indexes/1.7.10.json"), "launcher asset index (the languages besides en_US live there)")
 	flag.Parse()
+	if *jar == "" {
+		log.Fatal("usage: uidemo -jar <client jar> [-packs a.zip,b.zip] [-lang de_DE] [-out dir]")
+	}
 
 	srcs := []fs.FS{open(*jar)} // lowest first
 	if l, err := langFromIndex(*index); err == nil {
@@ -145,7 +149,7 @@ func langFromIndex(path string) (fs.FS, error) {
 	objects := filepath.Join(filepath.Dir(filepath.Dir(path)), "objects")
 	m := fstest.MapFS{}
 	for name, o := range idx.Objects {
-		if !strings.HasPrefix(name, "minecraft/lang/") || len(o.Hash) < 2 {
+		if !strings.HasPrefix(name, resloc.Default+"/lang/") || len(o.Hash) < 2 {
 			continue
 		}
 		b, err := os.ReadFile(filepath.Join(objects, o.Hash[:2], o.Hash))

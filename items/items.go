@@ -4,7 +4,7 @@
 //
 // Items are plain string IDs (the explorer uses sprite names such as
 // "sword_03"); how they look is the renderer's business (see
-// render.ItemRenderer and items/extrude). Physics follow Minecraft's
+// render.ItemRenderer and items/extrude). Physics follow the reference's
 // ItemEntity: gravity 0.04/tick, 0.98 air drag, ground friction 0.6.
 // The package depends only on voxel/collide.
 package items
@@ -33,14 +33,14 @@ type Drop struct {
 	Payload any
 }
 
-// Size of a drop's collision box (Minecraft: 0.25).
+// Size of a drop's collision box (the reference: 0.25).
 const Size = 0.25
 
 // Box returns the drop's collision box.
 func (d *Drop) Box() collide.AABB { return collide.Box(d.X, d.Y, d.Z, Size, Size) }
 
 // Bob height: the centre floats hoverLift above the drop's feet and bobs
-// ±hoverBob, so a sprite drawn up to 0.5 tall (Minecraft's drop size)
+// ±hoverBob, so a sprite drawn up to 0.5 tall (the reference's drop size)
 // keeps its lowest point 0.05 above the ground.
 const (
 	hoverBob  = 0.1
@@ -70,7 +70,7 @@ func (w *World) Spawn(item string, x, y, z float64) *Drop {
 }
 
 // Toss drops an item from a holder at eye position (x,y,z) looking along
-// yaw/pitch (radians, as character.Input), with Minecraft's throw speed.
+// yaw/pitch (radians, as character.Input), with the reference's throw speed.
 func (w *World) Toss(item string, x, y, z, yaw, pitch float64) *Drop {
 	d := w.Spawn(item, x, y-0.3, z)
 	d.VX = math.Sin(yaw) * math.Cos(pitch) * 0.3
@@ -122,7 +122,7 @@ func (w *World) Tick(s collide.Solids) {
 // and the previously held item is dropped at (x,y,z). It returns the picked
 // item, or "" if nothing was picked up.
 func (w *World) Collect(body collide.AABB, held *string, x, y, z float64) string {
-	reach := body.Grow(1, 0.5, 1) // Minecraft's pickup range
+	reach := body.Grow(1, 0.5, 1) // the reference's pickup range
 	for i, d := range w.Drops {
 		touch := reach.Intersects(d.Box())
 		if d.WaitLeave {

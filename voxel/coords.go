@@ -2,7 +2,7 @@
 // sections, the world store and the light engine. It has no rendering or OpenGL
 // dependency, so it can be used headless (servers, tools, tests).
 //
-// Coordinates and layouts follow Minecraft: Y is up, -Z is north, chunks are
+// Coordinates and layouts follow the reference game: Y is up, -Z is north, chunks are
 // 16x16 columns split into 16x16x16 sections, and the index of a block inside a
 // section is y<<8 | z<<4 | x, which is also the order the Anvil format stores
 // block states and light nibbles in.
@@ -44,7 +44,7 @@ func (s SectionPos) Offset(f Face) SectionPos {
 // SectionIndex is the y<<8|z<<4|x index used by sections and the Anvil format.
 func SectionIndex(x, y, z int) int { return (y&15)<<8 | (z&15)<<4 | (x & 15) }
 
-// Face is a cube face / axis direction in Minecraft's Direction order.
+// Face is a cube face / axis direction in the reference's Direction order.
 type Face uint8
 
 const (

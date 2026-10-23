@@ -9,39 +9,39 @@ import (
 )
 
 const recipesJSON = `{
-  "ores": {"plankWood": ["minecraft:planks#*", "lotr:planks#*"], "stickWood": ["minecraft:stick"]},
+  "ores": {"plankWood": ["test:planks#*", "lotr:planks#*"], "stickWood": ["test:stick"]},
   "recipes": [
     {"type": "shaped", "pattern": ["XXX", " # ", " # "], "key": {"X": "ore:plankWood", "#": "ore:stickWood"},
-     "result": {"item": "minecraft:wooden_pickaxe"}},
-    {"type": "shaped", "pattern": ["XX", "X#", " #"], "key": {"X": "minecraft:cobblestone", "#": "minecraft:stick"},
-     "result": {"item": "minecraft:stone_axe"}},
-    {"type": "shaped", "pattern": ["X ", " X"], "key": {"X": "minecraft:cobblestone"}, "mirrored": false,
-     "result": {"item": "minecraft:stick", "count": 9}},
+     "result": {"item": "test:wooden_pickaxe"}},
+    {"type": "shaped", "pattern": ["XX", "X#", " #"], "key": {"X": "test:cobblestone", "#": "test:stick"},
+     "result": {"item": "test:stone_axe"}},
+    {"type": "shaped", "pattern": ["X ", " X"], "key": {"X": "test:cobblestone"}, "mirrored": false,
+     "result": {"item": "test:stick", "count": 9}},
     {"type": "shaped", "pattern": ["X", "X"], "key": {"X": "ore:plankWood"},
-     "result": {"item": "minecraft:stick", "count": 4}},
-    {"type": "shapeless", "ingredients": ["minecraft:log#*"], "result": {"item": "minecraft:planks#0", "count": 4}},
-    {"type": "shapeless", "ingredients": ["minecraft:unknown_thing"], "result": {"item": "minecraft:stick"}}
+     "result": {"item": "test:stick", "count": 4}},
+    {"type": "shapeless", "ingredients": ["test:log#*"], "result": {"item": "test:planks#0", "count": 4}},
+    {"type": "shapeless", "ingredients": ["test:unknown_thing"], "result": {"item": "test:stick"}}
   ],
   "smelting": [
-    {"input": "minecraft:iron_ore#*", "result": {"item": "minecraft:iron_ingot"}, "xp": 0.7},
-    {"input": "minecraft:cobblestone", "result": {"item": "minecraft:stone"}, "xp": 0.1}
+    {"input": "test:iron_ore#*", "result": {"item": "test:iron_ingot"}, "xp": 0.7},
+    {"input": "test:cobblestone", "result": {"item": "test:stone"}, "xp": 0.1}
   ]
 }`
 
 func setup(t *testing.T) (*inventory.Registry, *Book, *Smelting) {
 	reg := inventory.NewRegistry()
 	for _, it := range []*inventory.Item{
-		{Key: "minecraft:planks", HasSubtypes: true, BurnTime: 300},
+		{Key: "test:planks", HasSubtypes: true, BurnTime: 300},
 		{Key: "lotr:planks", HasSubtypes: true, BurnTime: 300},
-		{Key: "minecraft:log", HasSubtypes: true, BurnTime: 300},
-		{Key: "minecraft:stick", BurnTime: 100},
-		{Key: "minecraft:cobblestone"},
-		{Key: "minecraft:stone"},
-		{Key: "minecraft:coal", BurnTime: 1600},
-		{Key: "minecraft:iron_ore"},
-		{Key: "minecraft:iron_ingot"},
-		{Key: "minecraft:wooden_pickaxe", MaxStack: 1, MaxDamage: 59, BurnTime: 200},
-		{Key: "minecraft:stone_axe", MaxStack: 1, MaxDamage: 131},
+		{Key: "test:log", HasSubtypes: true, BurnTime: 300},
+		{Key: "test:stick", BurnTime: 100},
+		{Key: "test:cobblestone"},
+		{Key: "test:stone"},
+		{Key: "test:coal", BurnTime: 1600},
+		{Key: "test:iron_ore"},
+		{Key: "test:iron_ingot"},
+		{Key: "test:wooden_pickaxe", MaxStack: 1, MaxDamage: 59, BurnTime: 200},
+		{Key: "test:stone_axe", MaxStack: 1, MaxDamage: 131},
 	} {
 		if _, err := reg.Register(it); err != nil {
 			t.Fatal(err)
@@ -84,7 +84,7 @@ func key(s *inventory.Stack) string {
 
 func TestShaped(t *testing.T) {
 	reg, b, _ := setup(t)
-	P, S, C := "minecraft:planks", "minecraft:stick", "minecraft:cobblestone"
+	P, S, C := "test:planks", "test:stick", "test:cobblestone"
 	L := "lotr:planks#3"
 	cases := []struct {
 		w    int
@@ -92,13 +92,13 @@ func TestShaped(t *testing.T) {
 		want string
 		n    int
 	}{
-		{3, []string{P + "," + L + "," + P, "," + S + ",", "," + S + ","}, "minecraft:wooden_pickaxe", 1},
-		{3, []string{C + "," + C + ",", C + "," + S + ",", "," + S + ","}, "minecraft:stone_axe", 1},
-		{3, []string{"," + C + "," + C, "," + S + "," + C, "," + S + ","}, "minecraft:stone_axe", 1}, // mirrored
-		{2, []string{C + ",", "," + C}, "minecraft:stick", 9},
-		{2, []string{"," + C, C + ","}, "", 0},                // not mirrored
-		{2, []string{"," + P, "," + P}, "minecraft:stick", 4}, // any position
-		{3, []string{",,", ",," + P, ",," + P}, "minecraft:stick", 4},
+		{3, []string{P + "," + L + "," + P, "," + S + ",", "," + S + ","}, "test:wooden_pickaxe", 1},
+		{3, []string{C + "," + C + ",", C + "," + S + ",", "," + S + ","}, "test:stone_axe", 1},
+		{3, []string{"," + C + "," + C, "," + S + "," + C, "," + S + ","}, "test:stone_axe", 1}, // mirrored
+		{2, []string{C + ",", "," + C}, "test:stick", 9},
+		{2, []string{"," + C, C + ","}, "", 0},           // not mirrored
+		{2, []string{"," + P, "," + P}, "test:stick", 4}, // any position
+		{3, []string{",,", ",," + P, ",," + P}, "test:stick", 4},
 		{2, []string{P + "," + P, P + ","}, "", 0}, // pickaxe can't fit 2×2
 		{3, []string{P + ",,", "," + S + ",", "," + S + ","}, "", 0},
 	}
@@ -112,11 +112,11 @@ func TestShaped(t *testing.T) {
 
 func TestShapelessAndOrder(t *testing.T) {
 	reg, b, _ := setup(t)
-	g := grid(reg, 3, ",,", ",minecraft:log#3,", ",,")
-	if r := b.Match(g); key(r) != "minecraft:planks" || r.Count != 4 || r.Damage != 0 {
+	g := grid(reg, 3, ",,", ",test:log#3,", ",,")
+	if r := b.Match(g); key(r) != "test:planks" || r.Count != 4 || r.Damage != 0 {
 		t.Fatalf("planks: %v", r)
 	}
-	g = grid(reg, 3, "minecraft:log,minecraft:log,", ",,", ",,")
+	g = grid(reg, 3, "test:log,test:log,", ",,", ",,")
 	if r := b.Match(g); r != nil {
 		t.Fatal("two logs matched a one-log recipe")
 	}
@@ -128,7 +128,7 @@ func TestShapelessAndOrder(t *testing.T) {
 
 func TestRepair(t *testing.T) {
 	reg, b, _ := setup(t)
-	pick := reg.Get("minecraft:wooden_pickaxe")
+	pick := reg.Get("test:wooden_pickaxe")
 	g := inventory.NewGrid(2, 2)
 	g.Slots[0] = &inventory.Stack{Item: pick, Count: 1, Damage: 30}
 	g.Slots[3] = &inventory.Stack{Item: pick, Count: 1, Damage: 40}
@@ -146,7 +146,7 @@ func TestWorkbenchEndToEnd(t *testing.T) {
 	reg, b, _ := setup(t)
 	p := &inventory.Player{}
 	c, cr := inventory.NewWorkbench(p, b.Match)
-	p.Cursor = &inventory.Stack{Item: reg.Get("minecraft:log"), Count: 10, Damage: 2}
+	p.Cursor = &inventory.Stack{Item: reg.Get("test:log"), Count: 10, Damage: 2}
 	c.Click(5, 0, inventory.Pickup)
 	c.Click(0, 0, inventory.QuickMove)
 	// 10 logs → 40 planks in the hotbar (merged from the right end)
@@ -159,8 +159,8 @@ func TestFurnace(t *testing.T) {
 	reg, _, sm := setup(t)
 	xp := 0
 	f := &Furnace{Recipes: sm, Rand: rand.New(rand.NewPCG(1, 2)), OnXP: func(n int) { xp += n }}
-	f.Slots[0] = inventory.New(reg.Get("minecraft:iron_ore"), 10)
-	f.Slots[1] = inventory.New(reg.Get("minecraft:coal"), 2)
+	f.Slots[0] = inventory.New(reg.Get("test:iron_ore"), 10)
+	f.Slots[1] = inventory.New(reg.Get("test:coal"), 2)
 	if !f.Tick() || f.ItemBurn != 1600 || f.Slots[1].Count != 1 {
 		t.Fatal("coal not lit")
 	}
@@ -202,7 +202,7 @@ func TestFurnace(t *testing.T) {
 		t.Fatal("xp >= 1 yields the count in 1.7.10")
 	}
 	// furnace stops when no fuel and keeps lit state honest
-	f.Slots[0] = inventory.New(reg.Get("minecraft:cobblestone"), 1)
+	f.Slots[0] = inventory.New(reg.Get("test:cobblestone"), 1)
 	f.Slots[1] = nil
 	for f.Burning() {
 		f.Tick()

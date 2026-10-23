@@ -68,7 +68,7 @@ type Mesh struct {
 	Data   []uint32 // solid and cutout vertices, grouped [layer][group]
 	Ranges [voxel.LayerCount][GroupCount]Range
 	// Translucent geometry is kept apart so it can be re-sorted back to front
-	// when the camera moves, as Minecraft does.
+	// when the camera moves, as the reference does.
 	Trans        []uint32
 	TransCenters [][3]float32
 	Vis          VisGraph
@@ -97,7 +97,7 @@ type Config struct {
 	// is called at most once per block and mesh build.
 	BlockTint func(info *voxel.StateInfo, x, y, z int, biome func(x, z int) uint8) uint32
 	// RenderBlocksUV maps cube faces and boxes without model UVs like
-	// Minecraft 1.7's RenderBlocks (bottom v along +z, north and east
+	// the 1.7 reference RenderBlocks (bottom v along +z, north and east
 	// mirrored within the box) instead of 1.8 block models. Faces in a
 	// state's UVRandom always follow RenderBlocks.
 	RenderBlocksUV bool
@@ -225,7 +225,7 @@ func (m *Mesher) Build(table []voxel.StateInfo, cfg *Config) *Mesh {
 
 // neighbourLight gives every NeighbourLight cell of the snapshot the
 // brightest sky and block light of the cells above it and beside it, as
-// Minecraft's ChunkCache.getSkyBlockTypeBrightness does for
+// the reference ChunkCache.getSkyBlockTypeBrightness does for
 // useNeighborBrightness blocks (the cell below does not count). Faces and
 // AO samples then read the mixed value like any other light.
 func (m *Mesher) neighbourLight() {
@@ -263,7 +263,7 @@ func faceVisible(a, b *voxel.StateInfo) bool {
 }
 
 // light computes smooth light + AO for the 4 corners of face f of the block at
-// x,y,z (Minecraft's AmbientOcclusionFace, 0fps-style AO levels).
+// x,y,z (the reference AmbientOcclusionFace, 0fps-style AO levels).
 func (m *Mesher) light(x, y, z int, f voxel.Face) (c [4]cornerLight) {
 	n := f.Normal()
 	qx, qy, qz := x+n.X, y+n.Y, z+n.Z
@@ -594,7 +594,7 @@ func (m *Mesher) specials() {
 }
 
 // projectedUV marks a vertex whose u/v are in 1/16 of a tile (box faces
-// show the part of the texture their extent covers, like Minecraft models).
+// show the part of the texture their extent covers, like vanilla models).
 const projectedUV = 1 << 25
 
 // boxes meshes a ShapeBoxes block's elements, flat lit. A face is culled by
@@ -648,7 +648,7 @@ func (m *Mesher) boxes(x, y, z, i int, info *voxel.StateInfo) {
 				cl = m.light(lx, ly, lz, f)
 			} else {
 				l := li[i]
-				if cull { // lit from the side that can hide it, as Minecraft's flat lighting
+				if cull { // lit from the side that can hide it, as in the reference flat lighting
 					l = li[i+nbOff[side]]
 				}
 				c := cornerLight{3, (l >> 4) * 16, (l & 15) * 16}
@@ -773,7 +773,7 @@ func (m *Mesher) boxFace(f voxel.Face, base [3]float32, b *voxel.Box, tex uint16
 				}
 			}
 			// Turning the texture clockwise a quarter shows at each corner
-			// the texel of the corner before it (Minecraft's BlockFaceUV).
+			// the texel of the corner before it (the reference BlockFaceUV).
 			for n := b.UVRot[f] & 3; n > 0; n-- {
 				st = [2]float32{st[1], 1 - st[0]}
 			}
@@ -833,7 +833,7 @@ var full = [4]int{32, 32, 32, 32}
 func liquidHeight(level uint8) float32 { return float32(8-level) / 9 }
 
 // liquidCorner is the surface height (1/32 block) at the top corner
-// (cx,cz in 0..1) of liquid cell i, averaged like Minecraft's fluid
+// (cx,cz in 0..1) of liquid cell i, averaged like the reference fluid
 // renderer: the four cells around the corner count their liquid's height
 // (ten times over when nearly full), non-solid cells count as empty, and
 // liquid above any of them fills the corner.

@@ -1,5 +1,5 @@
 // Package flat is a superflat terrain generator: horizontal layers of
-// blocks, like Minecraft's "Superflat" preset. It is the smallest complete
+// blocks, like the reference's "Superflat" preset. It is the smallest complete
 // worldgen.Generator and a template for writing your own.
 package flat
 
@@ -16,7 +16,7 @@ type Generator struct {
 	Layers []Layer
 }
 
-// New returns Minecraft's classic superflat: bedrock, 2 dirt, grass.
+// New returns the reference's classic superflat: bedrock, 2 dirt, grass.
 func New(reg *voxel.Registry) *Generator {
 	return &Generator{Layers: []Layer{
 		{reg.Default("bedrock"), 1},

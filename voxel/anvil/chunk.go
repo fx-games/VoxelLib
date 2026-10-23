@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/memmaker/voxellib/resloc"
 	"github.com/memmaker/voxellib/voxel"
 )
 
@@ -134,10 +135,10 @@ func stateFromNBT(reg *voxel.Registry, c Compound) voxel.StateID {
 		}
 	}
 	switch name {
-	case "minecraft:cave_air", "minecraft:void_air":
+	case resloc.Default + ":cave_air", resloc.Default + ":void_air":
 		return voxel.Air
-	case "minecraft:grass": // renamed in 1.20.3
-		name = "minecraft:short_grass"
+	case resloc.Default + ":grass": // renamed in 1.20.3
+		name = resloc.Default + ":short_grass"
 	}
 	return reg.State(name, props)
 }
@@ -186,7 +187,7 @@ func EncodeChunk(w *voxel.World, ch *voxel.Chunk) Compound {
 		sc := Compound{
 			"Y":            int8(sy),
 			"block_states": bs,
-			"biomes":       Compound{"palette": List{Type: TagString, Items: []any{"minecraft:plains"}}},
+			"biomes":       Compound{"palette": List{Type: TagString, Items: []any{resloc.Default + ":plains"}}},
 			"SkyLight":     append([]byte(nil), s.Sky...),
 			"BlockLight":   append([]byte(nil), s.Block...),
 		}
@@ -197,10 +198,10 @@ func EncodeChunk(w *voxel.World, ch *voxel.Chunk) Compound {
 		"xPos":           int32(ch.Pos.X),
 		"zPos":           int32(ch.Pos.Z),
 		"yPos":           int32(w.MinSection()),
-		"Status":         "minecraft:full",
+		"Status":         resloc.Default + ":full",
 		"LastUpdate":     int64(0),
 		"InhabitedTime":  int64(0),
-		"isLightOn":      int8(0), // let Minecraft relight with its own engine
+		"isLightOn":      int8(0), // let the game relight with its own engine
 		"sections":       secs,
 		"block_entities": List{Type: TagCompound},
 	}
@@ -231,7 +232,7 @@ func readSigns(level Compound) map[voxel.BlockPos][4]string {
 		for _, it := range level.List(key).Items {
 			te, _ := it.(Compound)
 			id := te.String("id")
-			if id != "Sign" && id != "minecraft:sign" {
+			if id != "Sign" && id != resloc.Default+":sign" {
 				continue
 			}
 			var lines [4]string

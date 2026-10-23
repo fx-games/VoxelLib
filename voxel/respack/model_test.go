@@ -1,16 +1,17 @@
-package mcres
+package respack
 
 import (
 	"testing"
 	"testing/fstest"
 
+	"github.com/memmaker/voxellib/resloc"
 	"github.com/memmaker/voxellib/voxel"
 )
 
 // TestModelBoxesFaceDetails: face rotation, cullface, tintindex and the
 // element's rescale reach the boxes.
 func TestModelBoxesFaceDetails(t *testing.T) {
-	p := FromFS(fstest.MapFS{"assets/minecraft/models/block/t.json": {Data: []byte(`{
+	p := FromFS(fstest.MapFS{"assets/" + resloc.Default + "/models/block/t.json": {Data: []byte(`{
 		"textures": {"all": "block/x"},
 		"elements": [{"from": [0,0,0], "to": [16,16,16],
 			"rotation": {"origin": [8,8,8], "axis": "y", "angle": 45, "rescale": true},
@@ -52,15 +53,15 @@ func TestModelBoxesFaceDetails(t *testing.T) {
 // defaults (culled by the facing neighbour).
 func TestFaceResolver(t *testing.T) {
 	p := FromFS(fstest.MapFS{
-		"assets/minecraft/blockstates/grass.json": {Data: []byte(`{"variants": {"": {"model": "block/grass"}}}`)},
-		"assets/minecraft/blockstates/odd.json": {Data: []byte(`{"variants": {
+		"assets/" + resloc.Default + "/blockstates/grass.json": {Data: []byte(`{"variants": {"": {"model": "block/grass"}}}`)},
+		"assets/" + resloc.Default + "/blockstates/odd.json": {Data: []byte(`{"variants": {
 			"facing=north": {"model": "block/odd"}, "facing=east": {"model": "block/odd", "y": 90}}}`)},
-		"assets/minecraft/models/block/grass.json": {Data: []byte(`{"textures": {"t": "block/g"},
+		"assets/" + resloc.Default + "/models/block/grass.json": {Data: []byte(`{"textures": {"t": "block/g"},
 			"elements": [{"from": [0,0,0], "to": [16,16,16], "faces": {
 				"down": {"texture": "#t", "cullface": "down"}, "up": {"texture": "#t", "cullface": "up", "tintindex": 0},
 				"north": {"texture": "#t", "cullface": "north"}, "south": {"texture": "#t", "cullface": "south"},
 				"west": {"texture": "#t", "cullface": "west"}, "east": {"texture": "#t", "cullface": "east"}}}]}`)},
-		"assets/minecraft/models/block/odd.json": {Data: []byte(`{"textures": {"t": "block/o"},
+		"assets/" + resloc.Default + "/models/block/odd.json": {Data: []byte(`{"textures": {"t": "block/o"},
 			"elements": [{"from": [0,0,0], "to": [16,16,16], "faces": {
 				"down": {"texture": "#t", "cullface": "down", "tintindex": 1}, "up": {"texture": "#t", "cullface": "up"},
 				"north": {"texture": "#t"}, "south": {"texture": "#t", "cullface": "south"},
@@ -68,18 +69,18 @@ func TestFaceResolver(t *testing.T) {
 	})
 	reg := voxel.NewRegistry()
 	reg.Resolver, reg.Faces = p.Resolver(), p.FaceResolver()
-	reg.Register(&voxel.BlockDef{Name: "minecraft:grass", Shape: voxel.ShapeCube, Tint: voxel.TintGrass, Opaque: true})
-	reg.Register(&voxel.BlockDef{Name: "minecraft:odd", Shape: voxel.ShapeCube, Tint: voxel.TintGrass, Opaque: true})
+	reg.Register(&voxel.BlockDef{Name: resloc.Default + ":grass", Shape: voxel.ShapeCube, Tint: voxel.TintGrass, Opaque: true})
+	reg.Register(&voxel.BlockDef{Name: resloc.Default + ":odd", Shape: voxel.ShapeCube, Tint: voxel.TintGrass, Opaque: true})
 
-	g := reg.Info(reg.State("minecraft:grass", nil))
+	g := reg.Info(reg.State(resloc.Default+":grass", nil))
 	if g.Cull != nil || g.TintMask != 1<<voxel.FaceUp {
 		t.Errorf("grass: cull %v, tint mask %06b; want default culling, only up tinted", g.Cull, g.TintMask)
 	}
-	o := reg.Info(reg.State("minecraft:odd", map[string]string{"facing": "north"}))
+	o := reg.Info(reg.State(resloc.Default+":odd", map[string]string{"facing": "north"}))
 	if o.Cull == nil || o.Cull[voxel.FaceNorth] != voxel.FaceCount || o.Cull[voxel.FaceUp] != voxel.FaceUp || o.TintMask != 1<<voxel.FaceDown {
 		t.Errorf("odd: cull %v, tint mask %06b", o.Cull, o.TintMask)
 	}
-	e := reg.Info(reg.State("minecraft:odd", map[string]string{"facing": "east"}))
+	e := reg.Info(reg.State(resloc.Default+":odd", map[string]string{"facing": "east"}))
 	if e.Cull == nil || e.Cull[voxel.FaceEast] != voxel.FaceCount || e.Cull[voxel.FaceSouth] != voxel.FaceSouth ||
 		e.Cull[voxel.FaceNorth] != voxel.FaceNorth || e.TintMask != 1<<voxel.FaceDown {
 		t.Errorf("odd y=90: cull %v, tint mask %06b; want the cullface-less face on east", e.Cull, e.TintMask)
@@ -96,7 +97,7 @@ func TestFaceResolver(t *testing.T) {
 // TestModelMatrix: a rotation's matrix reaches the box and maps points
 // about the origin.
 func TestModelMatrix(t *testing.T) {
-	p := FromFS(fstest.MapFS{"assets/minecraft/models/block/t.json": {Data: []byte(`{
+	p := FromFS(fstest.MapFS{"assets/" + resloc.Default + "/models/block/t.json": {Data: []byte(`{
 		"elements": [{"from": [0,0,0], "to": [1,1,1],
 			"rotation": {"origin": [1,2,3], "axis": "y", "angle": 0, "matrix": [0,-1,0, 2,0,0, 0,0,1]},
 			"faces": {"up": {"texture": "#all"}}}]}`)}})

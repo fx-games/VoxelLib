@@ -24,7 +24,7 @@ type Options struct {
 	FogColor       mgl32.Vec3
 	Daylight       float32 // 0..1 multiplier for sky light
 	// BlockBrightness 0..1 brightens block light (torches) toward
-	// Minecraft's "Bright" gamma; 0 is the plain, moody curve.
+	// The reference's "Bright" gamma; 0 is the plain, moody curve.
 	BlockBrightness float32
 	SunDir          mgl32.Vec3
 	// Fog, when non-nil, replaces the distance fog and sky colour, e.g. for
@@ -35,7 +35,7 @@ type Options struct {
 	IsGreyscale func(image.Image) bool
 	// BlockTint colours tinted blocks by position and biome (mesh.Config).
 	BlockTint func(info *voxel.StateInfo, x, y, z int, biome func(x, z int) uint8) uint32
-	// RenderBlocksUV maps block textures like Minecraft 1.7 (mesh.Config).
+	// RenderBlocksUV maps block textures like the 1.7 reference (mesh.Config).
 	RenderBlocksUV bool
 	// DynamicTint is added to a vertex tint scaled by its BlockTint weight,
 	// so a colour that follows the camera (e.g. water) needs no remesh.
@@ -60,13 +60,13 @@ type Options struct {
 }
 
 // Lightmap is a light colour table indexed [sky][block] by light level,
-// sampled with linear filtering between levels like Minecraft's 16x16
+// sampled with linear filtering between levels like the reference's 16x16
 // lightmap texture.
 type Lightmap [16][16][3]float32
 
 // DefaultLightmap is the engine's own lighting: the brighter of a cool sky
 // curve scaled by daylight and a warm block curve raised toward
-// Minecraft's bright gamma by bright.
+// The reference's bright gamma by bright.
 func DefaultLightmap(daylight, bright float32) *Lightmap {
 	curve := func(l float64) float64 { return 0.04 + 0.96*(l/(4-3*l)) }
 	var lm Lightmap
@@ -117,7 +117,7 @@ type Fog struct {
 
 // CurrentFog returns the fog the terrain is drawn with: Opt.Fog if set,
 // else distance fog ending at the render distance, darkened with daylight
-// as in Minecraft. Other passes (items) use it to match the terrain.
+// as in the reference game. Other passes (items) use it to match the terrain.
 func (r *Renderer) CurrentFog() Fog {
 	if r.Opt.Fog != nil {
 		return *r.Opt.Fog
@@ -234,7 +234,7 @@ type bfsNode struct {
 const maxQuadsPerDraw = 1 << 15
 
 // quadIndices is the shared quad index buffer (0,1,2, 2,3,0) + 4k, like
-// Minecraft's sequential index buffer: every section reuses it via base
+// The reference's sequential index buffer: every section reuses it via base
 // vertex.
 func quadIndices() []uint32 {
 	idx := make([]uint32, maxQuadsPerDraw*6)
@@ -422,7 +422,7 @@ func (r *Renderer) RemoveColumn(c voxel.ChunkPos) {
 // HasSection reports whether a mesh for p was uploaded.
 func (r *Renderer) HasSection(p voxel.SectionPos) bool { return r.sections[p] != nil }
 
-// cullVisible runs Minecraft's section occlusion graph: a BFS from the camera
+// cullVisible runs the reference's section occlusion graph: a BFS from the camera
 // section that only crosses from an entry face to exit faces its VisGraph
 // connects, never turns back toward the camera, and stays inside the frustum
 // and render distance.

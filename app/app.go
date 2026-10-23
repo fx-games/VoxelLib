@@ -35,7 +35,7 @@ import (
 	"github.com/memmaker/voxellib/worldgen"
 )
 
-// TickRate is the game tick rate (Minecraft's 20 Hz).
+// TickRate is the game tick rate (the reference's 20 Hz).
 const TickRate = 20
 
 // TickDur is one tick.
@@ -119,7 +119,7 @@ type Hooks struct {
 	// the whole cell.
 	SelectBox func(hit physics.Hit) (collide.AABB, bool)
 	// BlockHit runs every tick the player digs at a block, cooldown
-	// included (Minecraft.sendClickBlockToController: the hit particles).
+	// included (the reference sendClickBlockToController: the hit particles).
 	BlockHit func(hit physics.Hit)
 	// BreakStrength is the progress one tick of holding attack adds; the
 	// block breaks at 1 (Block.getPlayerRelativeBlockHardness: +Inf at
@@ -442,7 +442,7 @@ func (a *App) TopScreen() Screen {
 	return a.screens[len(a.screens)-1]
 }
 
-// Paused reports whether the world stands still: Minecraft.isGamePaused,
+// Paused reports whether the world stands still: the reference isGamePaused,
 // the top screen's doesGuiPauseGame (a screen with a PausesGame method
 // that returns false, such as LOTR's map, lets the world run; any other
 // screen pauses).

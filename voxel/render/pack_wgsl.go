@@ -3,6 +3,8 @@ package render
 import (
 	"regexp"
 	"strings"
+
+	"github.com/memmaker/voxellib/resloc"
 )
 
 // WGSL ports of the shader pack's programs (see pack.go). The pack's GLSL
@@ -154,31 +156,31 @@ const (
 // double_plant:half= lines are rejected and double plants get no class.
 func PackMaterial(name string) uint8 {
 	switch name {
-	case "minecraft:tallgrass":
+	case resloc.Default + ":tallgrass":
 		return PackMatTallgrass
-	case "minecraft:wheat", "minecraft:sapling", "minecraft:yellow_flower", "minecraft:red_flower", "minecraft:carrots", "minecraft:beetroot", "minecraft:potatoes":
+	case resloc.Default + ":wheat", resloc.Default + ":sapling", resloc.Default + ":yellow_flower", resloc.Default + ":red_flower", resloc.Default + ":carrots", resloc.Default + ":beetroot", resloc.Default + ":potatoes":
 		return PackMatCrops
-	case "minecraft:leaves", "minecraft:leaves2":
+	case resloc.Default + ":leaves", resloc.Default + ":leaves2":
 		return PackMatLeaves
-	case "minecraft:vine":
+	case resloc.Default + ":vine":
 		return PackMatVine
-	case "minecraft:waterlily":
+	case resloc.Default + ":waterlily":
 		return PackMatLily
-	case "minecraft:fire":
+	case resloc.Default + ":fire":
 		return PackMatFire
-	case "minecraft:flowing_lava", "minecraft:lava":
+	case resloc.Default + ":flowing_lava", resloc.Default + ":lava":
 		return PackMatLava
-	case "minecraft:flowing_water", "minecraft:water":
+	case resloc.Default + ":flowing_water", resloc.Default + ":water":
 		return PackMatWater
-	case "minecraft:ice", "minecraft:slime", "minecraft:stained_glass", "minecraft:stained_glass_pane":
+	case resloc.Default + ":ice", resloc.Default + ":slime", resloc.Default + ":stained_glass", resloc.Default + ":stained_glass_pane":
 		return PackMatIce
-	case "minecraft:web":
+	case resloc.Default + ":web":
 		return PackMatWeb
-	case "minecraft:deadbush":
+	case resloc.Default + ":deadbush":
 		return PackMatDeadbush
-	case "minecraft:nether_wart":
+	case resloc.Default + ":nether_wart":
 		return PackMatWart
-	case "minecraft:glowstone", "minecraft:torch", "minecraft:redstone_torch", "minecraft:lit_pumpkin", "minecraft:lit_redstone_lamp", "minecraft:beacon":
+	case resloc.Default + ":glowstone", resloc.Default + ":torch", resloc.Default + ":redstone_torch", resloc.Default + ":lit_pumpkin", resloc.Default + ":lit_redstone_lamp", resloc.Default + ":beacon":
 		return PackMatEmissive
 	}
 	return PackMatNone

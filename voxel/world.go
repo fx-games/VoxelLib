@@ -30,7 +30,7 @@ type World struct {
 	dyn atomic.Pointer[DynField] // dynamic lights (dynlight.go)
 }
 
-// NewWorld creates an empty world spanning [minY, minY+height). Minecraft
+// NewWorld creates an empty world spanning [minY, minY+height). The reference game
 // 1.18+ overworld is -64, 384.
 func NewWorld(reg *Registry, minY, height int) *World {
 	if height%16 != 0 || minY%16 != 0 {
@@ -300,7 +300,7 @@ func (w *World) SolidAt(x, y, z int) bool {
 	return w.Reg.Info(w.Block(x, y, z)).Collides
 }
 
-// PrecipitationHeight is Minecraft's World.getPrecipitationHeight: one
+// PrecipitationHeight is the reference's World.getPrecipitationHeight: one
 // above the highest block that collides or is a liquid (rain and snow stop
 // there), or MinY for an empty or unloaded column.
 func (w *World) PrecipitationHeight(x, z int) int {

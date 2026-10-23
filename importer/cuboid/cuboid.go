@@ -1,5 +1,5 @@
-// Package mcjava imports Minecraft Java Edition 1.7.10 entity models
-// (net.minecraft.client.model.ModelBase subclasses) and poses them the way
+// Package cuboid imports the 1.7.10 reference entity models
+// (ModelBase subclasses) and poses them the way
 // the game does.
 //
 // A Geometry is what a ModelBase constructor builds: ModelRenderer parts
@@ -10,19 +10,19 @@
 // ModelBox/TexturedQuad (same vertices, quad order, UVs, mirror handling
 // and normals).
 //
-// Minecraft animates these models in code: setRotationAngles writes each
+// The reference animates these models in code: setRotationAngles writes each
 // part's rotation point and angles every frame, render() wraps parts in GL
 // transforms, and the entity renderer adds preRenderCallback transforms. A
 // Pose carries exactly that state; Skin turns it into skinning matrices
 // for render.ModelInstance.
 //
-// Coordinates: Minecraft model space is in pixels (1/16 block), Y down,
+// Coordinates: reference model space is in pixels (1/16 block), Y down,
 // facing -Z. The entity renderer draws it with
 // glScalef(-1,-1,1) · preRenderCallback · glTranslatef(0, -24/16-1/128, 0)
 // · scale 1/16, after turning by 180-yaw. The resulting model.Model is in
 // model package conventions (blocks, Y up, facing +Z, origin at the
 // entity's feet): engine = Ry(180) · corpse · flip · root · lift · px.
-package mcjava
+package cuboid
 
 import (
 	"fmt"
@@ -111,28 +111,28 @@ func (g *Geometry) BoxCount() int {
 const Lift = 24*0.0625 + 0.0078125
 
 // flip is glScalef(-1,-1,1) followed by the renderer's 180° turn, which
-// together map Minecraft's entity frame to model package conventions.
+// together map the reference's entity frame to model package conventions.
 var flip = mgl32.Scale3D(1, -1, -1)
 
 // Validate checks part references.
 func (g *Geometry) Validate() error {
 	for i, p := range g.Parts {
 		if p.Parent >= i || p.Parent < -1 {
-			return fmt.Errorf("mcjava: %s: part %d (%s) has parent %d; parents must precede children", g.Name, i, p.Name, p.Parent)
+			return fmt.Errorf("cuboid: %s: part %d (%s) has parent %d; parents must precede children", g.Name, i, p.Name, p.Parent)
 		}
 	}
 	for i, p := range g.Parts {
 		if p.Same < 0 || p.Same > i {
-			return fmt.Errorf("mcjava: %s: part %d copies part %d, which must precede it", g.Name, i, p.Same-1)
+			return fmt.Errorf("cuboid: %s: part %d copies part %d, which must precede it", g.Name, i, p.Same-1)
 		}
 	}
 	for _, r := range g.Render {
 		if r < 0 || r >= len(g.Parts) {
-			return fmt.Errorf("mcjava: %s: render part %d out of range", g.Name, r)
+			return fmt.Errorf("cuboid: %s: render part %d out of range", g.Name, r)
 		}
 	}
 	if len(g.Parts) > model.MaxBones {
-		return fmt.Errorf("mcjava: %s: %d parts (max %d)", g.Name, len(g.Parts), model.MaxBones)
+		return fmt.Errorf("cuboid: %s: %d parts (max %d)", g.Name, len(g.Parts), model.MaxBones)
 	}
 	return nil
 }
@@ -241,7 +241,7 @@ func degenerate(q quad) bool {
 
 // boxQuads replicates ModelBox's constructor (or ModelPlane's for a
 // plane): the six TexturedQuads in
-// order (east, west, up, down, north, south as Minecraft names x+, x-, y-
+// order (east, west, up, down, north, south as the reference names x+, x-, y-
 // (top in model space), y+, z-, z+), with mirror swapping x and reversing
 // each quad's vertex order.
 func boxQuads(b Box) []quad {

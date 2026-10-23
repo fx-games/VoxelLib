@@ -1,4 +1,4 @@
-// Package projectile flies arrows the way Minecraft does: a launch speed,
+// Package projectile flies arrows the way the reference does: a launch speed,
 // gravity and air drag give a ballistic arc; an arrow that hits a block
 // sticks in it, and one that hits a target sticks in the target and rides
 // along with it. Stuck arrows despawn after a while.
@@ -15,7 +15,7 @@ import (
 	"github.com/memmaker/voxellib/voxel/collide"
 )
 
-// Minecraft's arrow constants (blocks and ticks).
+// the reference's arrow constants (blocks and ticks).
 const (
 	Gravity = 0.05 // per tick²
 	Drag    = 0.99 // velocity kept per tick in air

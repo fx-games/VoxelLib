@@ -5,16 +5,17 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/memmaker/voxellib/resloc"
 	"github.com/memmaker/voxellib/voxel/collide"
 )
 
-// Rot rotates an element like a Minecraft model's element or blockstate
+// Rot rotates an element like a reference model's element or blockstate
 // rotation: Deg degrees about Axis (0=x 1=y 2=z) through Origin (1/16).
-// Positive angles follow Minecraft's element convention (right handed).
+// Positive angles follow the reference's element convention (right handed).
 // Rescale stretches the two other axes by 1/cos(Deg) about Origin, like an
 // element's "rescale": a 45° turned full-width plane spans the block again.
 // Shear, after the turn, moves a point by Shear·(Origin.y−y)/16 in x and z:
-// Minecraft 1.7's leaning torches (RenderBlocks.renderTorchAtAngle), whose
+// the 1.7 reference's leaning torches (RenderBlocks.renderTorchAtAngle), whose
 // quads lean by that much at their foot and not at all at Origin.y.
 // Mat, when not zero, replaces the turn by a general linear map about
 // Origin, p' = Origin + Mat·(p−Origin), row major: a box that a GL chain
@@ -28,12 +29,12 @@ type Rot struct {
 	Mat     [9]float32
 }
 
-// Box is one model element in 1/16 units (Minecraft model pixels). Max may
+// Box is one model element in 1/16 units (reference model pixels). Max may
 // exceed 16 (signs, fence collision).
 type Box struct {
 	Min, Max [3]float32
 	// UV per face as u0,v0,u1,v1 in 1/16 of the texture; nil maps the
-	// texture from the element's position (Minecraft's default/uvlock UVs).
+	// texture from the element's position (the reference's default/uvlock UVs).
 	UV *[6][4]float32
 	// Tex overrides the state's texture per face ("" = the state's); TexID
 	// is filled in by the registry.
@@ -52,7 +53,7 @@ type Box struct {
 	// faces without "tintindex").
 	NoTint uint8
 	// Flat lights the box by one light value per face instead of smoothly
-	// (a model's "ambientocclusion": false; Minecraft 1.7's renderers
+	// (a model's "ambientocclusion": false; the 1.7 reference's renderers
 	// that don't use renderStandardBlock).
 	Flat bool
 	// PlantTurn turns the box about the block's vertical axis by the
@@ -60,7 +61,7 @@ type Box struct {
 	// cos(hash*0.8)*0.1*pi), after Rot (the model's "plant_turn").
 	PlantTurn bool
 	// NoShade draws the box without the per-face directional shade (a
-	// model element's "shade": false; Minecraft 1.7's renderers that set
+	// model element's "shade": false; the 1.7 reference's renderers that set
 	// one tessellator colour for every face, as panes, ladders and vines).
 	NoShade bool
 }
@@ -96,10 +97,10 @@ func RotatePoint(p [3]float32, rots []Rot) [3]float32 {
 	return p
 }
 
-// rotY turns every box by a blockstate-style y rotation (Minecraft's y=deg).
+// rotY turns every box by a blockstate-style y rotation (the reference's y=deg).
 func rotY(bs []Box, deg float32) []Box { return RotateBoxes(bs, 1, deg) }
 
-// RotateBoxes appends a blockstate rotation (Minecraft's x=/y=, clockwise seen
+// RotateBoxes appends a blockstate rotation (the reference's x=/y=, clockwise seen
 // from the positive axis) about the block centre.
 func RotateBoxes(bs []Box, axis int, deg float32) []Box {
 	if deg == 0 {
@@ -124,7 +125,7 @@ func RotateBoxes(bs []Box, axis int, deg float32) []Box {
 }
 
 // LockBoxes is RotateBoxes with uvlock for textures laid out by position
-// (Minecraft 1.7 draws every box by RenderBlocks, which projects textures
+// (the 1.7 reference draws every box by RenderBlocks, which projects textures
 // in world space): a box without element rotation whose faces all carry
 // RenderBlocksUV of their bounds is turned into an axis-aligned box whose
 // faces get RenderBlocksUV of the new bounds, each face keeping its
@@ -174,7 +175,7 @@ func LockBoxes(bs []Box, axis int, deg float32) []Box {
 }
 
 // RenderBlocksUV is the model UV (u0,v0,u1,v1 per face, in the mesher's
-// 1.8 JSON mapping) that shows a box's texture as Minecraft 1.7's
+// 1.8 JSON mapping) that shows a box's texture as the 1.7 reference's
 // RenderBlocks draws it: the bottom with v along +z, north and east
 // mirrored within the box unless flip (RenderBlocks.field_152631_f).
 func RenderBlocksUV(lo, hi [3]float32, flip bool) [6][4]float32 {
@@ -236,7 +237,7 @@ func RotateFace(f Face, rots []Rot) Face {
 }
 
 // thin is a d-pixel plate against the side opposite facing (doors, ladders):
-// facing=north hugs the south side, as in Minecraft.
+// facing=north hugs the south side, as in the reference game.
 func thin(facing string, d float32) Box {
 	switch facing {
 	case "south":
@@ -372,7 +373,7 @@ func torch(b Box) Box {
 	return b
 }
 
-// lever is block/lever(_on) turned by Minecraft's lever blockstate.
+// lever is block/lever(_on) turned by the reference's lever blockstate.
 func lever(p map[string]string) []Box {
 	base := bx(5, 0, 4, 11, 3, 12)
 	base.UV = &[6][4]float32{{5, 4, 11, 12}, {5, 4, 11, 12}, {5, 0, 11, 3}, {5, 0, 11, 3}, {4, 0, 12, 3}, {4, 0, 12, 3}}
@@ -402,7 +403,7 @@ func lever(p map[string]string) []Box {
 }
 
 // sheet names a w×h pixel region of a texture sheet sheetW pixels wide as a
-// texture of its own (mcres.Pack cuts it out).
+// texture of its own (respack.Pack cuts it out).
 func sheet(tex string, sheetW, x, y, w, h int) string {
 	return tex + "#" + strconv.Itoa(sheetW) + ":" + strconv.Itoa(x) + "," + strconv.Itoa(y) + "," + strconv.Itoa(w) + "," + strconv.Itoa(h)
 }
@@ -425,7 +426,7 @@ func entityBox(b Box, tex string, sheetW, u, v, dx, dy, dz int, flipV bool) Box 
 	return b
 }
 
-// chest is Minecraft's chest entity model (ChestRenderer) as elements,
+// chest is the reference's chest entity model (ChestRenderer) as elements,
 // modelled facing south and turned by the facing. "left"/"right" are the
 // halves of a double chest whose partner is clockwise/counter-clockwise
 // of the facing (ChestType).
@@ -506,7 +507,7 @@ type Nb func(d [3]int) *StateInfo
 // At is the neighbour on face f.
 func (nb Nb) At(f Face) *StateInfo { return nb(f.Off()) }
 
-// Connected returns a state's elements in context, as Minecraft works them
+// Connected returns a state's elements in context, as the reference game works them
 // out from the neighbours (nb.At(f) is the state beside it on face f): fence
 // arms, stair corners, double chests. It is ConnectedAt the origin.
 func Connected(info *StateInfo, nb Nb) []Box { return ConnectedAt(info, nb, [3]int{}) }
@@ -541,7 +542,7 @@ func ConnectedAt(info *StateInfo, nb Nb, pos [3]int) []Box {
 		return out
 	case len(info.Variants) < 2:
 		return info.Boxes
-	case info.Name == "minecraft:chest":
+	case info.Name == resloc.Default+":chest":
 		f := chestFacing(info)
 		same := func(dir string) bool {
 			o := nb.At(faceOf[dir])
@@ -707,7 +708,7 @@ func holds(cs []Cond, nb Nb, pos [3]int, flags uint32) bool {
 func (info *StateInfo) hasTag(id uint16) bool {
 	switch id {
 	case tagAir:
-		return info.Shape == ShapeNone && info.Name == "minecraft:air"
+		return info.Shape == ShapeNone && info.Name == resloc.Default+":air"
 	case tagOpaque:
 		return info.Opaque
 	}
@@ -720,7 +721,7 @@ func (info *StateInfo) hasTag(id uint16) bool {
 }
 
 // Boxes implements collide.Boxer for ShapeBoxes blocks overlapping area
-// (fences collide 1.5 blocks tall, as in Minecraft).
+// (fences collide 1.5 blocks tall, as in the reference game).
 func (w *World) Boxes(area collide.AABB, out []collide.AABB) []collide.AABB {
 	area.Grow(0, 0.5, 0).Blocks(func(x, y, z int) {
 		info := w.Reg.Info(w.Block(x, y, z))
@@ -778,7 +779,7 @@ func axisAligned(b Box) Box {
 }
 
 // collidable: torches, plates, wire, signs, levers and thin snow are walked
-// through, as in Minecraft.
+// through, as in the reference game.
 func collidable(name string) bool {
 	n := name[strings.IndexByte(name, ':')+1:]
 	switch {

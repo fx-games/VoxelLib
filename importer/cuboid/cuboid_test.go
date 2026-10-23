@@ -1,4 +1,4 @@
-package mcjava
+package cuboid
 
 import (
 	"math"
@@ -46,7 +46,7 @@ func TestBuildPlacesBoxes(t *testing.T) {
 	if n := len(m.Meshes[0].Verts); n != 48 {
 		t.Errorf("%d verts", n)
 	}
-	// The front face (Minecraft north, -Z) of the head faces +Z with UV
+	// The front face (reference north, -Z) of the head faces +Z with UV
 	// (8,8)-(16,16).
 	found := false
 	for _, v := range m.Meshes[0].Verts[:24] {
@@ -75,7 +75,7 @@ func TestPoseRotatesArm(t *testing.T) {
 	g := biped()
 	m, _ := Build(g, nil)
 	p := g.RestPose()
-	// rotateAngleX = -90°: the arm points forward (Minecraft -Z, model +Z).
+	// rotateAngleX = -90°: the arm points forward (reference -Z, model +Z).
 	p.Parts[1].Rot[0] = -math.Pi / 2
 	skin := p.Skin(m, g, nil)
 	// The arm's hand end (y=10px below the pivot) moves to z=+10px.

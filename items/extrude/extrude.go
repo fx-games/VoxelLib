@@ -1,4 +1,4 @@
-// Package extrude turns a 2D sprite into a 3D mesh the way Minecraft draws
+// Package extrude turns a 2D sprite into a 3D mesh the way the reference draws
 // held and dropped items: the sprite becomes a thin slab one texel thick.
 // The front and back are single quads textured with the whole sprite (the
 // renderer discards transparent texels), and every opaque texel that borders

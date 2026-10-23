@@ -42,12 +42,12 @@ type Particle struct {
 	Col0, Col1                   [4]float32
 	Gravity, Drag, Bounce        float64
 	Additive                     bool
-	// Sprite is 1 + a cell of the renderer's particle atlas (Minecraft's
+	// Sprite is 1 + a cell of the renderer's particle atlas (the reference's
 	// particles.png: 16 x 16 cells, index = row*16 + column); 0 draws a
 	// plain square.
 	Sprite uint16
 	// Sheet, when non-zero, draws UV (u0, v0, u1, v1) of the renderer's
-	// sheet Sheet instead of an atlas cell (Minecraft's block and item
+	// sheet Sheet instead of an atlas cell (the reference's block and item
 	// particles: a quarter of a terrain or item icon).
 	Sheet uint8
 	UV    [4]float32

@@ -220,7 +220,7 @@ func (e *Engine) term(c Cond) bool {
 	return true
 }
 
-// IsNight is Minecraft's night for a tick of the day (CustomNPC: 13000..23000).
+// IsNight is the reference's night for a tick of the day (CustomNPC: 13000..23000).
 func IsNight(t int) bool { t %= 24000; return t >= 13000 && t < 23000 }
 
 // ---- actions ----

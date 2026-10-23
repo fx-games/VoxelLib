@@ -1,4 +1,4 @@
-package mcmodel
+package bbmodel
 
 import (
 	"bytes"
@@ -76,7 +76,7 @@ type bbGroup struct {
 func ParseBBModel(data []byte) (*model.Model, []*Animation, error) {
 	var f bbFile
 	if err := json.Unmarshal(data, &f); err != nil {
-		return nil, nil, fmt.Errorf("mcmodel: %w", err)
+		return nil, nil, fmt.Errorf("bbmodel: %w", err)
 	}
 	m := &model.Model{Name: f.Name, Clips: map[string]*model.Clip{}, Tags: map[string]bool{}}
 	resW, resH := f.Resolution.Width, f.Resolution.Height
@@ -203,7 +203,7 @@ func ParseBBModel(data []byte) (*model.Model, []*Animation, error) {
 		}
 	}
 	if len(m.Bones) == 0 {
-		return nil, nil, fmt.Errorf("mcmodel: no geometry")
+		return nil, nil, fmt.Errorf("bbmodel: no geometry")
 	}
 	// Cube coordinates are stored before their group's rotation is applied,
 	// so the bind pose is the unrotated model: bone space = model - pivot.
@@ -260,7 +260,7 @@ func ParseBBModel(data []byte) (*model.Model, []*Animation, error) {
 				}
 				var err error
 				if k.pre, err = bbPoint(kf.DataPoints[0]); err != nil {
-					return nil, nil, fmt.Errorf("mcmodel: %s: %w", a.Name, err)
+					return nil, nil, fmt.Errorf("bbmodel: %s: %w", a.Name, err)
 				}
 				k.post = k.pre
 				if len(kf.DataPoints) > 1 {

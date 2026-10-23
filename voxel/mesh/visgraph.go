@@ -3,7 +3,7 @@ package mesh
 import "github.com/memmaker/voxellib/voxel"
 
 // VisGraph records which pairs of section faces are connected through
-// non-opaque blocks - Minecraft's VisibilitySet. The renderer's occlusion BFS
+// non-opaque blocks - the reference's VisibilitySet. The renderer's occlusion BFS
 // only walks from a section's entry face to exit faces connected to it, which
 // culls whole cave systems behind solid ground ("advanced cave culling").
 type VisGraph uint64

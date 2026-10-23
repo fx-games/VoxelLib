@@ -14,15 +14,15 @@ import (
 //
 //	{
 //	  "noRepair": false,
-//	  "ores": {"plankWood": ["minecraft:planks#*"]},
+//	  "ores": {"plankWood": ["test:planks#*"]},
 //	  "recipes": [
 //	    {"type": "shaped", "pattern": ["##", "##"], "key": {"#": "ore:plankWood"},
-//	     "result": {"item": "minecraft:crafting_table"}},
+//	     "result": {"item": "test:crafting_table"}},
 //	    {"type": "shaped", "pattern": ["A ", " B"], "key": {...}, "mirrored": false, "keepTag": true, ...},
-//	    {"type": "shapeless", "ingredients": ["minecraft:log#*", ["minecraft:dye#1", "ore:dyeRed"]],
-//	     "result": {"item": "minecraft:planks#0", "count": 4}}
+//	    {"type": "shapeless", "ingredients": ["test:log#*", ["test:dye#1", "ore:dyeRed"]],
+//	     "result": {"item": "test:planks#0", "count": 4}}
 //	  ],
-//	  "smelting": [{"input": "minecraft:iron_ore#*", "result": {"item": "minecraft:iron_ingot"}, "xp": 0.7}]
+//	  "smelting": [{"input": "test:iron_ore#*", "result": {"item": "test:iron_ingot"}, "xp": 0.7}]
 //	}
 //
 // An item reference is "<registry name>[#meta]": no meta means 0, "#*" any

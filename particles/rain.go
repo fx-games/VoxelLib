@@ -26,7 +26,7 @@ type Splash struct {
 	Smoke   bool
 }
 
-// RainSplashes is Minecraft 1.7's EntityRenderer.addRainParticles for one
+// RainSplashes is the 1.7 reference's EntityRenderer.addRainParticles for one
 // client tick: where splashes spawn around feet. strength is
 // getRainStrength(1); fancy is fancy graphics; setting is the particle
 // setting (0 all, 1 decreased, 2 minimal). ground describes a column.

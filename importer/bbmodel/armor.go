@@ -1,4 +1,4 @@
-package mcmodel
+package bbmodel
 
 import (
 	"strings"
@@ -8,7 +8,7 @@ import (
 )
 
 // armorLimb maps an armor group (lower case, "armor" stripped) to the
-// canonical body part Minecraft attaches it to.
+// canonical body part the reference game attaches it to.
 var armorLimb = map[string]string{
 	"head": "head", "helmet": "head",
 	"body": "torso", "chest": "torso",
@@ -18,7 +18,7 @@ var armorLimb = map[string]string{
 }
 
 // attachArmor moves top-level armor groups (armorLeftBoot, ...) under the
-// body part they belong to. Minecraft's armor renderer attaches them by
+// body part they belong to. The reference's armor renderer attaches them by
 // name, so some models leave them at the root, where they would stay put
 // while the limb moves. Requires bind = pure pivot translation (as both
 // parsers produce) and reorders bones so parents precede children.

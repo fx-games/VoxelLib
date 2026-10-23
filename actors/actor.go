@@ -1,5 +1,5 @@
 // Package actors runs NPCs, monsters and mounts: living bodies on the
-// character controller's Minecraft physics, with behaviours (stand and look,
+// character controller's physics from the reference, with behaviours (stand and look,
 // wander, follow a leader in formation, walk routes through doors, guard,
 // flee), 1.7.10 combat (melee timing, hurt and invulnerability ticks,
 // knockback, armour, arrows through package projectile), faction relations,
@@ -35,7 +35,7 @@ type World interface {
 // BodySolids is an optional World method: the cells bodies collide with
 // as whole cubes. A World whose Solid is the path finder's cell test
 // (true for slabs, fences and doors too) implements it so bodies meet those
-// blocks' real boxes (World.Boxes) instead, as Minecraft entities do.
+// blocks' real boxes (World.Boxes) instead, as the reference entities do.
 type BodySolids interface {
 	BodySolid(x, y, z int) bool
 }
@@ -68,7 +68,7 @@ func (m *Manager) body() character.World {
 // Fits reports whether a's body overlaps no block box it collides with
 // (EntityLiving.getCanSpawnHere: getCollidingBoundingBoxes(boundingBox)
 // is empty). A body placed overlapping blocks ignores those boxes but can
-// be shut in by the next ones, as in Minecraft.
+// be shut in by the next ones, as in the reference.
 func (m *Manager) Fits(a *Actor) bool { return collide.Fits(m.body(), a.Body.Box()) }
 
 // Vec is a world position.

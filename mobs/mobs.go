@@ -209,7 +209,7 @@ func (m *Mob) locomote(w collide.Solids, speed float64) {
 	fx, fz := math.Sin(m.Yaw)*speed, -math.Cos(m.Yaw)*speed
 	m.VX += (fx - m.VX) * 0.5
 	m.VZ += (fz - m.VZ) * 0.5
-	// Move, then apply gravity, as Minecraft does: the jump's full 0.42
+	// Move, then apply gravity, as the reference does: the jump's full 0.42
 	// counts on its first tick, so the arc peaks at ~1.25 blocks.
 	mx, my, mz := collide.Move(w, m.Box(), m.VX, m.VY, m.VZ)
 	blocked := (mx != m.VX || mz != m.VZ) && speed > 0
@@ -277,7 +277,7 @@ func (m *Mob) tickFlyer(w collide.Solids, rnd *rand.Rand) {
 	}
 }
 
-// Separate pushes overlapping mobs apart, like Minecraft's entity pushing:
+// Separate pushes overlapping mobs apart, like the reference's entity pushing:
 // each overlapping pair gets an opposing horizontal nudge that grows with
 // the overlap. Mobs with Static set are never moved but still push others.
 // Call it once per tick after ticking every mob; the nudge goes through

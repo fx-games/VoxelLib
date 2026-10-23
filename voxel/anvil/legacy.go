@@ -3,6 +3,7 @@ package anvil
 import (
 	"strconv"
 
+	"github.com/memmaker/voxellib/resloc"
 	"github.com/memmaker/voxellib/voxel"
 )
 
@@ -154,7 +155,7 @@ func fixDoors(reg *voxel.Registry, ch *voxel.Chunk) {
 		for z := 0; z < 16; z++ {
 			for x := 0; x < 16; x++ {
 				lo, hi := ch.Get(x, y, z), ch.Get(x, y+1, z)
-				if t[lo].Name != "minecraft:oak_door" || t[hi].Name != "minecraft:oak_door" {
+				if t[lo].Name != resloc.Default+":oak_door" || t[hi].Name != resloc.Default+":oak_door" {
 					continue
 				}
 				pl, ph := reg.StateProps(lo), reg.StateProps(hi)

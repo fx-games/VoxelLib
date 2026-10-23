@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/memmaker/voxellib/resloc"
 	"github.com/memmaker/voxellib/voxel"
 	"github.com/memmaker/voxellib/voxel/anvil"
 	"github.com/memmaker/voxellib/voxel/voxelmap"
@@ -35,7 +36,7 @@ func slotEngine(t *testing.T, m *voxelmap.Map, reg *voxel.Registry, slot string,
 	w := voxel.NewWorld(reg, voxelmap.MinY, voxelmap.Height)
 	e := &Engine{World: w, delta: true, store: st, journal: j, cfg: Config{
 		Map: m, SaveDir: slot, OnMapChunk: hook, ReadOnly: readOnly,
-		Generator: &flat.Generator{Layers: []flat.Layer{{Block: m.State("minecraft:stone#0"), Count: 2}}},
+		Generator: &flat.Generator{Layers: []flat.Layer{{Block: m.State(resloc.Default + ":stone#0"), Count: 2}}},
 	}}
 	e.fresh.Store(fresh)
 	return e
@@ -52,7 +53,7 @@ func TestMapCompositionAndDeltaSave(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer m.Close()
-	stone, lamp := m.State("minecraft:stone#0"), m.State("test:lamp#2")
+	stone, lamp := m.State(resloc.Default+":stone#0"), m.State("test:lamp#2")
 	var hooked atomic.Int32
 	hook := func(p voxel.ChunkPos, level anvil.Compound) {
 		if p == (voxel.ChunkPos{}) && len(level.List("Entities").Items) == 1 {

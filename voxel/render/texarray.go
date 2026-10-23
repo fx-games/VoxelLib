@@ -6,14 +6,14 @@ import (
 )
 
 // TextureSource supplies block textures by resource name ("block/stone").
-// *mcres.Pack implements it.
+// *respack.Pack implements it.
 type TextureSource interface {
 	Texture(name string) (image.Image, error)
 }
 
 // AnimatedTextureSource is optionally implemented by a TextureSource whose
-// textures may be animated (Minecraft .png.mcmeta strips). Frame 0 is what
-// Texture returns. *mcres.Pack implements it.
+// textures may be animated (reference .png.mcmeta strips). Frame 0 is what
+// Texture returns. *respack.Pack implements it.
 type AnimatedTextureSource interface {
 	TextureFrames(name string) (frames []image.Image, ticksPerFrame int, err error)
 }

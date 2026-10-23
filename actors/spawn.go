@@ -7,7 +7,7 @@ import (
 	"github.com/memmaker/voxellib/voxel/collide"
 )
 
-// SpawnRule is one entry of the game's spawn table (Minecraft's biome spawn
+// SpawnRule is one entry of the game's spawn table (the reference's biome spawn
 // lists, LOTR's per-biome NPC spawn lists).
 type SpawnRule struct {
 	Kind     string   `json:"kind"`
@@ -40,7 +40,7 @@ type Spawner struct {
 	Rules []SpawnRule
 	Caps  map[string]int // max actors per category within Radius
 	Every map[string]int // ticks between attempts per category (0 = every tick)
-	// MinDist and Radius bound the spawn ring around the player (Minecraft:
+	// MinDist and Radius bound the spawn ring around the player (the reference:
 	// 24 and 128). Beyond Radius spawned actors despawn; beyond 32 they
 	// despawn at random after 30 s without a fight (1 in 800 a tick).
 	MinDist, Radius float64

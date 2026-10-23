@@ -14,7 +14,7 @@ type ItemStack struct {
 	Damage float64
 	Bar    bool
 	// Tooltip: the name (with its § rarity colour) then further lines,
-	// which are drawn grey like Minecraft's lore.
+	// which are drawn grey like the reference's lore.
 	Tooltip []string
 }
 
@@ -32,7 +32,7 @@ type ContainerModel interface {
 	// (drop).
 	Click(i, button int, shift bool)
 	// Drag spreads the cursor stack over slots (button 0: evenly, 1: one
-	// each), Minecraft's drag mode.
+	// each), the reference's drag mode.
 	Drag(slots []int, button int)
 }
 

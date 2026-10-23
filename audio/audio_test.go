@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/memmaker/voxellib/resloc"
 )
 
 // testdata/test.ogg is jfreymuth/oggvorbis's test file (MIT): 1 s, mono, 44100 Hz.
@@ -139,27 +141,27 @@ func TestRead(t *testing.T) {
 
 func TestRegistryMerge(t *testing.T) {
 	r := Registry{}
-	exists := func(f string) bool { return f != "minecraft:step/missing" }
+	exists := func(f string) bool { return f != "test:step/missing" }
 	vanilla := `{"step.stone": {"category": "block", "sounds": ["step/stone1", "step/stone2", "step/missing"]},
 		"random.click": {"category": "block", "sounds": ["random/click"]},
 		"music.game": {"category": "music", "sounds": [{"name": "music/calm1", "stream": true, "weight": 3}]}}`
 	pack := `{"step.stone": {"category": "ambient", "sounds": ["mypack:stone3"]},
 		"random.click": {"category": "player", "replace": true, "sounds": [{"name": "click2", "volume": 0.5, "pitch": 1.2}]}}`
-	if err := r.Load("minecraft", []byte(vanilla), exists); err != nil {
+	if err := r.Load("test", []byte(vanilla), exists); err != nil {
 		t.Fatal(err)
 	}
-	if err := r.Load("minecraft", []byte(pack), exists); err != nil {
+	if err := r.Load("test", []byte(pack), exists); err != nil {
 		t.Fatal(err)
 	}
-	st := r["minecraft:step.stone"]
-	if st.Category != "block" || len(st.Sounds) != 3 || st.Sounds[2].Name != "mypack:stone3" || st.Sounds[0].Name != "minecraft:step/stone1" {
+	st := r["test:step.stone"]
+	if st.Category != "block" || len(st.Sounds) != 3 || st.Sounds[2].Name != "mypack:stone3" || st.Sounds[0].Name != "test:step/stone1" {
 		t.Fatalf("append: %+v", st)
 	}
-	cl := r["minecraft:random.click"]
+	cl := r["test:random.click"]
 	if cl.Category != "player" || len(cl.Sounds) != 1 || cl.Sounds[0].Volume != 0.5 || cl.Sounds[0].Pitch != 1.2 {
 		t.Fatalf("replace: %+v", cl)
 	}
-	if e := r["minecraft:music.game"].Sounds[0]; !e.Stream || e.Weight != 3 {
+	if e := r["test:music.game"].Sounds[0]; !e.Stream || e.Weight != 3 {
 		t.Fatalf("entry fields: %+v", e)
 	}
 	// Invalid files are rejected whole and change nothing.
@@ -170,11 +172,11 @@ func TestRegistryMerge(t *testing.T) {
 		`{"a": {"sounds": ["x"]}, "a": {"sounds": ["y"]}}`,
 		``,
 	} {
-		if err := r.Load("minecraft", []byte(bad), nil); err == nil {
+		if err := r.Load("test", []byte(bad), nil); err == nil {
 			t.Errorf("accepted %q", bad)
 		}
 	}
-	if r["minecraft:a"] != nil {
+	if r["test:a"] != nil {
 		t.Fatal("rejected file left an event")
 	}
 	// Round trip through MarshalJSON.
@@ -226,11 +228,11 @@ func TestPickVariants(t *testing.T) {
 
 func TestSoundsPlay(t *testing.T) {
 	dir := t.TempDir()
-	os.MkdirAll(filepath.Join(dir, "minecraft", "sounds"), 0o755)
+	os.MkdirAll(filepath.Join(dir, resloc.Default, "sounds"), 0o755)
 	ogg, _ := os.ReadFile("testdata/test.ogg")
-	os.WriteFile(filepath.Join(dir, "minecraft", "sounds", "t.ogg"), ogg, 0o644)
-	os.WriteFile(filepath.Join(dir, "sounds.json"), []byte(`{"minecraft:t": {"category": "block", "sounds": ["minecraft:t"]},
-		"minecraft:s": {"category": "music", "sounds": [{"name": "minecraft:t", "stream": true}]}}`), 0o644)
+	os.WriteFile(filepath.Join(dir, resloc.Default, "sounds", "t.ogg"), ogg, 0o644)
+	os.WriteFile(filepath.Join(dir, "sounds.json"), []byte(`{"t": {"category": "block", "sounds": ["t"]},
+		"s": {"category": "music", "sounds": [{"name": "t", "stream": true}]}}`), 0o644)
 	s, err := Open(dir, nil)
 	if err != nil {
 		t.Fatal(err)

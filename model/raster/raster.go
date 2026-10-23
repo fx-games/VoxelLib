@@ -1,7 +1,7 @@
 // Package raster draws model meshes on the CPU the way OpenGL's fixed
 // function pipeline draws them with an orthographic projection: flat
 // lit, nearest texel sampling, a depth buffer and an alpha test. It is
-// for small views that must match Minecraft exactly, such as the player
+// for small views that must match the reference exactly, such as the player
 // in the inventory (GuiInventory.func_147046_a).
 package raster
 

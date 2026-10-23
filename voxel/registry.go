@@ -8,10 +8,12 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+
+	"github.com/memmaker/voxellib/resloc"
 )
 
-// StateID is a block state id, global to a Registry. 0 is always minecraft:air.
-// Like Minecraft's global palette, every distinct name+properties combination
+// StateID is a block state id, global to a Registry. 0 is always air in the default namespace.
+// Like the reference's global palette, every distinct name+properties combination
 // gets its own id, so hot loops work on small integers and flat lookup tables.
 type StateID uint16
 
@@ -28,7 +30,7 @@ const (
 	ShapeBoxes               // StateInfo.Boxes (stairs, slabs, doors, torches, ...)
 )
 
-// Layer is the render pass, as Minecraft's RenderType: solid has no blending and
+// Layer is the render pass, as the reference's RenderType: solid has no blending and
 // no alpha test (cheapest), cutout alpha-tests, translucent blends and is sorted.
 type Layer uint8
 
@@ -39,7 +41,7 @@ const (
 	LayerCount
 )
 
-// Tint selects a colour multiplied into a face, as Minecraft's BlockColors.
+// Tint selects a colour multiplied into a face, as the reference's BlockColors.
 type Tint uint8
 
 const (
@@ -52,10 +54,10 @@ const (
 	TintFixed // BlockDef.TintColor
 )
 
-// BlockDef describes a block type. Textures are resource names in Minecraft's
+// BlockDef describes a block type. Textures are resource names in the reference's
 // namespace, e.g. "block/stone", indexed by Face.
 type BlockDef struct {
-	Name          string // namespaced, "minecraft:stone"
+	Name          string // namespaced, resloc.Default+":stone"
 	Shape         Shape
 	Layer         Layer
 	Textures      [6]string
@@ -82,16 +84,16 @@ type BlockDef struct {
 	Level uint8
 	// Tags label the block for neighbours' Part conditions.
 	Tags []string
-	// Parts are elements that depend on the neighbours (Minecraft's
+	// Parts are elements that depend on the neighbours (the reference's
 	// multipart): a ShapeBoxes block draws Boxes plus every Part whose
 	// conditions hold (see Connected).
 	Parts []Part
 	// Retex swaps a ShapeCube's face textures by its neighbours: each face
-	// takes the first entry that names it and whose When holds (Minecraft's
+	// takes the first entry that names it and whose When holds (the reference's
 	// world-aware getIcon, as snowy grass, stone and podzol sides).
 	Retex []Retex
 	// NeighbourLight lights the block with the brightest light of the
-	// blocks above and beside it instead of its own (Minecraft's
+	// blocks above and beside it instead of its own (the reference's
 	// useNeighborBrightness: stairs, slabs, farmland, which block light).
 	NeighbourLight bool
 	// PlantOffset shifts a plant (ShapeCross, or ShapeBoxes for plant
@@ -102,7 +104,7 @@ type BlockDef struct {
 	// (ShapeBoxes).
 	Scatter *Scatter
 	// UVRandom marks faces (1<<Face) whose texture the mesher turns by a
-	// position-dependent uvRotate (Minecraft 1.7 RenderBlocks), as LOTR's
+	// position-dependent uvRotate (the 1.7 reference RenderBlocks), as LOTR's
 	// randomly rotated natural blocks (see mesh.RenderBlocksSides).
 	UVRandom uint8
 	// UVSeed, when set, is per face the side index whose hash turns it
@@ -147,7 +149,7 @@ type Retex struct {
 // instead of neighbour tags, and Face/Dy are unused.
 //
 // With Pos, the tests are on the block's own world position (Face/Dy
-// unused), as Minecraft 1.7's RenderBlocks.renderBlockFire picks icons:
+// unused), as the 1.7 reference's RenderBlocks.renderBlockFire picks icons:
 // "sum" holds when (x+y+z)&1 == 1, "half" when (x/2+y/2+z/2)&1 == 1
 // (Java's truncating division).
 type Cond struct {
@@ -186,7 +188,7 @@ type StateInfo struct {
 	Emission uint8
 	Opacity  uint8
 	CullSelf bool
-	// Level is a liquid's Minecraft level: 0 a source (8/9 high), 1..7
+	// Level is a liquid's level in the reference: 0 a source (8/9 high), 1..7
 	// flowing and ever shallower ((8-Level)/9); the mesher slopes the
 	// surface between neighbours.
 	Level uint8
@@ -248,7 +250,7 @@ type Registry struct {
 	Missing string
 }
 
-// NewRegistry creates a registry with air (id 0) and the built-in Minecraft
+// NewRegistry creates a registry with air (id 0) and the built-in reference
 // block set registered.
 func NewRegistry() *Registry {
 	r := &Registry{
@@ -261,8 +263,8 @@ func NewRegistry() *Registry {
 	empty := []StateInfo{}
 	r.table.Store(&empty)
 	r.texture(r.Missing)
-	r.Register(&BlockDef{Name: "minecraft:air", Shape: ShapeNone, Replaceable: true})
-	r.State("minecraft:air", nil)
+	r.Register(&BlockDef{Name: resloc.Default + ":air", Shape: ShapeNone, Replaceable: true})
+	r.State(resloc.Default+":air", nil)
 	for _, d := range builtinBlocks() {
 		r.Register(d)
 	}
@@ -297,13 +299,8 @@ func (r *Registry) Defs() []*BlockDef {
 	return out
 }
 
-// Namespaced adds "minecraft:" when no namespace is given.
-func Namespaced(name string) string {
-	if strings.IndexByte(name, ':') < 0 {
-		return "minecraft:" + name
-	}
-	return name
-}
+// Namespaced adds the default namespace (resloc.Default) when none is given.
+func Namespaced(name string) string { return resloc.Qualify(name) }
 
 // Table returns the immutable state table; index it with a StateID. Grab it
 // once per mesh/batch, not per block.
@@ -329,7 +326,7 @@ func (r *Registry) Parse(s string) StateID {
 
 // State returns (creating when needed) the id of name+props. Unknown names get
 // a placeholder cube definition whose texture is guessed as block/<name>, which
-// is what most Minecraft blocks use.
+// is what most reference blocks use.
 func (r *Registry) State(name string, props map[string]string) StateID {
 	name = Namespaced(name)
 	key := name
@@ -573,7 +570,7 @@ func (r *Registry) TextureNames() ([]string, uint64) {
 
 func (r *Registry) TextureVersion() uint64 { return r.texVersion.Load() }
 
-// StateString formats a state as "minecraft:name[k=v]".
+// StateString formats a state as "name[k=v]" with the default namespace prefix.
 func (r *Registry) StateString(id StateID) string {
 	in := r.Info(id)
 	if in.Props == "" {
@@ -588,7 +585,7 @@ func (r *Registry) StateProps(id StateID) map[string]string {
 	return p
 }
 
-// ParseStateString splits "minecraft:oak_log[axis=x]" into name and props.
+// ParseStateString splits a state string such as "oak_log[axis=x]" (optionally namespaced) into name and props.
 func ParseStateString(s string) (string, map[string]string) {
 	i := strings.IndexByte(s, '[')
 	if i < 0 {
@@ -638,7 +635,7 @@ type Scatter struct {
 	Shade  float32  `json:"shade"`
 }
 
-// PlantOffset is how Minecraft 1.7 moves a plant off its block's centre.
+// PlantOffset is how the 1.7 reference moves a plant off its block's centre.
 type PlantOffset uint8
 
 const (

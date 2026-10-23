@@ -1,5 +1,5 @@
 // Command explorer is a first-person demo of voxellib on the app shell:
-// Minecraft-like terrain, walking, flying and swimming, block breaking and
+// reference-like terrain, walking, flying and swimming, block breaking and
 // placing, extruded 2D item sprites to pick up, creatures, a crossbow.
 //
 //	./run.sh                                   # build and run (repo root)
@@ -15,7 +15,7 @@
 //	input.go   the explorer's own keys
 //	items.go   item sprites, drops, pickup, held item
 //	creatures.go  imported animated models (app entities) and their behaviour
-//	import.go  Roblox-style and Minecraft-style asset imports
+//	import.go  Roblox-style and Blockbench-style asset imports
 //	combat.go, crossbow.go, torches.go, signs.go, help.go: demo features
 package main
 
@@ -32,11 +32,12 @@ import (
 	"strings"
 
 	"github.com/memmaker/voxellib/app"
+	"github.com/memmaker/voxellib/resloc"
 	"github.com/memmaker/voxellib/voxel"
 	"github.com/memmaker/voxellib/voxel/engine"
-	"github.com/memmaker/voxellib/voxel/mcres"
 	"github.com/memmaker/voxellib/voxel/physics"
 	"github.com/memmaker/voxellib/voxel/render"
+	"github.com/memmaker/voxellib/voxel/respack"
 	"github.com/memmaker/voxellib/voxel/voxelmap"
 	"github.com/memmaker/voxellib/worldgen/flat"
 	"github.com/memmaker/voxellib/worldgen/overworld"
@@ -45,8 +46,8 @@ import (
 func init() { runtime.LockOSThread() }
 
 // mapHotbar is the hotbar of -map worlds (pre-1.13 block keys).
-var mapHotbar = []string{"minecraft:grass#0", "minecraft:dirt#0", "minecraft:stone#0", "minecraft:cobblestone#0",
-	"minecraft:planks#0", "minecraft:log#0", "minecraft:glass#0", "minecraft:brick_block#0", "minecraft:glowstone#0"}
+var mapHotbar = []string{resloc.Qualify("grass#0"), resloc.Qualify("dirt#0"), resloc.Qualify("stone#0"), resloc.Qualify("cobblestone#0"),
+	resloc.Qualify("planks#0"), resloc.Qualify("log#0"), resloc.Qualify("glass#0"), resloc.Qualify("brick_block#0"), resloc.Qualify("glowstone#0")}
 
 var hotbarNames = []string{
 	"grass_block[snowy=false]", "dirt", "stone", "cobblestone", "oak_planks", "oak_log[axis=y]",
@@ -55,16 +56,16 @@ var hotbarNames = []string{
 }
 
 type options struct {
-	itemDir, signFont, pets, mcAssets, species, anim, hold string
-	numItems, numMobs                                      int
-	night, fly, lineup, help                               bool
+	itemDir, signFont, pets, modelPack, species, anim, hold string
+	numItems, numMobs                                       int
+	night, fly, lineup, help                                bool
 }
 
 func main() {
 	var (
 		o        options
 		cfg      app.Config
-		worldDir = flag.String("world", "saves/demo", "Minecraft world directory to load/save ('' = memory only)")
+		worldDir = flag.String("world", "saves/demo", "world directory to load/save ('' = memory only)")
 		readOnly = flag.Bool("readonly", false, "never write to the world directory")
 		packs    = flag.String("pack", "", "extra resource packs (dir/zip/jar), comma separated, highest priority first")
 		genName  = flag.String("gen", "overworld", "terrain generator for new chunks: overworld | flat")
@@ -81,7 +82,7 @@ func main() {
 	flag.StringVar(&o.itemDir, "items", "assets/items", "directory of item sprite PNGs ('' = no items)")
 	flag.IntVar(&o.numItems, "item-count", 40, "items scattered around the spawn")
 	flag.StringVar(&o.pets, "pets", filepath.Join(os.Getenv("HOME"), "Downloads/CubePetsVol2_Free_v1.0.zip"), "Roblox-style model pack (dir/zip/glb) to populate the world with ('' = none)")
-	flag.StringVar(&o.mcAssets, "mcassets", "assets/cleannrooster", "Minecraft-style asset pack (Blockbench models, animations, item textures) ('' = none)")
+	flag.StringVar(&o.modelPack, "modelpack", "assets/cleannrooster", "Blockbench asset pack (Blockbench models, animations, item textures) ('' = none)")
 	flag.IntVar(&o.numMobs, "mob-count", 24, "creatures spawned around the player")
 	flag.StringVar(&cfg.Debug.Shot, "shot", "", "save a screenshot PNG at tick -shot-at and quit")
 	flag.IntVar(&cfg.Debug.ShotAt, "shot-at", 200, "tick for -shot")
@@ -124,7 +125,7 @@ func main() {
 		paths = strings.Split(*packs, ",")
 	}
 	paths = append(paths, "assets/rpg16pack")
-	pack, err := mcres.Open(paths...)
+	pack, err := respack.Open(paths...)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -137,7 +138,7 @@ func main() {
 		WorldDir:       *worldDir,
 		ReadOnly:       *readOnly,
 		Textures:       pack,
-		RenderOptions:  render.Options{Missing: mcres.MissingTexture, IsGreyscale: mcres.IsGreyscale},
+		RenderOptions:  render.Options{Missing: respack.MissingTexture, IsGreyscale: respack.IsGreyscale},
 	}
 	hotbar := hotbarNames
 	if *mapDir != "" {
@@ -239,8 +240,8 @@ func (g *game) start() {
 	if o.pets != "" {
 		g.importPets(o.pets)
 	}
-	if o.mcAssets != "" {
-		g.importMCAssets(o.mcAssets)
+	if o.modelPack != "" {
+		g.importBlockbenchPack(o.modelPack)
 	}
 	g.finishItems()
 	g.filterSpecies(o.species)
@@ -282,14 +283,14 @@ func (g *game) Draw(fbW, fbH int) {
 func (g *game) blockInteract(h physics.Hit, _ app.Action) bool { return g.toggleDoor(h.Block) }
 
 func (g *game) breakStrength(s voxel.StateID) float32 {
-	if g.Eng.World.Reg.Info(s).Name == "minecraft:bedrock" {
+	if g.Eng.World.Reg.Info(s).Name == resloc.Qualify("bedrock") {
 		return 0
 	}
 	return float32(math.Inf(1))
 }
 
 func (g *game) status() string {
-	name := strings.TrimPrefix(g.Eng.World.Reg.Info(g.hotbar[min(g.Player.Selected, len(g.hotbar)-1)]).Name, "minecraft:")
+	name := strings.TrimPrefix(g.Eng.World.Reg.Info(g.hotbar[min(g.Player.Selected, len(g.hotbar)-1)]).Name, resloc.Default+":")
 	held := g.held
 	if held == "" {
 		held = "-"

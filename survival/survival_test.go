@@ -21,12 +21,12 @@ var (
 	diamondPick = pickaxe(3, 1561, 8)
 	goldPick    = pickaxe(0, 32, 12)
 	woodShovel  = &inventory.Item{Key: "shovel", MaxStack: 1, MaxDamage: 59, Tool: &inventory.Tool{Class: "shovel", Efficiency: 2, BreakDamage: 1}}
-	cobble      = &inventory.Item{Key: "minecraft:cobblestone"}
+	cobble      = &inventory.Item{Key: "test:cobblestone"}
 
-	stone    = &Block{Key: "minecraft:stone", Hardness: 1.5, Material: "rock", NeedsTool: true, HarvestTool: "pickaxe", Drops: []Drop{{Item: cobble}}}
-	obsidian = &Block{Key: "minecraft:obsidian", Hardness: 50, Material: "rock", NeedsTool: true, HarvestTool: "pickaxe", HarvestLevel: 3}
-	ironOre  = &Block{Key: "minecraft:iron_ore", Hardness: 3, Material: "rock", NeedsTool: true, HarvestTool: "pickaxe", HarvestLevel: 1}
-	dirt     = &Block{Key: "minecraft:dirt", Hardness: 0.5, Material: "ground", HarvestTool: "shovel"}
+	stone    = &Block{Key: "test:stone", Hardness: 1.5, Material: "rock", NeedsTool: true, HarvestTool: "pickaxe", Drops: []Drop{{Item: cobble}}}
+	obsidian = &Block{Key: "test:obsidian", Hardness: 50, Material: "rock", NeedsTool: true, HarvestTool: "pickaxe", HarvestLevel: 3}
+	ironOre  = &Block{Key: "test:iron_ore", Hardness: 3, Material: "rock", NeedsTool: true, HarvestTool: "pickaxe", HarvestLevel: 1}
+	dirt     = &Block{Key: "test:dirt", Hardness: 0.5, Material: "ground", HarvestTool: "shovel"}
 )
 
 func breakTicks(b *Block, held *inventory.Stack, d Dig) int {

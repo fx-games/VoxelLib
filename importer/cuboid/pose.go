@@ -1,4 +1,4 @@
-package mcjava
+package cuboid
 
 import (
 	"math"
@@ -36,7 +36,7 @@ type Pose struct {
 	// before the lift), e.g. glScalef(0.9375,...). Zero means identity.
 	Root mgl32.Mat4
 	// Corpse is rotateCorpse's transform after the yaw turn (death
-	// tipping, Dinnerbone), in Minecraft's entity frame. Zero means
+	// tipping, Dinnerbone), in the reference's entity frame. Zero means
 	// identity.
 	Corpse mgl32.Mat4
 }
@@ -51,7 +51,7 @@ func (g *Geometry) RestPose() *Pose {
 // Reset puts every part back to its constructed state and clears the
 // GL transforms. Models whose setRotationAngles only sets some fields
 // rely on the rest of the state persisting between frames, as in
-// Minecraft; call Reset only where a model's code would start fresh.
+// the reference; call Reset only where a model's code would start fresh.
 func (p *Pose) Reset(g *Geometry) {
 	if len(p.Parts) != len(g.Parts) {
 		p.Parts = make([]PartPose, len(g.Parts))

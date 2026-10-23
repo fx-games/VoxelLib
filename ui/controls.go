@@ -14,7 +14,7 @@ type KeyBinding struct {
 	Key, Default   int
 }
 
-// KeyName is a key's display name the way Minecraft 1.7.10 shows LWJGL key
+// KeyName is a key's display name the way the 1.7.10 reference shows LWJGL key
 // names ("W", "SPACE", "LSHIFT"), mouse buttons as key.mouseButton.
 func KeyName(ctx *Context, k int) string {
 	if k >= MouseButtonBase {

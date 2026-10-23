@@ -1,4 +1,4 @@
-package mcres
+package respack
 
 import (
 	"image"

@@ -1,4 +1,4 @@
-// Package mcmodel imports Minecraft-style assets: Blockbench projects
+// Package bbmodel imports Blockbench-style assets: Blockbench projects
 // (.bbmodel), Bedrock/GeckoLib geometry (.geo.json) and animations
 // (.animation.json, with Molang expressions and GeckoLib easings), and
 // item textures (16x16-ish PNGs under an item folder).
@@ -11,7 +11,7 @@
 //
 // Models come out in model package conventions: blocks as units, Y up,
 // facing +Z.
-package mcmodel
+package bbmodel
 
 import (
 	"bytes"
@@ -170,7 +170,7 @@ func ImportWith(src string, o Options) (*Pack, error) {
 			}
 		}
 		tag(m)
-		// Minecraft entity models face north (-Z); turn them to +Z.
+		// Reference entity models face north (-Z); turn them to +Z.
 		m.Transform(mgl32.HomogRotate3DY(3.14159265))
 	}
 	return p, nil

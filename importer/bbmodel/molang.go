@@ -1,4 +1,4 @@
-package mcmodel
+package bbmodel
 
 import (
 	"fmt"
@@ -39,7 +39,7 @@ func Const(e Expr) (float64, bool) {
 // ParseMolang compiles an expression. It supports numbers, + - * /, unary
 // minus, comparisons, && || !, ?:, parentheses, math.* functions (angles in
 // degrees, as Molang), query/variable lookups and "return x;" statements.
-// Unknown identifiers evaluate to 0, as in Minecraft.
+// Unknown identifiers evaluate to 0, as in the reference.
 func ParseMolang(src string) (Expr, error) {
 	s := strings.TrimSpace(src)
 	s = strings.TrimSuffix(s, ";")

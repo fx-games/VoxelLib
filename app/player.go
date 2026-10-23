@@ -7,6 +7,7 @@ import (
 
 	"github.com/go-gl/mathgl/mgl32"
 	"github.com/memmaker/voxellib/character"
+	"github.com/memmaker/voxellib/resloc"
 	"github.com/memmaker/voxellib/voxel"
 	"github.com/memmaker/voxellib/voxel/collide"
 	"github.com/memmaker/voxellib/voxel/engine"
@@ -38,9 +39,9 @@ func (t *Terrain) Boxes(area collide.AABB, out []collide.AABB) []collide.AABB {
 func (t *Terrain) Liquid(x, y, z int) character.Liquid {
 	name, _, _ := strings.Cut(t.eng.World.Reg.Info(t.eng.World.Block(x, y, z)).Name, "#") // map block keys
 	switch name {
-	case "minecraft:water", "minecraft:flowing_water":
+	case resloc.Qualify("water"), resloc.Qualify("flowing_water"):
 		return character.LiquidWater
-	case "minecraft:lava", "minecraft:flowing_lava":
+	case resloc.Qualify("lava"), resloc.Qualify("flowing_lava"):
 		return character.LiquidLava
 	}
 	return character.LiquidNone
@@ -266,7 +267,7 @@ func (p *Player) breakStep(hit physics.Hit) {
 		return
 	}
 	p.Progress, p.breakTicks, p.damage = 0, 0, 0
-	p.breakCD = 5 // Minecraft's delay before the next block
+	p.breakCD = 5 // the reference's delay before the next block
 	if math.IsInf(float64(str), 1) {
 		p.breakCD = 4 // instant breaking repeats every 5 ticks
 	}

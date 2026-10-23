@@ -20,7 +20,7 @@ const (
 )
 
 // Weather is the falling rain and snow around the viewer, drawn like the
-// LOTR mod's LOTRWeatherRenderer (Minecraft 1.7's renderRainSnow plus ash
+// LOTR mod's LOTRWeatherRenderer (the 1.7 reference's renderRainSnow plus ash
 // and sand): one camera-facing strip per column within Radius, from the
 // precipitation height up to the viewer's feet + Radius.
 type Weather struct {
@@ -42,7 +42,7 @@ type Weather struct {
 	Textures [PrecipCount]string
 }
 
-// DrawWeather draws Opt.Weather. Minecraft draws it last in the world,
+// DrawWeather draws Opt.Weather. The reference game draws it last in the world,
 // after particles, so call it after models and particles.
 func (r *Renderer) DrawWeather(cam *Camera) {
 	if w := r.Opt.Weather; w != nil && w.Strength > 0 && w.Column != nil {
@@ -150,7 +150,7 @@ func (r *Renderer) weather(w *Weather, cam *Camera, out []SkyDraw) []SkyDraw {
 }
 
 // At is the light colour at fractional sky and block levels, filtered
-// linearly between levels like Minecraft's lightmap texture.
+// linearly between levels like the reference's lightmap texture.
 func (lm *Lightmap) At(sky, block float32) mgl32.Vec3 {
 	lerp := func(v float32) (int, int, float32) {
 		v = min(max(v, 0), 15)

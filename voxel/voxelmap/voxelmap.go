@@ -1,23 +1,23 @@
 // Package voxelmap reads a VoxelMap: a directory holding a converted
-// pre-1.13 Minecraft map, with its unchanged Anvil regions, so a game can
-// stream it through voxel/engine without Minecraft.
+// pre-1.13 map, with its unchanged Anvil regions, so a game can
+// stream it through voxel/engine without the original game.
 //
 //	map.json        {"name", "format", "seed", "spawn": {"dim","x","y","z"},
 //	                 "dimensions": [{"id", "name", "regions", "generator"}]}
 //	ids.json        {"<numeric id>": "<registry name>"} (blocks only)
 //	blocks.json     [{"key", "shape", "textures", "layer", "opacity", "emission",
 //	                  "collision", "tint", ...}], see Block
-//	models/**.json  Minecraft Java JSON block models
+//	models/**.json  Java JSON block models
 //	textures/**.png block textures (+ .png.mcmeta for animations)
 //	<regions>/      r.X.Z.mca of a dimension, legacy numeric ids
 //
 // A block state is named by its block key "<registry name>#<meta>", e.g.
-// "minecraft:stone#0"; a blocks.json key "<name>#*" covers every meta not
+// "stone#0" in the default namespace; a blocks.json key "<name>#*" covers every meta not
 // listed on its own. Each key becomes a voxel.BlockDef of that name, so
 // Registry.StateString of a map block is its key.
 //
 // Resource ids "ns:path" (textures, models) live at textures/ns/path.png and
-// models/ns/path.json; ids without a namespace, and "minecraft:" ids, may
+// models/ns/path.json; ids without a namespace, and default-namespace ids, may
 // also sit directly at textures/path.png.
 package voxelmap
 
@@ -36,9 +36,10 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/memmaker/voxellib/resloc"
 	"github.com/memmaker/voxellib/voxel"
 	"github.com/memmaker/voxellib/voxel/anvil"
-	"github.com/memmaker/voxellib/voxel/mcres"
+	"github.com/memmaker/voxellib/voxel/respack"
 )
 
 // MinY and Height are the build limits of a pre-1.13 world: worlds that
@@ -46,7 +47,7 @@ import (
 const MinY, Height = 0, 256
 
 // Air is the block key of air.
-const Air = "minecraft:air#0"
+const Air = resloc.Default + ":air#0"
 
 // Dimension is one entry of map.json's dimensions.
 type Dimension struct {
@@ -71,7 +72,7 @@ type Map struct {
 	Blocks map[string]*Block `json:"-"`
 
 	reg    *voxel.Registry
-	pack   *mcres.Pack
+	pack   *respack.Pack
 	cache  [4096 * 16]atomic.Uint32 // id<<4|meta → StateID+1
 	mu     sync.Mutex
 	stores map[int]*anvil.Store
@@ -112,7 +113,7 @@ func Open(dir string, reg *voxel.Registry) (*Map, error) {
 		}
 		m.Blocks[b.Key] = b
 	}
-	m.pack = mcres.FromFS(resFS{os.DirFS(dir)})
+	m.pack = respack.FromFS(resFS{os.DirFS(dir)})
 	m.register()
 	return m, nil
 }
@@ -157,10 +158,10 @@ func (m *Map) Dimension(id int) *Dimension {
 	return nil
 }
 
-// State returns the state of a block key ("minecraft:stone#0"). Air and
+// State returns the state of a block key ("stone#0" in the default namespace). Air and
 // keys of unknown blocks work too (the latter as missing-texture cubes).
 func (m *Map) State(key string) voxel.StateID {
-	if strings.HasPrefix(key, "minecraft:air#") {
+	if strings.HasPrefix(key, resloc.Default+":air#") {
 		return voxel.Air
 	}
 	return m.reg.State(key, nil)
@@ -271,7 +272,7 @@ func (m *Map) TextureFrames(name string) ([]image.Image, int, error) {
 }
 
 // Pack returns the map's models and textures as a resource pack.
-func (m *Map) Pack() *mcres.Pack { return m.pack }
+func (m *Map) Pack() *respack.Pack { return m.pack }
 
 // resFS maps the resource-pack paths mcres asks for
 // (assets/<ns>/<kind>/<rest>) onto the map's layout (<kind>/<ns>/<rest>,

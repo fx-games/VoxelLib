@@ -15,7 +15,7 @@ import (
 
 	"github.com/go-gl/mathgl/mgl32"
 	"github.com/go-gl/mathgl/mgl64"
-	"github.com/memmaker/voxellib/importer/mcmodel"
+	"github.com/memmaker/voxellib/importer/bbmodel"
 	"github.com/memmaker/voxellib/mobs"
 	"github.com/memmaker/voxellib/model"
 	"github.com/memmaker/voxellib/projectile"
@@ -46,7 +46,7 @@ type crossbowState struct {
 }
 
 // setupCrossbow finds the crossbow in an imported pack and equips it.
-func (g *game) setupCrossbow(p *mcmodel.Pack) {
+func (g *game) setupCrossbow(p *bbmodel.Pack) {
 	var bow *model.Model
 	for _, m := range p.Models {
 		if bow = m.Subtree(crossbowGroup); bow != nil {
@@ -313,7 +313,7 @@ func (g *game) fallCorpse(m *mobs.Mob) bool {
 	if m.OnGround {
 		return true
 	}
-	m.VY = (m.VY - 0.08) * 0.98 // Minecraft entity gravity and drag
+	m.VY = (m.VY - 0.08) * 0.98 // the reference entity gravity and drag
 	_, my, _ := collide.Move(g.Terrain, m.Box(), 0, m.VY, 0)
 	m.Y += my
 	if my != m.VY { // hit the ground
@@ -503,7 +503,7 @@ func arrowModel() *model.Model {
 }
 
 // arrowSprite draws a 16×16 item sprite of an arrow, tip to the upper
-// right like Minecraft's arrow item.
+// right like the reference's arrow item.
 func arrowSprite() image.Image {
 	img := image.NewNRGBA(image.Rect(0, 0, 16, 16))
 	shaft := color.NRGBA{120, 86, 52, 255}

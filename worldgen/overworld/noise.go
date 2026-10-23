@@ -1,8 +1,8 @@
-// Package gen is a Minecraft-flavoured terrain generator: 2D noise for
+// Package gen is a reference-flavoured terrain generator: 2D noise for
 // continents/erosion/peaks, a 3D density field for overhangs and cheese/
 // spaghetti caves, surface rules, ores and trees.
 //
-// Like Minecraft's NoiseChunk, the 3D density is only evaluated on a coarse
+// Like the reference's NoiseChunk, the 3D density is only evaluated on a coarse
 // 4x8x4 lattice and trilinearly interpolated in between, cutting noise calls
 // per chunk by ~128x.
 package overworld

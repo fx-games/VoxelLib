@@ -20,7 +20,7 @@ import (
 	"strings"
 
 	"github.com/go-gl/mathgl/mgl32"
-	"github.com/memmaker/voxellib/importer/mcmodel"
+	"github.com/memmaker/voxellib/importer/bbmodel"
 	"github.com/memmaker/voxellib/mobs"
 	"github.com/memmaker/voxellib/model"
 	"github.com/memmaker/voxellib/projectile"
@@ -32,7 +32,7 @@ import (
 const swordGroup = "sword"
 
 const (
-	maxHealth    = 20 // half-hearts, as Minecraft
+	maxHealth    = 20 // half-hearts, as the reference
 	meleeDamage  = 3
 	arrowDamage  = 4
 	hurtTicks    = 10 // invulnerable and flashing red after a hit
@@ -77,7 +77,7 @@ func (p *playerTarget) Frame() (x, y, z, yaw float64) {
 }
 
 // setupCombat finds the sword in an imported pack.
-func (g *game) setupCombat(p *mcmodel.Pack) {
+func (g *game) setupCombat(p *bbmodel.Pack) {
 	g.health, g.hudHealth = maxHealth, -1
 	g.playerTgt = &playerTarget{g}
 	var sword *model.Model
@@ -270,7 +270,7 @@ func (g *game) shootAtPlayer(c *creature, w *weapon) {
 	g.arrows.Shoot(sx, sy, sz, yaw, pitch, projectile.Speed)
 }
 
-// hurtPlayer applies damage with Minecraft's knockback away from x,z and a
+// hurtPlayer applies damage with the reference's knockback away from x,z and a
 // short invulnerability; at zero health the player respawns.
 func (g *game) hurtPlayer(dmg int, fromX, fromZ float64) {
 	if g.hurt > 0 || g.Player.NoClip {
@@ -399,7 +399,7 @@ func (g *game) drawHUD(fbW, fbH int) {
 	g.hud.Draw((fbW-w*s)/2, fbH-h*s-fbH/12, s, fbW, fbH)
 }
 
-// heartsImage draws ten Minecraft-style hearts for health half-hearts.
+// heartsImage draws ten reference-style hearts for health half-hearts.
 func heartsImage(health int) image.Image {
 	const hw = 9
 	shape := []string{

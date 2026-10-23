@@ -7,7 +7,7 @@ type Section struct {
 	Sky   []byte
 	Block []byte
 	// nonAir counts non-air states; zero means the section can be skipped by
-	// the mesher and the renderer entirely (Minecraft's hasOnlyAir()).
+	// the mesher and the renderer entirely (the reference's hasOnlyAir()).
 	nonAir int
 }
 

@@ -1,8 +1,8 @@
-// Package mcres loads Minecraft Java resource packs: textures (with .mcmeta
+// Package respack loads Java resource packs: textures (with .mcmeta
 // animation strips), blockstates and block models. Packs may be directories,
 // .zip files or the game's client .jar; several packs stack like in-game, the
 // first one that has a file wins.
-package mcres
+package respack
 
 import (
 	"archive/zip"
@@ -20,6 +20,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/memmaker/voxellib/resloc"
 	"github.com/memmaker/voxellib/voxel"
 )
 
@@ -48,7 +49,7 @@ func Open(paths ...string) (*Pack, error) {
 		zr, err := zip.OpenReader(ph)
 		if err != nil {
 			p.Close()
-			return nil, fmt.Errorf("mcres: %s: %w", ph, err)
+			return nil, fmt.Errorf("respack: %s: %w", ph, err)
 		}
 		p.sources = append(p.sources, zr)
 		p.closers = append(p.closers, zr)
@@ -84,13 +85,9 @@ func (p *Pack) readFile(name string) ([]byte, error) {
 	return io.ReadAll(f)
 }
 
-// splitID turns "minecraft:block/stone" into ("minecraft", "block/stone").
-func splitID(id string) (string, string) {
-	if i := strings.IndexByte(id, ':'); i >= 0 {
-		return id[:i], id[i+1:]
-	}
-	return "minecraft", id
-}
+// splitID turns "ns:block/stone" into ("ns", "block/stone"); no namespace
+// means resloc.Default.
+func splitID(id string) (string, string) { return resloc.Split(id) }
 
 // Texture loads a texture by resource name ("block/stone"). Animated strips
 // are cut to their first frame; see TextureFrames for all of them.
@@ -117,7 +114,7 @@ func (p *Pack) TextureFrames(name string) ([]image.Image, int, error) {
 		}
 		var sw, x, y, w, h int
 		if _, err := fmt.Sscanf(region, "%d:%d,%d,%d,%d", &sw, &x, &y, &w, &h); err != nil || sw <= 0 {
-			return nil, 0, fmt.Errorf("mcres: bad region %q", name)
+			return nil, 0, fmt.Errorf("respack: bad region %q", name)
 		}
 		// the region of every frame: an animated icon stays animated
 		out := make([]image.Image, len(frames))
@@ -140,7 +137,7 @@ func (p *Pack) TextureFrames(name string) ([]image.Image, int, error) {
 	defer f.Close()
 	img, _, err := image.Decode(f)
 	if err != nil {
-		return nil, 0, fmt.Errorf("mcres: %s: %w", name, err)
+		return nil, 0, fmt.Errorf("respack: %s: %w", name, err)
 	}
 	meta, _ := p.readFile(file + ".mcmeta")
 	frames, ticks := Frames(img, meta)
@@ -268,7 +265,7 @@ type element struct {
 	To       [3]float32           `json:"to"`
 	Rotation *elemRot             `json:"rotation"`
 	Faces    map[string]modelFace `json:"faces"`
-	// PlantTurn: voxel.Box.PlantTurn (an extension, ignored by Minecraft).
+	// PlantTurn: voxel.Box.PlantTurn (an extension, ignored by the reference game).
 	PlantTurn bool  `json:"plant_turn"`
 	Shade     *bool `json:"shade"`
 }
@@ -279,7 +276,7 @@ type elemRot struct {
 	Angle   float32
 	Rescale bool
 	// Shear, Matrix: voxel.Rot.Shear and Mat (extensions, ignored by
-	// Minecraft).
+	// the reference game).
 	Shear  [2]float32
 	Matrix [9]float32
 }
@@ -374,7 +371,7 @@ func lookupTex(tex map[string]string, ref string) string {
 	if ref == "" || strings.HasPrefix(ref, "#") {
 		return ""
 	}
-	return strings.TrimPrefix(ref, "minecraft:")
+	return strings.TrimPrefix(ref, resloc.Default+":")
 }
 
 // pickVariant chooses the variant whose "k=v,..." key matches props.
@@ -583,7 +580,7 @@ func (p *Pack) ModelBoxes(id string, vars map[string]string) ([]voxel.Box, error
 	return out, nil
 }
 
-// defaultUV is the UV Minecraft derives from an element's position when a
+// defaultUV is the UV the reference game derives from an element's position when a
 // face gives none.
 func defaultUV(f voxel.Face, a, b [3]float32) [4]float32 {
 	switch f {

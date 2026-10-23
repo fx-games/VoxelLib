@@ -4,7 +4,7 @@
 // A generator is anything with a Generate method; the engine
 // (voxel/engine.Config.Generator) only calls that. Subpackages:
 //
-//	worldgen/overworld  Minecraft-like terrain: continents, mountains, caves, ores, trees
+//	worldgen/overworld  reference-like terrain: continents, mountains, caves, ores, trees
 //	worldgen/flat       superflat layers (the minimal example to copy from)
 //
 // Writing your own: implement Generator, and optionally Spawner so a game can
@@ -18,7 +18,7 @@
 // Games register generators by name (Register) so a world description,
 // such as a VoxelMap dimension's "generator", can pick one; the Factory
 // gets the world seed and a Blocks function that resolves block keys
-// ("minecraft:stone#0"). Structures (structure.go) are placed with
+// ("stone#0"). Structures (structure.go) are placed with
 // PlaceStructures.
 package worldgen
 
@@ -40,7 +40,7 @@ type Spawner interface {
 	FindLand(x, z int) (int, int)
 }
 
-// Blocks resolves a block key ("minecraft:stone#0") to a state, e.g.
+// Blocks resolves a block key ("stone#0") to a state, e.g.
 // voxelmap.Map.State.
 type Blocks func(key string) voxel.StateID
 

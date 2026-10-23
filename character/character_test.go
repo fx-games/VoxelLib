@@ -35,7 +35,7 @@ func run(c *Character, w World, in Input, ticks int) {
 
 func speed(c *Character) float64 { return math.Hypot(c.X-c.PrevX, c.Z-c.PrevZ) }
 
-func TestWalkSpeedMatchesMinecraft(t *testing.T) {
+func TestWalkSpeedMatchesReference(t *testing.T) {
 	c := New(0.5, 0, 0.5)
 	run(c, grid{}, Input{}, 5) // settle on the ground
 	run(c, grid{}, Input{Forward: 1}, 60)
@@ -48,7 +48,7 @@ func TestWalkSpeedMatchesMinecraft(t *testing.T) {
 	}
 }
 
-func TestFlySpeedMatchesMinecraft(t *testing.T) {
+func TestFlySpeedMatchesReference(t *testing.T) {
 	c := New(0.5, 10, 0.5)
 	c.Flying = true
 	run(c, grid{}, Input{Forward: 1}, 100)

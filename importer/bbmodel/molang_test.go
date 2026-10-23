@@ -1,4 +1,4 @@
-package mcmodel
+package bbmodel
 
 import (
 	"math"

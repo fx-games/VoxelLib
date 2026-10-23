@@ -7,7 +7,7 @@ import (
 )
 
 // blockWGSL draws a BlockMesh: mesher vertices (mesh.VertexWords) placed
-// by a model matrix, lit like a Minecraft item (two GL lights) or, for
+// by a model matrix, lit like a reference item (two GL lights) or, for
 // the breaking overlay, the plain crack texture.
 const blockWGSL = `
 const damagePull = 0.002;

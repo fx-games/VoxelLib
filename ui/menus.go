@@ -16,7 +16,7 @@ type MenuRow struct {
 	Items []MenuItem
 }
 
-// MenuScreen is a column of Minecraft menu buttons with an optional logo,
+// MenuScreen is a column of the reference menu buttons with an optional logo,
 // title and footer: the main menu and the pause menu are made with it.
 type MenuScreen struct {
 	Base
@@ -166,7 +166,7 @@ func (s *ConfirmScreen) Draw(ctx *Context, mx, my int, partial float32) {
 
 // Setting is one entry of a SettingsScreen: a slider (Slider, Value,
 // SetValue) or a button (OnClick: cycle a value or open a screen). The
-// label reads "Label: Text()" like Minecraft's options, or just Label when
+// label reads "Label: Text()" like the reference's options, or just Label when
 // Text is nil.
 type Setting struct {
 	Label    string

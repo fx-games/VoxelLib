@@ -43,7 +43,7 @@ type Config struct {
 	MinY, Height   int             // default -64, 384
 	RenderDistance int             // chunks, default 12
 	Generator      Generator       // used for chunks not on disk (nil: void)
-	WorldDir       string          // Minecraft world folder to load/save ("" = memory only)
+	WorldDir       string          // world folder (Anvil regions) to load/save ("" = memory only)
 	ReadOnly       bool            // never write to WorldDir or SaveDir
 	// Map, when set, streams dimension Dimension of a VoxelMap instead of
 	// WorldDir. Per chunk, the save slot's changes win over the map's
@@ -739,7 +739,7 @@ func (e *Engine) Render(cam *render.Camera) { e.Renderer.Render(cam) }
 func (e *Engine) Block(x, y, z int) voxel.StateID { return e.World.Block(x, y, z) }
 
 // SetBlock changes a block and rebuilds the affected sections immediately on
-// the calling thread, so edits appear in the same frame (Minecraft does the
+// the calling thread, so edits appear in the same frame (the reference does the
 // same for player-caused changes near the camera).
 func (e *Engine) SetBlock(x, y, z int, id voxel.StateID) bool {
 	if !e.World.SetBlock(x, y, z, id) {

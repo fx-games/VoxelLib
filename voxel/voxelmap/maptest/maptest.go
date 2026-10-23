@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/memmaker/voxellib/resloc"
 	"github.com/memmaker/voxellib/voxel/anvil"
 )
 
@@ -32,14 +33,14 @@ func Write(dir string) error {
 	files := map[string]string{
 		"map.json": `{"name": "test", "format": 1, "seed": 1234, "spawn": {"dim": 0, "x": 8, "y": 5, "z": 8},
 			"dimensions": [{"id": 0, "name": "Overworld", "regions": "regions/0", "generator": "test:flat"}]}`,
-		"ids.json": `{"0": "minecraft:air", "1": "minecraft:stone", "6": "test:plant", "63": "minecraft:standing_sign",
+		"ids.json": `{"0": "` + resloc.Default + `:air", "1": "` + resloc.Default + `:stone", "6": "test:plant", "63": "` + resloc.Default + `:standing_sign",
 			"300": "test:lamp", "301": "test:post"}`,
 		"blocks.json": `[
-			{"key": "minecraft:stone#*", "textures": "blocks/stone"},
+			{"key": "` + resloc.Default + `:stone#*", "textures": "blocks/stone"},
 			{"key": "test:plant#0", "shape": "cross", "textures": "test:blocks/plant", "tint": "grass"},
 			{"key": "test:lamp#*", "textures": {"all": "blocks/stone", "top": "test:blocks/plant"}, "emission": 15},
 			{"key": "test:post#0", "shape": "model:test:block/post", "y": 90, "textures": {"wood": "blocks/stone"}, "sounds": "wood"},
-			{"key": "minecraft:standing_sign#*", "shape": "none", "collision": "none", "tint": "#ff8000"}
+			{"key": "` + resloc.Default + `:standing_sign#*", "shape": "none", "collision": "none", "tint": "#ff8000"}
 		]`,
 		"models/test/block/post.json": `{"textures": {"particle": "#wood"},
 			"elements": [{"from": [6, 0, 6], "to": [10, 16, 10],

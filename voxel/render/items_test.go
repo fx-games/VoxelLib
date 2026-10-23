@@ -6,7 +6,7 @@ import (
 	"github.com/go-gl/mathgl/mgl32"
 )
 
-// TestFirstPersonItem checks DrawHand's chain against Minecraft 1.7.10's
+// TestFirstPersonItem checks DrawHand's chain against the 1.7.10 reference's
 // renderItemInFirstPerson + renderItem + renderItemIn2D, worked out by hand
 // with OpenGL's glTranslatef/glRotatef/glScalef matrices: renderItemIn2D's
 // corners (0,0,0), (1,1,0) and (1,0,-0.0625) in view space.

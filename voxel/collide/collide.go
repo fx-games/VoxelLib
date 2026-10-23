@@ -1,5 +1,5 @@
 // Package collide moves axis-aligned boxes through a grid of unit blocks the
-// way Minecraft's Entity.move does: the movement is clipped against every
+// way the reference's Entity.move does: the movement is clipped against every
 // block box in the swept area, Y first, then X, then Z.
 //
 // It knows nothing about worlds, chunks or block types: callers describe the

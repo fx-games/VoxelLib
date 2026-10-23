@@ -1,4 +1,4 @@
-package mcmodel
+package bbmodel
 
 import (
 	"encoding/json"
@@ -7,46 +7,47 @@ import (
 
 	"github.com/go-gl/mathgl/mgl32"
 	"github.com/memmaker/voxellib/model"
+	"github.com/memmaker/voxellib/resloc"
 )
 
 // ParseGeometry reads a Bedrock geometry file (format 1.12+:
-// "minecraft:geometry"), as exported by Blockbench for Bedrock and
+// the default-namespace "geometry" key), as exported by Blockbench for Bedrock and
 // GeckoLib. texture returns the PNG for a geometry identifier (without
 // "geometry." prefix), or nil.
 func ParseGeometry(data []byte, texture func(id string) image.Image) ([]*model.Model, error) {
-	var f struct {
-		Geometry []struct {
-			Description struct {
-				Identifier string  `json:"identifier"`
-				TexW       float32 `json:"texture_width"`
-				TexH       float32 `json:"texture_height"`
-			} `json:"description"`
-			Bones []struct {
-				Name     string     `json:"name"`
-				Parent   string     `json:"parent"`
-				Pivot    [3]float32 `json:"pivot"`
-				Rotation [3]float32 `json:"rotation"`
-				Mirror   bool       `json:"mirror"`
-				Cubes    []struct {
-					Origin   [3]float32      `json:"origin"`
-					Size     [3]float32      `json:"size"`
-					Pivot    *[3]float32     `json:"pivot"`
-					Rotation [3]float32      `json:"rotation"`
-					Inflate  float32         `json:"inflate"`
-					Mirror   *bool           `json:"mirror"`
-					UV       json.RawMessage `json:"uv"`
-				} `json:"cubes"`
-			} `json:"bones"`
-		} `json:"minecraft:geometry"`
+	var geo []struct {
+		Description struct {
+			Identifier string  `json:"identifier"`
+			TexW       float32 `json:"texture_width"`
+			TexH       float32 `json:"texture_height"`
+		} `json:"description"`
+		Bones []struct {
+			Name     string     `json:"name"`
+			Parent   string     `json:"parent"`
+			Pivot    [3]float32 `json:"pivot"`
+			Rotation [3]float32 `json:"rotation"`
+			Mirror   bool       `json:"mirror"`
+			Cubes    []struct {
+				Origin   [3]float32      `json:"origin"`
+				Size     [3]float32      `json:"size"`
+				Pivot    *[3]float32     `json:"pivot"`
+				Rotation [3]float32      `json:"rotation"`
+				Inflate  float32         `json:"inflate"`
+				Mirror   *bool           `json:"mirror"`
+				UV       json.RawMessage `json:"uv"`
+			} `json:"cubes"`
+		} `json:"bones"`
 	}
-	if err := json.Unmarshal(data, &f); err != nil {
+	key := resloc.Qualify("geometry")
+	var top map[string]json.RawMessage
+	if err := json.Unmarshal(data, &top); err != nil {
 		return nil, err
 	}
-	if len(f.Geometry) == 0 {
-		return nil, fmt.Errorf("mcmodel: no minecraft:geometry")
+	if err := json.Unmarshal(top[key], &geo); err != nil || len(geo) == 0 {
+		return nil, fmt.Errorf("bbmodel: no %s", key)
 	}
 	var out []*model.Model
-	for _, g := range f.Geometry {
+	for _, g := range geo {
 		id := g.Description.Identifier
 		if len(id) > 9 && id[:9] == "geometry." {
 			id = id[9:]

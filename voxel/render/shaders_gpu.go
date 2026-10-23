@@ -65,9 +65,9 @@ fn vs(@location(0) d: vec4<u32>) -> VOut {
 	let tint = vec3f(f32(w2 & 255u), f32((w2 >> 8u) & 255u), f32((w2 >> 16u) & 255u)) * (1.0 / 255.0);
 	let wt = f32((w3 >> 16u) & 255u) * (1.0 / 255.0);
 	o.color = (tint + wt * u.dynTint.rgb) * shade[n] * ao[w0 >> 30u];
-	// Light is level*16 (0..240); Minecraft samples (l + 8) / 256.
+	// Light is level*16 (0..240); the reference samples (l + 8) / 256.
 	o.light = (vec2f(f32((w3 >> 8u) & 255u), f32(w3 & 255u)) + 8.0) * (1.0 / 256.0);
-	o.dist = length(pos.xz); // cylindrical fog like Minecraft
+	o.dist = length(pos.xz); // cylindrical fog like the reference game
 	return o;
 }
 
@@ -149,7 +149,7 @@ fn vs(@location(0) pos: vec3f, @location(1) normal: vec3f, @location(2) uv: vec2
 	var o: VOut;
 	o.pos = u.viewProj * wp;
 	let n = normalize(m3(u.model) * m3(skin) * normal);
-	// Minecraft entity lighting: two fixed lights, ambient 0.4.
+	// The reference entity lighting: two fixed lights, ambient 0.4.
 	let l0 = normalize(vec3f(0.2, 1.0, -0.7));
 	let l1 = normalize(vec3f(-0.2, 1.0, 0.7));
 	o.shade = min(1.0, 0.4 + 0.6 * (max(dot(n, l0), 0.0) + max(dot(n, l1), 0.0)) * 0.6 + 0.25);
@@ -196,7 +196,7 @@ fn vs(@location(0) pos: vec3f, @location(1) uv: vec2f, @location(2) normal: vec3
 	o.pos = u.mvp * vec4f(pos, 1.0);
 	o.uv = uv;
 	let n = normalize(mat3x3f(u.model[0].xyz, u.model[1].xyz, u.model[2].xyz) * normal);
-	// Minecraft-like fixed directional shading: top bright, bottom dark.
+	// Fixed directional shading as in the reference: top bright, bottom dark.
 	o.shade = 0.7 + 0.3 * n.y + 0.1 * abs(n.x);
 	o.dist = length(wp.xz);
 	return o;

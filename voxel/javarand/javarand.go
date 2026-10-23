@@ -1,4 +1,4 @@
-// Package javarand is java.util.Random, bit for bit, for effects Minecraft
+// Package javarand is java.util.Random, bit for bit, for effects the reference game
 // seeds by position or tick.
 package javarand
 

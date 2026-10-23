@@ -4,6 +4,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/memmaker/voxellib/resloc"
 	"github.com/memmaker/voxellib/voxel"
 	"github.com/memmaker/voxellib/voxel/anvil"
 	"github.com/memmaker/voxellib/voxel/voxelmap"
@@ -32,7 +33,7 @@ func TestReadFixture(t *testing.T) {
 	for _, tc := range []struct {
 		x, y, z int
 		key     string
-	}{{0, 0, 0, "minecraft:stone#0"}, {1, 4, 1, "test:lamp#2"}, {2, 4, 2, "test:plant#0"}, {3, 4, 3, "test:post#0"}, {0, 4, 0, ""}} {
+	}{{0, 0, 0, resloc.Default + ":stone#0"}, {1, 4, 1, "test:lamp#2"}, {2, 4, 2, "test:plant#0"}, {3, 4, 3, "test:post#0"}, {0, 4, 0, ""}} {
 		id := c.Get(tc.x, tc.y, tc.z)
 		if tc.key == "" {
 			if id != voxel.Air {
@@ -59,7 +60,7 @@ func TestReadFixture(t *testing.T) {
 	if post.Shape != voxel.ShapeBoxes || len(post.Boxes) != 1 || len(post.Boxes[0].Rot) != 1 || post.Boxes[0].Tex[voxel.FaceUp] != "blocks/stone" {
 		t.Errorf("post: %+v", post)
 	}
-	sign := reg.Info(m.State("minecraft:standing_sign#0"))
+	sign := reg.Info(m.State(resloc.Default + ":standing_sign#0"))
 	if sign.Collision == nil || len(sign.Collision) != 0 || sign.Tint != voxel.TintFixed || sign.TintColor != 0xff8000 {
 		t.Errorf("sign: %+v", sign)
 	}

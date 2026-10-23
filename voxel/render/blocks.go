@@ -19,7 +19,7 @@ type BlockMesh struct {
 
 // NewBlockMesh uploads a mesh's quads, translucent ones included; nil when
 // it has none. dedupe drops quads at the same corners as an earlier one
-// (coplanar overlays, as a grass block's tinted sides, that Minecraft does
+// (coplanar overlays, as a grass block's tinted sides, that the reference game does
 // not draw with an override texture).
 func NewBlockMesh(m *mesh.Mesh, dedupe bool) *BlockMesh {
 	data := append(append([]uint32(nil), m.Data...), m.Trans...)
@@ -80,7 +80,7 @@ type BlockItem struct {
 	Sky, Block uint8 // light levels 0..15 at the item
 }
 
-// DrawBlockItems draws blocks as items in the world with Minecraft's
+// DrawBlockItems draws blocks as items in the world with the reference's
 // item lighting (RenderHelper.enableStandardItemLighting: ambient 0.4 and
 // two diffuse 0.6 lights fixed in the world) times the light colour, and
 // the terrain fog. Call after Renderer.Render with the same camera.

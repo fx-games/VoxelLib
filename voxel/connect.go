@@ -32,7 +32,7 @@ type ConnectInfo struct {
 // ConnectOffsets are, per face, the world offsets of the eight in-plane
 // neighbours for mask bits 0..7: top-left, top, top-right, left, right,
 // bottom-left, bottom, bottom-right, where left/right run along the
-// texture's u and top/bottom along its v as Minecraft 1.7's RenderBlocks
+// texture's u and top/bottom along its v as the 1.7 reference's RenderBlocks
 // draws the face (LOTRConnectedTextures.getConnectedIconBlock's side
 // mapping: down/up (x, z), north (-x, -y), south (x, -y), west (z, -y),
 // east (-z, -y)).

@@ -22,7 +22,7 @@ type Manager struct {
 	Factions   *Factions
 	Arrows     *projectile.World // for ranged attacks; may be nil
 	Rand       *rand.Rand
-	Difficulty int // 0 peaceful .. 3 hard, as Minecraft (arrow damage)
+	Difficulty int // 0 peaceful .. 3 hard, as the reference (arrow damage)
 
 	// OnDeath is called once when an actor's health reaches 0, with the
 	// actor that dealt the last blow (nil for falls and the like).

@@ -1,6 +1,6 @@
 package voxel
 
-// Light engine: two 4-bit channels per block like Minecraft.
+// Light engine: two 4-bit channels per block like the reference game.
 //
 //   - Sky light starts at 15 above the heightmap and travels straight down
 //     without loss through blocks of opacity 0; every other step costs

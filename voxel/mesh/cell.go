@@ -4,7 +4,7 @@ import "github.com/memmaker/voxellib/voxel"
 
 // BuildCell meshes only the block at section-local x,y,z (0..15) of the
 // captured snapshot, with its real neighbours for face culling, connections
-// and light: a single block drawn on its own (Minecraft's
+// and light: a single block drawn on its own (the reference's
 // RenderBlocks.renderBlockByRenderType), e.g. the block breaking overlay.
 func (m *Mesher) BuildCell(table []voxel.StateInfo, cfg *Config, x, y, z int) *Mesh {
 	m.only = idx(x, y, z) + 1

@@ -1,4 +1,4 @@
-package mcmodel
+package bbmodel
 
 import (
 	"os"
@@ -52,7 +52,7 @@ func TestImportRepo(t *testing.T) {
 	}
 }
 
-// Boots left at the model root must follow the legs, as in Minecraft.
+// Boots left at the model root must follow the legs, as in the reference.
 func TestArmorFollowsLimb(t *testing.T) {
 	p, err := Import("../../assets/cleannrooster")
 	if err != nil {

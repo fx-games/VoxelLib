@@ -32,7 +32,7 @@ type Graph struct {
 	// e.g. for cells other walkers stand in.
 	Cost func(p Pos) int
 	// Size is the walker's footprint width and height in cells; 0 = 1 and 2.
-	// Minecraft's PathFinder: floor(width+1) x floor(height+1), cells from
+	// The reference's PathFinder: floor(width+1) x floor(height+1), cells from
 	// the Pos corner toward +x and +z (SizeOf).
 	Size [2]int
 	// Closest: a search that cannot reach its goal returns the path to the

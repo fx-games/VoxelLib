@@ -9,7 +9,7 @@ import (
 )
 
 // GUITexture is an image uploaded for GUIBatch (GUI sheets, font pages,
-// item icons). It samples nearest and repeats, so UVs past 1 tile (Minecraft's
+// item icons). It samples nearest and repeats, so UVs past 1 tile (the reference's
 // options background).
 type GUITexture struct {
 	tex  texture2D
@@ -57,7 +57,7 @@ func (t *GUITexture) Release() {
 	}
 }
 
-// GUIBatch collects 2D quads in GUI pixels (Minecraft's scaled coordinates,
+// GUIBatch collects 2D quads in GUI pixels (the reference's scaled coordinates,
 // top-left origin) and draws them in submission order with as few draw calls
 // as texture, scissor and blend changes allow. Fill it, then Flush once per
 // frame after the world and the hand.
@@ -92,7 +92,7 @@ func (b *GUIBatch) Quad(t *GUITexture, x0, y0, x1, y1, u0, v0, u1, v1, skew floa
 // Scissor clips later quads to x,y,w,h in GUI pixels; w <= 0 turns it off.
 func (b *GUIBatch) Scissor(x, y, w, h int) { b.state(b.cur.tex, [4]int{x, y, w, h}, b.cur.invert) }
 
-// Invert switches the blend to colour inversion (Minecraft's crosshair:
+// Invert switches the blend to colour inversion (the reference's crosshair:
 // ONE_MINUS_DST_COLOR, ONE_MINUS_SRC_COLOR) or back to alpha blending.
 func (b *GUIBatch) Invert(on bool) { b.state(b.cur.tex, b.cur.scissor, on) }
 

@@ -8,13 +8,15 @@ import (
 	"io/fs"
 	"strings"
 	"unicode"
+
+	"github.com/memmaker/voxellib/resloc"
 )
 
-// Font is Minecraft 1.7.10's FontRenderer: the ascii.png sheet (16x16 glyphs
+// Font is the 1.7.10 reference's FontRenderer: the ascii.png sheet (16x16 glyphs
 // of any size, widths measured from the image like readFontTexture) plus the
 // unicode pages (unicode_page_XX.png, widths from glyph_sizes.bin) for
 // characters the sheet lacks, § colour and format codes, shadows, wrapping
-// and width measurement, all with Minecraft's integer rules.
+// and width measurement, all with the reference's integer rules.
 type Font struct {
 	// Unicode draws everything from the unicode pages (forceUnicodeFont).
 	Unicode bool
@@ -83,9 +85,9 @@ func ColorCode(i int) uint32 { return colorCodes[i] }
 
 // Font asset paths in a resource pack.
 const (
-	FontASCII      = "assets/minecraft/textures/font/ascii.png"
-	FontGlyphSizes = "assets/minecraft/font/glyph_sizes.bin"
-	fontPage       = "assets/minecraft/textures/font/unicode_page_%02x.png"
+	FontASCII      = "assets/" + resloc.Default + "/textures/font/ascii.png"
+	FontGlyphSizes = "assets/" + resloc.Default + "/font/glyph_sizes.bin"
+	fontPage       = "assets/" + resloc.Default + "/textures/font/unicode_page_%02x.png"
 )
 
 // LoadFont reads ascii.png and glyph_sizes.bin from fsys; unicode pages are
@@ -133,7 +135,7 @@ func (f *Font) SetASCII(img image.Image) {
 		for ; l >= 0; l-- {
 			empty := true
 			for y := 0; y < ch && empty; y++ {
-				// Minecraft offsets rows by the cell width (square cells).
+				// the reference offsets rows by the cell width (square cells).
 				_, _, _, a := img.At(b.Min.X+col*cw+l, b.Min.Y+row*cw+y).RGBA()
 				if a>>8 != 0 {
 					empty = false

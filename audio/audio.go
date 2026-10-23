@@ -1,4 +1,4 @@
-// Package audio plays sounds the way Minecraft 1.7.10 does (SoundManager on paulscode/OpenAL):
+// Package audio plays sounds the way the 1.7.10 reference does (SoundManager on paulscode/OpenAL):
 //
 //   - Mixer: a positional stereo mixer on oto. Voices have a volume, a pitch (resampled, 0.5..2),
 //     linear distance attenuation over a range, equal-power panning for mono sources, and a
@@ -32,7 +32,7 @@ const (
 	latency    = 50 * time.Millisecond
 )
 
-// Categories are Minecraft 1.7.10's SoundCategory names. "master" scales everything.
+// Categories are the 1.7.10 reference's SoundCategory names. "master" scales everything.
 var Categories = []string{"master", "music", "record", "weather", "block", "hostile", "neutral", "player", "ambient"}
 
 // Sound is decoded PCM: interleaved float32 samples (-1..1).
@@ -230,7 +230,7 @@ func (m *Mixer) volume(c string) float32 {
 	return 1
 }
 
-// Params describe one playback like Minecraft's ISound.
+// Params describe one playback like the reference's ISound.
 type Params struct {
 	X, Y, Z       float64
 	Volume, Pitch float32 // Volume > 1 extends the range (16 blocks × Volume) but plays no louder
@@ -332,7 +332,7 @@ func (v *Voice) Playing() bool {
 	return !v.dead
 }
 
-// Attenuation is paulscode's linear model as Minecraft uses it: 1 at the source, 0 at rng blocks.
+// Attenuation is paulscode's linear model as the reference uses it: 1 at the source, 0 at rng blocks.
 func Attenuation(d, rng float64) float64 {
 	if rng <= 0 {
 		return 1

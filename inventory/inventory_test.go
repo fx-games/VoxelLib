@@ -3,12 +3,12 @@ package inventory
 import "testing"
 
 var (
-	stone  = &Item{ID: 1, Key: "minecraft:stone"}
-	pearl  = &Item{ID: 368, Key: "minecraft:ender_pearl", MaxStack: 16}
-	pick   = &Item{ID: 270, Key: "minecraft:wooden_pickaxe", MaxStack: 1, MaxDamage: 59}
-	helmet = &Item{ID: 306, Key: "minecraft:iron_helmet", MaxStack: 1, MaxDamage: 165, Armor: &Armor{Slot: Helmet, Points: 2}}
-	boots  = &Item{ID: 309, Key: "minecraft:iron_boots", MaxStack: 1, MaxDamage: 195, Armor: &Armor{Slot: Boots, Points: 2}}
-	coal   = &Item{ID: 263, Key: "minecraft:coal", BurnTime: 1600}
+	stone  = &Item{ID: 1, Key: "test:stone"}
+	pearl  = &Item{ID: 368, Key: "test:ender_pearl", MaxStack: 16}
+	pick   = &Item{ID: 270, Key: "test:wooden_pickaxe", MaxStack: 1, MaxDamage: 59}
+	helmet = &Item{ID: 306, Key: "test:iron_helmet", MaxStack: 1, MaxDamage: 165, Armor: &Armor{Slot: Helmet, Points: 2}}
+	boots  = &Item{ID: 309, Key: "test:iron_boots", MaxStack: 1, MaxDamage: 195, Armor: &Armor{Slot: Boots, Points: 2}}
+	coal   = &Item{ID: 263, Key: "test:coal", BurnTime: 1600}
 )
 
 func count(s *Stack) int {
@@ -206,8 +206,8 @@ func TestDoubleClickCollect(t *testing.T) {
 }
 
 func TestCraftingResultSlot(t *testing.T) {
-	planks := &Item{ID: 5, Key: "minecraft:planks"}
-	log := &Item{ID: 17, Key: "minecraft:log"}
+	planks := &Item{ID: 5, Key: "test:planks"}
+	log := &Item{ID: 17, Key: "test:log"}
 	match := func(g *Grid) *Stack {
 		n := 0
 		for _, s := range g.Slots {
@@ -253,7 +253,7 @@ func TestCraftingResultSlot(t *testing.T) {
 }
 
 func TestFurnaceShiftClick(t *testing.T) {
-	ore := &Item{ID: 15, Key: "minecraft:iron_ore"}
+	ore := &Item{ID: 15, Key: "test:iron_ore"}
 	p := &Player{}
 	f := NewGrid(3, 1)
 	c := NewFurnaceContainer(p, f, rules{ore})

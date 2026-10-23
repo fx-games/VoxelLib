@@ -9,16 +9,18 @@ import (
 	"path/filepath"
 	"reflect"
 	"testing"
+
+	"github.com/memmaker/voxellib/resloc"
 )
 
-// vanillaFS opens the Minecraft 1.7.10 client jar from the Prism library
+// vanillaFS opens the 1.7.10 reference client jar from the Prism library
 // cache when it is there (skips otherwise).
 func vanillaFS(t *testing.T) fs.FS {
 	home, _ := os.UserHomeDir()
-	jar := filepath.Join(home, "Library/Application Support/PrismLauncher/libraries/com/mojang/minecraft/1.7.10/minecraft-1.7.10-client.jar")
+	jar := filepath.Join(home, "Library/Application Support/PrismLauncher/libraries/com/mojang/"+resloc.Default+"/1.7.10/"+resloc.Default+"-1.7.10-client.jar")
 	zr, err := zip.OpenReader(jar)
 	if err != nil {
-		t.Skip("no Minecraft 1.7.10 jar:", err)
+		t.Skip("no 1.7.10 reference jar:", err)
 	}
 	t.Cleanup(func() { zr.Close() })
 	return zr

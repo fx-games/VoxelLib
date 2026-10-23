@@ -1,7 +1,7 @@
 package ui
 
 // javaRandom is java.util.Random, for the HUD's heart and hunger jitter
-// that Minecraft seeds per tick.
+// that the reference seeds per tick.
 type javaRandom struct{ seed int64 }
 
 func (r *javaRandom) SetSeed(s int64) { r.seed = (s ^ 0x5DEECE66D) & (1<<48 - 1) }

@@ -5,9 +5,9 @@ import (
 	"image/color"
 	"io/fs"
 	"log"
-	"strings"
 
 	"github.com/memmaker/voxellib/i18n"
+	"github.com/memmaker/voxellib/resloc"
 )
 
 // EventType tells what an Event carries.
@@ -119,15 +119,12 @@ func (ctx *Context) Play(name string) {
 // AssetPath turns a resource location ("textures/gui/widgets.png",
 // "lotr:gui/map.png") into its path in a pack.
 func AssetPath(loc string) string {
-	dom, p, ok := strings.Cut(loc, ":")
-	if !ok {
-		dom, p = "minecraft", loc
-	}
+	dom, p := resloc.Split(loc)
 	return "assets/" + dom + "/" + p
 }
 
 // Tex returns the texture at a resource location, loaded once; a missing one
-// is Minecraft's magenta and black checker.
+// is the reference's magenta and black checker.
 func (ctx *Context) Tex(loc string) Texture {
 	if t, ok := ctx.textures[loc]; ok {
 		return t
@@ -209,7 +206,7 @@ func (ctx *Context) DrawDirtFade(y0, y1 int, vOff float32, top, bottom uint32) {
 		U0: 0, V0: (float32(y0) + vOff) / 32, U1: float32(ctx.W) / 32, V1: (float32(y1) + vOff) / 32, Top: top, Bottom: bottom})
 }
 
-// Manager is the screen stack. Only the top screen is drawn (as Minecraft
+// Manager is the screen stack. Only the top screen is drawn (as the reference
 // shows one GuiScreen); Back returns to the one below.
 type Manager struct {
 	ctx   *Context

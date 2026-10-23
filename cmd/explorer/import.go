@@ -5,7 +5,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/memmaker/voxellib/importer/mcmodel"
+	"github.com/memmaker/voxellib/importer/bbmodel"
 	"github.com/memmaker/voxellib/importer/roblox"
 	"github.com/memmaker/voxellib/mobs"
 	"github.com/memmaker/voxellib/model"
@@ -28,15 +28,15 @@ func (g *game) importPets(src string) {
 	log.Printf("pets: imported %d models from %s", len(ms), src)
 }
 
-// importMCAssets loads a Minecraft-style pack: humanoid mobs wander with
+// importBlockbenchPack loads a Blockbench-style pack: humanoid mobs wander with
 // the shared humanoid animations, other models stand around as animated
 // props, and item textures join the pickup items.
-func (g *game) importMCAssets(src string) {
+func (g *game) importBlockbenchPack(src string) {
 	if _, err := os.Stat(src); err != nil {
 		log.Printf("mcassets: %s not found, skipping", src)
 		return
 	}
-	p, err := mcmodel.Import(src)
+	p, err := bbmodel.Import(src)
 	if err != nil {
 		log.Printf("mcassets: %v", err)
 		return

@@ -22,11 +22,11 @@ type Button struct {
 	Label      string
 	Disabled   bool
 	Hidden     bool
-	Color      uint32 // label colour override (packedFGColour); 0: Minecraft's
+	Color      uint32 // label colour override (packedFGColour); 0: the reference's
 	OnClick    func()
 }
 
-// NewButton makes a button; h is 20 as in Minecraft.
+// NewButton makes a button; h is 20 as in the reference.
 func NewButton(x, y, w int, label string, onClick func()) *Button {
 	return &Button{X: x, Y: y, W: w, H: 20, Label: label, OnClick: onClick}
 }
@@ -151,7 +151,7 @@ func (s *Slider) Input(ctx *Context, ev Event) bool {
 type TextField struct {
 	X, Y, W, H int
 	Text       string
-	MaxLen     int // 0: 32 like Minecraft
+	MaxLen     int // 0: 32 like the reference
 	Focused    bool
 	NoBorder   bool
 	OnEnter    func(text string)
@@ -320,12 +320,12 @@ func (t *TextField) Input(ctx *Context, ev Event) bool {
 }
 
 // ScrollList is GuiSlot: a list of fixed-height rows over a dark tiled
-// background between the screen's top and bottom bars, with Minecraft's
+// background between the screen's top and bottom bars, with the reference's
 // fades, selection box and scroll bar.
 type ScrollList struct {
 	Top, Bottom   int // list area rows
 	SlotHeight    int
-	ListWidth     int // 220 like Minecraft
+	ListWidth     int // 220 like the reference
 	HeaderPadding int
 	Count         func() int
 	DrawSlot      func(ctx *Context, i, x, y, h, mx, my int)

@@ -1,5 +1,5 @@
-// Package i18n holds translations from Minecraft .lang files (key=value,
-// UTF-8) and formats them like Minecraft 1.7.10's I18n: tables from several
+// Package i18n holds translations from vanilla .lang files (key=value,
+// UTF-8) and formats them like the 1.7.10 reference's I18n: tables from several
 // sources merge with the later one winning, the current language sits on
 // top of the fallback (en_US), a missing key translates to itself, and
 // %s, %d, %.2f and %1$s style arguments are filled in.
@@ -31,7 +31,7 @@ type Catalog struct {
 // New makes an empty catalog with en_US current.
 func New() *Catalog { return &Catalog{langs: map[string]map[string]string{}, current: Fallback} }
 
-// numArg is Minecraft's rewrite of %d / %.2f / %1$d to %s (Locale.pattern).
+// numArg is the reference's rewrite of %d / %.2f / %1$d to %s (Locale.pattern).
 var numArg = regexp.MustCompile(`%(\d+\$)?[\d.]*[df]`)
 
 // Load merges a .lang file into language code; its entries override what
@@ -115,7 +115,7 @@ func (c *Catalog) Languages() []string {
 }
 
 // Name is the language's display name, "language.name (language.region)"
-// from its own file, like Minecraft's language list.
+// from its own file, like the reference's language list.
 func (c *Catalog) Name(code string) string {
 	t := c.langs[code]
 	n, r := t["language.name"], t["language.region"]
@@ -168,8 +168,8 @@ func (c *Catalog) T(key string, args ...any) string {
 }
 
 // Format fills %s, %1$s and %% in pattern like Java's String.format (after
-// Minecraft turned %d and %f into %s). A malformed pattern returns
-// "Format error: " + pattern, as Minecraft does.
+// the reference turned %d and %f into %s). A malformed pattern returns
+// "Format error: " + pattern, as the reference does.
 func Format(pattern string, args ...any) string {
 	var b strings.Builder
 	next := 0

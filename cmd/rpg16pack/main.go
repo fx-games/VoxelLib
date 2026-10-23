@@ -1,5 +1,5 @@
 // Command rpg16pack converts the RPG16 Minetest texture pack (CC BY-SA 4.0,
-// Hugues Alexandre Ross) into a Minecraft Java resource pack layout, so the
+// Hugues Alexandre Ross) into a vanilla resource pack layout, so the
 // demo loads it through exactly the same code path as a vanilla pack.
 //
 //	go run ./cmd/rpg16pack -src ~/Downloads/rpg16 -out assets/rpg16pack
@@ -14,9 +14,11 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+
+	"github.com/memmaker/voxellib/resloc"
 )
 
-// Minecraft texture name -> RPG16 file(s). Several files are composited in
+// vanilla texture name -> RPG16 file(s). Several files are composited in
 // order (ores = stone + mineral overlay).
 var mapping = map[string][]string{
 	"stone": {"default/default_stone"}, "cobblestone": {"default/default_cobble"},
@@ -154,7 +156,7 @@ func main() {
 	out := flag.String("out", "assets/rpg16pack", "output resource pack directory")
 	flag.Parse()
 
-	dst := filepath.Join(*out, "assets/minecraft/textures/block")
+	dst := filepath.Join(*out, "assets/"+resloc.Default+"/textures/block")
 	if err := os.MkdirAll(dst, 0o755); err != nil {
 		log.Fatal(err)
 	}
@@ -197,7 +199,7 @@ func main() {
 		os.WriteFile(filepath.Join(*out, "LICENSE.txt"), lic, 0o644)
 	}
 	credit := "Textures: RPG16 by Hugues Alexandre Ross - https://huguesross.net\n" +
-		"License: CC BY-SA 4.0 (see LICENSE.txt). Remapped to Minecraft texture names;\n" +
+		"License: CC BY-SA 4.0 (see LICENSE.txt). Remapped to vanilla texture names;\n" +
 		"ore textures are composites of the RPG16 stone and mineral overlays.\n"
 	os.WriteFile(filepath.Join(*out, "CREDITS.txt"), []byte(credit), 0o644)
 	fmt.Printf("wrote %d textures to %s\n", n, dst)

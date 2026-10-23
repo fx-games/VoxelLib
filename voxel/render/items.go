@@ -25,7 +25,7 @@ type ItemInstance struct {
 	Item       string
 	X, Y, Z    float64 // centre
 	Yaw        float64 // spin around Y, radians
-	Scale      float32 // edge length in blocks (Minecraft drops: 0.5)
+	Scale      float32 // edge length in blocks (reference drops: 0.5)
 	Sky, Block uint8   // light levels 0..15 at the item
 }
 
@@ -134,7 +134,7 @@ func (p HandPose) Base() mgl32.Mat4 {
 	return p.View
 }
 
-// DrawHand draws the held item in first person like Minecraft 1.7.10
+// DrawHand draws the held item in first person like the 1.7.10 reference
 // draws a flat item: pose.Base(), FirstPersonSwing, FirstPersonHold,
 // Equipped2D and In2D (ItemRenderer.renderItemInFirstPerson and
 // renderItem), over the world with the hand's own projection
@@ -198,7 +198,7 @@ var Equipped2D = mgl32.Translate3D(0, -0.3, 0).
 
 // DrawHandModel draws a held item like DrawHand but placed by the caller:
 // model maps the item's unit slab (see ItemPose) into view space (x right,
-// y up, looking down -z), e.g. Minecraft's first-person transform chain.
+// y up, looking down -z), e.g. the reference's first-person transform chain.
 func (ir *ItemRenderer) DrawHandModel(item string, aspect float32, model mgl32.Mat4, sky, block uint8) {
 	if _, ok := ir.index[item]; !ok {
 		return
