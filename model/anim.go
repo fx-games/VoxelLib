@@ -272,3 +272,20 @@ func (m *Model) BindWorld() []mgl32.Mat4 {
 	}
 	return w
 }
+
+// SkinWorld computes skinning matrices from caller-posed bone world
+// matrices (model space, one per bone) instead of clips: procedural
+// animation that sets every bone's transform in code each frame. dst is
+// grown as needed and returned.
+func (m *Model) SkinWorld(world []mgl32.Mat4, dst []mgl32.Mat4) []mgl32.Mat4 {
+	n := len(m.Bones)
+	if cap(dst) < n {
+		dst = make([]mgl32.Mat4, n)
+	}
+	dst = dst[:n]
+	root := m.root0()
+	for i, b := range m.Bones {
+		dst[i] = root.Mul4(world[i]).Mul4(b.InvBind)
+	}
+	return dst
+}

@@ -257,3 +257,84 @@ func TestBlockTint(t *testing.T) {
 		}
 	}
 }
+
+// TestDynamicTintWeight: BlockTint's top byte lands in w3 bits 16-23 and
+// never leaks into the baked colour.
+func TestDynamicTintWeight(t *testing.T) {
+	def := cube("test:water", voxel.Box{})
+	def.Tint = voxel.TintWater
+	reg := voxel.NewRegistry()
+	reg.Register(def)
+	w := voxel.NewWorld(reg, 0, 64)
+	c := w.NewChunk(voxel.ChunkPos{})
+	c.Biomes = make([]byte, 256)
+	w.AddChunk(c)
+	w.SetBlock(0, 1, 0, reg.State(def.Name, nil))
+	m := NewMesher()
+	m.Snap.Capture(w, voxel.SectionPos{})
+	res := m.Build(reg.Table(), &Config{BlockTint: func(*voxel.StateInfo, int, int, int, func(x, z int) uint8) uint32 {
+		return 0x55102030
+	}})
+	for i := 0; i+VertexWords <= len(res.Data); i += VertexWords {
+		if got := res.Data[i+2] & 0xFFFFFF; got != 0x302010 {
+			t.Fatalf("tint %06x", got)
+		}
+		if got := res.Data[i+3] >> 16 & 255; got != 0x55 {
+			t.Fatalf("weight %x", got)
+		}
+	}
+}
+
+// TestFaceUVRotHook: turned cube faces are not merged, and turn n shows at
+// corner k the uv of corner k+n.
+func TestFaceUVRotHook(t *testing.T) {
+	reg := voxel.NewRegistry()
+	w := voxel.NewWorld(reg, 0, 64)
+	w.AddChunk(w.NewChunk(voxel.ChunkPos{}))
+	stone := reg.Parse("stone")
+	for x := 0; x < 4; x++ {
+		w.SetBlock(x, 1, 0, stone)
+	}
+	m := NewMesher()
+	m.Snap.Capture(w, voxel.SectionPos{})
+	ups := func(cfg *Config) (quads int, uvs map[[2]uint32][2]uint32) {
+		res := m.Build(reg.Table(), cfg)
+		rg := res.Ranges[voxel.LayerSolid][voxel.FaceUp]
+		uvs = map[[2]uint32][2]uint32{}
+		for q := rg.First; q < rg.First+rg.Count; q += 4 {
+			quad := map[[2]uint32][2]uint32{}
+			maxX := uint32(0)
+			for i := q; i < q+4; i++ {
+				d := res.Data[i*VertexWords:]
+				maxX = max(maxX, d[0]&1023)
+				quad[[2]uint32{d[0] & 1023, d[0] >> 20 & 1023}] = [2]uint32{d[1] >> 12 & 31, d[1] >> 17 & 31}
+			}
+			if maxX == 32 { // block x=0 alone
+				uvs = quad
+			}
+		}
+		return rg.Count / 4, uvs
+	}
+	if n, _ := ups(nil); n != 1 {
+		t.Fatalf("unturned: %d top quads, want 1 merged", n)
+	}
+	n, uvs := ups(&Config{FaceUVRot: func(_ *voxel.StateInfo, x, _, _ int, f voxel.Face) uint8 {
+		if f == voxel.FaceUp && x == 0 {
+			return 1
+		}
+		return 0
+	}})
+	if n != 2 {
+		t.Fatalf("turned: %d top quads, want 2", n)
+	}
+	if len(uvs) != 4 {
+		t.Fatalf("%d corners of block 0", len(uvs))
+	}
+	// unturned top: u=x, v=z; one turn: (u,v) → (v, 1-u)
+	for p, uv := range uvs {
+		u0, v0 := p[0]/32, p[1]/32
+		if want := [2]uint32{v0, 1 - u0}; uv != want {
+			t.Errorf("corner %v: uv %v, want %v", p, uv, want)
+		}
+	}
+}

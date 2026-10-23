@@ -55,12 +55,12 @@ func (pr *ParticleRenderer) Draw(cam *Camera, ps []particles.Particle, alpha flo
 				continue
 			}
 			x, y, z, size, col := q.Lerp(alpha)
-			var sky, blk uint8 = 15, 15
+			lc := mgl32.Vec3{1, 1, 1}
 			if !additive && light != nil {
-				sky, blk = light(x, y, z)
+				lc = pr.r.LightColor(light(x, y, z))
 			}
 			pr.buf = append(pr.buf, float32(x-cam.X), float32(y-cam.Y), float32(z-cam.Z), size,
-				col[0], col[1], col[2], col[3], float32(sky)/15, float32(blk)/15)
+				col[0]*lc[0], col[1]*lc[1], col[2]*lc[2], col[3], 0, 0)
 		}
 		if len(pr.buf) > 0 {
 			pr.drawPass(&pf, additive, pr.buf)

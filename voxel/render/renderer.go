@@ -33,9 +33,75 @@ type Options struct {
 	IsGreyscale func(image.Image) bool
 	// BlockTint colours tinted blocks by position and biome (mesh.Config).
 	BlockTint func(info *voxel.StateInfo, x, y, z int, biome func(x, z int) uint8) uint32
+	// FaceUVRot turns block face textures (mesh.Config).
+	FaceUVRot func(info *voxel.StateInfo, x, y, z int, f voxel.Face) uint8
+	// DynamicTint is added to a vertex tint scaled by its BlockTint weight,
+	// so a colour that follows the camera (e.g. water) needs no remesh.
+	DynamicTint mgl32.Vec3
+	// Lightmap, when non-nil, gives the light colour per (sky, block)
+	// level for terrain, models, items and particles; nil uses
+	// DefaultLightmap(Daylight, BlockBrightness).
+	Lightmap *Lightmap
+	// Sky, when non-nil, replaces the procedural sky: the frame is cleared
+	// to the fog colour and these are drawn before terrain. SkyAfter is
+	// drawn after translucent terrain (e.g. high clouds, rain).
+	Sky, SkyAfter []SkyDraw
+	// SkyTextures loads SkyDraw textures by name; nil uses the block
+	// texture source.
+	SkyTextures TextureSource
 }
 
-// Fog is a fog override: colour plus start and end distance in blocks.
+// Lightmap is a light colour table indexed [sky][block] by light level,
+// sampled with linear filtering between levels like Minecraft's 16x16
+// lightmap texture.
+type Lightmap [16][16][3]float32
+
+// DefaultLightmap is the engine's own lighting: the brighter of a cool sky
+// curve scaled by daylight and a warm block curve raised toward
+// Minecraft's bright gamma by bright.
+func DefaultLightmap(daylight, bright float32) *Lightmap {
+	curve := func(l float64) float64 { return 0.04 + 0.96*(l/(4-3*l)) }
+	var lm Lightmap
+	for s := range 16 {
+		for b := range 16 {
+			sl, bl := float64(s)/15, float64(b)/15
+			sv := curve(sl) * float64(daylight)
+			bc := curve(bl)
+			bv := bc + (0.04+0.96*(1-math.Pow(1-bl, 4))-bc)*float64(bright)
+			for c, k := range [3][2]float64{{0.95, 1}, {0.97, 0.86}, {1, 0.66}} {
+				lm[s][b][c] = float32(max(sv*k[0], bv*k[1], 0.04))
+			}
+		}
+	}
+	return &lm
+}
+
+// LightColor returns this frame's light colour for sky and block light
+// levels (0..15), for draws lit on the CPU.
+func (r *Renderer) LightColor(sky, block uint8) mgl32.Vec3 {
+	return mgl32.Vec3(r.light[min(sky, 15)][min(block, 15)])
+}
+
+// frameLight sets r.light for this frame; it reports whether it changed.
+func (r *Renderer) frameLight() bool {
+	lm := r.Opt.Lightmap
+	if lm == nil {
+		if r.lightDefault != nil && r.lightDay == r.Opt.Daylight && r.lightBright == r.Opt.BlockBrightness {
+			lm = r.lightDefault
+		} else {
+			lm = DefaultLightmap(r.Opt.Daylight, r.Opt.BlockBrightness)
+			r.lightDefault, r.lightDay, r.lightBright = lm, r.Opt.Daylight, r.Opt.BlockBrightness
+		}
+	}
+	if *lm == r.light && r.lightSet {
+		return false
+	}
+	r.light, r.lightSet = *lm, true
+	return true
+}
+
+// Fog is a fog override: colour plus start and end distance in blocks;
+// the factor is linear between them (GL_LINEAR).
 type Fog struct {
 	Color      mgl32.Vec3
 	Start, End float32
@@ -49,7 +115,7 @@ func (r *Renderer) CurrentFog() Fog {
 		return *r.Opt.Fog
 	}
 	far := float32(r.Opt.RenderDistance * 16)
-	return Fog{Color: r.Opt.FogColor.Mul(0.04 + 0.96*r.Opt.Daylight), Start: far * 0.6, End: far}
+	return Fog{Color: r.Opt.FogColor.Mul(0.04 + 0.96*r.Opt.Daylight), Start: far * 0.75, End: far}
 }
 
 // Stats describes the last rendered frame.
@@ -119,6 +185,13 @@ type Renderer struct {
 
 	frame   uint64
 	retired []retired
+
+	light                 Lightmap // this frame's
+	lightSet              bool
+	lightDefault          *Lightmap // cached DefaultLightmap
+	lightDay, lightBright float32
+	skyTex                map[string]*skyTexture
+	skyVerts              []SkyVertex
 }
 
 // retire frees a span once in-flight frames can no longer read it.
@@ -197,6 +270,11 @@ func New(w *voxel.World, src TextureSource, opt Options) (*Renderer, error) {
 
 func (r *Renderer) reloadTextures() {
 	names, ver := r.world.Reg.TextureNames()
+	if r.tex != nil && r.tex.add(names) { // new names into spare layers
+		r.texVersion = ver
+		r.cfg = &mesh.Config{Tintable: r.tex.tintable, BlockTint: r.Opt.BlockTint, FaceUVRot: r.Opt.FaceUVRot}
+		return
+	}
 	if r.tex != nil {
 		r.tex.delete()
 	}
@@ -210,7 +288,7 @@ func (r *Renderer) reloadTextures() {
 	}
 	r.tex = newTextureArray(names, r.src, missing, grey)
 	r.texVersion = ver
-	r.cfg = &mesh.Config{Tintable: r.tex.tintable, BlockTint: r.Opt.BlockTint}
+	r.cfg = &mesh.Config{Tintable: r.tex.tintable, BlockTint: r.Opt.BlockTint, FaceUVRot: r.Opt.FaceUVRot}
 }
 
 // MeshConfig returns the per-texture data the mesher needs. It changes when
@@ -441,7 +519,10 @@ func (r *Renderer) Render(cam *Camera) {
 	r.cullVisible(&fr)
 	r.tex.animate(int(time.Since(r.start) / (50 * time.Millisecond)))
 	r.buildBatches()
-	r.drawTerrain(vp)
+	if r.frameLight() {
+		r.uploadLight()
+	}
+	r.drawTerrain(cam, vp)
 }
 
 // buildBatches fills r.batches with the frame's multidraws: solid then

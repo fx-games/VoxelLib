@@ -14,6 +14,8 @@ type gpuRenderer struct {
 	ebo, lineVBO *wgpu.Buffer
 	texBG        *wgpu.BindGroup // terrain textures, rebuilt with the array
 	bgFor        *textureArray
+	bgGen        int
+	lightTex     texture2D // 16x16 lightmap, x = block, y = sky level
 	u            ubuf
 	ind          []byte
 }
@@ -22,11 +24,27 @@ func (r *Renderer) initGPU() error {
 	g := &r.gpu
 	g.ebo = newBuffer("quad indices", wgpu.BufferUsageIndex, bytesOf(quadIndices()), 0)
 	g.lineVBO = newBuffer("lines", wgpu.BufferUsageVertex, bytesOf(lineVertices()), 0)
+	g.lightTex = newTexture("lightmap", 16, 16, 1, 1, gputypes.TextureFormatRGBA8Unorm, gputypes.TextureViewDimension2D)
 	return nil
 }
 
-// drawTerrain draws the sky and r.batches.
-func (r *Renderer) drawTerrain(vp mgl32.Mat4) {
+// uploadLight writes r.light to the lightmap texture.
+func (r *Renderer) uploadLight() {
+	px := make([]byte, 0, 16*16*4)
+	for s := range 16 {
+		for b := range 16 {
+			c := r.light[s][b]
+			for _, v := range c {
+				px = append(px, byte(min(max(v, 0), 1)*255+0.5))
+			}
+			px = append(px, 255)
+		}
+	}
+	r.gpu.lightTex.write(0, 0, 16, 16, 4, px)
+}
+
+// drawTerrain draws the sky, r.batches and Opt.SkyAfter.
+func (r *Renderer) drawTerrain(cam *Camera, vp mgl32.Mat4) {
 	p := curPass()
 	if p == nil {
 		return
@@ -34,25 +52,38 @@ func (r *Renderer) drawTerrain(vp mgl32.Mat4) {
 	g := &r.gpu
 	fog := r.CurrentFog()
 	skyCol, fogCol := r.skyColors()
+	sun := r.Opt.SunDir
+	if r.Opt.Sky != nil { // clear to the fog colour, then the sky draws
+		skyCol, sun = fogCol, mgl32.Vec3{}
+	}
 	p.SetPipeline(dev.pipes.sky)
 	bindUniforms(p, g.u.reset().mat(vp.Inv()).f(fogCol[0], fogCol[1], fogCol[2], 0).f(skyCol[0], skyCol[1], skyCol[2], 0).
-		f(r.Opt.SunDir[0], r.Opt.SunDir[1], r.Opt.SunDir[2], 0))
+		f(sun[0], sun[1], sun[2], 0))
 	p.Draw(gputypes.DrawArgs{VertexCount: 3, InstanceCount: 1})
+	r.drawSky(cam, r.Opt.Sky)
+	r.drawBatches(p, vp, fog, fogCol)
+	r.drawSky(cam, r.Opt.SkyAfter)
+}
 
+func (r *Renderer) drawBatches(p *wgpu.RenderPassEncoder, vp mgl32.Mat4, fog Fog, fogCol mgl32.Vec3) {
+	g := &r.gpu
 	if len(r.batches) == 0 {
 		return
 	}
-	if g.bgFor != r.tex {
+	if g.bgFor != r.tex || g.bgGen != r.tex.gen {
 		if g.texBG != nil {
 			g.texBG.Release()
 		}
 		g.texBG = bindGroup("terrain textures", dev.pipes.terrainTex,
 			wgpu.BindGroupEntry{Binding: 0, TextureView: r.tex.gpu.array.view},
 			wgpu.BindGroupEntry{Binding: 1, Sampler: dev.nearestRep},
-			wgpu.BindGroupEntry{Binding: 2, TextureView: r.tex.gpu.layerMap.view})
-		g.bgFor = r.tex
+			wgpu.BindGroupEntry{Binding: 2, TextureView: r.tex.gpu.layerMap.view},
+			wgpu.BindGroupEntry{Binding: 3, TextureView: g.lightTex.view},
+			wgpu.BindGroupEntry{Binding: 4, Sampler: dev.linearClp})
+		g.bgFor, g.bgGen = r.tex, r.tex.gen
 	}
 	cvp := clip(vp)
+	dt := r.Opt.DynamicTint
 	layer := voxel.LayerCount
 	for _, b := range r.batches {
 		if b.layer != layer {
@@ -74,7 +105,7 @@ func (r *Renderer) drawTerrain(vp mgl32.Mat4) {
 		}
 		o := r.regionOrigin(b.reg)
 		bindUniforms(p, g.u.reset().mat(cvp).f(o[0], o[1], o[2], 0).f(fogCol[0], fogCol[1], fogCol[2], 0).
-			f(r.Opt.Daylight, r.Opt.BlockBrightness, cut, 0).f(fog.Start, fog.End, 0, 0))
+			f(r.Opt.Daylight, r.Opt.BlockBrightness, cut, 0).f(fog.Start, fog.End, 0, 0).f(dt[0], dt[1], dt[2], 0))
 		p.SetVertexBuffer(0, b.reg.gpu.vbo, 0)
 		r.multiDraw(p, b)
 	}
@@ -128,4 +159,5 @@ func (r *Renderer) drawLines(pl *wgpu.RenderPipeline, first, n uint32, mvp mgl32
 func (r *Renderer) destroyGPU() {
 	r.gpu.ebo.Release()
 	r.gpu.lineVBO.Release()
+	r.gpu.lightTex.release()
 }

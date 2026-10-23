@@ -14,6 +14,7 @@ type gpuModelRenderer struct {
 }
 
 type gpuModel struct {
+	radius   float32 // largest bind-pose extent from the origin
 	vbo, ebo *wgpu.Buffer
 	parts    []gpuPart
 	textures []texture2D
@@ -33,6 +34,16 @@ func (mr *ModelRenderer) upload(vb []float32, ib []uint32, texs []image.Image) *
 		g.groups = append(g.groups, textureGroup(t))
 	}
 	return g
+}
+
+type gpuSkin struct {
+	tex   texture2D
+	group *wgpu.BindGroup
+}
+
+func (mr *ModelRenderer) uploadSkin(img image.Image) *gpuSkin {
+	t := uploadTexture2D(img)
+	return &gpuSkin{t, textureGroup(t)}
 }
 
 func uploadTexture2D(img image.Image) texture2D {
@@ -68,18 +79,41 @@ func (mr *ModelRenderer) begin(l modelLight) {
 
 func (mr *ModelRenderer) end() {}
 
-func (mr *ModelRenderer) drawModel(g *gpuModel, model mgl32.Mat4, skin []mgl32.Mat4, sky, block uint8, fade float32) {
+func (mr *ModelRenderer) drawModel(g *gpuModel, model mgl32.Mat4, skin []mgl32.Mat4, d drawParams) {
 	p := curPass()
 	if p == nil {
 		return
 	}
 	l := &mr.gpu.light
-	u := mr.gpu.u.reset().mat(l.vp).mat(model).f(float32(sky)/15, float32(block)/15, l.daylight, l.block).
-		f(l.fog.Color[0], l.fog.Color[1], l.fog.Color[2], fade).f(l.fog.Start, l.fog.End, 0, 0)
+	color := d.color
+	if color == ([4]float32{}) {
+		color = [4]float32{1, 1, 1, 1}
+	}
+	cutoff := d.cutoff
+	if cutoff == 0 {
+		cutoff = 0.5
+	}
+	emissive := float32(0)
+	if d.emissive {
+		emissive = 1
+	}
+	lc := mr.r.LightColor(d.sky, d.block) // look agent: lightmap colour (modelWGSL u.light.rgb)
+	u := mr.gpu.u.reset().mat(l.vp).mat(model).f(lc[0], lc[1], lc[2], 0).
+		f(l.fog.Color[0], l.fog.Color[1], l.fog.Color[2], d.fade).f(l.fog.Start, l.fog.End, cutoff, emissive).
+		f(color[:]...).f(d.overlay[:]...)
 	for _, b := range bones(skin) {
 		u.mat(b)
 	}
-	p.SetPipeline(dev.pipes.model) // clearDepth between begin and draw starts a new pass
+	// clearDepth between begin and draw starts a new pass, so set the
+	// pipeline per draw.
+	switch d.blend {
+	case BlendAlpha:
+		p.SetPipeline(dev.pipes.modelAlpha)
+	case BlendAdditive:
+		p.SetPipeline(dev.pipes.modelAdd)
+	default:
+		p.SetPipeline(dev.pipes.model)
+	}
 	bindUniforms(p, u)
 	p.SetVertexBuffer(0, g.vbo, 0)
 	p.SetIndexBuffer(g.ebo, gputypes.IndexFormatUint32, 0)
@@ -88,7 +122,11 @@ func (mr *ModelRenderer) drawModel(g *gpuModel, model mgl32.Mat4, skin []mgl32.M
 		if pt.tex >= 0 && pt.tex < len(g.textures) {
 			t = pt.tex
 		}
-		p.SetBindGroup(1, g.groups[t], nil)
+		group := g.groups[t]
+		if d.texture > 0 && d.texture <= len(mr.skins) {
+			group = mr.skins[d.texture-1].group
+		}
+		p.SetBindGroup(1, group, nil)
 		p.DrawIndexed(gputypes.DrawIndexedArgs{IndexCount: uint32(pt.count), InstanceCount: 1, FirstIndex: uint32(pt.first)})
 	}
 }

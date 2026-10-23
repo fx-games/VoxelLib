@@ -19,7 +19,15 @@ type ModelRenderer struct {
 	r      *Renderer
 	gpu    gpuModelRenderer
 	models []*gpuModel
+	skins  []*gpuSkin // textures from AddTexture; handle i+1
 }
+
+// Blend modes for ModelInstance.Blend.
+const (
+	BlendNone     = iota // opaque, alpha-tested
+	BlendAlpha           // src alpha, 1 - src alpha; no depth writes
+	BlendAdditive        // one, one (e.g. glowing eyes); no depth writes
+)
 
 type gpuPart struct {
 	first, count int32 // indices
@@ -45,6 +53,38 @@ type ModelInstance struct {
 	// Transform, when set, replaces Yaw/Pitch/Tilt/Scale: it maps model
 	// space to the world about X,Y,Z (e.g. a weapon in a creature's hand).
 	Transform *mgl32.Mat4
+	// Texture, when non-zero, replaces the model's textures with one from
+	// AddTexture (e.g. one of many skins sharing a model).
+	Texture int
+	// Color multiplies the texture (rgb) and its alpha (a), like
+	// glColor4f; zero means white.
+	Color [4]float32
+	// Overlay mixes a lit colour over the result by its alpha, e.g. the
+	// red hurt flash (glColor4f(brightness, 0, 0, 0.4) drawn over).
+	Overlay [4]float32
+	// Emissive draws at full brightness, ignoring world light and
+	// shading (e.g. eyes drawn with lighting off).
+	Emissive bool
+	// Blend selects BlendNone, BlendAlpha or BlendAdditive.
+	Blend uint8
+	// AlphaCutoff discards texels with alpha at or below it (glAlphaFunc
+	// GL_GREATER); 0 means 0.5. Minecraft entities use 0.1.
+	AlphaCutoff float32
+}
+
+// drawParams is the per-draw state of an instance.
+type drawParams struct {
+	sky, block     uint8
+	fade           float32
+	color, overlay [4]float32
+	emissive       bool
+	blend          uint8
+	cutoff         float32
+	texture        int
+}
+
+func (in *ModelInstance) params() drawParams {
+	return drawParams{in.Sky, in.Block, in.Fade, in.Color, in.Overlay, in.Emissive, in.Blend, in.AlphaCutoff, in.Texture}
 }
 
 // TiltMatrix rotates the vertical toward world direction yaw by angle
@@ -104,6 +144,10 @@ func (mr *ModelRenderer) Add(m *model.Model) (int, error) {
 	}
 	g := mr.upload(vb, ib, texs)
 	g.parts = parts
+	lo, hi := m.Bounds()
+	for k := 0; k < 3; k++ {
+		g.radius = max(g.radius, float32(math.Abs(float64(lo[k]))), float32(math.Abs(float64(hi[k]))))
+	}
 	for i, old := range mr.models { // reuse a slot freed by Remove
 		if old == nil {
 			mr.models[i] = g
@@ -122,6 +166,13 @@ func (mr *ModelRenderer) Remove(handle int) {
 	}
 	mr.models[handle].delete()
 	mr.models[handle] = nil
+}
+
+// AddTexture uploads a texture that instances can select with
+// ModelInstance.Texture, and returns its handle (never 0).
+func (mr *ModelRenderer) AddTexture(img image.Image) int {
+	mr.skins = append(mr.skins, mr.uploadSkin(img))
+	return len(mr.skins)
 }
 
 func whiteImage() image.Image {
@@ -168,24 +219,26 @@ func (mr *ModelRenderer) Draw(cam *Camera, insts []ModelInstance) {
 			continue
 		}
 		dx, dy, dz := float32(in.X-cam.X), float32(in.Y-cam.Y), float32(in.Z-cam.Z)
-		if !fr.box(dx-3, dy-1, dz-3, dx+3, dy+4, dz+3) {
-			continue
-		}
 		g := mr.models[in.Model]
 		s := in.Scale
 		if s == 0 {
 			s = 1
 		}
+		// Posed limbs may swing past the bind-pose bounds: allow 1.5x.
+		r := max(3, 1.5*g.radius*s)
+		if !fr.box(dx-r, dy-r, dz-r, dx+r, dy+r, dz+r) {
+			continue
+		}
 		// Model +Z must turn to the camera's forward at yaw: forward is
 		// (sin yaw, 0, -cos yaw), which is +Z rotated by pi - yaw about Y.
 		// Pitch then tilts +Z up about the model's X axis.
 		if in.Transform != nil {
-			mr.drawModel(g, mgl32.Translate3D(dx, dy, dz).Mul4(*in.Transform), in.Skin, in.Sky, in.Block, in.Fade)
+			mr.drawModel(g, mgl32.Translate3D(dx, dy, dz).Mul4(*in.Transform), in.Skin, in.params())
 			continue
 		}
 		model := mgl32.Translate3D(dx, dy, dz).Mul4(TiltMatrix(in.Tilt, in.TiltYaw)).Mul4(mgl32.HomogRotate3DY(float32(math.Pi - in.Yaw))).
 			Mul4(mgl32.HomogRotate3DX(float32(-in.Pitch))).Mul4(mgl32.Scale3D(s, s, s))
-		mr.drawModel(g, model, in.Skin, in.Sky, in.Block, in.Fade)
+		mr.drawModel(g, model, in.Skin, in.params())
 	}
 	mr.end()
 }
@@ -228,7 +281,7 @@ func (mr *ModelRenderer) DrawHandSkinned(handle int, aspect float32, view mgl32.
 	clearHandDepth()
 	proj := mgl32.Perspective(mgl32.DegToRad(70), aspect, 0.05, 10)
 	mr.begin(modelLight{proj, Fog{Start: 1e6, End: 2e6}, mr.r.Opt.Daylight, mr.r.Opt.BlockBrightness}) // no fog on the hand
-	mr.drawModel(mr.models[handle], view, skin, sky, block, 0)
+	mr.drawModel(mr.models[handle], view, skin, drawParams{sky: sky, block: block})
 	mr.end()
 }
 

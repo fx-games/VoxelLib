@@ -18,23 +18,32 @@ type AnimatedTextureSource interface {
 	TextureFrames(name string) (frames []image.Image, ticksPerFrame int, err error)
 }
 
-// anim is one animated texture: frames 1.. live in layers extra.. .
+// anim is one animated texture: name base's frames 1.. live in physical
+// layers extra.. .
 type anim struct{ base, extra, count, ticks int }
 
 // textureArray holds every block texture as one layer of a 2D array texture:
 // no atlas bleeding, and greedy-merged quads can tile a texture with repeat
-// wrapping.
+// wrapping. Texture ids (registry names) map to physical layers through a
+// layer map (a 1-row R16UI texture the shader reads), which also points
+// animated textures at their current frame. Names learned later are
+// appended into spare layers (see add) without re-reading the others.
 type textureArray struct {
-	gpu      gpuTexArray
-	size     int
-	layers   int
-	levels   int // highest mip level
-	tintable []bool
-	// Animation: the shader looks every layer up in a layer map (a 1-row
-	// R16UI texture) so animated layers can point at their current frame.
-	anims    []anim
-	mapPix   []uint16
-	lastTick int
+	gpu               gpuTexArray
+	size              int
+	levels            int // highest mip level
+	tintable          []bool
+	anims             []anim
+	mapPix            []uint16   // per name: current physical layer
+	base              []uint16   // per name: frame 0's physical layer
+	mips              [][][]byte // per physical layer: cached mip chain
+	capLayers, capMap int        // GPU capacity (physical layers, layer map width)
+	gen               int        // bumped when the GPU textures are reallocated
+	lastTick          int
+
+	src     TextureSource
+	missing func(int) image.Image
+	isGrey  func(image.Image) bool
 }
 
 const mipLevels = 4
@@ -89,64 +98,108 @@ func downsample(src []byte, size int) []byte {
 }
 
 func newTextureArray(names []string, src TextureSource, missing func(int) image.Image, isGrey func(image.Image) bool) *textureArray {
-	imgs := make([]image.Image, len(names))
-	size := 16
-	var anims []anim
+	t := &textureArray{size: 16, lastTick: -1, src: src, missing: missing, isGrey: isGrey}
+	imgs := t.load(names, 0)
+	for _, img := range imgs {
+		if img != nil {
+			if w := img.Bounds().Dx(); w > t.size && w <= 512 {
+				t.size = w
+			}
+		}
+	}
+	t.levels = mipLevels
+	for s := t.size; s>>t.levels == 0; t.levels-- {
+	}
+	t.place(names, imgs)
+	return t
+}
+
+// add appends textures for names[len(t.base):]; false if one is larger
+// than the array's layer size (rebuild with newTextureArray).
+func (t *textureArray) add(names []string) bool {
+	if len(names) <= len(t.base) {
+		return true
+	}
+	imgs := t.load(names, len(t.base))
+	for _, img := range imgs {
+		if img != nil {
+			if w := img.Bounds().Dx(); w > t.size && w <= 512 {
+				return false
+			}
+		}
+	}
+	t.place(names, imgs)
+	return true
+}
+
+// load reads names[from:]: frame 0 per name then the extra animation
+// frames; anims get name indices and extra offsets relative to the result.
+func (t *textureArray) load(names []string, from int) []image.Image {
+	imgs := make([]image.Image, len(names)-from)
 	var extra []image.Image
-	asrc, _ := src.(AnimatedTextureSource)
-	for i, n := range names {
-		var img image.Image
+	asrc, _ := t.src.(AnimatedTextureSource)
+	for i, n := range names[from:] {
 		if asrc != nil {
 			frames, ticks, err := asrc.TextureFrames(n)
 			if err != nil || len(frames) == 0 {
 				continue
 			}
-			img = frames[0]
+			imgs[i] = frames[0]
 			if len(frames) > 1 {
-				anims = append(anims, anim{base: i, extra: len(names) + len(extra), count: len(frames), ticks: max(ticks, 1)})
+				t.anims = append(t.anims, anim{base: from + i, extra: -1 - len(extra), count: len(frames), ticks: max(ticks, 1)})
 				extra = append(extra, frames[1:]...)
 			}
-		} else {
-			var err error
-			if img, err = src.Texture(n); err != nil {
-				continue
-			}
-		}
-		imgs[i] = img
-		if w := img.Bounds().Dx(); w > size && w <= 512 {
-			size = w
+		} else if img, err := t.src.Texture(n); err == nil {
+			imgs[i] = img
 		}
 	}
-	tint := make([]bool, len(names))
-	imgs = append(imgs, extra...)
-	ta := &textureArray{size: size, layers: len(imgs), anims: anims, lastTick: -1}
-	ta.levels = mipLevels
-	for s := size; s>>ta.levels == 0; ta.levels-- {
-	}
-	ta.mapPix = make([]uint16, len(imgs))
-	for i := range ta.mapPix {
-		ta.mapPix[i] = uint16(i)
-	}
-	ta.allocGPU()
-	mips := make([][]byte, ta.levels+1)
+	return append(imgs, extra...)
+}
+
+// place converts and uploads imgs (from load) as the layers of the names
+// after len(t.base), growing the GPU textures if needed.
+func (t *textureArray) place(names []string, imgs []image.Image) {
+	first := len(t.mips)
+	nNew := len(names) - len(t.base)
 	for i, img := range imgs {
-		if img == nil {
-			img = missing(size)
-		} else if i < len(tint) {
-			tint[i] = isGrey(img)
+		if i < nNew {
+			t.tintable = append(t.tintable, img != nil && t.isGrey(img))
 		}
-		px := toNRGBA(img, size).Pix
-		for l := 0; l <= ta.levels; l++ {
-			mips[l] = px
-			if l < ta.levels {
-				px = downsample(px, size>>l)
+		if img == nil {
+			img = t.missing(t.size)
+		}
+		px := toNRGBA(img, t.size).Pix
+		chain := make([][]byte, t.levels+1)
+		for l := range chain {
+			chain[l] = px
+			if l < t.levels {
+				px = downsample(px, t.size>>l)
 			}
 		}
-		ta.uploadLayer(i, mips)
+		t.mips = append(t.mips, chain)
 	}
-	ta.tintable = tint
-	ta.uploadMap()
-	return ta
+	for i := 0; i < nNew; i++ {
+		t.base = append(t.base, uint16(first+i))
+	}
+	t.mapPix = append(t.mapPix, t.base[len(t.mapPix):]...)
+	for k := range t.anims {
+		if a := &t.anims[k]; a.extra < 0 {
+			a.extra = first + nNew - 1 - a.extra
+		}
+	}
+	if len(t.mips) > t.capLayers || len(t.mapPix) > t.capMap {
+		if t.capLayers > 0 {
+			t.delete()
+		}
+		t.capLayers = max(len(t.mips)+len(t.mips)/4+16, 64)
+		t.capMap = max(len(t.mapPix)+len(t.mapPix)/4+16, 64)
+		t.allocGPU()
+		first = 0
+	}
+	for i := first; i < len(t.mips); i++ {
+		t.uploadLayer(i, t.mips[i])
+	}
+	t.uploadMap()
 }
 
 // animate points animated layers at their frame for game tick (20 Hz).
@@ -158,7 +211,7 @@ func (t *textureArray) animate(tick int) {
 	changed := false
 	for _, a := range t.anims {
 		f := (tick / a.ticks) % a.count
-		l := uint16(a.base)
+		l := t.base[a.base]
 		if f > 0 {
 			l = uint16(a.extra + f - 1)
 		}

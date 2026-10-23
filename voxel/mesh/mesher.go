@@ -27,7 +27,8 @@ const (
 //	w0: x:10 y:10 z:10 (1/32 block, section local) ao:2
 //	w1: texture layer:12 u:5 v:5 normal:3
 //	w2: tint r:8 g:8 b:8, section index in region:8
-//	w3: sky light:8 block light:8 (level*16, smoothly averaged)
+//	w3: sky light:8 block light:8 (level*16, smoothly averaged),
+//	    dynamic tint weight:8 (see Config.BlockTint)
 const VertexWords = 4
 
 // RegionOf returns the region coordinate containing a section.
@@ -65,12 +66,27 @@ type Config struct {
 	// coloured by the block's tint (vanilla grass), false when the pack has
 	// already painted it (most third party packs).
 	Tintable []bool
-	// BlockTint, when set, gives the colour (0xRRGGBB) of a tinted block
-	// (not TintFixed) at world position x,y,z, e.g. from its biome: biome
-	// returns the legacy biome id of any column within one block of the
-	// section (world x,z). Without it, or without biome data, TintColors
-	// apply.
+	// BlockTint, when set, decides the colour of every tinted block (any
+	// Tint but TintNone and TintFixed) at world position x,y,z by the
+	// game's rule instead of the Tintable heuristic: biome returns the
+	// biome id of any column within one block of the section (world x,z).
+	// The result is 0xWWRRGGBB: RGB is baked into the vertices, and WW
+	// (0..255) is the weight of the renderer's per-frame dynamic tint
+	// (render.Options.DynamicTint) added on top, so a colour that changes
+	// at run time (water following the player) needs no remeshing:
+	// colour = RGB + WW/255 * DynamicTint. Without it, or without biome
+	// data, TintColors apply. It runs on mesh workers, concurrently, and
+	// is called at most once per block and mesh build.
 	BlockTint func(info *voxel.StateInfo, x, y, z int, biome func(x, z int) uint8) uint32
+	// FaceUVRot, when set, turns the texture of a visible face of a
+	// ShapeCube or ShapeBoxes block, e.g. to break up tiling on natural
+	// ground: bits 0-1 are n quarter turns, tile coordinates mapping
+	// (u,v) → (v, 1-u) per turn (corner k shows what corner k+n showed);
+	// bit 2 first transposes (u,v) → (v,u) (Minecraft's mirrored uvRotate
+	// on some faces).
+	// Turned cube faces are not merged. It runs concurrently on mesh
+	// workers.
+	FaceUVRot func(info *voxel.StateInfo, x, y, z int, f voxel.Face) uint8
 }
 
 // Tint colours (plains biome defaults).
@@ -260,14 +276,15 @@ func (m *Mesher) tint(info *voxel.StateInfo, f voxel.Face, tex uint16, x, y, z i
 	if info.Tint == voxel.TintNone || info.TintMask&(1<<f) == 0 {
 		return 0xFFFFFF
 	}
-	if m.cfg != nil && int(tex) < len(m.cfg.Tintable) && !m.cfg.Tintable[tex] {
+	rule := m.cfg != nil && m.cfg.BlockTint != nil
+	if !rule && m.cfg != nil && int(tex) < len(m.cfg.Tintable) && !m.cfg.Tintable[tex] {
 		return 0xFFFFFF
 	}
 	c := TintColors[min(int(info.Tint), len(TintColors)-1)]
 	switch {
 	case info.Tint == voxel.TintFixed:
 		c = info.TintColor
-	case m.cfg != nil && m.cfg.BlockTint != nil && m.Snap.HasBiomes:
+	case rule && m.Snap.HasBiomes:
 		i := y<<8 | z<<4 | x
 		if m.tintStamp[i] != m.builds {
 			p := m.Snap.Pos
@@ -279,7 +296,7 @@ func (m *Mesher) tint(info *voxel.StateInfo, f voxel.Face, tex uint16, x, y, z i
 		}
 		c = m.tintCache[i]
 	}
-	return (c>>16)&0xff | (c>>8&0xff)<<8 | (c&0xff)<<16 // to r,g,b byte order
+	return (c>>16)&0xff | (c>>8&0xff)<<8 | (c&0xff)<<16 | c&0xff000000 // to r,g,b byte order, weight on top
 }
 
 // cubes meshes full-cube faces with culling and greedy merging of faces whose
@@ -312,14 +329,15 @@ func (m *Mesher) cubes() {
 					}
 					cl := m.light(p[0], p[1], p[2], f)
 					tint := m.tint(info, f, info.Tex[f], p[0], p[1], p[2])
-					if info.Layer != voxel.LayerTranslucent && cl[0] == cl[1] && cl[1] == cl[2] && cl[2] == cl[3] {
+					rot := m.uvRot(info, p, f)
+					if rot == 0 && info.Layer != voxel.LayerTranslucent && cl[0] == cl[1] && cl[1] == cl[2] && cl[2] == cl[3] {
 						// key: tex 12 | layer 2 | ao 2 | sky 8 | blk 8 | tint 24 ; +1 so 0 = empty
 						m.mask[b<<4|a] = (uint64(info.Tex[f]) | uint64(info.Layer)<<12 | uint64(cl[0].ao)<<14 |
 							uint64(cl[0].sky)<<16 | uint64(cl[0].blk)<<24 | uint64(tint)<<32) + 1
 						any = true
 						continue
 					}
-					m.quad(f, p, 1, 1, info.Tex[f], tint, info.Layer, cl, 32)
+					m.quadTops(f, p, 1, 1, info.Tex[f], tint, info.Layer, cl, full, rot)
 				}
 			}
 			if any {
@@ -372,12 +390,21 @@ func (m *Mesher) greedy(f voxel.Face, p [3]int, ax int) {
 // quad emits one face quad. p is the block position (section local), w/h the
 // size along the face's u/v axes, top the height of y=1 corners in 1/32.
 func (m *Mesher) quad(f voxel.Face, p [3]int, w, h int, tex uint16, tint uint32, layer voxel.Layer, cl [4]cornerLight, top int) {
-	m.quadTops(f, p, w, h, tex, tint, layer, cl, [4]int{top, top, top, top})
+	m.quadTops(f, p, w, h, tex, tint, layer, cl, [4]int{top, top, top, top}, 0)
+}
+
+// uvRot is Config.FaceUVRot for face f of the block at section-local p.
+func (m *Mesher) uvRot(info *voxel.StateInfo, p [3]int, f voxel.Face) uint8 {
+	if m.cfg == nil || m.cfg.FaceUVRot == nil {
+		return 0
+	}
+	sp := m.Snap.Pos
+	return m.cfg.FaceUVRot(info, sp.X*16+p[0], sp.Y*16+p[1], sp.Z*16+p[2], f) & 7
 }
 
 // quadTops is quad with the top height per corner, indexed x|z<<1 (liquid
-// surfaces slope).
-func (m *Mesher) quadTops(f voxel.Face, p [3]int, w, h int, tex uint16, tint uint32, layer voxel.Layer, cl [4]cornerLight, top [4]int) {
+// surfaces slope), and the texture turned rot quarter turns (1x1 only).
+func (m *Mesher) quadTops(f voxel.Face, p [3]int, w, h int, tex uint16, tint uint32, layer voxel.Layer, cl [4]cornerLight, top [4]int, rot uint8) {
 	ua, va := uAxis[f], vAxis[f]
 	var size [3]int
 	size[f.Axis()] = 1
@@ -406,14 +433,23 @@ func (m *Mesher) quadTops(f voxel.Face, p [3]int, w, h int, tex uint16, tint uin
 		cx += float32(x)
 		cy += float32(y)
 		cz += float32(z)
-		u := uvTab[f][k][0] * uint32(size[ua])
-		v := uvTab[f][k][1] * uint32(size[va])
+		u, v := uvTab[f][k][0], uvTab[f][k][1]
+		if rot != 0 { // FaceUVRot (1x1 quads only): transpose, then turn
+			if rot&4 != 0 {
+				u, v = v, u
+			}
+			for n := rot & 3; n > 0; n-- {
+				u, v = v, 1-u
+			}
+		}
+		u *= uint32(size[ua])
+		v *= uint32(size[va])
 		c := cl[k]
 		out = append(out,
 			uint32(x)|uint32(y)<<10|uint32(z)<<20|uint32(c.ao)<<30,
 			uint32(tex)|u<<12|v<<17|uint32(f)<<22,
-			tint|m.ridx,
-			uint32(c.sky)|uint32(c.blk)<<8)
+			tint&0xffffff|m.ridx,
+			uint32(c.sky)|uint32(c.blk)<<8|tint>>24<<16)
 	}
 	m.out[layer][group] = out
 	if layer == voxel.LayerTranslucent {
@@ -453,7 +489,7 @@ func (m *Mesher) specials() {
 						cl := [4]cornerLight{c, c, c, c}
 						tint := m.tint(info, f, info.Tex[f], x, y, z)
 						p := [3]int{x, y, z}
-						m.quadTops(f, p, 1, 1, info.Tex[f], tint, info.Layer, cl, top)
+						m.quadTops(f, p, 1, 1, info.Tex[f], tint, info.Layer, cl, top, 0)
 						if f == voxel.FaceUp && info.Layer == voxel.LayerTranslucent {
 							m.quadReversed(p, info.Tex[f], tint, cl, top)
 						}
@@ -509,7 +545,7 @@ func (m *Mesher) boxes(x, y, z, i int, info *voxel.StateInfo) {
 			if b.NoTint&(1<<f) == 0 {
 				tint = m.tint(info, f, tex, x, y, z) // the face's own texture decides whether it is greyscale
 			}
-			m.boxFace(f, base, &b, tex, tint, info.Layer, c)
+			m.boxFace(f, base, &b, tex, tint, info.Layer, c, m.uvRot(info, [3]int{x, y, z}, f))
 		}
 	}
 }
@@ -533,7 +569,7 @@ func projUV(f voxel.Face, q [3]float32) (float32, float32) {
 }
 
 // boxFace emits face f of element b of the block at base (all 1/16).
-func (m *Mesher) boxFace(f voxel.Face, base [3]float32, b *voxel.Box, tex uint16, tint uint32, layer voxel.Layer, c cornerLight) {
+func (m *Mesher) boxFace(f voxel.Face, base [3]float32, b *voxel.Box, tex uint16, tint uint32, layer voxel.Layer, c cornerLight, rot uint8) {
 	var q [4][3]float32
 	var uv [4][2]float32
 	for k := 0; k < 4; k++ {
@@ -571,6 +607,16 @@ func (m *Mesher) boxFace(f voxel.Face, base [3]float32, b *voxel.Box, tex uint16
 			}
 		}
 	}
+	if rot&4 != 0 { // FaceUVRot: transpose, then (u,v) → (v, 1-u) per turn
+		for k := range uv {
+			uv[k] = [2]float32{uv[k][1], uv[k][0]}
+		}
+	}
+	for n := rot & 3; n > 0; n-- {
+		for k := range uv {
+			uv[k] = [2]float32{uv[k][1], 16 - uv[k][0]}
+		}
+	}
 	group, normal := int(f), uint32(f)
 	if len(b.Rot) > 0 {
 		for k := range q {
@@ -600,8 +646,8 @@ func (m *Mesher) boxFace(f voxel.Face, base [3]float32, b *voxel.Box, tex uint16
 		out = append(out,
 			p[0]|p[1]<<10|p[2]<<20|uint32(c.ao)<<30,
 			uint32(tex)|u<<12|v<<17|normal<<22|projectedUV,
-			tint|m.ridx,
-			uint32(c.sky)|uint32(c.blk)<<8)
+			tint&0xffffff|m.ridx,
+			uint32(c.sky)|uint32(c.blk)<<8|tint>>24<<16)
 	}
 	m.out[layer][group] = out
 	if layer == voxel.LayerTranslucent {
@@ -658,7 +704,7 @@ func (m *Mesher) quadReversed(p [3]int, tex uint16, tint uint32, cl [4]cornerLig
 		cz += float32(z)
 		u, v := uvTab[voxel.FaceUp][k][0], uvTab[voxel.FaceUp][k][1]
 		out = append(out, uint32(x)|uint32(y)<<10|uint32(z)<<20|3<<30,
-			uint32(tex)|u<<12|v<<17|uint32(voxel.FaceDown)<<22, tint|m.ridx, uint32(cl[0].sky)|uint32(cl[0].blk)<<8)
+			uint32(tex)|u<<12|v<<17|uint32(voxel.FaceDown)<<22, tint&0xffffff|m.ridx, uint32(cl[0].sky)|uint32(cl[0].blk)<<8|tint>>24<<16)
 	}
 	m.out[voxel.LayerTranslucent][GroupUnassigned] = out
 	m.trans = append(m.trans, [3]float32{cx / 128, float32(y) / 32, cz / 128})
@@ -682,8 +728,8 @@ func (m *Mesher) cross(x, y, z int, tex uint16, tint uint32, layer voxel.Layer, 
 				out = append(out,
 					uint32(bx+v[0])|uint32(by+v[1])<<10|uint32(bz+v[2])<<20|3<<30,
 					uint32(tex)|uvs[k][0]<<12|uvs[k][1]<<17|6<<22,
-					tint|m.ridx,
-					uint32(c.sky)|uint32(c.blk)<<8)
+					tint&0xffffff|m.ridx,
+					uint32(c.sky)|uint32(c.blk)<<8|tint>>24<<16)
 			}
 			if layer == voxel.LayerTranslucent {
 				m.trans = append(m.trans, [3]float32{float32(x) + .5, float32(y) + .5, float32(z) + .5})

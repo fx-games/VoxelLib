@@ -6,8 +6,9 @@ import "github.com/gogpu/gputypes"
 type gpuTexArray struct{ array, layerMap texture2D }
 
 func (t *textureArray) allocGPU() {
-	t.gpu.array = newTexture("blocks", t.size, t.size, t.layers, t.levels+1, gputypes.TextureFormatRGBA8Unorm, gputypes.TextureViewDimension2DArray)
-	t.gpu.layerMap = newTexture("layer map", t.layers, 1, 1, 1, gputypes.TextureFormatR16Uint, gputypes.TextureViewDimension2D)
+	t.gen++
+	t.gpu.array = newTexture("blocks", t.size, t.size, t.capLayers, t.levels+1, gputypes.TextureFormatRGBA8Unorm, gputypes.TextureViewDimension2DArray)
+	t.gpu.layerMap = newTexture("layer map", t.capMap, 1, 1, 1, gputypes.TextureFormatR16Uint, gputypes.TextureViewDimension2D)
 }
 
 // uploadLayer writes one layer's mip chain (mips[l] is level l).

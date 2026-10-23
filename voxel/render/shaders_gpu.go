@@ -10,22 +10,12 @@ import (
 // The WGSL ports of the GLSL shaders in shaders_gl.go and the *_gl.go files.
 // Uniform blocks hold only mat4x4f and vec4f members (see ubuf).
 
+// Light colours come from the lightmap (Options.Lightmap): sampled by
+// terrain, looked up on the CPU (Renderer.LightColor) for the other passes.
 const wgslLight = `
-// Minecraft's lightmap brightness curve with a small ambient floor.
-fn curve(l: f32) -> f32 { return mix(0.04, 1.0, l / (4.0 - 3.0 * l)); }
-// blockCurve is curve for block light, raised toward Minecraft's bright
-// gamma (1-(1-l)^4) by bright.
-fn blockCurve(l: f32, bright: f32) -> f32 {
-	return mix(curve(l), mix(0.04, 1.0, 1.0 - pow(1.0 - l, 4.0)), bright);
-}
-fn lightColor(sky: f32, blk: f32, daylight: f32, bright: f32) -> vec3f {
-	let s = curve(clamp(sky, 0.0, 1.0)) * daylight;
-	let b = blockCurve(clamp(blk, 0.0, 1.0), bright);
-	return max(max(vec3f(s) * vec3f(0.95, 0.97, 1.0), vec3f(b) * vec3f(1.0, 0.86, 0.66)), vec3f(0.04));
-}
+// Linear fog (GL_LINEAR) between fog.x and fog.y.
 fn fogFactor(dist: f32, fog: vec4f) -> f32 {
-	let f = clamp((dist - fog.x) / (fog.y - fog.x), 0.0, 1.0);
-	return f * f;
+	return clamp((dist - fog.x) / max(fog.y - fog.x, 1e-4), 0.0, 1.0);
 }
 `
 
@@ -36,11 +26,14 @@ struct U {
 	fogColor: vec4f,
 	params: vec4f,     // daylight, block brightness, alpha cut
 	fog: vec4f,        // start, end
+	dynTint: vec4f,    // added to the tint by the vertex's tint weight
 }
 @group(0) @binding(0) var<uniform> u: U;
 @group(1) @binding(0) var tex: texture_2d_array<f32>;
 @group(1) @binding(1) var samp: sampler;
 @group(1) @binding(2) var layerMap: texture_2d<u32>; // base layer -> current animation frame layer
+@group(1) @binding(3) var lightmap: texture_2d<f32>;  // x = block, y = sky light
+@group(1) @binding(4) var lightSamp: sampler;
 
 struct VOut {
 	@builtin(position) pos: vec4f,
@@ -67,8 +60,10 @@ fn vs(@location(0) d: vec4<u32>) -> VOut {
 	if ((w1 & (1u << 25u)) != 0u) { o.uv = o.uv * (1.0 / 16.0); } // box faces: u/v in 1/16 tile
 	let n = (w1 >> 22u) & 7u;
 	let tint = vec3f(f32(w2 & 255u), f32((w2 >> 8u) & 255u), f32((w2 >> 16u) & 255u)) * (1.0 / 255.0);
-	o.color = tint * shade[n] * ao[w0 >> 30u];
-	o.light = vec2f(f32(w3 & 255u), f32((w3 >> 8u) & 255u)) * (1.0 / 240.0);
+	let wt = f32((w3 >> 16u) & 255u) * (1.0 / 255.0);
+	o.color = (tint + wt * u.dynTint.rgb) * shade[n] * ao[w0 >> 30u];
+	// Light is level*16 (0..240); Minecraft samples (l + 8) / 256.
+	o.light = (vec2f(f32((w3 >> 8u) & 255u), f32(w3 & 255u)) + 8.0) * (1.0 / 256.0);
 	o.dist = length(pos.xz); // cylindrical fog like Minecraft
 	return o;
 }
@@ -77,7 +72,7 @@ fn vs(@location(0) d: vec4<u32>) -> VOut {
 fn fs(i: VOut) -> @location(0) vec4f {
 	let c = textureSample(tex, samp, i.uv, i.layer);
 	if (c.a < u.params.z) { discard; }
-	let col = c.rgb * i.color * lightColor(i.light.x, i.light.y, u.params.x, u.params.y);
+	let col = c.rgb * i.color * textureSampleLevel(lightmap, lightSamp, i.light, 0.0).rgb;
 	return vec4f(mix(col, u.fogColor.rgb, fogFactor(i.dist, u.fog)), c.a);
 }
 `
@@ -125,9 +120,11 @@ const modelWGSL = `
 struct U {
 	viewProj: mat4x4f,
 	model: mat4x4f,
-	light: vec4f,    // sky, block, daylight, block brightness
+	light: vec4f,    // lightmap colour (Renderer.LightColor)
 	fogColor: vec4f, // rgb, fade
-	fog: vec4f,
+	fog: vec4f,      // start, end, alpha cutoff, emissive
+	color: vec4f,    // texture multiplier (glColor4f)
+	overlay: vec4f,  // rgb mixed over the lit result by a (hurt flash)
 	bones: array<mat4x4f, 96>,
 }
 @group(0) @binding(0) var<uniform> u: U;
@@ -159,13 +156,15 @@ fn vs(@location(0) pos: vec3f, @location(1) normal: vec3f, @location(2) uv: vec2
 }
 @fragment
 fn fs(i: VOut) -> @location(0) vec4f {
-	let c = textureSample(tex, samp, i.uv);
-	if (c.a < 0.5) { discard; }
+	let c = textureSample(tex, samp, i.uv) * u.color;
+	if (c.a <= u.fog.z) { discard; }
 	// Interleaved gradient noise: a stable screen-space dither for fading.
 	let fade = u.fogColor.a;
 	if (fade > 0.0 && fract(52.9829189 * fract(dot(i.pos.xy, vec2f(0.06711056, 0.00583715)))) < fade) { discard; }
-	let col = c.rgb * i.shade * lightColor(u.light.x, u.light.y, u.light.z, u.light.w);
-	return vec4f(mix(col, u.fogColor.rgb, fogFactor(i.dist, u.fog)), 1.0);
+	var light = i.shade * u.light.rgb;
+	if (u.fog.w > 0.5) { light = vec3f(1.0); }
+	let col = mix(c.rgb * light, u.overlay.rgb * light, u.overlay.a);
+	return vec4f(mix(col, u.fogColor.rgb, fogFactor(i.dist, u.fog)), c.a);
 }
 `
 
@@ -173,7 +172,7 @@ const itemWGSL = `
 struct U {
 	mvp: mat4x4f,
 	model: mat4x4f,  // model rotation+scale (camera-relative world space)
-	light: vec4f,    // sky, block, daylight, block brightness
+	light: vec4f,    // lightmap colour
 	fogColor: vec4f, // rgb, layer
 	fog: vec4f,
 }
@@ -203,7 +202,7 @@ fn vs(@location(0) pos: vec3f, @location(1) uv: vec2f, @location(2) normal: vec3
 fn fs(i: VOut) -> @location(0) vec4f {
 	let c = textureSample(tex, samp, i.uv, i32(u.fogColor.a));
 	if (c.a < 0.5) { discard; }
-	let col = c.rgb * i.shade * lightColor(u.light.x, u.light.y, u.light.z, u.light.w);
+	let col = c.rgb * i.shade * u.light.rgb;
 	return vec4f(mix(col, u.fogColor.rgb, fogFactor(i.dist, u.fog)), 1.0);
 }
 `
@@ -213,7 +212,7 @@ struct U {
 	viewProj: mat4x4f,
 	right: vec4f,
 	up: vec4f,
-	params: vec4f,   // daylight, block brightness, additive
+	params: vec4f,   // _, _, additive
 	fogColor: vec4f,
 	fog: vec4f,
 }
@@ -242,8 +241,42 @@ fn fs(i: VOut) -> @location(0) vec4f {
 	if (u.params.z > 0.5) {
 		return vec4f(i.color.rgb * i.color.a * (1.0 - f), 1.0);
 	}
-	let light = lightColor(i.light.x, i.light.y, u.params.x, u.params.y);
-	return vec4f(mix(i.color.rgb * light, u.fogColor.rgb, f), i.color.a);
+	return vec4f(mix(i.color.rgb, u.fogColor.rgb, f), i.color.a); // lit on the CPU
+}
+`
+
+const skyListWGSL = `
+struct U {
+	mvp: mat4x4f,
+	model: mat4x4f,  // to camera-relative world space (fog distance)
+	fogColor: vec4f,
+	fog: vec4f,      // start, end, enabled, alpha test
+}
+@group(0) @binding(0) var<uniform> u: U;
+@group(1) @binding(0) var tex: texture_2d<f32>;
+@group(1) @binding(1) var samp: sampler;
+struct VOut {
+	@builtin(position) pos: vec4f,
+	@location(0) uv: vec2f,
+	@location(1) color: vec4f,
+	@location(2) dist: f32,
+}
+` + wgslLight + `
+@vertex
+fn vs(@location(0) pos: vec3f, @location(1) uv: vec2f, @location(2) color: vec4f) -> VOut {
+	var o: VOut;
+	o.pos = u.mvp * vec4f(pos, 1.0);
+	o.uv = uv;
+	o.color = color;
+	o.dist = length((u.model * vec4f(pos, 1.0)).xyz);
+	return o;
+}
+@fragment
+fn fs(i: VOut) -> @location(0) vec4f {
+	var c = textureSample(tex, samp, i.uv) * i.color;
+	if (u.fog.w > 0.0 && c.a <= u.fog.w) { discard; }
+	if (u.fog.z > 0.5) { c = vec4f(mix(c.rgb, u.fogColor.rgb, fogFactor(i.dist, u.fog)), c.a); }
+	return c;
 }
 `
 
@@ -287,8 +320,10 @@ type pipelines struct {
 
 	terrainOpaque, terrainTrans *wgpu.RenderPipeline
 	sky                         *wgpu.RenderPipeline
+	skyAlpha, skyAdd            *wgpu.RenderPipeline
 	outline, crosshair          *wgpu.RenderPipeline
 	model, item                 *wgpu.RenderPipeline
+	modelAlpha, modelAdd        *wgpu.RenderPipeline
 	particleAlpha, particleAdd  *wgpu.RenderPipeline
 	overlay                     *wgpu.RenderPipeline
 	blit                        *wgpu.RenderPipeline
@@ -302,6 +337,10 @@ var (
 	blendAdd = &gputypes.BlendState{
 		Color: gputypes.BlendComponent{SrcFactor: gputypes.BlendFactorOne, DstFactor: gputypes.BlendFactorOne, Operation: gputypes.BlendOperationAdd},
 		Alpha: gputypes.BlendComponent{SrcFactor: gputypes.BlendFactorOne, DstFactor: gputypes.BlendFactorOne, Operation: gputypes.BlendOperationAdd},
+	}
+	blendSrcAlphaOne = &gputypes.BlendState{ // glBlendFunc(GL_SRC_ALPHA, GL_ONE)
+		Color: gputypes.BlendComponent{SrcFactor: gputypes.BlendFactorSrcAlpha, DstFactor: gputypes.BlendFactorOne, Operation: gputypes.BlendOperationAdd},
+		Alpha: gputypes.BlendComponent{SrcFactor: gputypes.BlendFactorSrcAlpha, DstFactor: gputypes.BlendFactorOne, Operation: gputypes.BlendOperationAdd},
 	}
 	blendInvert = &gputypes.BlendState{
 		Color: gputypes.BlendComponent{SrcFactor: gputypes.BlendFactorOneMinusDst, DstFactor: gputypes.BlendFactorZero, Operation: gputypes.BlendOperationAdd},
@@ -344,7 +383,8 @@ func (ps *pipelines) init() error {
 	frag := gputypes.ShaderStages(gputypes.ShaderStageFragment)
 	ps.terrainTex = layout("terrain textures",
 		texEntry(0, frag, gputypes.TextureSampleTypeFloat, gputypes.TextureViewDimension2DArray), samplerEntry(1),
-		texEntry(2, gputypes.ShaderStageVertex, gputypes.TextureSampleTypeUint, gputypes.TextureViewDimension2D))
+		texEntry(2, gputypes.ShaderStageVertex, gputypes.TextureSampleTypeUint, gputypes.TextureViewDimension2D),
+		texEntry(3, frag, gputypes.TextureSampleTypeFloat, gputypes.TextureViewDimension2D), samplerEntry(4))
 	ps.tex2D = layout("texture", texEntry(0, frag, gputypes.TextureSampleTypeFloat, gputypes.TextureViewDimension2D), samplerEntry(1))
 	ps.texArray = layout("texture array", texEntry(0, frag, gputypes.TextureSampleTypeFloat, gputypes.TextureViewDimension2DArray), samplerEntry(1))
 	if err != nil {
@@ -371,6 +411,8 @@ func (ps *pipelines) init() error {
 			attr(3, gputypes.VertexFormatFloat32x4, 16), attr(4, gputypes.VertexFormatFloat32x2, 32)}},
 	}
 
+	skyBuf := []gputypes.VertexBufferLayout{{ArrayStride: 36, StepMode: gputypes.VertexStepModeVertex,
+		Attributes: []gputypes.VertexAttribute{attr(0, gputypes.VertexFormatFloat32x3, 0), attr(1, gputypes.VertexFormatFloat32x2, 12), attr(2, gputypes.VertexFormatFloat32x4, 20)}}}
 	tri, lines := gputypes.PrimitiveTopologyTriangleList, gputypes.PrimitiveTopologyLineList
 	back, none := gputypes.CullModeBack, gputypes.CullModeNone
 	specs := []struct {
@@ -380,9 +422,13 @@ func (ps *pipelines) init() error {
 		{&ps.terrainOpaque, pipeSpec{"terrain", terrainWGSL, ps.terrainTex, terrainBuf, tri, back, nil, true, true, false}},
 		{&ps.terrainTrans, pipeSpec{"terrain translucent", terrainWGSL, ps.terrainTex, terrainBuf, tri, back, blendAlpha, true, false, false}},
 		{&ps.sky, pipeSpec{"sky", skyWGSL, nil, nil, tri, back, nil, true, false, false}},
+		{&ps.skyAlpha, pipeSpec{"sky list", skyListWGSL, ps.tex2D, skyBuf, tri, none, blendAlpha, true, false, false}},
+		{&ps.skyAdd, pipeSpec{"sky list additive", skyListWGSL, ps.tex2D, skyBuf, tri, none, blendSrcAlphaOne, true, false, false}},
 		{&ps.outline, pipeSpec{"outline", lineWGSL, nil, lineBuf, lines, none, blendAlpha, true, true, false}},
 		{&ps.crosshair, pipeSpec{"crosshair", lineWGSL, nil, lineBuf, lines, none, blendInvert, false, false, false}},
 		{&ps.model, pipeSpec{"model", modelWGSL, ps.tex2D, modelBuf, tri, none, nil, true, true, false}},
+		{&ps.modelAlpha, pipeSpec{"model alpha", modelWGSL, ps.tex2D, modelBuf, tri, none, blendAlpha, true, false, false}},
+		{&ps.modelAdd, pipeSpec{"model additive", modelWGSL, ps.tex2D, modelBuf, tri, none, blendAdd, true, false, false}},
 		{&ps.item, pipeSpec{"item", itemWGSL, ps.texArray, itemBuf, tri, none, nil, true, true, false}},
 		{&ps.particleAlpha, pipeSpec{"particles", particleWGSL, nil, particleBuf, tri, none, blendAlpha, true, false, false}},
 		{&ps.particleAdd, pipeSpec{"particles additive", particleWGSL, nil, particleBuf, tri, none, blendAdd, true, false, false}},

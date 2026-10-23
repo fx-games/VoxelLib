@@ -70,6 +70,7 @@ var dev struct {
 	uniLayout  *wgpu.BindGroupLayout // group 0: dynamic uniform block
 	nearestRep *wgpu.Sampler         // block textures
 	nearestClp *wgpu.Sampler         // sprites, models, HUD
+	linearClp  *wgpu.Sampler         // lightmap
 	pipes      pipelines
 }
 
@@ -167,6 +168,14 @@ func Init(win *glfw.Window, vsync bool) error {
 	}); err != nil {
 		return err
 	}
+	if dev.linearClp, err = dev.device.CreateSampler(&wgpu.SamplerDescriptor{
+		Label:        "lightmap",
+		AddressModeU: gputypes.AddressModeClampToEdge, AddressModeV: gputypes.AddressModeClampToEdge, AddressModeW: gputypes.AddressModeClampToEdge,
+		MagFilter: gputypes.FilterModeLinear, MinFilter: gputypes.FilterModeLinear, MipmapFilter: gputypes.FilterModeNearest,
+		LodMaxClamp: 32,
+	}); err != nil {
+		return err
+	}
 	return dev.pipes.init()
 }
 
@@ -216,10 +225,10 @@ func BeginFrame(w, h int, r, g, b float32) {
 	if err := configure(w, h); err != nil {
 		panic(err)
 	}
-	if !dev.mailbox && !setSurface(nextDrawable()) {
-		return
-	}
-	if dev.capturing, dev.capture = dev.capture || dev.mailbox, false; dev.capturing {
+	// Frames always render offscreen; the drawable is acquired in EndFrame
+	// (vsync) or by acquireLoop (mailbox), so waiting for it never delays
+	// the next frame's input and update.
+	if dev.capturing, dev.capture = true, false; dev.capturing {
 		if dev.capW != w || dev.capH != h {
 			if dev.capBG != nil {
 				dev.capBG.Release()
@@ -331,6 +340,8 @@ func EndFrame(*glfw.Window) {
 			setSurface(st)
 		default: // no drawable free: drop this frame, like GL without vsync
 		}
+	} else if !dev.mailbox {
+		setSurface(nextDrawable())
 	}
 	submit(true)
 	if dev.debug {
@@ -501,9 +512,7 @@ func (s *stream) flush() {
 		if c.used > c.flushed {
 			lo := c.flushed &^ 3
 			hi := (c.used + 3) &^ 3
-			if err := dev.queue.WriteBuffer(c.buf, uint64(lo), c.shadow[lo:hi]); err != nil {
-				panic(err)
-			}
+			writeBuffer(c.buf, lo, c.shadow[lo:hi])
 			c.flushed = c.used
 		}
 	}
@@ -566,10 +575,18 @@ func writeBuffer(b *wgpu.Buffer, off int, data []byte) {
 	if len(data)&3 != 0 {
 		data = append(data[:len(data):len(data)], make([]byte, 4-len(data)&3)...)
 	}
-	if err := dev.queue.WriteBuffer(b, uint64(off), data); err != nil {
-		panic(err)
+	// Pieces that fit wgpu's 256 KiB staging chunks: larger writes would
+	// get a fresh one-off staging buffer each.
+	for len(data) > 0 {
+		n := min(len(data), stagingPiece)
+		if err := dev.queue.WriteBuffer(b, uint64(off), data[:n]); err != nil {
+			panic(err)
+		}
+		off, data = off+n, data[n:]
 	}
 }
+
+const stagingPiece = 128 << 10
 
 // texture2D is a sampled texture with its view.
 type texture2D struct {
@@ -660,3 +677,7 @@ func acquireLoop() {
 		dev.drawable <- nextDrawable()
 	}
 }
+
+// FinishGPU blocks until the GPU has finished all submitted work. For
+// benchmarks only (it serialises CPU and GPU).
+func FinishGPU() { dev.device.WaitIdle() }
