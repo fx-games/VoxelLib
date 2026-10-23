@@ -148,12 +148,19 @@ func cosD(d float64) float64 { return float64(fmath.Cos(float32(d) / 180 * fmath
 // 0.16 to the side, 0.1 down, then Heading(speed, inaccuracy 1). scale
 // multiplies the look vector first (the thrown kinds' 0.4).
 func (m *Missile) Shoot(r Rand, ex, ey, ez, yaw, pitch, scale, speed float64) {
+	m.ShootLifted(r, ex, ey, ez, yaw, pitch, 0, scale, speed)
+}
+
+// ShootLifted is Shoot with a kind's pitch offset (func_70183_g: the
+// potions' and the experience bottle's -20) added to the pitch of the
+// upward motion only.
+func (m *Missile) ShootLifted(r Rand, ex, ey, ez, yaw, pitch, offset, scale, speed float64) {
 	m.Place(ex-cosD(yaw)*0.16, ey-m.lit(0.1), ez-sinD(yaw)*0.16)
 	m.Yaw, m.Pitch = f32(yaw), f32(pitch)
 	k := f32(scale)
 	mx := f32(f32(-sinD(yaw)*cosD(pitch)) * k)
 	mz := f32(f32(cosD(yaw)*cosD(pitch)) * k)
-	my := f32(-sinD(pitch) * k)
+	my := f32(-sinD(f32(pitch+offset)) * k)
 	m.Heading(r, mx, my, mz, speed, 1)
 }
 
