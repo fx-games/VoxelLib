@@ -19,6 +19,17 @@ type Graph struct {
 	W        World
 	MaxDrop  int                     // 0 = default 3
 	Passable func(from, to Pos) bool // optional per-actor filter; nil = all
+	// Door, if set, marks cells holding a door or gate. They count as open
+	// space whatever their state (the walker opens them on the way) and
+	// never as floor.
+	Door func(x, y, z int) bool
+	// Water, if set, marks water cells. A feet cell in water is walkable
+	// without a floor (the walker swims), and walkers drop into water from
+	// any height.
+	Water func(x, y, z int) bool
+	// Cost, if set, adds a cost (10 = one straight step) for entering p,
+	// e.g. for cells other walkers stand in.
+	Cost func(p Pos) int
 
 	nodes map[Pos]*node
 	gen   uint32
@@ -58,10 +69,17 @@ func (g *Graph) maxDrop() int {
 	return g.MaxDrop
 }
 
+// solid is W.Solid with doors open.
+func (g *Graph) solid(x, y, z int) bool {
+	return g.W.Solid(x, y, z) && (g.Door == nil || !g.Door(x, y, z))
+}
+
+func (g *Graph) water(x, y, z int) bool { return g.Water != nil && g.Water(x, y, z) }
+
 // clear reports whether cells y..y+h-1 at (x,z) are non-solid.
 func (g *Graph) clear(x, y, z, h int) bool {
 	for i := 0; i < h; i++ {
-		if g.W.Solid(x, y+i, z) {
+		if g.solid(x, y+i, z) {
 			return false
 		}
 	}
@@ -70,7 +88,7 @@ func (g *Graph) clear(x, y, z, h int) bool {
 
 // Walkable reports whether p is a valid feet cell.
 func (g *Graph) Walkable(p Pos) bool {
-	return g.clear(p.X, p.Y, p.Z, 2) && g.W.Solid(p.X, p.Y-1, p.Z)
+	return g.clear(p.X, p.Y, p.Z, 2) && (g.solid(p.X, p.Y-1, p.Z) || g.water(p.X, p.Y, p.Z))
 }
 
 // Neighbors appends the cells reachable from p in one step to buf[:0].
@@ -93,7 +111,7 @@ func (g *Graph) Neighbors(p Pos, buf []Pos) []Pos {
 			}
 			var to Pos
 			switch {
-			case g.W.Solid(tx, p.Y, tz): // wall or step
+			case g.solid(tx, p.Y, tz): // wall or step
 				if !canUp {
 					continue
 				}
@@ -104,15 +122,22 @@ func (g *Graph) Neighbors(p Pos, buf []Pos) []Pos {
 				if !g.Walkable(to) {
 					continue
 				}
-			case g.W.Solid(tx, p.Y+1, tz): // low ceiling at target
+			case g.solid(tx, p.Y+1, tz): // low ceiling at target
 				continue
-			case g.W.Solid(tx, p.Y-1, tz):
+			case g.solid(tx, p.Y-1, tz) || g.water(tx, p.Y, tz):
 				to = Pos{tx, p.Y, tz}
 			default: // drop
-				ok := false
-				for d := 2; d <= md+1; d++ {
-					if g.W.Solid(tx, p.Y-d, tz) {
+				ok, limit := false, md+1
+				if g.Water != nil {
+					limit = 64
+				}
+				for d := 2; d <= limit; d++ {
+					if g.water(tx, p.Y-d+1, tz) { // any height into water
 						to, ok = Pos{tx, p.Y - d + 1, tz}, true
+						break
+					}
+					if g.solid(tx, p.Y-d, tz) {
+						to, ok = Pos{tx, p.Y - d + 1, tz}, d <= md+1
 						break
 					}
 				}
@@ -212,6 +237,9 @@ func (g *Graph) Path(from, to Pos, maxNodes int) ([]Pos, bool) {
 			if np.X != cur.pos.X && np.Z != cur.pos.Z {
 				c = 14
 			}
+			if g.Cost != nil {
+				c += g.Cost(np)
+			}
 			if dy := np.Y - cur.pos.Y; dy > 0 {
 				c += 5
 			} else if dy < 0 {
@@ -228,4 +256,65 @@ func (g *Graph) Path(from, to Pos, maxNodes int) ([]Pos, bool) {
 		}
 	}
 	return nil, false
+}
+
+// Smooth drops path cells a walker can skip by heading straight for a later
+// one: on the same level, over walkable cells only, keeping every cell next
+// to a door (the walker must pass doors square). The ends stay.
+func (g *Graph) Smooth(path []Pos) []Pos {
+	if len(path) < 3 {
+		return path
+	}
+	out := []Pos{path[0]}
+	a := 0
+	for i := 2; i < len(path); i++ {
+		if !g.straight(path[a], path[i]) || g.nearDoor(path[i-1]) {
+			out = append(out, path[i-1])
+			a = i - 1
+		}
+	}
+	return append(out, path[len(path)-1])
+}
+
+func (g *Graph) nearDoor(p Pos) bool {
+	if g.Door == nil {
+		return false
+	}
+	for dx := -1; dx <= 1; dx++ {
+		for dz := -1; dz <= 1; dz++ {
+			if g.Door(p.X+dx, p.Y, p.Z+dz) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// straight reports whether a walker of width < 1 goes from a to b (same Y)
+// in a straight line: every cell its centre line and a 0.4 wide band touch
+// is walkable, sampled every quarter block.
+func (g *Graph) straight(a, b Pos) bool {
+	if a.Y != b.Y {
+		return false
+	}
+	dx, dz := float64(b.X-a.X), float64(b.Z-a.Z)
+	n := int(4*max(abs(b.X-a.X), abs(b.Z-a.Z))) + 1
+	for i := 0; i <= n; i++ {
+		t := float64(i) / float64(n)
+		x, z := float64(a.X)+0.5+dx*t, float64(a.Z)+0.5+dz*t
+		for _, o := range [...][2]float64{{0, 0}, {0.4, 0.4}, {-0.4, 0.4}, {0.4, -0.4}, {-0.4, -0.4}} {
+			if !g.Walkable(Pos{ifloor(x + o[0]), a.Y, ifloor(z + o[1])}) {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+func ifloor(v float64) int {
+	i := int(v)
+	if float64(i) > v {
+		i--
+	}
+	return i
 }

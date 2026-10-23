@@ -57,6 +57,11 @@ type Character struct {
 	Flying bool // creative flight
 	NoClip bool // fly through blocks (debug); implies Flying
 
+	// MoveSpeed is the ground acceleration per tick at full input
+	// (sprinting adds 30%); 0 means the player's 0.1. A ridden horse uses
+	// its movementSpeed attribute; package actors sets AI walkers'.
+	MoveSpeed float64
+
 	// State from the last tick.
 	OnGround            bool
 	HorizontalCollision bool
@@ -227,6 +232,12 @@ func (c *Character) Tick(w World, in Input) {
 			a, drag = walkAccel, groundDrag
 			if sprint {
 				a = sprintAccel
+			}
+			if c.MoveSpeed > 0 {
+				a = c.MoveSpeed
+				if sprint {
+					a *= sprintAccel / walkAccel
+				}
 			}
 		}
 		accel(a)

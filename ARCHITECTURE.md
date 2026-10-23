@@ -119,7 +119,7 @@ design is covered in README.md and the comments in engine.go and render/region.g
   leader's track, routes with A* legs and door opening/closing, guard, flee), 1.7.10 combat (hurt
   window, knockback, armour, melee cooldown/reach, EntityAIArrowAttack via `projectile`), factions
   with player standing, riding with the horse jump bar, a `Spawner` for game spawn tables, and
-  `Save`/`Load`. Only `Travel` (the story's group skip) moves actors without walking.
+  `Save`/`Load`. Actors never move without walking.
 - **`quest`**: an `Engine` runs a `Book` (quests, dialogs, conditions, triggers, areas) for one
   player against the game's `Env`; dialogs go to a `Presenter` (the ui), named Go hooks do what
   map scripts did, and `State` is the save blob part.

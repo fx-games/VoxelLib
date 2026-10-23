@@ -106,3 +106,66 @@ func TestStepUpLowCeiling(t *testing.T) {
 		t.Fatal("step up allowed under low ceiling")
 	}
 }
+
+// A wall across x=5 with a closed door at z=5: only the door lets through.
+func TestDoorPassable(t *testing.T) {
+	m := floor()
+	door := Pos{5, 1, 5}
+	for z := 0; z < 10; z++ {
+		m[Pos{5, 1, z}], m[Pos{5, 2, z}], m[Pos{5, 3, z}] = true, true, true
+	}
+	g := &Graph{W: m}
+	if _, ok := g.Path(Pos{1, 1, 1}, Pos{8, 1, 8}, 0); ok {
+		t.Fatal("closed wall passed without door support")
+	}
+	g.Door = func(x, y, z int) bool { return x == door.X && z == door.Z && (y == 1 || y == 2) }
+	p, ok := g.Path(Pos{1, 1, 1}, Pos{8, 1, 8}, 0)
+	if !ok {
+		t.Fatal("no path through the door")
+	}
+	through := false
+	for _, c := range p {
+		through = through || c == door
+	}
+	if !through {
+		t.Fatalf("path %v skips the door", p)
+	}
+	s := g.Smooth(p)
+	if len(s) >= len(p) {
+		t.Fatalf("smoothing kept %d of %d", len(s), len(p))
+	}
+	for _, c := range s {
+		if c == door {
+			return
+		}
+	}
+	// the door cell itself may be skipped only if a neighbour is kept
+	for _, c := range s {
+		if g.nearDoor(c) {
+			return
+		}
+	}
+	t.Fatalf("smoothed path %v lost the door", s)
+}
+
+func TestSwimAcross(t *testing.T) {
+	m := floor()
+	water := map[Pos]bool{}
+	for z := 0; z < 10; z++ { // a 3-wide channel at x 4..6, 3 deep
+		for x := 4; x <= 6; x++ {
+			for y := -2; y <= 0; y++ {
+				delete(m, Pos{x, y, z})
+				water[Pos{x, y, z}] = true
+			}
+			m[Pos{x, -3, z}] = true
+		}
+	}
+	g := &Graph{W: m}
+	if p, ok := g.Path(Pos{1, 1, 1}, Pos{8, 1, 1}, 0); ok {
+		t.Fatalf("crossed a channel without swimming: %v", p)
+	}
+	g.Water = func(x, y, z int) bool { return water[Pos{x, y, z}] }
+	if _, ok := g.Path(Pos{1, 1, 1}, Pos{8, 1, 1}, 0); !ok {
+		t.Fatal("no swim path")
+	}
+}
