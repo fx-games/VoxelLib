@@ -190,6 +190,43 @@ func NewFurnaceContainer(p *Player, furnace Inventory, r FurnaceRules) *Containe
 	return c
 }
 
+// NewLaneFurnaceContainer is a multi-lane furnace's container (the
+// reference mod's alloy forge and oven containers): the machine's slots in
+// order, outputs being lanes slots from out0, then main and hotbar. The
+// last machine slot is the fuel. Shift-click: outputs to the player (from
+// the hotbar end), machine slots to the player, smeltables to the lanes'
+// inputs (lanes slots from in0), fuel to the fuel slot, else main <-> hotbar.
+func NewLaneFurnaceContainer(p *Player, furnace Inventory, in0, out0, lanes int, r FurnaceRules) *Container {
+	c := &Container{Player: p}
+	n := furnace.Size()
+	for i := range n {
+		sl := &Slot{Inv: furnace, Index: i}
+		if i >= out0 && i < out0+lanes {
+			sl.Output, sl.OnTake = true, r.Taken
+		}
+		c.Add(sl)
+	}
+	addPlayerSlots(c, p)
+	c.Transfer = func(c *Container, i int) *Stack {
+		return transferWith(c, i, func(s *Stack) bool {
+			switch {
+			case i >= out0 && i < out0+lanes:
+				return c.Merge(s, n, n+36, true)
+			case i < n:
+				return c.Merge(s, n, n+36, false)
+			case r.Smeltable(s):
+				return c.Merge(s, in0, in0+lanes, false)
+			case s.Item.BurnTime > 0:
+				return c.Merge(s, n-1, n, false)
+			case i < n+27:
+				return c.Merge(s, n+27, n+36, false)
+			}
+			return c.Merge(s, n, n+27, false)
+		}, true)
+	}
+	return c
+}
+
 // NewHorseContainer is ContainerHorseInventory (LOTR's mount containers):
 // 0 saddle, 1 armour, then with chest 15 chest slots (inventory indices
 // 2..16), then 27 main and 9 hotbar. saddle and armour decide what the

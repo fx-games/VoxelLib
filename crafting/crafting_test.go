@@ -158,7 +158,7 @@ func TestWorkbenchEndToEnd(t *testing.T) {
 func TestFurnace(t *testing.T) {
 	reg, _, sm := setup(t)
 	xp := 0
-	f := &Furnace{Recipes: sm, Rand: rand.New(rand.NewPCG(1, 2)), OnXP: func(n int) { xp += n }}
+	f := &Furnace{Slots: make([]*inventory.Stack, 3), Recipes: sm, Rand: rand.New(rand.NewPCG(1, 2)), OnXP: func(n int) { xp += n }}
 	f.Slots[0] = inventory.New(reg.Get("test:iron_ore"), 10)
 	f.Slots[1] = inventory.New(reg.Get("test:coal"), 2)
 	if !f.Tick() || f.ItemBurn != 1600 || f.Slots[1].Count != 1 {
@@ -218,7 +218,7 @@ func TestFurnaceCustom(t *testing.T) {
 	reg, _, _ := setup(t)
 	ingot := reg.Get("test:iron_ingot")
 	n := 0
-	f := &Furnace{CookTime: 400,
+	f := &Furnace{Slots: make([]*inventory.Stack, 3), CookTime: 400,
 		Output:  func(*inventory.Stack) *inventory.Stack { return inventory.New(ingot, 3) },
 		Produce: func(*inventory.Stack) *inventory.Stack { n++; return map[bool]*inventory.Stack{true: inventory.New(ingot, 2)}[n == 1] }}
 	f.Slots[0] = inventory.New(reg.Get("test:iron_ore"), 2)
@@ -240,4 +240,45 @@ func TestFurnaceCustom(t *testing.T) {
 		t.Fatalf("second made nothing but used the input: %v", f.Slots)
 	}
 	f.Taken(nil, f.Slots[2], 2) // no recipes: no XP lookup
+}
+
+// TestFurnaceLanes: a 4-lane alloy machine smelts every lane at once; an
+// alloy pair makes the alloy and uses both, a lone input its plain result.
+func TestFurnaceLanes(t *testing.T) {
+	reg, _, sm := setup(t)
+	ore, coal, cobble := reg.Get("test:iron_ore"), reg.Get("test:coal"), reg.Get("test:cobblestone")
+	f := &Furnace{Recipes: sm, Lanes: 4, Alloy: func(in, a *inventory.Stack) *inventory.Stack {
+		if in.Item == ore && a.Item == coal {
+			return inventory.New(cobble, 2)
+		}
+		return nil
+	}}
+	if f.Size() != 13 || f.In(0) != 4 || f.Out(3) != 11 || f.Fuel() != 12 || f.AlloySlot(1) != 1 {
+		t.Fatal("layout")
+	}
+	f.Set(0, inventory.New(coal, 1))
+	f.Set(4, inventory.New(ore, 2))
+	f.Set(5, inventory.New(ore, 1))
+	f.Set(12, inventory.New(coal, 1))
+	for range 199 {
+		f.Tick()
+	}
+	if f.Slots[8] != nil {
+		t.Fatal("early")
+	}
+	f.Tick()
+	if f.Slots[8] == nil || f.Slots[8].Item != cobble || f.Slots[8].Count != 2 || f.Slots[0] != nil || f.Slots[4].Count != 1 {
+		t.Fatalf("alloy lane: %v", f.Slots)
+	}
+	if f.Slots[9] == nil || f.Slots[9].Item.Key != "test:iron_ingot" || f.Slots[5] != nil {
+		t.Fatalf("plain lane: %v", f.Slots)
+	}
+	// shift-click from the player: smeltables to the inputs, fuel to the fuel slot
+	p := &inventory.Player{}
+	p.Main[0] = inventory.New(ore, 3)
+	c := inventory.NewLaneFurnaceContainer(p, f, 4, 8, 4, f)
+	c.Click(13+27, 0, inventory.QuickMove)
+	if p.Main[0] != nil || f.Slots[4].Count != 4 {
+		t.Fatalf("to inputs: %v", f.Slots[4])
+	}
 }

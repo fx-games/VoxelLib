@@ -52,9 +52,10 @@ func (sm *Smelting) XP(out *inventory.Stack) float32 {
 const CookTicks = 200
 
 // Furnace is TileEntityFurnace: slot 0 input, 1 fuel, 2 output. It is an
-// inventory.Inventory and an inventory.FurnaceRules.
+// inventory.Inventory and an inventory.FurnaceRules. With Lanes set it is a
+// multi-lane machine instead (see Lanes).
 type Furnace struct {
-	Slots    [3]*inventory.Stack
+	Slots    []*inventory.Stack // grown to Size on first use
 	Burn     int // furnaceBurnTime: ticks of fuel left
 	ItemBurn int // currentItemBurnTime: total of the burning fuel item
 	Cook     int // furnaceCookTime: 0..199
@@ -72,6 +73,17 @@ type Furnace struct {
 	// Produce the result one smelt actually makes (nil: nothing, the input
 	// is used up all the same).
 	Output, Produce func(in *inventory.Stack) *inventory.Stack
+	// Lanes > 0 makes a machine of that many lanes sharing one fuel slot,
+	// all smelting together when the cook time is up (the reference mod's
+	// forges and ovens). Slots: with Alloy the alloy row 0..n-1, inputs
+	// n..2n-1, outputs 2n..3n-1, fuel 3n; without, inputs 0..n-1, outputs
+	// n..2n-1, fuel 2n.
+	Lanes int
+	// Alloy is the result of an input with the item in its lane's alloy
+	// slot (nil: none), tried before the plain result.
+	Alloy func(in, alloy *inventory.Stack) *inventory.Stack
+	// XPFrom is the recipe list Taken looks the XP up in (nil: Recipes).
+	XPFrom *Smelting
 }
 
 func (f *Furnace) result(in *inventory.Stack) *inventory.Stack {
@@ -89,9 +101,58 @@ func (f *Furnace) Duration() int {
 	return CookTicks
 }
 
-func (f *Furnace) Size() int                     { return 3 }
-func (f *Furnace) Get(i int) *inventory.Stack    { return f.Slots[i] }
-func (f *Furnace) Set(i int, s *inventory.Stack) { f.Slots[i] = s }
+func (f *Furnace) Size() int {
+	switch {
+	case f.Lanes == 0:
+		return 3
+	case f.Alloy != nil:
+		return 3*f.Lanes + 1
+	}
+	return 2*f.Lanes + 1
+}
+
+// Grow sizes Slots for the layout, keeping what is there.
+func (f *Furnace) Grow() {
+	if n := f.Size(); len(f.Slots) < n {
+		f.Slots = append(f.Slots, make([]*inventory.Stack, n-len(f.Slots))...)
+	}
+}
+
+func (f *Furnace) Get(i int) *inventory.Stack    { f.Grow(); return f.Slots[i] }
+func (f *Furnace) Set(i int, s *inventory.Stack) { f.Grow(); f.Slots[i] = s }
+
+// In, Out and Fuel are a lane's input and output slot and the fuel slot;
+// AlloySlot is a lane's alloy slot (-1 without an alloy row).
+func (f *Furnace) In(lane int) int {
+	if f.Lanes == 0 {
+		return 0
+	}
+	if f.Alloy != nil {
+		return f.Lanes + lane
+	}
+	return lane
+}
+
+func (f *Furnace) Out(lane int) int {
+	if f.Lanes == 0 {
+		return 2
+	}
+	return f.In(lane) + f.Lanes
+}
+
+func (f *Furnace) AlloySlot(lane int) int {
+	if f.Lanes == 0 || f.Alloy == nil {
+		return -1
+	}
+	return lane
+}
+
+func (f *Furnace) Fuel() int {
+	if f.Lanes == 0 {
+		return 1
+	}
+	return f.Size() - 1
+}
 func (f *Furnace) Limit() int                    { return 64 }
 func (f *Furnace) Changed()                      {}
 
@@ -120,6 +181,10 @@ func (f *Furnace) canSmelt() bool {
 
 // Tick runs one updateEntity. It returns true when the lit state changed.
 func (f *Furnace) Tick() (litChanged bool) {
+	f.Grow()
+	if f.Lanes > 0 {
+		return f.tickLanes()
+	}
 	was := f.Burn > 0
 	if f.Burn > 0 {
 		f.Burn--
@@ -184,10 +249,14 @@ func (f *Furnace) Smeltable(s *inventory.Stack) bool { return f.result(s) != nil
 
 // Taken implements inventory.FurnaceRules: SlotFurnace.onCrafting's XP.
 func (f *Furnace) Taken(_ *inventory.Container, s *inventory.Stack, n int) {
-	if f.Recipes == nil {
+	r := f.XPFrom
+	if r == nil {
+		r = f.Recipes
+	}
+	if r == nil {
 		return
 	}
-	if xp := SmeltXP(n, f.Recipes.XP(s), f.Rand); xp > 0 && f.OnXP != nil {
+	if xp := SmeltXP(n, r.XP(s), f.Rand); xp > 0 && f.OnXP != nil {
 		f.OnXP(xp)
 	}
 }
@@ -211,4 +280,105 @@ func SmeltXP(n int, xp float32, rng *rand.Rand) int {
 		return j
 	}
 	return n
+}
+
+// tickLanes is the multi-lane updateEntity: fuel is lit when any lane can
+// smelt, and every lane smelts at once when the cook time is up.
+func (f *Furnace) tickLanes() bool {
+	was := f.Burn > 0
+	if f.Burn > 0 {
+		f.Burn--
+	}
+	fu := f.Fuel()
+	if f.Burn == 0 && f.canAnyLane() {
+		f.Burn = burnTime(f.Slots[fu])
+		f.ItemBurn = f.Burn
+		if fuel := f.Slots[fu]; f.Burn > 0 && fuel != nil {
+			if fuel.Count--; fuel.Count == 0 {
+				f.Slots[fu] = nil
+				if fuel.Item.Remainder != nil {
+					f.Slots[fu] = inventory.New(fuel.Item.Remainder, 1)
+				}
+			}
+		}
+	}
+	if f.Burn > 0 && f.canAnyLane() {
+		if f.Cook++; f.Cook == f.Duration() {
+			f.Cook = 0
+			for l := range f.Lanes {
+				f.smeltLane(l)
+			}
+		}
+	} else {
+		f.Cook = 0
+	}
+	return was != (f.Burn > 0)
+}
+
+func (f *Furnace) canAnyLane() bool {
+	for l := range f.Lanes {
+		if f.canLane(l) {
+			return true
+		}
+	}
+	return false
+}
+
+// fits: the output slot takes r (the result's max stack and the limit).
+func (f *Furnace) fits(out, r *inventory.Stack) bool {
+	if out == nil {
+		return true
+	}
+	n := out.Count + r.Count
+	return out.Same(r) && n <= f.Limit() && n <= r.MaxStack()
+}
+
+func (f *Furnace) alloyResult(l int) *inventory.Stack {
+	if a := f.AlloySlot(l); a >= 0 && f.Slots[a] != nil {
+		return f.Alloy(f.Slots[f.In(l)], f.Slots[a])
+	}
+	return nil
+}
+
+func (f *Furnace) canLane(l int) bool {
+	in := f.Slots[f.In(l)]
+	if in == nil {
+		return false
+	}
+	out := f.Slots[f.Out(l)]
+	if r := f.alloyResult(l); r != nil && f.fits(out, r) {
+		return true
+	}
+	r := f.result(in)
+	return r != nil && f.fits(out, r)
+}
+
+// smeltLane is the reference's smeltItemInSlot: the alloy is made when its
+// result matches the output (the size is not checked again), else the
+// plain result.
+func (f *Furnace) smeltLane(l int) {
+	if !f.canLane(l) {
+		return
+	}
+	i, o := f.In(l), f.Out(l)
+	add := func(r *inventory.Stack) {
+		if f.Slots[o] == nil {
+			f.Slots[o] = r.Copy()
+		} else if f.Slots[o].Same(r) {
+			f.Slots[o].Count += r.Count
+		}
+	}
+	take := func(j int) {
+		if f.Slots[j].Count--; f.Slots[j].Count <= 0 {
+			f.Slots[j] = nil
+		}
+	}
+	if r := f.alloyResult(l); r != nil && (f.Slots[o] == nil || f.Slots[o].Same(r)) {
+		add(r)
+		take(i)
+		take(f.AlloySlot(l))
+		return
+	}
+	add(f.result(f.Slots[i]))
+	take(i)
 }
