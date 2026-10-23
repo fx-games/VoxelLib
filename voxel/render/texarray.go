@@ -247,9 +247,9 @@ func (t *textureArray) arrayLayers() int {
 }
 
 // animate points animated layers at their frame for game tick (20 Hz).
-func (t *textureArray) animate(tick int) {
+func (t *textureArray) animate(tick int) bool {
 	if len(t.anims) == 0 || tick == t.lastTick {
-		return
+		return false
 	}
 	t.lastTick = tick
 	changed := false
@@ -267,4 +267,5 @@ func (t *textureArray) animate(tick int) {
 	if changed {
 		t.uploadMap()
 	}
+	return changed
 }

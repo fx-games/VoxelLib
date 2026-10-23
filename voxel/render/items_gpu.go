@@ -45,6 +45,7 @@ func (ir *ItemRenderer) drawRange(i int, mvp, model mgl32.Mat4, sky, block uint8
 	dev.draws++
 
 	p.Draw(gputypes.DrawArgs{VertexCount: uint32(ir.ranges[i][1]), InstanceCount: 1, FirstVertex: uint32(ir.ranges[i][0])})
+	packCast(g.bg, g.vbo, nil, uint32(ir.ranges[i][0]), uint32(ir.ranges[i][1]), model, 1)
 }
 
 func (ir *ItemRenderer) end() {}

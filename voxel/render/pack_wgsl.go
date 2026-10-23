@@ -37,6 +37,11 @@ const shadowA = 1.05127108;
 const shadowB = 1.04188168;
 const shadowK = 1.8;
 const shadowMapResolution = 2048.0;
+// Quality knobs (PackQuality replaces the values; these are the pack's).
+const godRaySamples = 20;
+const godRayStep = 0.04; // the same reach with fewer samples
+const cloudSteps = 6;
+const cloudReflSteps = 4;
 const shadowDistance = 80.0;
 // TAA jitter offsets[framemod8]: framemod8 is a custom uniform OptiFine
 // 1.7.10 E7 does not set, so it is always 0.
@@ -916,6 +921,47 @@ fn fs(i: SV) -> @location(0) vec4f {
 }
 `
 
+// packCasterWGSL is the caster program for a vertex format: model, item
+// or block.
+func packCasterWGSL(kind string) string {
+	switch kind {
+	case "item":
+		return packCasterSrc(packItemWGSL, "jitter(u.mvp * vec4f(pos, 1.0))", "u.model * vec4f(pos, 1.0)",
+			"textureSample(tex, samp, i.uv, i32(u.fogColor.a))", "c.a < 0.5")
+	case "block":
+		return packCasterSrc(packBlockWGSL, "jitter(u.mvp * vec4f(local, 1.0))", "u.model * vec4f(local, 1.0)",
+			"blockTex(i.uv, i.layer)", "c.a <= 0.1")
+	}
+	return packCasterSrc(packModelWGSL, "jitter(u.viewProj * wp)", "wp", "textureSample(tex, samp, i.uv)", "c.a * u.color.a <= u.fog.z")
+}
+
+// packCasterSrc turns a gbuffer program into shadow.vsh/fsh for its
+// casters: pos (the clip position) becomes the distorted shadow position
+// of world (camera-relative), and fs writes the texture colour tex after
+// the draw's alpha test (discard when cut).
+func packCasterSrc(src, pos, world, tex, cut string) string {
+	for _, r := range [][2]string{{"HAND_FLAG", "false"}, {"o.pos = " + pos + ";", "o.pos = shadowClip(" + world + ");"},
+		{"@fragment\nfn fs(", "fn fsGbuffer("}} {
+		if !strings.Contains(src, r[0]) {
+			panic("packCasterSrc: no " + r[0])
+		}
+		src = strings.Replace(src, r[0], r[1], 1)
+	}
+	return src + `
+fn shadowClip(wp: vec4f) -> vec4f {
+	let p = pu.shadowProj * pu.shadowMV * wp;
+	let distortion = log(length(p.xy) * shadowB + shadowA) * shadowK;
+	return toWGPU(vec4f(p.xy / distortion, p.z / 6.0, p.w));
+}
+@fragment
+fn fs(i: VOut) -> @location(0) vec4f {
+	let c = ` + tex + `;
+	if (` + cut + `) { discard; }
+	return c;
+}
+`
+}
+
 // packCompositeHeadWGSL declares the composite passes' bindings (one
 // layout; each pass binds the ping-pong side it reads) and the
 // fullscreen triangle with GL texcoord.
@@ -1174,14 +1220,14 @@ fn fs(i: CV) -> C0Out {
 	}
 	var gr = 0.0;
 	if (ntc2.x < 1.0 && ntc2.y < 1.0 && ntc2.x > 0.0 && ntc2.y > 0.0) {
-		let deltatexcoord = vec2f(v.lightPos - ntc2) * 0.04;
+		let deltatexcoord = vec2f(v.lightPos - ntc2) * godRayStep;
 		var noisetc = ntc2 + deltatexcoord * getnoise(ntc2) + deltatexcoord;
-		for (var k = 0; k < 20; k++) {
+		for (var k = 0; k < godRaySamples; k++) {
 			let gdepth1 = depthAt(depthtex0, noisetc);
 			noisetc += deltatexcoord;
 			gr += step(comp(), gdepth1) * cdist(noisetc);
 		}
-		gr /= 20.0;
+		gr /= f32(godRaySamples);
 	}
 	if (!land) { color = hr.rgb; }
 	var o: C0Out;
@@ -1512,7 +1558,7 @@ fn fs(i: CV) -> @location(0) vec4f {
 		c = drawSun(fragpos1.xyz, c, 1.0, v);
 		c = drawMoon(fragpos1.xyz, c, 1.0, v);
 		let cheight = (256.0 - 32.0);
-		if (dot(fragpos1.xyz, v.upVec) > 0.0 || pu.camPos.y > cheight) { c = renderClouds(cpos, c, 6, fc, v); }
+		if (dot(fragpos1.xyz, v.upVec) > 0.0 || pu.camPos.y > cheight) { c = renderClouds(cpos, c, cloudSteps, fc, v); }
 	}
 	let tm = tmult();
 	let fogC = hr.rgb * (0.7 + 0.3 * tm) * (1.33 - rain * 0.67);
@@ -1545,7 +1591,7 @@ fn fs(i: CV) -> @location(0) vec4f {
 			fresnel = fresnel + F0 * (1.0 - fresnel);
 			var sky_c = getSkyc(reflectedVector * 620.0, v) * 1.7;
 			let cloudVector = normalize(pu.mvInv * vec4f(reflect(fragpos1.xyz, normal), 1.0)).xyz;
-			sky_c += renderClouds(cloudVector, c, 4, fc, v);
+			sky_c += renderClouds(cloudVector, c, cloudReflSteps, fc, v);
 			var reflection = raytrace(fragpos0.xyz, sky_c, reflectedVector, v);
 			if (isEyeInWater() == 0.0) {
 				sky_c = ((drawSun(reflectedVector, sky_c, 1.0, v) + drawMoon(reflectedVector, sky_c, 1.0, v)) * 0.5) * sky;

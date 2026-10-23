@@ -28,6 +28,22 @@ func TestPackWGSL(t *testing.T) {
 		progs["item/"+hand] = strings.Replace(packItemWGSL, "HAND_FLAG", hand, 1)
 		progs["block/"+hand] = strings.Replace(packBlockWGSL, "HAND_FLAG", hand, 1)
 	}
+	for _, k := range []string{"model", "item", "block"} {
+		progs["caster/"+k] = packCasterWGSL(k)
+	}
+	// The quality knobs: every constant replaced, and still valid.
+	q := PackQuality{ShadowRes: 1024, GodRays: 8, Clouds: 3}.orDefault()
+	for _, n := range []string{"composite", "composite1", "terrain"} {
+		if q.wgsl(progs[n]) == progs[n] {
+			t.Errorf("%s: quality knobs change nothing", n)
+		}
+		progs[n+"/q"] = q.wgsl(progs[n])
+	}
+	for _, c := range []string{"shadowMapResolution = 1024.0", "godRaySamples = 8;", "godRayStep = 0.1;", "cloudSteps = 3;", "cloudReflSteps = 2;"} {
+		if !strings.Contains(q.wgsl(packCommonWGSL), c) {
+			t.Errorf("knob constant %q missing", c)
+		}
+	}
 	for _, n := range []string{"composite1", "composite2", "composite3", "composite4"} {
 		progs[n] = packStore(progs[n], "storeR11")
 	}

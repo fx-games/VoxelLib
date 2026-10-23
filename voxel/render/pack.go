@@ -1,7 +1,9 @@
 package render
 
 import (
+	"fmt"
 	"math"
+	"strings"
 
 	"github.com/memmaker/voxellib/voxel"
 
@@ -17,6 +19,7 @@ import (
 // PackFrame is the world state the shader pack reads each frame
 // (Options.Pack; nil turns the pack off).
 type PackFrame struct {
+	Quality        PackQuality
 	WorldTime      int64   // World.getWorldTime, raw ticks
 	CelestialAngle float32 // World.getCelestialAngle(partialTicks)
 	Rain           float32 // World.getRainStrength(partialTicks)
@@ -31,6 +34,42 @@ type PackFrame struct {
 	Blindness   float32 // 0..1
 	Far         float32 // renderDistanceChunks*16
 	// Sneaking etc. are not read by the pack.
+}
+
+// PackQuality trades the pack's quality for speed; the zero value is the
+// pack's own settings.
+type PackQuality struct {
+	ShadowRes int // shadow map size (shadowMapResolution), 0: 2048
+	GodRays   int // god ray samples, 0: 20
+	Clouds    int // volumetric cloud steps (reflections get 2/3), 0: 6
+}
+
+// orDefault fills the pack's values in for zero fields.
+func (q PackQuality) orDefault() PackQuality {
+	if q.ShadowRes <= 0 {
+		q.ShadowRes = packShadowRes
+	}
+	if q.GodRays <= 0 {
+		q.GodRays = 20
+	}
+	if q.Clouds <= 0 {
+		q.Clouds = 6
+	}
+	return q
+}
+
+// wgsl sets the knobs' constants in a pack program.
+func (q PackQuality) wgsl(src string) string {
+	if q == (PackQuality{}).orDefault() {
+		return src
+	}
+	return strings.NewReplacer(
+		"const shadowMapResolution = 2048.0;", fmt.Sprintf("const shadowMapResolution = %d.0;", q.ShadowRes),
+		"const godRaySamples = 20;", fmt.Sprintf("const godRaySamples = %d;", q.GodRays),
+		"const godRayStep = 0.04;", fmt.Sprintf("const godRayStep = %g;", 0.8/float64(q.GodRays)),
+		"const cloudSteps = 6;", fmt.Sprintf("const cloudSteps = %d;", q.Clouds),
+		"const cloudReflSteps = 4;", fmt.Sprintf("const cloudReflSteps = %d;", max(1, q.Clouds*2/3)),
+	).Replace(src)
 }
 
 // Pack constants (shaders.settings, shaders.properties, OptiFine

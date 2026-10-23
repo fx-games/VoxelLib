@@ -87,6 +87,7 @@ type packVariant struct {
 }
 
 type packGPU struct {
+	q    PackQuality // with the defaults filled in
 	w, h int
 	st   packState
 	last time.Time
@@ -108,8 +109,23 @@ type packGPU struct {
 	mipB4, mipB7a, mipB7b                                    *wgpu.BindGroup
 	copyDepth, copyShadow                                    *wgpu.BindGroup
 
+	// The shadow cache: the terrain-only shadowtex0, shadowtex1 and
+	// shadowcolor0 of the last key, so a frame with the same sun, camera
+	// and terrain copies them back (if casters were drawn over the maps)
+	// instead of drawing the terrain again.
+	cache                        [3]packTarget
+	copySetLayout                *wgpu.BindGroupLayout
+	copySet                      *wgpu.RenderPipeline
+	storeSet, restoreSet         *wgpu.BindGroup
+	storeShadow1, restoreShadow1 *wgpu.BindGroup
+	shadowKey                    packShadowKey
+	keyFrames                    int  // consecutive frames with shadowKey
+	cached                       bool // the cache holds shadowKey's terrain
+	withCasters                  bool // the frame's maps hold casters
+
 	modules                       map[string]*wgpu.ShaderModule
 	variants                      map[packVariant]*wgpu.RenderPipeline
+	casterPipes                   map[packVariant]*wgpu.RenderPipeline // hand = depth only
 	comps                         [6]*wgpu.RenderPipeline
 	mip, copy, shadowOp, shadowTr *wgpu.RenderPipeline
 
@@ -121,6 +137,8 @@ type packGPU struct {
 	fogCol      mgl32.Vec3
 	trans       []drawBatch // translucent terrain, drawn at worldEnd
 	shadowU     ubuf
+	lastPl      *wgpu.RenderPipeline // the engine pipeline of the last setPipe
+	casters     []packCaster         // entity and item draws, replayed into the shadow maps
 }
 
 // pack is created on the first pack frame and kept.
@@ -130,7 +148,7 @@ func (pk *packGPU) module(label, src string) *wgpu.ShaderModule {
 	if m := pk.modules[src]; m != nil {
 		return m
 	}
-	m, err := dev.device.CreateShaderModule(&wgpu.ShaderModuleDescriptor{Label: label, WGSL: packStore(src, "")})
+	m, err := dev.device.CreateShaderModule(&wgpu.ShaderModuleDescriptor{Label: label, WGSL: packStore(pk.q.wgsl(src), "")})
 	if err != nil {
 		panic(err)
 	}
@@ -138,8 +156,9 @@ func (pk *packGPU) module(label, src string) *wgpu.ShaderModule {
 	return m
 }
 
-func newPackGPU() *packGPU {
-	pk := &packGPU{modules: map[string]*wgpu.ShaderModule{}, variants: map[packVariant]*wgpu.RenderPipeline{}}
+func newPackGPU(q PackQuality) *packGPU {
+	pk := &packGPU{q: q, modules: map[string]*wgpu.ShaderModule{}, variants: map[packVariant]*wgpu.RenderPipeline{},
+		casterPipes: map[packVariant]*wgpu.RenderPipeline{}}
 	sampler := func(label string, addr gputypes.AddressMode, cmp gputypes.CompareFunction) *wgpu.Sampler {
 		s, err := dev.device.CreateSampler(&wgpu.SamplerDescriptor{Label: label,
 			AddressModeU: addr, AddressModeV: addr, AddressModeW: addr,
@@ -189,11 +208,27 @@ func newPackGPU() *packGPU {
 	pk.ubuf = newBuffer("pack uniforms", wgpu.BufferUsageUniform, nil, int(unsafe.Sizeof(packUniforms{})))
 	pk.noise = newTexture("noisetex", 128, 128, 1, 1, gputypes.TextureFormatRGBA8Unorm, gputypes.TextureViewDimension2D)
 	pk.noise.write(0, 0, 128, 128, 4, hfNoise(128, 128))
-	pk.shadow = newPackTarget("shadowtex0", packShadowRes, packShadowRes, 1, gputypes.TextureFormatDepth32Float)
-	pk.shadow1 = newPackTarget("shadowtex1", packShadowRes, packShadowRes, 1, gputypes.TextureFormatDepth32Float)
-	pk.shadowCol = newPackTarget("shadowcolor0", packShadowRes, packShadowRes, 1, gputypes.TextureFormatRGBA8Unorm)
-	pk.dummyShadow = newPackTarget("pack dummy", packShadowRes, packShadowRes, 1, gputypes.TextureFormatR8Unorm)
+	pk.shadow = newPackTarget("shadowtex0", q.ShadowRes, q.ShadowRes, 1, gputypes.TextureFormatDepth32Float)
+	pk.shadow1 = newPackTarget("shadowtex1", q.ShadowRes, q.ShadowRes, 1, gputypes.TextureFormatDepth32Float)
+	pk.shadowCol = newPackTarget("shadowcolor0", q.ShadowRes, q.ShadowRes, 1, gputypes.TextureFormatRGBA8Unorm)
+	pk.dummyShadow = newPackTarget("pack dummy", q.ShadowRes, q.ShadowRes, 1, gputypes.TextureFormatR8Unorm)
 	pk.copyShadow = bindGroup("pack shadow copy", pk.copyLayout, wgpu.BindGroupEntry{Binding: 0, TextureView: pk.shadow.view})
+	// The terrain-only shadow maps of the shadow cache, and the bind
+	// groups that store them from and restore them to the frame's maps.
+	pk.cache[0] = newPackTarget("shadowtex0 cache", q.ShadowRes, q.ShadowRes, 1, gputypes.TextureFormatDepth32Float)
+	pk.cache[1] = newPackTarget("shadowtex1 cache", q.ShadowRes, q.ShadowRes, 1, gputypes.TextureFormatDepth32Float)
+	pk.cache[2] = newPackTarget("shadowcolor0 cache", q.ShadowRes, q.ShadowRes, 1, gputypes.TextureFormatRGBA8Unorm)
+	pk.copySetLayout = layout("pack shadow set copy", depth(0), color(1))
+	set := func(d, c packTarget) *wgpu.BindGroup {
+		return bindGroup("pack shadow set copy", pk.copySetLayout, wgpu.BindGroupEntry{Binding: 0, TextureView: d.view},
+			wgpu.BindGroupEntry{Binding: 1, TextureView: c.view})
+	}
+	pk.storeSet, pk.restoreSet = set(pk.shadow, pk.shadowCol), set(pk.cache[0], pk.cache[2])
+	pk.storeShadow1 = bindGroup("pack shadow copy", pk.copyLayout, wgpu.BindGroupEntry{Binding: 0, TextureView: pk.shadow1.view})
+	pk.restoreShadow1 = bindGroup("pack shadow copy", pk.copyLayout, wgpu.BindGroupEntry{Binding: 0, TextureView: pk.cache[1].view})
+	pk.copySet = pk.pipeline("pack shadow set copy", packShadowSetCopyWGSL, []*wgpu.BindGroupLayout{pk.copySetLayout}, nil, nil,
+		[]gputypes.ColorTargetState{{Format: gputypes.TextureFormatRGBA8Unorm, WriteMask: gputypes.ColorWriteMaskAll}},
+		&wgpu.DepthStencilState{Format: gputypes.TextureFormatDepth32Float, DepthWriteEnabled: true, DepthCompare: gputypes.CompareFunctionAlways})
 
 	pk.mip = pk.pipeline("pack mip", packMipWGSL, []*wgpu.BindGroupLayout{pk.mipLayout}, nil, nil,
 		[]gputypes.ColorTargetState{{Format: gputypes.TextureFormatRGBA16Float, WriteMask: gputypes.ColorWriteMaskAll}}, nil)
@@ -251,11 +286,8 @@ func (pk *packGPU) pipeline(label, src string, groups []*wgpu.BindGroupLayout, b
 	return p
 }
 
-// resize (re)creates the screen-sized targets and their bind groups.
-func (pk *packGPU) resize(w, h int) {
-	if w == pk.w && h == pk.h {
-		return
-	}
+// releaseScreen frees what resize creates.
+func (pk *packGPU) releaseScreen() {
 	for i := range 8 {
 		pk.a[i].release()
 		pk.b[i].release()
@@ -263,6 +295,33 @@ func (pk *packGPU) resize(w, h int) {
 	for i := range pk.depth {
 		pk.depth[i].release()
 	}
+	pk.dummy.release()
+	for _, g := range append(pk.comp[:], pk.g2, pk.g2Shadow, pk.mipB4, pk.mipB7a, pk.mipB7b, pk.copyDepth) {
+		if g != nil {
+			g.Release()
+		}
+	}
+}
+
+// release frees the GPU resources (pipelines and modules are collected).
+func (pk *packGPU) release() {
+	pk.releaseScreen()
+	for _, t := range append(pk.cache[:], pk.shadow, pk.shadow1, pk.shadowCol, pk.dummyShadow) {
+		t.release()
+	}
+	pk.noise.release()
+	for _, g := range []*wgpu.BindGroup{pk.empty, pk.copyShadow, pk.storeSet, pk.restoreSet, pk.storeShadow1, pk.restoreShadow1} {
+		g.Release()
+	}
+	pk.ubuf.Release()
+}
+
+// resize (re)creates the screen-sized targets and their bind groups.
+func (pk *packGPU) resize(w, h int) {
+	if w == pk.w && h == pk.h {
+		return
+	}
+	pk.releaseScreen()
 	for i := range 8 {
 		pk.a[i] = newPackTarget("pack target", w, h, packMips[i], packFormats[i])
 		pk.b[i] = newPackTarget("pack target", w, h, packMips[i], packFormats[i])
@@ -270,7 +329,6 @@ func (pk *packGPU) resize(w, h int) {
 	for i := range pk.depth {
 		pk.depth[i] = newPackTarget("pack depth", w, h, 1, gputypes.TextureFormatDepth32Float)
 	}
-	pk.dummy.release()
 	pk.dummy = newPackTarget("pack dummy", w, h, 1, gputypes.TextureFormatR8Unorm)
 	pk.w, pk.h = w, h
 	ent := func(b uint32, v *wgpu.TextureView) wgpu.BindGroupEntry {
@@ -330,6 +388,25 @@ func hfNoise(w, h int) []byte {
 	}
 	return px
 }
+
+// packShadowSetCopyWGSL copies a depth and colour texture pair.
+const packShadowSetCopyWGSL = `
+@group(0) @binding(0) var srcDepth: texture_depth_2d;
+@group(0) @binding(1) var srcColor: texture_2d<f32>;
+@vertex
+fn vs(@builtin(vertex_index) id: u32) -> @builtin(position) vec4f {
+	let p = vec2f(f32((id << 1u) & 2u), f32(id & 2u));
+	return vec4f(p * 2.0 - 1.0, 0.0, 1.0);
+}
+struct O { @builtin(frag_depth) d: f32, @location(0) c: vec4f }
+@fragment
+fn fs(@builtin(position) p: vec4f) -> O {
+	var o: O;
+	o.d = textureLoad(srcDepth, vec2i(p.xy), 0);
+	o.c = textureLoad(srcColor, vec2i(p.xy), 0);
+	return o;
+}
+`
 
 const packDepthCopyWGSL = `
 @group(0) @binding(0) var src: texture_depth_2d;
@@ -394,8 +471,13 @@ func (pk *packGPU) gbufferPass(clear bool) *wgpu.RenderPassEncoder {
 // packFrame starts a pack frame: the uniforms, the shadow pass, and the
 // gbuffer pass that the world's draws record into.
 func (r *Renderer) packFrame(cam *Camera) {
+	q := r.Opt.Pack.Quality.orDefault()
+	if pack != nil && pack.q != q {
+		pack.release()
+		pack = nil
+	}
 	if pack == nil {
-		pack = newPackGPU()
+		pack = newPackGPU(q)
 	}
 	pk := pack
 	pk.resize(dev.w, dev.h)
@@ -420,7 +502,7 @@ func (r *Renderer) packFrame(cam *Camera) {
 	pk.u.FogColor = fogCol.Vec4(1)
 	writeBuffer(pk.ubuf, 0, unsafe.Slice((*byte)(unsafe.Pointer(&pk.u)), unsafe.Sizeof(pk.u)))
 
-	pk.r, pk.hand, pk.ended, pk.trans = r, false, false, nil
+	pk.r, pk.hand, pk.ended, pk.trans, pk.casters = r, false, false, nil, pk.casters[:0]
 	pk.shadowPass(r)
 	dev.pass = pk.gbufferPass(true)
 	dev.pk = pk
@@ -430,6 +512,51 @@ func (r *Renderer) packFrame(cam *Camera) {
 // and shadowcolor0: opaque, then (after the copy to shadowtex1) the
 // translucent layer, water white (shadow.fsh).
 func (pk *packGPU) shadowPass(r *Renderer) {
+	key := packShadowKey{pk.u.ShadowMV, [3]float64{r.camX, r.camY, r.camZ}, r, r.terrainGen, r.tex, r.tex.gen}
+	if key != pk.shadowKey {
+		pk.shadowKey, pk.keyFrames, pk.cached = key, 0, false
+	}
+	pk.keyFrames++
+	casters := pk.withCasters
+	pk.withCasters = false
+	switch {
+	case pk.keyFrames == 1 || casters && !pk.cached:
+		pk.drawShadows(r)
+	case casters: // restore this key's terrain
+		pk.copySetTo(pk.restoreSet, pk.shadow.view, pk.shadowCol.view)
+		pk.copyDepthTo(pk.restoreShadow1, pk.shadow1.view, pk.dummyShadow.view)
+	}
+	// From the key's second frame on, keep its terrain.
+	if pk.keyFrames > 1 && !pk.cached {
+		pk.copySetTo(pk.storeSet, pk.cache[0].view, pk.cache[2].view)
+		pk.copyDepthTo(pk.storeShadow1, pk.cache[1].view, pk.dummyShadow.view)
+		pk.cached = true
+	}
+}
+
+// packShadowKey is what the terrain shadow maps depend on.
+type packShadowKey struct {
+	mv         mgl32.Mat4
+	cam        [3]float64
+	r          *Renderer
+	terrainGen uint64
+	tex        *textureArray
+	texGen     int
+}
+
+// copySetTo copies a shadow depth and colour pair (bg) into dst.
+func (pk *packGPU) copySetTo(bg *wgpu.BindGroup, depth, color *wgpu.TextureView) {
+	p := beginPass("pack shadow copy", []wgpu.RenderPassColorAttachment{{View: color, LoadOp: gputypes.LoadOpClear, StoreOp: gputypes.StoreOpStore}},
+		&wgpu.RenderPassDepthStencilAttachment{View: depth, DepthLoadOp: gputypes.LoadOpClear, DepthClearValue: 1, DepthStoreOp: gputypes.StoreOpStore})
+	p.SetPipeline(pk.copySet)
+	p.SetBindGroup(0, bg, nil)
+	dev.draws++
+	p.Draw(gputypes.DrawArgs{VertexCount: 3, InstanceCount: 1})
+	endPassOf(p)
+}
+
+// drawShadows draws the terrain into the shadow maps.
+func (pk *packGPU) drawShadows(r *Renderer) {
 	fr := makeFrustum(pk.u.ShadowProj.Mul4(pk.u.ShadowMV))
 	bg := r.terrainBG()
 	for _, trans := range []bool{false, true} {
@@ -491,6 +618,7 @@ func setPipe(p *wgpu.RenderPassEncoder, pl *wgpu.RenderPipeline) {
 		return
 	}
 	pk := dev.pk
+	pk.lastPl = pl
 	sp := dev.pipes.specs[pl]
 	src, outs, hand := pk.program(pl)
 	if src == "" { // not a world program
@@ -595,6 +723,7 @@ func packHand() {
 // gbuffers_water, copies depthtex2 and reopens the gbuffer pass.
 func (pk *packGPU) worldEnd() {
 	endPass()
+	pk.castShadows()
 	pk.copyDepthTo(pk.copyDepth, pk.depth[1].view, pk.dummy.view)
 	if len(pk.trans) > 0 {
 		dev.pass = pk.gbufferPass(false)
@@ -657,4 +786,113 @@ func packResolve() {
 	}
 	full(beginPass("final", att(target), nil), pk.comps[5], pk.comp[5])
 	dev.clearNext, dev.clearDepth = false, true
+}
+
+// packCaster is a recorded entity or item draw: its uniforms (bound at
+// a dynamic offset) stay in the uniform stream until the frame ends.
+type packCaster struct {
+	pl           *wgpu.RenderPipeline
+	uni, g1      *wgpu.BindGroup
+	off          uint32
+	vbo, ebo     *wgpu.Buffer // ebo nil: non-indexed
+	first, count uint32
+	c            mgl32.Vec4 // bounding sphere, camera-relative
+}
+
+// packCast records the draw just issued as a shadow caster (shadow.vsh
+// runs for entities too): the world part of a pack frame, model, item
+// and block-item pipelines. model is the camera-relative placement,
+// radius the mesh's extent in its own units.
+func packCast(g1 *wgpu.BindGroup, vbo, ebo *wgpu.Buffer, first, count uint32, model mgl32.Mat4, radius float32) {
+	pk := dev.pk
+	if pk == nil || pk.ended || pk.hand {
+		return
+	}
+	switch pk.lastPl {
+	case dev.pipes.model, dev.pipes.modelAlpha, dev.pipes.item, dev.pipes.blockItem:
+	default: // additive overlays (eyes) cast nothing
+		return
+	}
+	s := max(model.Col(0).Vec3().Len(), model.Col(1).Vec3().Len(), model.Col(2).Vec3().Len())
+	pk.casters = append(pk.casters, packCaster{pk.lastPl, lastUniforms, g1, dynOffset[0], vbo, ebo, first, count,
+		model.Col(3).Vec3().Vec4(radius * s * 1.5)}) // 1.5: posed limbs reach past the bind pose
+}
+
+// castShadows draws the recorded casters within the shadow frustum into
+// shadowtex0 and shadowcolor0, then their depth into shadowtex1.
+func (pk *packGPU) castShadows() {
+	if len(pk.casters) == 0 {
+		return
+	}
+	fr := makeFrustum(pk.u.ShadowProj.Mul4(pk.u.ShadowMV))
+	n := 0
+	for _, c := range pk.casters {
+		if fr.box(c.c[0]-c.c[3], c.c[1]-c.c[3], c.c[2]-c.c[3], c.c[0]+c.c[3], c.c[1]+c.c[3], c.c[2]+c.c[3]) {
+			pk.casters[n] = c
+			n++
+		}
+	}
+	pk.casters = pk.casters[:n]
+	if n == 0 {
+		return
+	}
+	pk.withCasters = true
+	for _, depthOnly := range [2]bool{false, true} {
+		color := []wgpu.RenderPassColorAttachment{{View: pk.shadowCol.view, LoadOp: gputypes.LoadOpLoad, StoreOp: gputypes.StoreOpStore}}
+		target := pk.shadow.view
+		if depthOnly {
+			color[0].View, color[0].StoreOp, target = pk.dummyShadow.view, gputypes.StoreOpDiscard, pk.shadow1.view
+		}
+		p := beginPass("pack shadow casters", color,
+			&wgpu.RenderPassDepthStencilAttachment{View: target, DepthLoadOp: gputypes.LoadOpLoad, DepthStoreOp: gputypes.StoreOpStore})
+		var last *wgpu.RenderPipeline
+		for _, c := range pk.casters {
+			if c.pl != last {
+				p.SetPipeline(pk.casterPipe(c.pl, depthOnly))
+				p.SetBindGroup(2, pk.g2Shadow, nil)
+				last = c.pl
+			}
+			dynOffset[0] = c.off
+			p.SetBindGroup(0, c.uni, dynOffset[:])
+			p.SetBindGroup(1, c.g1, nil)
+			p.SetVertexBuffer(0, c.vbo, 0)
+			dev.draws++
+			if c.ebo != nil {
+				p.SetIndexBuffer(c.ebo, gputypes.IndexFormatUint32, 0)
+				p.DrawIndexed(gputypes.DrawIndexedArgs{IndexCount: c.count, InstanceCount: 1, FirstIndex: c.first})
+			} else {
+				p.Draw(gputypes.DrawArgs{VertexCount: c.count, InstanceCount: 1, FirstVertex: c.first})
+			}
+		}
+		endPassOf(p)
+	}
+}
+
+// casterPipe is shadow.vsh/fsh for an engine pipeline's vertex format:
+// its gbuffer program with the distorted shadow position and a
+// fragment stage writing the texture colour after the draw's alpha test.
+func (pk *packGPU) casterPipe(pl *wgpu.RenderPipeline, depthOnly bool) *wgpu.RenderPipeline {
+	key := packVariant{pl, depthOnly}
+	if v := pk.casterPipes[key]; v != nil {
+		return v
+	}
+	sp := dev.pipes.specs[pl]
+	kind := "model"
+	switch pl {
+	case dev.pipes.item:
+		kind = "item"
+	case dev.pipes.blockItem:
+		kind = "block"
+	}
+	src := packCasterWGSL(kind)
+	target := gputypes.ColorTargetState{Format: gputypes.TextureFormatRGBA8Unorm, WriteMask: gputypes.ColorWriteMaskAll}
+	if depthOnly {
+		target = gputypes.ColorTargetState{Format: gputypes.TextureFormatR8Unorm, WriteMask: gputypes.ColorWriteMaskNone}
+	}
+	v := pk.pipeline("pack shadow caster", src, []*wgpu.BindGroupLayout{dev.uniLayout, sp.group1, pk.g2Layout}, sp.buffers,
+		&gputypes.PrimitiveState{Topology: sp.topology, FrontFace: gputypes.FrontFaceCCW, CullMode: sp.cull},
+		[]gputypes.ColorTargetState{target},
+		&wgpu.DepthStencilState{Format: gputypes.TextureFormatDepth32Float, DepthWriteEnabled: true, DepthCompare: gputypes.CompareFunctionLessEqual})
+	pk.casterPipes[key] = v
+	return v
 }

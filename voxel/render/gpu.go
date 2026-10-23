@@ -538,8 +538,13 @@ func (s *stream) reset() {
 func bindUniforms(p *wgpu.RenderPassEncoder, u *ubuf) {
 	c, off := dev.uniforms.alloc(u.b, uniformSlot)
 	dynOffset[0] = off
+	lastUniforms = c.bg
 	p.SetBindGroup(0, c.bg, dynOffset[:]) // copied by the render pass
 }
+
+// lastUniforms is the bind group of the last bindUniforms (with
+// dynOffset[0]), for packCast to replay the draw.
+var lastUniforms *wgpu.BindGroup
 
 // dynOffset is bindUniforms' offsets argument, kept to avoid an allocation
 // per draw (render thread only).

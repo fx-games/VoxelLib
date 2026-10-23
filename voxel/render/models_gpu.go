@@ -132,5 +132,6 @@ func (mr *ModelRenderer) drawModel(g *gpuModel, model mgl32.Mat4, skin []mgl32.M
 		dev.draws++
 
 		p.DrawIndexed(gputypes.DrawIndexedArgs{IndexCount: uint32(pt.count), InstanceCount: 1, FirstIndex: uint32(pt.first)})
+		packCast(group, g.vbo, g.ebo, uint32(pt.first), uint32(pt.count), model, g.radius)
 	}
 }

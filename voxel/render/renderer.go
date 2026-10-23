@@ -194,6 +194,9 @@ type Renderer struct {
 
 	frame   uint64
 	retired []retired
+	// terrainGen counts changes to the drawn terrain (meshes, translucent
+	// order, animated textures): the pack's shadow cache key.
+	terrainGen uint64
 
 	light                 Lightmap // this frame's
 	lightSet              bool
@@ -325,6 +328,7 @@ func (r *Renderer) SyncTextures() bool {
 
 // Upload stores (or replaces) a section mesh on the GPU.
 func (r *Renderer) Upload(m *mesh.Mesh) {
+	r.terrainGen++
 	s := r.sections[m.Pos]
 	if s == nil {
 		s = &section{pos: m.Pos}
@@ -374,12 +378,14 @@ func (r *Renderer) sortSection(s *section, fresh bool) {
 		s.reg.overwrite(s.tOff, data)
 	}
 	s.sortPos = [3]float64{r.camX, r.camY, r.camZ}
+	r.terrainGen++
 }
 
 func (r *Renderer) free(s *section) {
 	if s.reg == nil {
 		return
 	}
+	r.terrainGen++
 	r.retire(s.reg, s.off, s.n)
 	r.retire(s.reg, s.tOff, s.transN)
 	delete(s.reg.sections, mesh.RegionIndex(s.pos))
@@ -534,7 +540,9 @@ func (r *Renderer) Render(cam *Camera) {
 	vp := cam.ViewProj()
 	fr := makeFrustum(vp)
 	r.cullVisible(&fr)
-	r.tex.animate(r.AnimTick())
+	if r.tex.animate(r.AnimTick()) {
+		r.terrainGen++
+	}
 	r.buildBatches()
 	if r.frameLight() {
 		r.uploadLight()

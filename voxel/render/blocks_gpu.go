@@ -174,4 +174,7 @@ func (r *Renderer) drawBlock(b *BlockMesh, mvp, model mgl32.Mat4, lc mgl32.Vec3,
 	p.SetVertexBuffer(0, b.gpu.vbo, 0)
 	dev.draws++
 	p.DrawIndexed(gputypes.DrawIndexedArgs{IndexCount: uint32(b.quads * 6), InstanceCount: 1})
+	if damage < 0 {
+		packCast(bg, b.gpu.vbo, r.gpu.ebo, 0, uint32(b.quads*6), model, 8*1.7321) // mesh coordinates lie in -8..8
+	}
 }
