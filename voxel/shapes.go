@@ -16,12 +16,16 @@ import (
 // Shear, after the turn, moves a point by Shear·(Origin.y−y)/16 in x and z:
 // Minecraft 1.7's leaning torches (RenderBlocks.renderTorchAtAngle), whose
 // quads lean by that much at their foot and not at all at Origin.y.
+// Mat, when not zero, replaces the turn by a general linear map about
+// Origin, p' = Origin + Mat·(p−Origin), row major: a box that a GL chain
+// turns about several axes and scales (a ModelRenderer drawn by a TESR).
 type Rot struct {
 	Axis    int
 	Deg     float32
 	Origin  [3]float32
 	Rescale bool
 	Shear   [2]float32
+	Mat     [9]float32
 }
 
 // Box is one model element in 1/16 units (Minecraft model pixels). Max may
@@ -68,6 +72,13 @@ func bx(x0, y0, z0, x1, y1, z1 float32) Box {
 // RotatePoint applies rots in order to p (1/16 units).
 func RotatePoint(p [3]float32, rots []Rot) [3]float32 {
 	for _, r := range rots {
+		if m := r.Mat; m != [9]float32{} {
+			u := [3]float32{p[0] - r.Origin[0], p[1] - r.Origin[1], p[2] - r.Origin[2]}
+			for i := range 3 {
+				p[i] = r.Origin[i] + m[3*i]*u[0] + m[3*i+1]*u[1] + m[3*i+2]*u[2]
+			}
+			continue
+		}
 		s, c := math.Sincos(float64(r.Deg) * math.Pi / 180)
 		sn, cs := float32(s), float32(c)
 		a, b := (r.Axis+1)%3, (r.Axis+2)%3 // x: y,z  y: z,x  z: x,y
@@ -209,7 +220,10 @@ func RotateFace(f Face, rots []Rot) Face {
 	n := f.Normal()
 	d := [3]float32{float32(n.X), float32(n.Y), float32(n.Z)}
 	for _, r := range rots {
-		d = RotatePoint(d, []Rot{{Axis: r.Axis, Deg: r.Deg}})
+		d = RotatePoint(d, []Rot{{Axis: r.Axis, Deg: r.Deg, Mat: r.Mat}})
+	}
+	if l := float32(math.Sqrt(float64(d[0]*d[0] + d[1]*d[1] + d[2]*d[2]))); l > 0 {
+		d = [3]float32{d[0] / l, d[1] / l, d[2] / l}
 	}
 	for g := Face(0); g < FaceCount; g++ {
 		gn := g.Normal()

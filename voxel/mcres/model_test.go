@@ -93,19 +93,21 @@ func TestFaceResolver(t *testing.T) {
 	}
 }
 
-// TestModelMoreRotations: more_rotations follow rotation, in order.
-func TestModelMoreRotations(t *testing.T) {
+// TestModelMatrix: a rotation's matrix reaches the box and maps points
+// about the origin.
+func TestModelMatrix(t *testing.T) {
 	p := FromFS(fstest.MapFS{"assets/minecraft/models/block/t.json": {Data: []byte(`{
 		"elements": [{"from": [0,0,0], "to": [1,1,1],
-			"rotation": {"origin": [1,2,3], "axis": "x", "angle": 10},
-			"more_rotations": [{"origin": [1,2,3], "axis": "z", "angle": 30}, {"origin": [1,2,3], "axis": "y", "angle": -20}],
+			"rotation": {"origin": [1,2,3], "axis": "y", "angle": 0, "matrix": [0,-1,0, 2,0,0, 0,0,1]},
 			"faces": {"up": {"texture": "#all"}}}]}`)}})
 	bs, err := p.ModelBoxes("block/t", nil)
-	if err != nil || len(bs) != 1 {
+	if err != nil || len(bs) != 1 || len(bs[0].Rot) != 1 {
 		t.Fatal(bs, err)
 	}
-	r := bs[0].Rot
-	if len(r) != 3 || r[0].Axis != 0 || r[0].Deg != 10 || r[1].Axis != 2 || r[1].Deg != 30 || r[2].Axis != 1 || r[2].Deg != -20 || r[2].Origin != [3]float32{1, 2, 3} {
-		t.Errorf("rotations %+v", r)
+	if q := voxel.RotatePoint([3]float32{2, 4, 6}, bs[0].Rot); q != [3]float32{-1, 4, 6} {
+		t.Errorf("matrix maps (2,4,6) to %v", q)
+	}
+	if f := voxel.RotateFace(voxel.FaceEast, bs[0].Rot); f != voxel.FaceUp {
+		t.Errorf("east face turns to %v", f)
 	}
 }
