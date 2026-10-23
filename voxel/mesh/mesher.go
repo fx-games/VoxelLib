@@ -101,6 +101,10 @@ type Config struct {
 	// mirrored within the box) instead of 1.8 block models. Faces in a
 	// state's UVRandom always follow RenderBlocks.
 	RenderBlocksUV bool
+	// Materials, indexed by state id, puts a per-block class in the top
+	// byte of each vertex's light word (the shader pack's mc_Entity,
+	// render.PackMaterial); blocks with one aren't greedy-merged. nil: 0.
+	Materials []uint8
 }
 
 // Tint colours (plains biome defaults).
@@ -128,7 +132,15 @@ type Mesher struct {
 	tintCache [voxel.SectionVolume]uint32
 	tintStamp [voxel.SectionVolume]uint32
 	builds    uint32
-	only      int // BuildCell: 1 + the padded index of the one cell to mesh; 0 = all
+	only      int    // BuildCell: 1 + the padded index of the one cell to mesh; 0 = all
+	mat       uint32 // Config.Materials of the block being meshed, << 24
+}
+
+func (m *Mesher) setMat(state voxel.StateID) {
+	m.mat = 0
+	if m.cfg != nil && int(state) < len(m.cfg.Materials) {
+		m.mat = uint32(m.cfg.Materials[state]) << 24
+	}
 }
 
 func NewMesher() *Mesher { return &Mesher{} }
@@ -366,6 +378,7 @@ func (m *Mesher) cubes() {
 					if info.Shape != voxel.ShapeCube || m.only != 0 && i != m.only-1 {
 						continue
 					}
+					m.setMat(st[i])
 					if info.Cull == nil {
 						if !faceVisible(info, &t[st[i+off]]) {
 							continue
@@ -383,7 +396,7 @@ func (m *Mesher) cubes() {
 					}
 					tint := m.tint(info, f, tex, p[0], p[1], p[2])
 					uvs, rot := m.cubeUV(info, p, f)
-					if rot == 0 && info.Layer != voxel.LayerTranslucent && cl[0] == cl[1] && cl[1] == cl[2] && cl[2] == cl[3] {
+					if rot == 0 && m.mat == 0 && info.Layer != voxel.LayerTranslucent && cl[0] == cl[1] && cl[1] == cl[2] && cl[2] == cl[3] {
 						// key: tex 12 | layer 2 | ao 2 | sky 8 | blk 8 | tint 24 ; +1 so 0 = empty
 						m.mask[b<<4|a] = (uint64(tex) | uint64(info.Layer)<<12 | uint64(cl[0].ao)<<14 |
 							uint64(cl[0].sky)<<16 | uint64(cl[0].blk)<<24 | uint64(tint)<<32) + 1
@@ -394,6 +407,7 @@ func (m *Mesher) cubes() {
 				}
 			}
 			if any {
+				m.mat = 0
 				m.greedy(f, p, ax)
 			}
 		}
@@ -518,7 +532,7 @@ func (m *Mesher) quadTops(f voxel.Face, p [3]int, w, h int, tex uint16, tint uin
 			p0|uint32(c.ao)<<30,
 			p1|uint32(tex)|u<<12|v<<17|uint32(f)<<22,
 			tint&0xffffff|m.ridx,
-			uint32(c.sky)|uint32(c.blk)<<8|tint>>24<<16)
+			uint32(c.sky)|uint32(c.blk)<<8|tint>>24<<16|m.mat)
 	}
 	m.out[layer][group] = out
 	if layer == voxel.LayerTranslucent {
@@ -537,6 +551,7 @@ func (m *Mesher) specials() {
 					continue
 				}
 				info := &t[st[i]]
+				m.setMat(st[i])
 				switch info.Shape {
 				case voxel.ShapeLiquid:
 					above := &t[st[i+nbOff[voxel.FaceUp]]]
@@ -803,7 +818,7 @@ func (m *Mesher) boxFace(f voxel.Face, base [3]float32, b *voxel.Box, tex uint16
 			p0|uint32(c.ao)<<30,
 			p1|uint32(tex)|u<<12|v<<17|normal<<22|projectedUV,
 			tint&0xffffff|m.ridx,
-			uint32(c.sky)|uint32(c.blk)<<8|tint>>24<<16)
+			uint32(c.sky)|uint32(c.blk)<<8|tint>>24<<16|m.mat)
 	}
 	m.out[layer][group] = out
 	if layer == voxel.LayerTranslucent {
@@ -861,7 +876,7 @@ func (m *Mesher) quadReversed(p [3]int, tex uint16, tint uint32, cl [4]cornerLig
 		u, v := uvTab[voxel.FaceUp][k][0], uvTab[voxel.FaceUp][k][1]
 		p0, p1 := vpos(x*4, y*4, z*4)
 		out = append(out, p0|3<<30,
-			p1|uint32(tex)|u<<12|v<<17|uint32(voxel.FaceDown)<<22, tint&0xffffff|m.ridx, uint32(cl[0].sky)|uint32(cl[0].blk)<<8|tint>>24<<16)
+			p1|uint32(tex)|u<<12|v<<17|uint32(voxel.FaceDown)<<22, tint&0xffffff|m.ridx, uint32(cl[0].sky)|uint32(cl[0].blk)<<8|tint>>24<<16|m.mat)
 	}
 	m.out[voxel.LayerTranslucent][GroupUnassigned] = out
 	m.trans = append(m.trans, [3]float32{cx / 128, float32(y) / 32, cz / 128})
@@ -891,7 +906,7 @@ func (m *Mesher) cross(x, y, z int, off [3]int, tex uint16, tint uint32, layer v
 					p0|3<<30,
 					p1|uint32(tex)|u<<12|uvs[k][1]<<17|6<<22,
 					tint&0xffffff|m.ridx,
-					uint32(c.sky)|uint32(c.blk)<<8|tint>>24<<16)
+					uint32(c.sky)|uint32(c.blk)<<8|tint>>24<<16|m.mat)
 			}
 			if layer == voxel.LayerTranslucent {
 				m.trans = append(m.trans, [3]float32{float32(bx+64) / 128, float32(by+64) / 128, float32(bz+64) / 128})

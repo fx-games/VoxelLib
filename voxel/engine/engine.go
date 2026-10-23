@@ -114,6 +114,7 @@ type Engine struct {
 	staleMesh   map[voxel.SectionPos]bool // in flight at Regenerate: not uploaded
 	mainMesher  *mesh.Mesher
 	cfgMu       sync.RWMutex
+	materials   []uint8 // SetMaterials
 	meshCfg     *mesh.Config
 	dispatchBuf []meshCand
 	// request is set when requestChunks may find missing chunks: the
@@ -459,9 +460,7 @@ recv:
 	}
 
 	if e.Renderer.SyncTextures() {
-		e.cfgMu.Lock()
-		e.meshCfg = e.Renderer.MeshConfig()
-		e.cfgMu.Unlock()
+		e.setMeshCfg()
 	}
 
 	e.mark(3, &t)
@@ -581,6 +580,35 @@ func (e *Engine) Regenerate() {
 	clear(e.loaded)
 	clear(e.lit)
 	e.request = true
+}
+
+func (e *Engine) setMeshCfg() {
+	c := e.Renderer.MeshConfig()
+	if e.materials != nil {
+		cc := *c
+		cc.Materials = e.materials
+		c = &cc
+	}
+	e.cfgMu.Lock()
+	e.meshCfg = c
+	e.cfgMu.Unlock()
+}
+
+// SetMaterials sets mesh.Config.Materials (per-state classes for a shader
+// pack; nil: none) and remeshes every loaded section. Call on the render
+// thread, between Updates.
+func (e *Engine) SetMaterials(m []uint8) {
+	if m == nil && e.materials == nil {
+		return
+	}
+	e.materials = m
+	e.setMeshCfg()
+	ms, cnt := e.World.MinSection(), e.World.SectionCount()
+	for p := range e.loaded {
+		for sy := ms; sy < ms+cnt; sy++ {
+			e.dirty[voxel.SectionPos{X: p.X, Y: sy, Z: p.Z}] = true
+		}
+	}
 }
 
 // SetRenderDistance changes the render distance in chunks while running

@@ -3,6 +3,8 @@ package render
 import (
 	"math"
 
+	"github.com/memmaker/voxellib/voxel"
+
 	"github.com/go-gl/mathgl/mgl32"
 )
 
@@ -192,6 +194,18 @@ func (s *packState) update(f *PackFrame, cam [3]float64, view, proj mgl32.Mat4, 
 	}
 	s.prevMV, s.prevProj, s.prevCam = view, proj, cam
 	return u
+}
+
+// PackMaterials is PackMaterial per state of a registry table, for
+// mesh.Config.Materials (engine.SetMaterials) while the pack is on.
+func PackMaterials(table []voxel.StateInfo) []uint8 {
+	m := make([]uint8, len(table))
+	for i := range table {
+		if d := table[i].Def; d != nil {
+			m[i] = PackMaterial(d.Name)
+		}
+	}
+	return m
 }
 
 // lightCode packs light levels for the pack programs (model light.w,

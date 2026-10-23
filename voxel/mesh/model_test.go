@@ -387,3 +387,31 @@ func pos32(d []uint32) (p [3]uint32) {
 	}
 	return
 }
+
+// TestMaterials: Config.Materials lands in w3's top byte and keeps the
+// block's faces out of greedy merging.
+func TestMaterials(t *testing.T) {
+	def := &voxel.BlockDef{Name: "test:leaves", Shape: voxel.ShapeCube, Layer: voxel.LayerCutout,
+		Textures: [6]string{"a", "a", "a", "a", "a", "a"}}
+	reg := voxel.NewRegistry()
+	reg.Register(def)
+	w := voxel.NewWorld(reg, 0, 64)
+	w.AddChunk(w.NewChunk(voxel.ChunkPos{}))
+	s := reg.State(def.Name, nil)
+	w.SetBlock(0, 1, 0, s)
+	w.SetBlock(1, 1, 0, s)
+	m := NewMesher()
+	m.Snap.Capture(w, voxel.SectionPos{})
+	plain := m.Build(reg.Table(), &Config{}).Quads()
+	mats := make([]uint8, int(s)+1)
+	mats[s] = 18
+	res := m.Build(reg.Table(), &Config{Materials: mats})
+	if plain != 8 || res.Quads() != 12 { // cutout keeps the shared faces; 4 sides merge
+		t.Fatalf("quads plain %d (want 8: 4 merged), with material %d (want 12)", plain, res.Quads())
+	}
+	for i := 0; i+VertexWords <= len(res.Data); i += VertexWords {
+		if got := res.Data[i+3] >> 24; got != 18 {
+			t.Fatalf("material %d", got)
+		}
+	}
+}
