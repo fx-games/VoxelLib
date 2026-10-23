@@ -280,6 +280,10 @@ func (a *Actor) Revenge() *Actor {
 	return nil
 }
 
+// SetRevenge makes src the actor that last hurt a, as a hit would
+// (setRevengeTarget).
+func (a *Actor) SetRevenge(src *Actor) { a.revenge, a.revengeTicks = src, 100 }
+
 // Pos returns the feet position.
 func (a *Actor) Pos() Vec { return Vec{a.Body.X, a.Body.Y, a.Body.Z} }
 
