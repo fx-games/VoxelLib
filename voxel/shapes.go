@@ -13,11 +13,15 @@ import (
 // Positive angles follow Minecraft's element convention (right handed).
 // Rescale stretches the two other axes by 1/cos(Deg) about Origin, like an
 // element's "rescale": a 45° turned full-width plane spans the block again.
+// Shear, after the turn, moves a point by Shear·(Origin.y−y)/16 in x and z:
+// Minecraft 1.7's leaning torches (RenderBlocks.renderTorchAtAngle), whose
+// quads lean by that much at their foot and not at all at Origin.y.
 type Rot struct {
 	Axis    int
 	Deg     float32
 	Origin  [3]float32
 	Rescale bool
+	Shear   [2]float32
 }
 
 // Box is one model element in 1/16 units (Minecraft model pixels). Max may
@@ -73,6 +77,10 @@ func RotatePoint(p [3]float32, rots []Rot) [3]float32 {
 			u, v = u*k, v*k
 		}
 		p[a], p[b] = r.Origin[a]+u*cs-v*sn, r.Origin[b]+u*sn+v*cs
+		if r.Shear != [2]float32{} {
+			d := (r.Origin[1] - p[1]) / 16
+			p[0], p[2] = p[0]+r.Shear[0]*d, p[2]+r.Shear[1]*d
+		}
 	}
 	return p
 }

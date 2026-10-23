@@ -94,3 +94,21 @@ func TestLockBoxes(t *testing.T) {
 		t.Error("custom-UV box was baked")
 	}
 }
+
+// TestRotShear: renderTorchAtAngle's lean, full at the foot, none at Origin.y.
+func TestRotShear(t *testing.T) {
+	r := []Rot{{Axis: 1, Origin: [3]float32{8, 19.2, 8}, Shear: [2]float32{-6.4, 0}}}
+	for _, c := range []struct{ in, want [3]float32 }{
+		{[3]float32{7, 3.2, 0}, [3]float32{0.6, 3.2, 0}},   // foot: -0.4 block
+		{[3]float32{7, 19.2, 16}, [3]float32{7, 19.2, 16}}, // top: none
+		{[3]float32{7, 13.2, 7}, [3]float32{4.6, 13.2, 7}}, // cap at 0.625: -0.4*(1-0.625)
+	} {
+		got := RotatePoint(c.in, r)
+		for a := range 3 {
+			if d := got[a] - c.want[a]; d > 1e-4 || d < -1e-4 {
+				t.Errorf("%v -> %v, want %v", c.in, got, c.want)
+				break
+			}
+		}
+	}
+}

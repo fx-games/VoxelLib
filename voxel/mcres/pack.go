@@ -257,6 +257,8 @@ type element struct {
 		Axis    string
 		Angle   float32
 		Rescale bool
+		// Shear: voxel.Rot.Shear (an extension, ignored by Minecraft).
+		Shear [2]float32
 	} `json:"rotation"`
 	Faces map[string]modelFace `json:"faces"`
 	// PlantTurn: voxel.Box.PlantTurn (an extension, ignored by Minecraft).
@@ -551,9 +553,9 @@ func (p *Pack) ModelBoxes(id string, vars map[string]string) ([]voxel.Box, error
 		if hasUV {
 			b.UV = &uv
 		}
-		if r := e.Rotation; r != nil && r.Angle != 0 {
+		if r := e.Rotation; r != nil && (r.Angle != 0 || r.Shear != [2]float32{}) {
 			if axis := strings.Index("xyz", r.Axis); axis >= 0 {
-				b.Rot = []voxel.Rot{{Axis: axis, Deg: r.Angle, Origin: r.Origin, Rescale: r.Rescale}}
+				b.Rot = []voxel.Rot{{Axis: axis, Deg: r.Angle, Origin: r.Origin, Rescale: r.Rescale, Shear: r.Shear}}
 			}
 		}
 		b.PlantTurn = e.PlantTurn
