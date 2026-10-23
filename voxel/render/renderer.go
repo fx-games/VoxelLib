@@ -300,6 +300,10 @@ func (r *Renderer) reloadTextures() {
 	r.cfg = &mesh.Config{Tintable: r.tex.tintable, BlockTint: r.Opt.BlockTint, RenderBlocksUV: r.Opt.RenderBlocksUV}
 }
 
+// AnimTick is the texture animation tick (20 Hz since the renderer
+// started): an animated texture shows frame (AnimTick/ticksPerFrame)%frames.
+func (r *Renderer) AnimTick() int { return int(time.Since(r.start) / (50 * time.Millisecond)) }
+
 // MeshConfig returns the per-texture data the mesher needs. It changes when
 // textures are added, so fetch it per batch.
 func (r *Renderer) MeshConfig() *mesh.Config { return r.cfg }
@@ -526,7 +530,7 @@ func (r *Renderer) Render(cam *Camera) {
 	vp := cam.ViewProj()
 	fr := makeFrustum(vp)
 	r.cullVisible(&fr)
-	r.tex.animate(int(time.Since(r.start) / (50 * time.Millisecond)))
+	r.tex.animate(r.AnimTick())
 	r.buildBatches()
 	if r.frameLight() {
 		r.uploadLight()

@@ -1007,3 +1007,31 @@ func (m *Mesh) SortTranslucent(cam [3]float32) []uint32 {
 	}
 	return out
 }
+
+// Vertex is one decoded mesh vertex (see VertexWords).
+type Vertex struct {
+	Pos    [3]float32 // section local, in blocks
+	Tex    uint16     // texture layer (registry texture index)
+	UV     [2]float32 // in texture units (1 = the whole texture)
+	Normal int        // voxel.Face, 6: none
+	Tint   [3]uint8
+}
+
+// DecodeVertex unpacks the VertexWords words of one vertex as the
+// shaders do.
+func DecodeVertex(w []uint32) Vertex {
+	w0, w1, w2 := w[0], w[1], w[2]
+	var v Vertex
+	for a := range 3 {
+		q := (w0>>(10*a)&1023)<<2 | w1>>(26+2*a)&3
+		v.Pos[a] = float32(q)/128 - 8
+	}
+	v.Tex = uint16(w1 & 4095)
+	v.UV = [2]float32{float32(w1 >> 12 & 31), float32(w1 >> 17 & 31)}
+	if w1&(1<<25) != 0 {
+		v.UV[0], v.UV[1] = v.UV[0]/16, v.UV[1]/16
+	}
+	v.Normal = int(w1 >> 22 & 7)
+	v.Tint = [3]uint8{uint8(w2), uint8(w2 >> 8), uint8(w2 >> 16)}
+	return v
+}

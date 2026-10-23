@@ -59,3 +59,19 @@ func TestDraw(t *testing.T) {
 		t.Errorf("farther square drew over: %v", c)
 	}
 }
+
+// TestOver checks Blend's GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA compositing:
+// half red over transparent stays half red; over opaque blue it mixes.
+func TestOver(t *testing.T) {
+	tg := NewTarget(1, 1)
+	o := tg.Img.Pix
+	tg.over(o, 1, 0, 0, 0.5)
+	if o[0] != 255 || o[3] != 128 {
+		t.Fatalf("over transparent: %v", o[:4])
+	}
+	copy(o, []uint8{0, 0, 255, 255})
+	tg.over(o, 1, 0, 0, 0.5)
+	if o[0] != 128 || o[2] != 128 || o[3] != 255 {
+		t.Fatalf("over blue: %v", o[:4])
+	}
+}

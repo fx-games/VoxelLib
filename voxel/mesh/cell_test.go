@@ -101,4 +101,22 @@ func TestBlock(t *testing.T) {
 	if n := len(Block(info, voxel.StateInfo{}, &Config{}).Data) / VertexWords; n != 24 {
 		t.Fatalf("lone cube: %d vertices, want 24", n)
 	}
+	// DecodeVertex: corners on the unit cube, four vertices per face, UVs
+	// on the texture's corners.
+	m := Block(info, voxel.StateInfo{}, &Config{})
+	faces := map[int]int{}
+	for i := 0; i < len(m.Data); i += VertexWords {
+		v := DecodeVertex(m.Data[i:])
+		faces[v.Normal]++
+		for _, c := range append(v.Pos[:], v.UV[:]...) {
+			if c != 0 && c != 1 {
+				t.Fatalf("vertex %d: %+v", i/VertexWords, v)
+			}
+		}
+	}
+	for f := range 6 {
+		if faces[f] != 4 {
+			t.Fatalf("face %d: %d vertices", f, faces[f])
+		}
+	}
 }
