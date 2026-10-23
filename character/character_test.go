@@ -244,11 +244,11 @@ func TestQuakeJumpNeedsRelease(t *testing.T) {
 }
 
 func TestQuakeFriction(t *testing.T) {
-	vx, vz := pmoveSingle(pmSpeed, 0, 0, 0, true, false, 1)
+	vx, vz := PMoveStep(pmSpeed, 0, 0, 0, true, false, 1)
 	if vx != 0 || vz != 0 {
 		t.Fatal("friction should stop the player")
 	}
-	vx, _ = pmoveSingle(pmSpeed, 0, 0, 0, false, false, 1)
+	vx, _ = PMoveStep(pmSpeed, 0, 0, 0, false, false, 1)
 	if vx != pmSpeed {
 		t.Fatal("no friction in the air")
 	}

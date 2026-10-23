@@ -39,7 +39,7 @@ func (c *Character) quakeTick(w World, in Input) {
 
 	vx, vz := c.VX*20, c.VZ*20
 	for i := 0; i < quakeSteps; i++ {
-		vx, vz = pmoveSingle(vx, vz, wx, wz, grounded, in.Sneak, quakeDT)
+		vx, vz = PMoveStep(vx, vz, wx, wz, grounded, in.Sneak, quakeDT)
 	}
 	c.VX, c.VZ = vx/20, vz/20
 	c.move(w, in)
@@ -49,9 +49,11 @@ func (c *Character) quakeTick(w World, in Input) {
 	c.VY -= q3Gravity * 0.05 / 20 // blocks/s^2 over one tick, in blocks/tick
 }
 
-// pmoveSingle is PM_WalkMove / PM_AirMove for one step on the horizontal
-// velocity (vx,vz) with wish direction (wx,wz), zero for no input.
-func pmoveSingle(vx, vz, wx, wz float64, grounded, ducked bool, dt float64) (float64, float64) {
+// PMoveStep is PM_WalkMove / PM_AirMove for one step of dt seconds on the
+// horizontal velocity (vx,vz) with unit wish direction (wx,wz), zero for no
+// input. Speeds are in blocks per second (Quake 3 units scaled by quakeUnit); a
+// game with its own collision calls it in place of MoveQuake.
+func PMoveStep(vx, vz, wx, wz float64, grounded, ducked bool, dt float64) (float64, float64) {
 	accel := pmAirAccelerate
 	if grounded {
 		vx, vz = pmFrictionStep(vx, vz, dt)
