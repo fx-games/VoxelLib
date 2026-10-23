@@ -70,3 +70,20 @@ func (f *frustum) box(minX, minY, minZ, maxX, maxY, maxZ float32) bool {
 	}
 	return true
 }
+
+// Frustum is the camera's view frustum, for culling world-space boxes
+// before building their instances.
+type Frustum struct {
+	f       frustum
+	x, y, z float64
+}
+
+// Frustum returns the camera's current view frustum.
+func (c *Camera) Frustum() Frustum {
+	return Frustum{makeFrustum(c.ViewProj()), c.X, c.Y, c.Z}
+}
+
+// Box reports whether a world-space AABB is (partly) inside the frustum.
+func (f *Frustum) Box(minX, minY, minZ, maxX, maxY, maxZ float64) bool {
+	return f.f.box(float32(minX-f.x), float32(minY-f.y), float32(minZ-f.z), float32(maxX-f.x), float32(maxY-f.y), float32(maxZ-f.z))
+}
