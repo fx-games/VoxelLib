@@ -17,6 +17,7 @@ type ItemRenderer struct {
 	gpu    gpuItemRenderer
 	index  map[string]int
 	ranges [][2]int32 // first, count per item
+	texels []int      // the larger sprite side per item (In2D)
 }
 
 // ItemInstance is one item to draw in the world.
@@ -42,6 +43,7 @@ func NewItemRenderer(r *Renderer, names []string, imgs []image.Image) (*ItemRend
 	layers := make([][]byte, len(imgs))
 	for i, img := range imgs {
 		ir.index[names[i]] = i
+		ir.texels = append(ir.texels, max(img.Bounds().Dx(), img.Bounds().Dy()))
 		m := extrude.Extrude(img)
 		b := img.Bounds()
 		su, sv := float32(b.Dx())/float32(size), float32(b.Dy())/float32(size)
@@ -132,19 +134,67 @@ func (p HandPose) Base() mgl32.Mat4 {
 	return p.View
 }
 
-// DrawHand draws the held item in the lower right of the view, over the
-// world (depth is cleared) with its own fixed 70° projection, like
-// Minecraft's first-person item. aspect is the viewport's width/height.
+// DrawHand draws the held item in first person like Minecraft 1.7.10
+// draws a flat item: pose.Base(), FirstPersonSwing, FirstPersonHold,
+// Equipped2D and In2D (ItemRenderer.renderItemInFirstPerson and
+// renderItem), over the world with the hand's own projection
+// (DrawHandModel). aspect is the viewport's width/height.
 func (ir *ItemRenderer) DrawHand(item string, aspect float32, pose HandPose, sky, block uint8) {
-	sw := float32(math.Sin(float64(pose.Swing) * math.Pi))
-	sw2 := float32(math.Sin(math.Sqrt(float64(pose.Swing)) * math.Pi))
-	model := pose.Base().Mul4(mgl32.Translate3D(0.5-0.25*sw2, -0.38+0.15*sw2, -0.9-0.15*sw)).
-		Mul4(mgl32.HomogRotate3DY(mgl32.DegToRad(-70 + 20*sw))).
-		Mul4(mgl32.HomogRotate3DZ(mgl32.DegToRad(20))).
-		Mul4(mgl32.HomogRotate3DX(mgl32.DegToRad(-80 * sw2))).
-		Mul4(mgl32.Scale3D(0.42, 0.42, 0.42))
+	model := pose.Base().Mul4(FirstPersonSwing(pose.Swing)).Mul4(FirstPersonHold(pose.Swing)).
+		Mul4(Equipped2D).Mul4(ir.In2D(item))
 	ir.DrawHandModel(item, aspect, model, sky, block)
 }
+
+// In2D maps an item's unit slab (see ItemPose) onto the space of
+// ItemRenderer.renderItemIn2D(tess, maxU, minV, minU, maxV, w, h,
+// 0.0625): the sprite on 0..1 in x and y, its left column at x = 1 (u
+// runs against x), the front face at z = 0 and the back at z = -0.0625.
+// The slab is one sprite texel thick and centred on z = 0.
+func (ir *ItemRenderer) In2D(item string) mgl32.Mat4 {
+	t := 16
+	if i, ok := ir.index[item]; ok {
+		t = ir.texels[i]
+	}
+	return mgl32.Translate3D(0.5, 0.5, -0.03125).Mul4(mgl32.Scale3D(-1, 1, float32(t)/16))
+}
+
+// FirstPersonSwing is renderItemInFirstPerson's swing offset for a held
+// item (ItemRenderer.java 1.7.10, before translate(0.56, -0.52, -0.72)):
+// translate(-sin(sqrt(s)*pi)*0.4, sin(sqrt(s)*pi*2)*0.2, -sin(s*pi)*0.2).
+// An item in use (eat, drink) replaces it with its own motion.
+func FirstPersonSwing(swing float32) mgl32.Mat4 {
+	sq := float64(swing)
+	sq = math.Sqrt(sq)
+	return mgl32.Translate3D(-float32(math.Sin(sq*math.Pi))*0.4, float32(math.Sin(sq*math.Pi*2))*0.2,
+		-float32(math.Sin(float64(swing)*math.Pi))*0.2)
+}
+
+// FirstPersonHold is the rest of renderItemInFirstPerson's placement of a
+// held item, after the swing offset: translate(0.7*0.8, -0.65*0.8 -
+// (1-equip)*0.6, -0.9*0.8) with the equip animation done (equip 1),
+// rotate 45 about Y, the swing rotations -sin(s*s*pi)*20 about Y,
+// -sin(sqrt(s)*pi)*20 about Z and *80 about X, and scale 0.4.
+func FirstPersonHold(swing float32) mgl32.Mat4 {
+	const f13 = 0.8
+	f6 := float32(math.Sin(float64(swing*swing) * math.Pi))
+	f7 := float32(math.Sin(math.Sqrt(float64(swing)) * math.Pi))
+	return mgl32.Translate3D(0.7*f13, -0.65*f13, -0.9*f13).
+		Mul4(mgl32.HomogRotate3DY(mgl32.DegToRad(45))).
+		Mul4(mgl32.HomogRotate3DY(mgl32.DegToRad(-f6 * 20))).
+		Mul4(mgl32.HomogRotate3DZ(mgl32.DegToRad(-f7 * 20))).
+		Mul4(mgl32.HomogRotate3DX(mgl32.DegToRad(-f7 * 80))).
+		Mul4(mgl32.Scale3D(0.4, 0.4, 0.4))
+}
+
+// Equipped2D is ItemRenderer.renderItem's placement of a flat item held
+// by an entity (and ForgeHooksClient.renderEquippedItem's before an
+// IItemRenderer): translate(0, -0.3, 0), scale 1.5, rotate 50 about Y and
+// 335 about Z, translate(-0.9375, -0.0625, 0); then renderItemIn2D (In2D).
+var Equipped2D = mgl32.Translate3D(0, -0.3, 0).
+	Mul4(mgl32.Scale3D(1.5, 1.5, 1.5)).
+	Mul4(mgl32.HomogRotate3DY(mgl32.DegToRad(50))).
+	Mul4(mgl32.HomogRotate3DZ(mgl32.DegToRad(335))).
+	Mul4(mgl32.Translate3D(-0.9375, -0.0625, 0))
 
 // DrawHandModel draws a held item like DrawHand but placed by the caller:
 // model maps the item's unit slab (see ItemPose) into view space (x right,
