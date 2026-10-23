@@ -228,12 +228,23 @@ func (m *Map) teVariants(c *voxel.Chunk, level anvil.Compound) {
 				continue
 			}
 			for i, f := range b.TE {
-				key += string("|,"[min(i, 1)]) + strconv.Itoa(t.Int(f))
+				key += string("|,"[min(i, 1)]) + strconv.Itoa(teField(t, f))
 			}
 			if _, ok := m.Blocks[key]; ok {
 				c.SetRaw(x, y+dy, z, m.State(key))
 			}
 		}
+	}
+}
+
+// teField reads a tile entity's integer field; a dotted path ("Item.id") walks compounds.
+func teField(t anvil.Compound, path string) int {
+	for {
+		f, rest, ok := strings.Cut(path, ".")
+		if !ok {
+			return t.Int(f)
+		}
+		t, path = t.Compound(f), rest
 	}
 }
 
