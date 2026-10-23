@@ -64,6 +64,29 @@ type Furnace struct {
 	// part; nil uses the global source.
 	OnXP func(xp int)
 	Rand *rand.Rand
+	// CookTime replaces CookTicks when set (forge-like machines that take
+	// longer per item).
+	CookTime int
+	// Output and Produce replace the recipes when set: Output is the largest
+	// result the input can give (it gates smelting and the output slot),
+	// Produce the result one smelt actually makes (nil: nothing, the input
+	// is used up all the same).
+	Output, Produce func(in *inventory.Stack) *inventory.Stack
+}
+
+func (f *Furnace) result(in *inventory.Stack) *inventory.Stack {
+	if f.Output != nil {
+		return f.Output(in)
+	}
+	return f.Recipes.Result(in)
+}
+
+// Duration is the time to smelt one item.
+func (f *Furnace) Duration() int {
+	if f.CookTime > 0 {
+		return f.CookTime
+	}
+	return CookTicks
 }
 
 func (f *Furnace) Size() int                     { return 3 }
@@ -80,7 +103,7 @@ func (f *Furnace) canSmelt() bool {
 	if in == nil {
 		return false
 	}
-	r := f.Recipes.Result(in)
+	r := f.result(in)
 	if r == nil {
 		return false
 	}
@@ -118,7 +141,7 @@ func (f *Furnace) Tick() (litChanged bool) {
 		}
 		if f.Burn > 0 && f.canSmelt() {
 			f.Cook++
-			if f.Cook == CookTicks {
+			if f.Cook == f.Duration() {
 				f.Cook = 0
 				f.smelt()
 			}
@@ -137,10 +160,17 @@ func burnTime(s *inventory.Stack) int {
 }
 
 func (f *Furnace) smelt() {
-	r := f.Recipes.Result(f.Slots[0])
-	if f.Slots[2] == nil {
+	var r *inventory.Stack
+	if f.Produce != nil {
+		r = f.Produce(f.Slots[0])
+	} else {
+		r = f.Recipes.Result(f.Slots[0])
+	}
+	switch {
+	case r == nil:
+	case f.Slots[2] == nil:
 		f.Slots[2] = r.Copy()
-	} else if f.Slots[2].Item == r.Item {
+	case f.Slots[2].Item == r.Item:
 		f.Slots[2].Count += r.Count
 	}
 	f.Slots[0].Count--
@@ -150,10 +180,13 @@ func (f *Furnace) smelt() {
 }
 
 // Smeltable implements inventory.FurnaceRules.
-func (f *Furnace) Smeltable(s *inventory.Stack) bool { return f.Recipes.Result(s) != nil }
+func (f *Furnace) Smeltable(s *inventory.Stack) bool { return f.result(s) != nil }
 
 // Taken implements inventory.FurnaceRules: SlotFurnace.onCrafting's XP.
 func (f *Furnace) Taken(_ *inventory.Container, s *inventory.Stack, n int) {
+	if f.Recipes == nil {
+		return
+	}
 	if xp := SmeltXP(n, f.Recipes.XP(s), f.Rand); xp > 0 && f.OnXP != nil {
 		f.OnXP(xp)
 	}

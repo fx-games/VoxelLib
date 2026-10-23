@@ -211,3 +211,33 @@ func TestFurnace(t *testing.T) {
 		t.Fatal("cook progress kept without fuel")
 	}
 }
+
+// TestFurnaceCustom: a 400-tick machine with its own rules: Output gates,
+// Produce may make nothing and the input still goes.
+func TestFurnaceCustom(t *testing.T) {
+	reg, _, _ := setup(t)
+	ingot := reg.Get("test:iron_ingot")
+	n := 0
+	f := &Furnace{CookTime: 400,
+		Output:  func(*inventory.Stack) *inventory.Stack { return inventory.New(ingot, 3) },
+		Produce: func(*inventory.Stack) *inventory.Stack { n++; return map[bool]*inventory.Stack{true: inventory.New(ingot, 2)}[n == 1] }}
+	f.Slots[0] = inventory.New(reg.Get("test:iron_ore"), 2)
+	f.Slots[1] = inventory.New(reg.Get("test:coal"), 1)
+	for range 399 {
+		f.Tick()
+	}
+	if f.Slots[2] != nil || !f.Smeltable(f.Slots[0]) {
+		t.Fatal("done before 400 ticks")
+	}
+	f.Tick()
+	if f.Slots[2] == nil || f.Slots[2].Count != 2 || f.Slots[0].Count != 1 {
+		t.Fatalf("first: %v", f.Slots)
+	}
+	for range 400 {
+		f.Tick()
+	}
+	if f.Slots[2].Count != 2 || f.Slots[0] != nil {
+		t.Fatalf("second made nothing but used the input: %v", f.Slots)
+	}
+	f.Taken(nil, f.Slots[2], 2) // no recipes: no XP lookup
+}
