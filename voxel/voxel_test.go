@@ -100,3 +100,11 @@ func TestLight(t *testing.T) {
 		t.Fatalf("block light after removal %d", b)
 	}
 }
+
+func TestLightBlockIsInvisibleAndEmits(t *testing.T) {
+	r := NewRegistry()
+	i := r.Info(r.Parse("light[level=15]"))
+	if i.Shape != ShapeNone || i.Collides || i.Opaque || i.Emission != 15 {
+		t.Fatalf("light: shape %v collides %v opaque %v emission %d", i.Shape, i.Collides, i.Opaque, i.Emission)
+	}
+}

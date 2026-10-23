@@ -95,6 +95,8 @@ func builtinBlocks() []*BlockDef {
 			Tint: TintWater, CullSelf: true, Replaceable: true, LightOpacity: 1},
 		{Name: "lava", Shape: ShapeLiquid, Layer: LayerSolid, Textures: all6("block/lava_still"),
 			CullSelf: true, Replaceable: true, LightOpacity: 15, LightEmission: 15},
+		// light: the invisible light source (level ignored: always 15).
+		{Name: "light", Shape: ShapeNone, Replaceable: true, LightEmission: 15},
 		{Name: "glowstone", Shape: ShapeCube, Textures: all6("block/glowstone"), Opaque: true, Collides: true, LightOpacity: 15, LightEmission: 15},
 		{Name: "sea_lantern", Shape: ShapeCube, Textures: all6("block/sea_lantern"), Opaque: true, Collides: true, LightOpacity: 15, LightEmission: 15},
 		{Name: "jack_o_lantern", Shape: ShapeCube, Textures: [6]string{"block/pumpkin_top", "block/pumpkin_top",
