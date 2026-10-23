@@ -45,8 +45,9 @@ const (
 	planRange  = 40
 	replan     = 40
 	pathBudget = 2000
-	// pumpTime caps a tick's search time (the world's cell tests cost
-	// unevenly), checked every pumpSlice expansions.
+	// pumpTime is the default Manager.SearchTime: a tick's search time cap
+	// (the world's cell tests cost unevenly), checked every pumpSlice
+	// expansions.
 	pumpTime  = 2 * time.Millisecond
 	pumpSlice = 200
 	maxNodes  = 6000
@@ -144,7 +145,7 @@ func (m *Manager) plan(a *Actor, goal Vec) {
 // expansion budget is spent; an unfinished search continues next tick.
 func (m *Manager) pump() {
 	start := time.Now()
-	for m.budget > 0 && time.Since(start) < pumpTime {
+	for m.budget > 0 && (m.SearchTime <= 0 || time.Since(start) < m.SearchTime) {
 		if m.searching == nil {
 			if len(m.queue) == 0 {
 				return
