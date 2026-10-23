@@ -60,6 +60,7 @@ type SmeltJSON struct {
 	Input  string     `json:"input"`
 	Result ResultJSON `json:"result"`
 	XP     float32    `json:"xp"`
+	Chance float32    `json:"chance,omitempty"`
 }
 
 // Load reads a File and resolves it against reg. Recipes naming unknown items
@@ -95,7 +96,7 @@ func (f *File) Resolve(reg *inventory.Registry) (*Book, *Smelting, []string, err
 			l.warn = append(l.warn, fmt.Sprintf("smelting %d: %v", i, err))
 			continue
 		}
-		sm.List = append(sm.List, Smelt{In: in, Out: out, XP: sj.XP})
+		sm.List = append(sm.List, Smelt{In: in, Out: out, XP: sj.XP, Chance: sj.Chance})
 	}
 	return b, sm, l.warn, nil
 }

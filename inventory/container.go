@@ -449,6 +449,13 @@ func (c *Container) Close() {
 	}
 }
 
+// TransferWith is transferStackInSlot for a custom container: route merges
+// slot i's stack, an output slot counts the moved amount as produced and
+// onPickupFromSlot runs when something moved.
+func TransferWith(c *Container, i int, route func(s *Stack) bool) *Stack {
+	return transferWith(c, i, route, true)
+}
+
 // transferWith is the common body of the vanilla transferStackInSlot
 // implementations: route decides the merge, output slots get onSlotChange.
 func transferWith(c *Container, i int, route func(s *Stack) bool, checkSame bool) *Stack {

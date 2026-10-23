@@ -12,12 +12,15 @@ type Smelt struct {
 	In  Option
 	Out *inventory.Stack
 	XP  float32
+	// Chance is the share of smelts that yield Out (0: every one).
+	Chance float32
 }
 
 // Smelting is FurnaceRecipes.
 type Smelting struct{ List []Smelt }
 
-func (sm *Smelting) find(s *inventory.Stack) *Smelt {
+// Find returns the recipe whose input accepts s, or nil.
+func (sm *Smelting) Find(s *inventory.Stack) *Smelt {
 	for i := range sm.List {
 		if (Ingredient{sm.List[i].In}).Accepts(s) {
 			return &sm.List[i]
@@ -28,7 +31,7 @@ func (sm *Smelting) find(s *inventory.Stack) *Smelt {
 
 // Result returns the smelting result for s, or nil.
 func (sm *Smelting) Result(s *inventory.Stack) *inventory.Stack {
-	if r := sm.find(s); r != nil {
+	if r := sm.Find(s); r != nil {
 		return r.Out
 	}
 	return nil
