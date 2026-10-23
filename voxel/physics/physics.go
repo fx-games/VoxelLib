@@ -121,7 +121,8 @@ func Raycast(w *voxel.World, ox, oy, oz, dx, dy, dz, maxDist float64, pick func(
 
 // Walk visits the grid cells along the unit ray (Amanatides & Woo DDA) up
 // to maxDist, with the face entered and the distance to it, until visit
-// returns true. block may be any grid's lookup.
+// returns true. block may be any grid's lookup, or nil when visit does not
+// need the state (id is then 0).
 func Walk(block func(x, y, z int) voxel.StateID, ox, oy, oz, dx, dy, dz, maxDist float64, visit func(x, y, z int, id voxel.StateID, f voxel.Face, t float64) bool) bool {
 	x, y, z := int(math.Floor(ox)), int(math.Floor(oy)), int(math.Floor(oz))
 	step := func(d float64) int {
@@ -154,7 +155,11 @@ func Walk(block func(x, y, z int) voxel.StateID, ox, oy, oz, dx, dy, dz, maxDist
 	face := voxel.FaceUp
 	t := 0.0
 	for t <= maxDist {
-		if visit(x, y, z, block(x, y, z), face, t) {
+		var id voxel.StateID
+		if block != nil {
+			id = block(x, y, z)
+		}
+		if visit(x, y, z, id, face, t) {
 			return true
 		}
 		switch {
