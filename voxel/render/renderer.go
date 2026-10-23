@@ -514,7 +514,10 @@ func (r *Renderer) Render(cam *Camera) {
 	r.frame++
 	r.releaseRetired()
 	if cam.Far == 0 {
-		cam.Far = float64(r.Opt.RenderDistance*16) * 1.5
+		// EntityRenderer.setupCameraTransform (1.7.10): gluPerspective(fov,
+		// aspect, 0.05, farPlaneDistance*2) with farPlaneDistance =
+		// renderDistanceChunks*16. Clouds depth-test against this.
+		cam.Far = float64(r.Opt.RenderDistance*16) * 2
 	}
 	vp := cam.ViewProj()
 	fr := makeFrustum(vp)
