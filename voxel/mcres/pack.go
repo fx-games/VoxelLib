@@ -142,9 +142,18 @@ func (p *Pack) TextureFrames(name string) ([]image.Image, int, error) {
 	if err != nil {
 		return nil, 0, fmt.Errorf("mcres: %s: %w", name, err)
 	}
+	meta, _ := p.readFile(file + ".mcmeta")
+	frames, ticks := Frames(img, meta)
+	return frames, ticks, nil
+}
+
+// Frames splits a texture into its animation frames in play order and the
+// ticks (1/20 s) each is shown, by its .png.mcmeta (nil: none), as
+// TextureFrames does. Still textures return one frame and 0.
+func Frames(img image.Image, mcmeta []byte) ([]image.Image, int) {
 	b := img.Bounds()
 	if b.Dy() <= b.Dx() || b.Dy()%b.Dx() != 0 {
-		return []image.Image{img}, 0, nil
+		return []image.Image{img}, 0
 	}
 	n := b.Dy() / b.Dx()
 	strip := make([]image.Image, n)
@@ -159,15 +168,15 @@ func (p *Pack) TextureFrames(name string) ([]image.Image, int, error) {
 			Frames    []json.RawMessage `json:"frames"`
 		} `json:"animation"`
 	}
-	if data, err := p.readFile(file + ".mcmeta"); err == nil {
-		json.Unmarshal(data, &meta)
+	if mcmeta != nil {
+		json.Unmarshal(mcmeta, &meta)
 	}
 	if meta.Animation == nil {
-		return strip[:1], 0, nil // a tall texture without animation metadata
+		return strip[:1], 0 // a tall texture without animation metadata
 	}
 	ft := max(meta.Animation.Frametime, 1)
 	if len(meta.Animation.Frames) == 0 {
-		return strip, ft, nil
+		return strip, ft
 	}
 	// Explicit order: entries are an index or {"index":i,"time":t}; per-frame
 	// times are approximated by repeating the frame.
@@ -191,9 +200,9 @@ func (p *Pack) TextureFrames(name string) ([]image.Image, int, error) {
 		}
 	}
 	if len(out) == 0 {
-		return strip, ft, nil
+		return strip, ft
 	}
-	return out, ft, nil
+	return out, ft
 }
 
 // MissingTexture returns the classic magenta/black checkerboard.
