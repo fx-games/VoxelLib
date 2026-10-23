@@ -79,6 +79,46 @@ type BlockDef struct {
 	// Level is a liquid's level for blocks that encode it in the name
 	// rather than a "level" property (see StateInfo.Level).
 	Level uint8
+	// Tags label the block for neighbours' Part conditions.
+	Tags []string
+	// Parts are elements that depend on the neighbours (Minecraft's
+	// multipart): a ShapeBoxes block draws Boxes plus every Part whose
+	// conditions hold (see Connected).
+	Parts []Part
+	// NeighbourLight lights the block's faces with the brightest of its six
+	// neighbours instead of its own light (Minecraft's
+	// useNeighborBrightness: stairs, slabs, farmland, which block light).
+	NeighbourLight bool
+	// UVRandom marks faces (1<<Face) whose texture the renderer turns by a
+	// position-dependent quarter turn (LOTR's randomly rotated natural
+	// blocks).
+	UVRandom uint8
+}
+
+// Part is a group of elements drawn when every condition holds. A Replace
+// part replaces everything gathered before it; within a Group only the
+// first matching part counts.
+type Part struct {
+	When      []Cond
+	Boxes     []Box
+	Collision []Box // nil: Boxes collide
+	Replace   bool
+	Group     string
+}
+
+// Cond holds when the neighbour on Face passes any of the tests.
+type Cond struct {
+	Face Face
+	Any  []TagTest
+}
+
+// TagTest is true when the neighbour carries Tag (or, with Not, doesn't).
+// Built-in tags: "air" (the neighbour is air) and "opaque" (an opaque full
+// cube).
+type TagTest struct {
+	Tag string
+	Not bool
+	id  uint16
 }
 
 // StateInfo is the flattened, baked view of one state the mesher and physics
@@ -112,6 +152,11 @@ type StateInfo struct {
 	// neighbour hides it (FaceCount: never hidden), from its model's
 	// cullfaces (see FaceResolver). Nil: each face by the neighbour it faces.
 	Cull *[6]Face
+	// Tags and Parts as in BlockDef, tags interned (see Registry.tagID).
+	Tags           []uint16
+	Parts          []Part
+	NeighbourLight bool
+	UVRandom       uint8
 }
 
 // ModelResolver lets a resource pack decide shape and face textures of a state
@@ -141,6 +186,7 @@ type Registry struct {
 	texNames   []string
 	texIndex   map[string]uint16
 	texVersion atomic.Uint64
+	tagIndex   map[string]uint16
 	Resolver   ModelResolver
 	Faces      FaceResolver // used for states Resolver made cubes
 	// Missing is the texture name used for faces without one.
@@ -154,6 +200,7 @@ func NewRegistry() *Registry {
 		defs:       map[string]*BlockDef{},
 		stateByKey: map[string]StateID{},
 		texIndex:   map[string]uint16{},
+		tagIndex:   map[string]uint16{"air": tagAir, "opaque": tagOpaque},
 		Missing:    "block/missing",
 	}
 	empty := []StateInfo{}
@@ -270,6 +317,32 @@ func (r *Registry) bake(def *BlockDef, canon string, props map[string]string) St
 		Opaque: def.Opaque, Collides: def.Collides, Emission: def.LightEmission,
 		Opacity: def.LightOpacity, CullSelf: def.CullSelf, Connects: def.Connects,
 		Collision: def.Collision, TintColor: def.TintColor, Level: def.Level,
+		NeighbourLight: def.NeighbourLight, UVRandom: def.UVRandom,
+	}
+	for _, t := range def.Tags {
+		info.Tags = append(info.Tags, r.tagID(t))
+	}
+	if len(def.Parts) > 0 {
+		info.Parts = make([]Part, len(def.Parts))
+		for i, p := range def.Parts {
+			p.When = append([]Cond(nil), p.When...)
+			for j, c := range p.When {
+				c.Any = append([]TagTest(nil), c.Any...)
+				for k := range c.Any {
+					c.Any[k].id = r.tagID(c.Any[k].Tag)
+				}
+				p.When[j] = c
+			}
+			p.Boxes = append([]Box(nil), p.Boxes...)
+			for j := range p.Boxes {
+				for f, t := range p.Boxes[j].Tex {
+					if t != "" {
+						p.Boxes[j].TexID[f] = r.texture(t)
+					}
+				}
+			}
+			info.Parts[i] = p
+		}
 	}
 	if def.Shape == ShapeBoxes {
 		if def.Boxes != nil {
@@ -356,6 +429,21 @@ func (r *Registry) bake(def *BlockDef, canon string, props map[string]string) St
 		info.Tex[f] = r.texture(tex[f])
 	}
 	return info
+}
+
+const (
+	tagAir uint16 = iota
+	tagOpaque
+)
+
+// tagID interns a tag; caller holds mu.
+func (r *Registry) tagID(t string) uint16 {
+	if i, ok := r.tagIndex[t]; ok {
+		return i
+	}
+	i := uint16(len(r.tagIndex))
+	r.tagIndex[t] = i
+	return i
 }
 
 // texture interns a texture name; caller holds mu (or is the constructor).

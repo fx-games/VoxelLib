@@ -380,6 +380,8 @@ func prop(props, key string) string {
 // arms, stair corners, double chests.
 func Connected(info *StateInfo, nb func(Face) *StateInfo) []Box {
 	switch {
+	case len(info.Parts) > 0:
+		return info.partBoxes(nb, false)
 	case info.Connects:
 		out := append([]Box(nil), info.Boxes...)
 		for f := FaceNorth; f <= FaceEast; f++ {
@@ -462,13 +464,89 @@ func stairShape(info *StateInfo, nb func(Face) *StateInfo) string {
 	return ""
 }
 
+// partBoxes gathers the elements (or, with collision, the collision boxes)
+// of a block with Parts in context.
+func (info *StateInfo) partBoxes(nb func(Face) *StateInfo, collision bool) []Box {
+	out := info.Boxes
+	if collision && info.Collision != nil {
+		out = info.Collision
+	}
+	out = append([]Box(nil), out...)
+	var done []string
+	for i := range info.Parts {
+		p := &info.Parts[i]
+		if p.Group != "" && slicesContains(done, p.Group) || !p.holds(nb) {
+			continue
+		}
+		if p.Group != "" {
+			done = append(done, p.Group)
+		}
+		bs := p.Boxes
+		if collision && p.Collision != nil {
+			bs = p.Collision
+		}
+		if p.Replace {
+			out = append(out[:0:0], bs...)
+		} else {
+			out = append(out, bs...)
+		}
+	}
+	return out
+}
+
+func slicesContains(s []string, v string) bool {
+	for _, x := range s {
+		if x == v {
+			return true
+		}
+	}
+	return false
+}
+
+func (p *Part) holds(nb func(Face) *StateInfo) bool {
+	for _, c := range p.When {
+		o := nb(c.Face)
+		ok := false
+		for _, t := range c.Any {
+			if o.hasTag(t.id) != t.Not {
+				ok = true
+				break
+			}
+		}
+		if !ok {
+			return false
+		}
+	}
+	return true
+}
+
+func (info *StateInfo) hasTag(id uint16) bool {
+	switch id {
+	case tagAir:
+		return info.Shape == ShapeNone && info.Name == "minecraft:air"
+	case tagOpaque:
+		return info.Opaque
+	}
+	for _, t := range info.Tags {
+		if t == id {
+			return true
+		}
+	}
+	return false
+}
+
 // Boxes implements collide.Boxer for ShapeBoxes blocks overlapping area
 // (fences collide 1.5 blocks tall, as in Minecraft).
 func (w *World) Boxes(area collide.AABB, out []collide.AABB) []collide.AABB {
 	area.Grow(0, 0.5, 0).Blocks(func(x, y, z int) {
 		info := w.Reg.Info(w.Block(x, y, z))
 		boxes := info.Collision
-		if boxes == nil {
+		if len(info.Parts) > 0 {
+			boxes = info.partBoxes(func(f Face) *StateInfo {
+				n := f.Normal()
+				return w.Reg.Info(w.Block(x+n.X, y+n.Y, z+n.Z))
+			}, true)
+		} else if boxes == nil {
 			if info.Shape != ShapeBoxes || !collidable(info.Name) {
 				return
 			}

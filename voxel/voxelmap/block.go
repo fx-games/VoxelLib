@@ -27,7 +27,11 @@ import (
 //     none otherwise).
 //   - tint: "none", "grass", "foliage", "water" or a fixed "#RRGGBB".
 //   - flags: a list of words; "replaceable" lets a placed block overwrite it
-//     (default for cross, liquid and none).
+//     (default for cross, liquid and none); "opaque" makes a model or
+//     non-solid block hide its neighbours' faces like a full cube;
+//     "neighbour_light" lights it from its brightest neighbour.
+//   - uvrandom: faces whose texture turns by a position-dependent quarter
+//     turn (voxel.BlockDef.UVRandom).
 //
 // Every other field (sounds, ...) is left to the game in Raw.
 type Block struct {
@@ -43,7 +47,29 @@ type Block struct {
 	Collision json.RawMessage     `json:"collision"`
 	Tint      string              `json:"tint"`
 	Flags     []string            `json:"flags"`
+	Tags      []string            `json:"tags"`
+	Parts     []Part              `json:"parts"`
+	UVRandom  []string            `json:"uvrandom"`
 	Raw       json.RawMessage     `json:"-"`
+}
+
+// Part is a neighbour-dependent piece of a block (see voxel.Part): the model
+// (turned by x/y, textures defaulting to the block's) is added when, for
+// every face named in when, the neighbour there carries the tag ("tag"),
+// lacks it ("!tag"), passes any of a list of such tests, or passes each
+// list of a list of lists. Built-in tags:
+// "air", "opaque". replace swaps out everything gathered before; group lets
+// only the first matching part of a group count. collision overrides the
+// part's collision ("none" or boxes in 1/16).
+type Part struct {
+	When      map[string]json.RawMessage `json:"when"`
+	Model     string                     `json:"model"`
+	X         int                        `json:"x"`
+	Y         int                        `json:"y"`
+	Textures  json.RawMessage            `json:"textures"`
+	Collision json.RawMessage            `json:"collision"`
+	Replace   bool                       `json:"replace"`
+	Group     string                     `json:"group"`
 }
 
 // def builds the definition of key from entry b (meta is the key's meta).
@@ -120,12 +146,96 @@ func (m *Map) def(key string, b *Block, meta int) *voxel.BlockDef {
 		}
 	}
 	for _, f := range b.Flags {
-		if f == "replaceable" {
+		switch f {
+		case "replaceable":
 			d.Replaceable = true
+		case "neighbour_light":
+			d.NeighbourLight = true
+		case "opaque": // a model or cutout block that still hides its neighbours' faces
+			d.Opaque = true
+			if b.Opacity == nil {
+				d.LightOpacity = 15
+			}
 		}
+	}
+	for _, f := range b.UVRandom {
+		if v, ok := faceNames[f]; ok {
+			d.UVRandom |= 1 << v
+		} else {
+			logf("%s: uvrandom: unknown face %q", d.Name, f)
+		}
+	}
+	d.Tags = b.Tags
+	if len(b.Parts) > 0 {
+		m.parts(d, b)
 	}
 	return d
 }
+
+// parts turns blocks.json parts into voxel.Parts; the block becomes
+// ShapeBoxes (with no own elements if its shape drew nothing).
+func (m *Map) parts(d *voxel.BlockDef, b *Block) {
+	switch d.Shape {
+	case voxel.ShapeBoxes:
+	case voxel.ShapeNone:
+		d.Shape, d.Boxes, d.Replaceable = voxel.ShapeBoxes, []voxel.Box{}, false
+		if d.Collision == nil {
+			d.Collision = []voxel.Box{}
+		}
+	default:
+		logf("%s: parts need a model or \"none\" shape, not %q", d.Name, b.Shape)
+		return
+	}
+	for _, p := range b.Parts {
+		tex := p.Textures
+		if len(tex) == 0 {
+			tex = b.Textures
+		}
+		boxes, err := m.pack.ModelBoxes(strings.TrimSuffix(strings.TrimPrefix(p.Model, "model:"), ".json"), textureVars(tex))
+		if err != nil {
+			logf("%s: part model %s: %v", d.Name, p.Model, err)
+			continue
+		}
+		boxes = voxel.RotateBoxes(voxel.RotateBoxes(boxes, 0, float32(p.X)), 1, float32(p.Y))
+		vp := voxel.Part{Boxes: boxes, Replace: p.Replace, Group: p.Group}
+		for face, raw := range p.When {
+			f, ok := faceNames[face]
+			if !ok {
+				logf("%s: part condition on unknown face %q", d.Name, face)
+				continue
+			}
+			// a test, a list (any of), or a list of lists (all of, each any of)
+			var groups [][]string
+			var one string
+			var list []string
+			switch {
+			case json.Unmarshal(raw, &one) == nil:
+				groups = [][]string{{one}}
+			case json.Unmarshal(raw, &list) == nil:
+				groups = [][]string{list}
+			case json.Unmarshal(raw, &groups) != nil:
+				logf("%s: bad part condition %s", d.Name, raw)
+			}
+			for _, tests := range groups {
+				c := voxel.Cond{Face: f}
+				for _, t := range tests {
+					not := strings.HasPrefix(t, "!")
+					c.Any = append(c.Any, voxel.TagTest{Tag: strings.TrimPrefix(t, "!"), Not: not})
+				}
+				vp.When = append(vp.When, c)
+			}
+		}
+		if len(p.Collision) > 0 {
+			cd := &voxel.BlockDef{Name: d.Name, Shape: voxel.ShapeBoxes}
+			m.collision(cd, p.Collision)
+			vp.Collision = cd.Collision
+		}
+		d.Parts = append(d.Parts, vp)
+	}
+}
+
+var faceNames = map[string]voxel.Face{"down": voxel.FaceDown, "up": voxel.FaceUp, "north": voxel.FaceNorth,
+	"south": voxel.FaceSouth, "west": voxel.FaceWest, "east": voxel.FaceEast}
 
 // collision applies a blocks.json collision value to d.
 func (m *Map) collision(d *voxel.BlockDef, raw json.RawMessage) {
