@@ -46,10 +46,13 @@ type TextureUpdater interface {
 }
 
 // UpdateTexture puts img into t without a new texture when c can (same
-// size), else returns a new one. t may be nil.
+// size), else releases t and returns a new one. t may be nil.
 func UpdateTexture(c Canvas, t Texture, img image.Image) Texture {
 	if u, ok := c.(TextureUpdater); ok && t != nil && u.UpdateTexture(t, img) {
 		return t
+	}
+	if t != nil {
+		release(t)
 	}
 	return c.NewTexture(img)
 }

@@ -144,10 +144,19 @@ func (ctx *Context) Tex(loc string) Texture {
 
 // SetTexture registers an image under a resource location (generated
 // images such as item icons or a rendered map).
+// A texture already registered there is released.
 func (ctx *Context) SetTexture(loc string, img image.Image) Texture {
+	release(ctx.textures[loc])
 	t := ctx.Canvas.NewTexture(img)
 	ctx.textures[loc] = t
 	return t
+}
+
+// release frees t's GPU resources when its Canvas has any.
+func release(t Texture) {
+	if r, ok := t.(interface{ Release() }); ok {
+		r.Release()
+	}
 }
 
 func missingTexture() image.Image {
