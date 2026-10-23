@@ -230,3 +230,13 @@ func TestSaveRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestHaveInactive(t *testing.T) {
+	e := &Engine{Book: &Book{Quests: map[string]*Quest{"q": {Objectives: []Objective{{Kind: Kill, Target: "orc", Count: 3}}}}}, S: &State{}}
+	if have, need := e.Have("q", 0); have != 0 || need != 3 {
+		t.Fatalf("inactive quest: have %d need %d, want 0 3", have, need)
+	}
+	if have, need := e.Have("missing", 0); have != 0 || need != 0 {
+		t.Fatalf("unknown quest: have %d need %d", have, need)
+	}
+}

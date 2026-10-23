@@ -332,12 +332,18 @@ func (e *Engine) unorder(id string) {
 // what the player holds now).
 func (e *Engine) Have(id string, i int) (have, need int) {
 	q := e.Book.Quests[id]
+	if q == nil || i < 0 || i >= len(q.Objectives) {
+		return 0, 0
+	}
 	o := q.Objectives[i]
 	need = o.need()
 	if o.Kind == Collect || o.Kind == Deliver {
 		return min(need, e.Env.Count(o.Target)), need
 	}
-	return min(need, e.S.Active[id][i]), need
+	if p := e.S.Active[id]; i < len(p) {
+		return min(need, p[i]), need
+	}
+	return 0, need
 }
 
 // met reports whether every objective of an active quest is met.
