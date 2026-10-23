@@ -2,6 +2,7 @@ package actors
 
 import (
 	"math"
+	"time"
 
 	"github.com/memmaker/voxellib/character"
 	"github.com/memmaker/voxellib/voxel/nav"
@@ -44,8 +45,12 @@ const (
 	planRange  = 40
 	replan     = 40
 	pathBudget = 2000
-	maxNodes   = 6000
-	turnRate   = 30 * math.Pi / 180 // EntityMoveHelper turns at most 30° a tick
+	// pumpTime caps a tick's search time (the world's cell tests cost
+	// unevenly), checked every pumpSlice expansions.
+	pumpTime  = 2 * time.Millisecond
+	pumpSlice = 200
+	maxNodes  = 6000
+	turnRate  = 30 * math.Pi / 180 // EntityMoveHelper turns at most 30° a tick
 )
 
 func (m *Manager) graphFor(a *Actor) *nav.Graph {
@@ -138,7 +143,8 @@ func (m *Manager) plan(a *Actor, goal Vec) {
 // pump runs queued path searches, one at a time, until this tick's
 // expansion budget is spent; an unfinished search continues next tick.
 func (m *Manager) pump() {
-	for m.budget > 0 {
+	start := time.Now()
+	for m.budget > 0 && time.Since(start) < pumpTime {
 		if m.searching == nil {
 			if len(m.queue) == 0 {
 				return
@@ -157,10 +163,10 @@ func (m *Manager) pump() {
 			m.searching = a
 		}
 		before := m.search.Expanded()
-		p, done := m.search.Step(m.budget)
+		p, done := m.search.Step(min(m.budget, pumpSlice))
 		m.budget -= m.search.Expanded() - before
 		if !done {
-			return
+			continue
 		}
 		a := m.searching
 		m.searching = nil
