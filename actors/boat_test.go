@@ -83,4 +83,35 @@ func TestBoat(t *testing.T) {
 	if bar.speed != 0.25 || p.Body.Y != ba.Body.Y {
 		t.Fatalf("barrel speed %v rider %.3f barrel %.3f", bar.speed, p.Body.Y, ba.Body.Y)
 	}
+
+	// a barrel landing from 7.5 on dry ground passes the fall to its
+	// rider: ceil(7.5-3) = 5
+	m.Dismount(p)
+	drop := New("drop", "barrel", 15.5, 8.5, 15.5)
+	drop.Body.Width, drop.Body.Height, drop.Health, drop.Boat = 1, 1, 1, &Boat{MountedY: 0.5, MinSpeed: 0.04, MaxSpeed: 0.25, Ramp: 0.25 / 150}
+	m.Add(drop)
+	p.Health, p.MaxHealth = 20, 20
+	m.Mount(p, drop)
+	for i := 0; i < 60 && !drop.Body.OnGround; i++ {
+		m.Tick()
+	}
+	if p.Health != 15 {
+		t.Fatalf("rider health %v after the barrel's fall, want 15", p.Health)
+	}
+
+	// boats push only their own kind: barrel/boat overlapping don't move,
+	// two barrels do
+	mk := func(id, kind string, x float64) *Actor {
+		a := New(id, kind, x, 1, -15.5)
+		a.Body.Width, a.Body.Height, a.Health, a.Boat = 1, 1, 1, &Boat{MinSpeed: 0.04, MaxSpeed: 0.25, Ramp: 0.25 / 150}
+		m.Add(a)
+		return a
+	}
+	x1, x2 := mk("x1", "barrel", -15.5), mk("x2", "boat", -15)
+	y1, y2 := mk("y1", "barrel", 15.5), mk("y2", "barrel", 16)
+	m.Tick() // the push's velocity moves them the tick after
+	m.Tick()
+	if x1.Body.X != -15.5 || x2.Body.X != -15 || y1.Body.X >= 15.5 || y2.Body.X <= 16 {
+		t.Fatalf("push: barrel/boat %.3f %.3f, barrels %.3f %.3f", x1.Body.X, x2.Body.X, y1.Body.X, y2.Body.X)
+	}
 }

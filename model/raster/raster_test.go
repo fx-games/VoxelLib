@@ -75,3 +75,20 @@ func TestOver(t *testing.T) {
 		t.Fatalf("over blue: %v", o[:4])
 	}
 }
+
+// TestAdd checks Additive's GL_ONE, GL_ONE: red added to opaque dark blue
+// keeps both; added to bright red it saturates.
+func TestAdd(t *testing.T) {
+	tg := NewTarget(1, 1)
+	o := tg.Img.Pix
+	copy(o, []uint8{0, 0, 100, 255})
+	tg.add(o, 0.5, 0, 0, 1)
+	if o[0] != 128 || o[2] != 100 || o[3] != 255 {
+		t.Fatalf("add to blue: %v", o[:4])
+	}
+	copy(o, []uint8{200, 0, 0, 255})
+	tg.add(o, 0.5, 0, 0, 1)
+	if o[0] != 255 {
+		t.Fatalf("add to red: %v", o[:4])
+	}
+}

@@ -64,13 +64,18 @@ type LiquidMeta interface {
 
 // inWater is World.isAABBInMaterial(box, water): a water cell in the box
 // whose surface (y+1 - meta/8 below meta 8) reaches the box's bottom.
-func (m *Manager) inWater(b collide.AABB) bool {
+// Without surface it is handleMaterialAcceleration's test, whose height
+// check (floor(maxY+1) >= the cell's surface) always holds: any water cell.
+func (m *Manager) inWater(b collide.AABB, surface bool) bool {
 	lm, _ := m.W.(LiquidMeta)
 	for x := int(math.Floor(b.MinX)); x < int(math.Floor(b.MaxX+1)); x++ {
 		for y := int(math.Floor(b.MinY)); y < int(math.Floor(b.MaxY+1)); y++ {
 			for z := int(math.Floor(b.MinZ)); z < int(math.Floor(b.MaxZ+1)); z++ {
 				if m.W.Liquid(x, y, z) != character.LiquidWater {
 					continue
+				}
+				if !surface {
+					return true
 				}
 				top := float64(y + 1)
 				if lm != nil {
@@ -89,7 +94,7 @@ func (m *Manager) inWater(b collide.AABB) bool {
 
 // InWater reports whether the actor's box is in water as the reference's
 // isAABBInMaterial sees it (the barrel's ride check).
-func (m *Manager) InWater(a *Actor) bool { return m.inWater(a.Body.Box()) }
+func (m *Manager) InWater(a *Actor) bool { return m.inWater(a.Body.Box(), true) }
 
 // boatTick is EntityBoat.onUpdate's server branch. It reports whether the
 // boat broke.
@@ -104,9 +109,10 @@ func (m *Manager) boatTick(a *Actor) bool {
 	if bt.Damage > 0 {
 		bt.Damage--
 	}
-	// handleWaterMovement: water resets the fall
-	// ponytail: approximates handleMaterialAcceleration's height test with inWater
-	if m.inWater(b.Box().Grow(-0.001, -0.4, -0.001)) {
+	// handleWaterMovement: water in the box shrunk 0.4 from top and bottom
+	// resets the fall
+	// ponytail: no current push (the flow vector's 0.014), still water has none
+	if m.inWater(b.Box().Grow(-0.001, -0.401, -0.001), false) {
 		bt.fall = 0
 	}
 	b.PrevX, b.PrevY, b.PrevZ = b.X, b.Y, b.Z
@@ -116,7 +122,7 @@ func (m *Manager) boatTick(a *Actor) bool {
 		s := box
 		s.MinY = box.MinY + (box.MaxY-box.MinY)*float64(i)/5 - 0.125
 		s.MaxY = box.MinY + (box.MaxY-box.MinY)*float64(i+1)/5 - 0.125
-		if m.inWater(s) {
+		if m.inWater(s, true) {
 			water += 1.0 / 5
 		}
 	}
@@ -179,20 +185,24 @@ func (m *Manager) boatTick(a *Actor) bool {
 	if mz != vz {
 		b.VZ = 0
 	}
-	if bt.Fragile {
-		// updateFallState: landing after more than 3 breaks it; the fall
-		// grows only above anything but water and is not reset by small
-		// landings (handleWaterMovement resets it in water)
-		if b.OnGround {
-			if bt.fall > 3 {
-				return m.breakBoat(a, BoatCrashed)
-			}
-		} else if my < 0 && m.W.Liquid(int(math.Floor(b.X)), int(math.Floor(b.Y+bt.YOffset))-1, int(math.Floor(b.Z))) != character.LiquidWater {
-			bt.fall -= my
-		}
-		if b.HorizontalCollision && was > 0.2 {
+	// updateFallState: Entity.fall passes a landing to the rider. A
+	// Fragile boat breaks landing after more than 3, its fall grows only
+	// above anything but water and small landings don't reset it
+	// (handleWaterMovement does, in water).
+	switch {
+	case b.OnGround && bt.Fragile:
+		if bt.fall > 3 {
+			m.riderFall(a, bt.fall)
 			return m.breakBoat(a, BoatCrashed)
 		}
+	case b.OnGround:
+		m.riderFall(a, bt.fall)
+		bt.fall = 0
+	case my < 0 && (!bt.Fragile || m.W.Liquid(int(math.Floor(b.X)), int(math.Floor(b.Y+bt.YOffset))-1, int(math.Floor(b.Z))) != character.LiquidWater):
+		bt.fall -= my
+	}
+	if bt.Fragile && b.HorizontalCollision && was > 0.2 {
+		return m.breakBoat(a, BoatCrashed)
 	}
 	b.VX, b.VY, b.VZ = b.VX*0.99, b.VY*0.95, b.VZ*0.99
 	// turn toward the drift, at most 20° a tick; the yaw is the reference's
@@ -207,6 +217,13 @@ func (m *Manager) boatTick(a *Actor) bool {
 	a.Yaw += d
 	a.HeadYaw = a.Yaw
 	return false
+}
+
+// riderFall is the rider's EntityLivingBase.fall: ceil(fall-3) damage.
+func (m *Manager) riderFall(a *Actor, fall float64) {
+	if r := a.Rider; r != nil && fall > 3 {
+		m.Hurt(r, nil, math.Ceil(fall-3), true)
+	}
 }
 
 // boatSeat is updateRiderPosition: the rider at posY + getMountedYOffset +

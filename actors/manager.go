@@ -355,7 +355,9 @@ func (m *Manager) record(l *Actor) {
 
 // push is EntityLivingBase.collideWithNearbyEntities/applyEntityCollision:
 // actors whose boxes (grown by 0.2 sideways) overlap push each other apart
-// through their velocity. A rider and its mount don't push.
+// through their velocity. A rider and its mount don't push. Boats push
+// only boats of their own Kind (EntityBoat's instanceof check), but any
+// living actor pushes them.
 func (m *Manager) push() {
 	type cell struct{ x, z int }
 	type entry struct {
@@ -375,7 +377,7 @@ func (m *Manager) push() {
 			for dx := -1; dx <= 1; dx++ {
 				for dz := -1; dz <= 1; dz++ {
 					for _, f := range grid[cell{c.x + dx, c.z + dz}] {
-						if f.i > e.i && box.Intersects(f.a.Body.Box()) {
+						if f.i > e.i && box.Intersects(f.a.Body.Box()) && (e.a.Boat == nil || f.a.Boat == nil || e.a.Kind == f.a.Kind) {
 							collidePair(e.a, f.a)
 						}
 					}

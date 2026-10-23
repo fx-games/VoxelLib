@@ -41,6 +41,10 @@ type Target struct {
 	// over the image (kept non-premultiplied, so it composites like GL over
 	// whatever the image is later drawn on); otherwise fragments are opaque.
 	Blend bool
+	// Additive draws with glBlendFunc(GL_ONE, GL_ONE) (glowing eyes):
+	// the fragment's colour is added to the pixel's, alphas add up to 1.
+	// It takes precedence over Blend; depth is still written.
+	Additive bool
 }
 
 // NewTarget makes a cleared w x h target.
@@ -177,6 +181,10 @@ func (t *Target) tri(p [3]mgl32.Vec3, uv [3]mgl32.Vec2, col [3]float32, alpha fl
 			}
 			t.Depth[i] = z
 			o := t.Img.Pix[y*t.Img.Stride+x*4:]
+			if t.Additive {
+				t.add(o, r*col[0], g*col[1], b*col[2], a*alpha)
+				continue
+			}
 			if t.Blend {
 				t.over(o, r*col[0], g*col[1], b*col[2], a*alpha)
 				continue
@@ -195,6 +203,18 @@ func (t *Target) over(o []uint8, r, g, b, a float32) {
 	}
 	mix := func(s float32, d uint8) uint8 { return unorm((s*a + float32(d)/255*da*(1-a)) / oa) }
 	o[0], o[1], o[2], o[3] = mix(r, o[0]), mix(g, o[1]), mix(b, o[2]), unorm(oa)
+}
+
+// add adds a fragment to pixel o (GL_ONE, GL_ONE), in premultiplied terms
+// and back: over an opaque pixel the colours sum.
+func (t *Target) add(o []uint8, r, g, b, a float32) {
+	da := float32(o[3]) / 255
+	oa := min(1, a+da)
+	if oa <= 0 {
+		return
+	}
+	sum := func(s float32, d uint8) uint8 { return unorm((s + float32(d)/255*da) / oa) }
+	o[0], o[1], o[2], o[3] = sum(r, o[0]), sum(g, o[1]), sum(b, o[2]), unorm(oa)
 }
 
 func mod(a, n int) int { return ((a % n) + n) % n }
