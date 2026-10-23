@@ -115,7 +115,7 @@ func (m *Manager) nearestHostile(a *Actor, r float64) *Actor {
 		if o == a || !o.Alive() || o == a.Riding || o == a.Rider {
 			continue
 		}
-		if d := o.Pos().dist2(a.Pos()); d < bd && m.Factions.Sees(a, o) == Hostile {
+		if d := o.Pos().dist2(a.Pos()); d < bd && m.Factions.Sees(a, o) == Hostile && (m.CanTarget == nil || m.CanTarget(a, o)) {
 			best, bd = o, d
 		}
 	}

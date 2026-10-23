@@ -42,6 +42,10 @@ type Manager struct {
 	// Sees, if set, is EntitySenses.canSee (the eye-to-eye block ray);
 	// nil sees everything.
 	Sees func(a, t *Actor) bool
+	// CanTarget, if set, is a target task's isSuitableTarget: whether a
+	// may pick t as its nearest hostile (to fight, or to flee from in
+	// Flee mode); revenge is not asked.
+	CanTarget func(a, t *Actor) bool
 	// OnExtinguish is called when water or rain puts a burning actor out
 	// (random.fizz 0.7, 1.6 + (r - r) * 0.4).
 	OnExtinguish func(a *Actor)
