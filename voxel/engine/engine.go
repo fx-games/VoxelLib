@@ -583,6 +583,28 @@ func (e *Engine) Regenerate() {
 	e.request = true
 }
 
+// SetRenderDistance changes the render distance in chunks while running
+// (GameSettings.renderDistanceChunks): the next Update streams chunks in or
+// out, and loaded columns that come into range are meshed. Call on the
+// render thread, between Updates.
+func (e *Engine) SetRenderDistance(n int) {
+	old := e.cfg.RenderDistance
+	if n <= 0 || n == old {
+		return
+	}
+	e.cfg.RenderDistance = n
+	e.Renderer.Opt.RenderDistance = n
+	e.started = false // unloadFar and requestChunks for the new radius
+	ms, cnt := e.World.MinSection(), e.World.SectionCount()
+	for p := range e.loaded { // dispatch dropped their sections while out of range
+		if e.inRange(p, n) && !e.inRange(p, old) {
+			for sy := ms; sy < ms+cnt; sy++ {
+				e.dirty[voxel.SectionPos{X: p.X, Y: sy, Z: p.Z}] = true
+			}
+		}
+	}
+}
+
 // dirtyAround queues every section of the 3x3 columns around p.
 func (e *Engine) dirtyAround(p voxel.ChunkPos) {
 	ms, n := e.World.MinSection(), e.World.SectionCount()
