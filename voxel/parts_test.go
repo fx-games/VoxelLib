@@ -99,3 +99,34 @@ func TestPartFlags(t *testing.T) {
 		}
 	}
 }
+
+// appendPartBoxes reuses its buffer without touching the registry's boxes.
+func TestAppendPartBoxes(t *testing.T) {
+	r := NewRegistry()
+	arm, post := bx(7, 6, 0, 9, 9, 7), bx(6, 0, 6, 10, 16, 10)
+	r.Register(&BlockDef{Name: "t:fence", Shape: ShapeBoxes, Boxes: []Box{post}, Tags: []string{"fence"},
+		Parts: []Part{
+			{When: []Cond{{Face: FaceNorth, Any: []TagTest{{Tag: "fence"}}}}, Boxes: []Box{arm}},
+			{When: []Cond{{Face: FaceUp, Any: []TagTest{{Tag: "air", Not: true}}}}, Boxes: []Box{arm}, Replace: true},
+		}})
+	fence, air := r.Info(r.State("t:fence", nil)), r.Info(Air)
+	nb := func(m map[Face]*StateInfo) Nb {
+		return faces(func(f Face) *StateInfo {
+			if o := m[f]; o != nil {
+				return o
+			}
+			return air
+		})
+	}
+	var buf []Box
+	for _, m := range []map[Face]*StateInfo{{FaceNorth: fence}, {FaceUp: fence}, nil, {FaceNorth: fence, FaceUp: fence}} {
+		buf = fence.appendPartBoxes(buf, nb(m), [3]int{}, false)
+		want := fence.partBoxes(nb(m), [3]int{}, false)
+		if len(buf) != len(want) || len(buf) > 0 && buf[0].Min != want[0].Min {
+			t.Errorf("%v: %v, want %v", m, buf, want)
+		}
+	}
+	if len(fence.Boxes) != 1 || fence.Boxes[0].Min != post.Min {
+		t.Errorf("registry boxes changed: %v", fence.Boxes)
+	}
+}

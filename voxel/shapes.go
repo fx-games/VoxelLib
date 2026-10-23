@@ -602,11 +602,17 @@ func stairShape(info *StateInfo, nb Nb) string {
 // partBoxes gathers the elements (or, with collision, the collision boxes)
 // of a block with Parts in context.
 func (info *StateInfo) partBoxes(nb Nb, pos [3]int, collision bool) []Box {
+	return info.appendPartBoxes(nil, nb, pos, collision)
+}
+
+// appendPartBoxes is partBoxes into dst's storage (dst's contents are
+// dropped), so a caller can reuse one buffer.
+func (info *StateInfo) appendPartBoxes(dst []Box, nb Nb, pos [3]int, collision bool) []Box {
 	out := info.Boxes
 	if collision && info.Collision != nil {
 		out = info.Collision
 	}
-	out = append([]Box(nil), out...)
+	out = append(dst[:0], out...)
 	var done []string
 	var flags uint32
 	for i := range info.Parts {
@@ -626,7 +632,7 @@ func (info *StateInfo) partBoxes(nb Nb, pos [3]int, collision bool) []Box {
 			bs = p.Collision
 		}
 		if p.Replace {
-			out = append(out[:0:0], bs...)
+			out = append(out[:0], bs...)
 		} else {
 			out = append(out, bs...)
 		}
@@ -723,13 +729,15 @@ func (info *StateInfo) hasTag(id uint16) bool {
 // Boxes implements collide.Boxer for ShapeBoxes blocks overlapping area
 // (fences collide 1.5 blocks tall, as in the reference game).
 func (w *World) Boxes(area collide.AABB, out []collide.AABB) []collide.AABB {
+	var buf []Box // the part boxes, reused across the blocks
 	area.Grow(0, 0.5, 0).Blocks(func(x, y, z int) {
 		info := w.Reg.Info(w.Block(x, y, z))
 		boxes := info.Collision
 		if len(info.Parts) > 0 {
-			boxes = info.partBoxes(func(d [3]int) *StateInfo {
+			buf = info.appendPartBoxes(buf, func(d [3]int) *StateInfo {
 				return w.Reg.Info(w.Block(x+d[0], y+d[1], z+d[2]))
 			}, [3]int{x, y, z}, true)
+			boxes = buf
 		} else if boxes == nil {
 			if info.Shape != ShapeBoxes || !collidable(info.Name) {
 				return
