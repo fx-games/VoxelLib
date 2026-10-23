@@ -275,7 +275,7 @@ func (m *Manager) moveTo(a *Actor, goal Vec, mul float64) bool {
 	// that times the speed again (EntityMoveHelper + moveFlying), so the
 	// ground push is speed²: zombie 0.23 → 2.3 m/s, the player's 0.1 with
 	// full input → 4.3 m/s.
-	s := c.Speed * mul
+	s := c.moveSpeed() * mul
 	b.MoveSpeed = s * s / 0.98
 	n2 := &c.nav
 	n2.in = character.Input{Forward: fwd, Yaw: c.Yaw, Jump: jump}

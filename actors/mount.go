@@ -257,8 +257,8 @@ func (m *Manager) rideInput(mt *Actor) character.Input {
 			fwd, strafe = 0, 0
 		}
 	}
-	b.MoveSpeed = mt.Speed
-	b.StepHeight, b.AirAccel = 1, mt.Speed*0.1
+	b.MoveSpeed = mt.moveSpeed()
+	b.StepHeight, b.AirAccel = 1, b.MoveSpeed*0.1
 	// a power sent in the air is dropped on landing, never used
 	if power > 0 && b.OnGround {
 		b.VY = s.JumpStrength * power
@@ -271,6 +271,15 @@ func (m *Manager) rideInput(mt *Actor) character.Input {
 	}
 	jump := b.InWater && mt.CanSwim // EntityAISwimming keeps running
 	return character.Input{Forward: fwd, Strafe: strafe, Yaw: mt.Yaw, Jump: jump}
+}
+
+// moveSpeed is the movementSpeed attribute's value: Speed, times 1.3
+// while sprinting (EntityLivingBase.setSprinting's modifier).
+func (a *Actor) moveSpeed() float64 {
+	if a.Sprinting {
+		return a.Speed * 1.3
+	}
+	return a.Speed
 }
 
 // HorseStats rolls 1.7.10 EntityHorse attributes: movement speed

@@ -86,3 +86,22 @@ func TestRearAnim(t *testing.T) {
 		t.Fatalf("rearing %v amount %.4f after 20 ticks", h.Rearing(), h.Mount.Anim.Rear)
 	}
 }
+
+// TestMountFall: a mount that is no horse takes ceil(d-3) and Entity.fall
+// passes the same fall to its rider; sprinting speeds the ridden mount 1.3x.
+func TestMountFall(t *testing.T) {
+	m, p, h, _ := horseWorld(t, MountStats{RideHeight: 0.8, Tame: true, Saddled: true})
+	h.Body.Y, h.Body.PrevY = 13, 13
+	for i := 0; i < 60 && !(h.Body.OnGround && h.Body.PrevY == h.Body.Y); i++ {
+		m.Tick()
+	}
+	if h.Health != 12 || p.Health != 12 { // the fall is 10.x blocks (TestHorseFall: ceil(d*0.5-3) = 3)
+		t.Fatalf("health mount %.0f rider %.0f, want 12 12", h.Health, p.Health)
+	}
+	h.Sprinting = true
+	p.RideInput.Forward = 1
+	m.Tick()
+	if math.Abs(h.Body.MoveSpeed-0.3*1.3) > 1e-12 {
+		t.Fatalf("sprinting move speed %.4f, want 0.39", h.Body.MoveSpeed)
+	}
+}

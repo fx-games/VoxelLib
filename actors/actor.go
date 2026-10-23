@@ -200,7 +200,7 @@ type Actor struct {
 	Yaw, Pitch, HeadYaw  float64 // radians, as character.Input
 	PrevYaw, PrevHeadYaw float64
 	Player               bool // body driven by the game (input), not by a brain
-	Sprinting            bool // set by the game for a sprinting player (+1 knockback)
+	Sprinting            bool // set by the game: a sprinting player (+1 knockback), a charging mount (speed ×1.3)
 	Persistent           bool // never despawns
 	Faction              string
 	Health, MaxHealth    float64
