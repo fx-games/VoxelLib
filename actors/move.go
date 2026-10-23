@@ -125,12 +125,9 @@ func (m *Manager) plan(a *Actor, goal Vec) {
 		f := reach / d
 		leg = Vec{c.Body.X + (goal.X-c.Body.X)*f, c.Body.Y + 4, c.Body.Z + (goal.Z-c.Body.Z)*f}
 	}
-	to, ok2 := m.ground(g, leg)
-	if !ok2 {
-		m.cancelSearch(a)
-		n.path, n.i = nil, 0
-		return
-	}
+	// No footing at the leg for this walker: head for the spot anyway and
+	// take the nearest point (Graph.Closest).
+	to := m.start(g, leg)
 	n.from, n.to = from, to
 	if !n.pending { // else the queued or running search takes the new ends
 		n.pending = true
