@@ -67,6 +67,7 @@ func (m *Manager) setGraph(g *nav.Graph, a *Actor) {
 	}
 	g.W, g.Door, g.Water, g.Cost = m.W, nil, nil, m.costFn
 	g.Size, g.Closest = nav.SizeOf(a.Body.Width, a.Body.Height), true
+	m.half = a.Body.Width / 2
 	if a.OpensDoors {
 		g.Door = m.doorFn
 	}
@@ -75,11 +76,10 @@ func (m *Manager) setGraph(g *nav.Graph, a *Actor) {
 	}
 }
 
-// ground finds the feet cell (footprint corner) for a point under the
-// footprint's centre.
+// ground finds the feet cell (footprint corner) for a walker standing at v:
+// the cell of its bounding box's min corner (PathFinder: floor(minX)).
 func (m *Manager) ground(g *nav.Graph, v Vec) (nav.Pos, bool) {
-	o := float64(g.Size[0]-1) / 2
-	return g.Ground(int(math.Floor(v.X-o)), int(math.Floor(v.Y+0.01)), int(math.Floor(v.Z-o)))
+	return g.Ground(int(math.Floor(v.X-m.half)), int(math.Floor(v.Y+0.01)), int(math.Floor(v.Z-m.half)))
 }
 
 // start is the search's start for a walker at v: its ground cell, else the
@@ -88,8 +88,7 @@ func (m *Manager) start(g *nav.Graph, v Vec) nav.Pos {
 	if p, ok := m.ground(g, v); ok {
 		return p
 	}
-	o := float64(g.Size[0]-1) / 2
-	return nav.Pos{X: int(math.Floor(v.X - o)), Y: int(math.Floor(v.Y + 0.01)), Z: int(math.Floor(v.Z - o))}
+	return nav.Pos{X: int(math.Floor(v.X - m.half)), Y: int(math.Floor(v.Y + 0.01)), Z: int(math.Floor(v.Z - m.half))}
 }
 
 // Detours: the long search reaches longRange blocks with longNodes

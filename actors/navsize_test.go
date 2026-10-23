@@ -40,3 +40,16 @@ func TestBigWalkerGoalWithoutRoom(t *testing.T) {
 		t.Fatalf("troll %.1f blocks from a goal it cannot stand on, at %+v", d, a.Pos())
 	}
 }
+
+// TestBigWalkerStartCell: the search starts at floor(minX) (PathFinder), so
+// a troll whose box ends a hair past a ledge it stands on starts on that
+// ledge, not in the air beside it.
+func TestBigWalkerStartCell(t *testing.T) {
+	m := NewManager(flat(4), nil, nil, 1)
+	a := New("troll", "troll", 0, 1, 0)
+	a.Body.Width, a.Body.Height = 1.6, 3.2
+	g := m.graphFor(a)
+	if p := m.start(g, Vec{10.79999, 1, 0.8}); p.X != 9 || p.Z != 0 {
+		t.Fatalf("start cell %+v, want x 9 z 0 (floor of the min corner)", p)
+	}
+}

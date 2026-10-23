@@ -55,6 +55,7 @@ type Manager struct {
 	budget          int // expansions left this tick
 	doorFn, waterFn func(x, y, z int) bool
 	costFn          func(nav.Pos) int
+	half            float64 // half the width of the walker the graph is set for
 }
 
 // NewManager returns a Manager. If arrows is not nil, the Manager installs
