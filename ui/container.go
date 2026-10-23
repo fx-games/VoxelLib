@@ -123,6 +123,20 @@ func ChestLayout(rows int, title string) ContainerLayout {
 		Slots:  playerSlots(s, 103+(rows-4)*18)}
 }
 
+// DispenserLayout is GuiDispenser: 0-8 the 3x3 grid, 9-35 main, 36-44
+// hotbar, the title centred.
+func DispenserLayout(title string) ContainerLayout {
+	var s [][2]int
+	for r := 0; r < 3; r++ {
+		for c := 0; c < 3; c++ {
+			s = append(s, [2]int{62 + c*18, 17 + r*18})
+		}
+	}
+	return ContainerLayout{Texture: "textures/gui/container/dispenser.png", W: 176, H: 166,
+		Labels: []Label{{Text: title, Y: 6, Centered: true}, {Text: "container.inventory", X: 8, Y: 166 - 96 + 2}},
+		Slots:  playerSlots(s, 84)}
+}
+
 // CraftingLayout is GuiCrafting: 0 result, 1-9 grid, 10-36 main, 37-45
 // hotbar.
 func CraftingLayout() ContainerLayout {
