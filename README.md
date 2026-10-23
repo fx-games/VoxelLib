@@ -23,6 +23,7 @@ Agents should also read [AGENTS.md](AGENTS.md).
 | `voxel/voxelmap` | VoxelMap directories: converted pre-1.13 maps (ids.json, blocks.json, JSON models, textures, unchanged Anvil regions) |
 | `voxel/engine` | Ties it together: async streaming, lighting, meshing, saving; VoxelMap worlds with delta save slots |
 | `worldgen` | Generator interfaces, a by-name generator registry, cross-chunk structures; `worldgen/overworld` (noise terrain, caves, ores, trees) and `worldgen/flat` are examples |
+| `app` | Game shell: native window, rebindable input, 20 Hz tick + render loop, player (break/place, reach, hand), entity registry, save slots, screen/HUD and sound hooks |
 | `character` | Standalone first-person controller: walk, sprint, sneak, jump, fly, swim, dive, lava |
 | `items` | Dropped items (physics, bob/spin) and the one-hand pickup/swap rule |
 | `items/extrude` | 2D sprite → 3D slab mesh (Minecraft-style item extrusion), pure Go |

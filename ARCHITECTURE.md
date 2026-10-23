@@ -2,13 +2,19 @@
 
 ## Layers
 ```
-cmd/explorer ── demo glue: input, character, items, frame loop
+cmd/explorer ── demo: items, creatures, combat, crossbow, torches, signs (hooks on app)
+   │
+app ─────────── game shell: window, input mapping, 20 Hz tick + render loop,
+   │            player (controller, camera, hand, reach, break/place), entities,
+   │            save/load glue, screens/HUD hooks, sound hooks
    │
    ├── character        standalone controller (needs only a World interface)
    ├── items            drops + pickup rule (needs only collide.Solids)
    ├── mobs             creature behaviour (needs only collide.Solids)
+   ├── actors           NPCs/monsters/mounts on character physics, nav, projectile
+   ├── quest            quests, dialogs, triggers, Go hooks (stdlib only)
    ├── projectile       arrows: ballistic flight, sticking in blocks and targets
-   ├── audio            positional mixer on oto (pure Go reader, no GPU)
+   ├── audio            Minecraft-1.7.10-style sound: mixer on oto, Ogg Vorbis, sounds.json events, music ticker
    ├── importer/roblox, importer/mcmodel → model (+ model/gltf), via importer/packfs
    ├── items/extrude    sprite → mesh (pure)        items/sheet  sheet cutter (pure)
    ├── worldgen/...     terrain generators (implement worldgen.Generator)
@@ -23,8 +29,21 @@ cmd/explorer ── demo glue: input, character, items, frame loop
           └── voxel          registry, chunks, world, light
 ```
 Rule: lower layers never import higher ones. `character`, `items` and
-`worldgen` know nothing about the engine. The explorer adapts the engine to
-them, as `terrain` does in `cmd/explorer/player.go`.
+`worldgen` know nothing about the engine. `app` adapts the engine to
+them, as `app.Terrain` does in `app/player.go`.
+
+## Game shell (`app`)
+A game fills `app.Config` (window, `engine.Config`, debug switches) and `app.Hooks`
+(nil hooks are skipped), then calls `Run`. Each session (`Run`, and again after
+`NewGame`) creates the engine, `App.Models` (a shared `render.ModelRenderer`) and the
+player, then calls `Hooks.Start` and `Hooks.Load` with the slot's blob. The loop: poll
+input → ticks at 20 Hz (screens' `Update`; unless paused: player, entities,
+`Hooks.Tick`) → `Engine.Update` → `Hooks.Render(alpha, &opt)` → terrain, block outline,
+entities, `Hooks.Draw` (hand last) → crosshair, `HUD`, screens → present.
+Input goes to the top `Screen` while one is open (the game is paused, the mouse
+free); otherwise bound actions go to `Hooks.Action` first, then the app (move, jump,
+attack/use with `Hooks.BlockInteract`/`EntityInteract`, `BreakTicks`, `HeldBlock`,
+pause, hotbar, F2/F3). The save blob is JSON: the player plus the game's own bytes.
 
 ## Data model (`voxel`)
 - **Block states.** A `StateID` (uint32) indexes the `Registry` table of
@@ -71,6 +90,11 @@ design is covered in README.md and the comments in engine.go and render/region.g
   speeds.
 - **`items`.** `World.Tick` runs the drop physics and `Collect` implements the swap rule.
   A swapped-out drop waits until the player leaves it, so it can't bounce back into the hand.
+- **`inventory`, `crafting`, `survival`.** Pure 1.7.10 (+Forge) rules, no rendering: item
+  registry and stacks, containers with exact `slotClick`; shaped/shapeless/repair recipes and
+  the furnace, loaded from JSON (`crafting.File`); health, damage, armour, food, fire, air,
+  falls, break speed and drops. The game wires world drops (`items`) to `Player.Add` and
+  `Container.Drop`. Tests check vanilla numbers.
 - **`worldgen`.** Implement `Generate(w, chunk)` by filling blocks only; the engine lights the
   chunk. It runs concurrently, so a generator must be deterministic and safe for concurrent use.
 
@@ -90,6 +114,29 @@ design is covered in README.md and the comments in engine.go and render/region.g
   (`cmd/explorer/import.go`). `Hostile` mobs chase a goal and run an attack cycle
   (`Attack` state, `Strike` on the hit tick); weapons, clips and damage live in
   `cmd/explorer/combat.go`.
+- **`actors`**: a `Manager` ticks `Actor`s (bodies are `character.Character`s; AI walkers
+  push with speed², as 1.7.10's move helper). Brains (stand, wander, follow in formation on the
+  leader's track, routes with A* legs and door opening/closing, guard, flee), 1.7.10 combat (hurt
+  window, knockback, armour, melee cooldown/reach, EntityAIArrowAttack via `projectile`), factions
+  with player standing, riding with the horse jump bar, a `Spawner` for game spawn tables, and
+  `Save`/`Load`. Only `Travel` (the story's group skip) moves actors without walking.
+- **`quest`**: an `Engine` runs a `Book` (quests, dialogs, conditions, triggers, areas) for one
+  player against the game's `Env`; dialogs go to a `Presenter` (the ui), named Go hooks do what
+  map scripts did, and `State` is the save blob part.
+
+## Audio (`audio`)
+- **Mixer** (oto, 44.1 kHz stereo float): voices with volume, pitch (linear-interpolated resampling,
+  clamped 0.5..2), linear attenuation over 16 × max(1, volume) blocks, equal-power pan for mono
+  sources (stereo is not spatialized, as in OpenAL), live category volumes (`master` scales all).
+  28 buffered + 4 streamed voices; the oldest is dropped. `Mixer.Read` is testable without a device.
+- **Registry**: sounds.json semantics of 1.7.10's SoundHandler (merge in pack order, `replace`,
+  categories, weighted variants, `type: event` references, whole-file rejection on errors).
+- **Sounds**: `Open(dir, mixer)` reads a merged `sounds.json` (+ `blocksounds.json`);
+  `Play(event, audio.At(x, y, z, vol, pitch))` / `audio.UI(vol, pitch)`; files decode in the
+  background and are cached, `stream` entries decode while playing. `Tick()` releases delayed sounds.
+- **MusicTicker**: 1.7.10 MusicTicker timing (first track after 100 ticks, random delay after each
+  track, type change stops the track) with a `Pick` hook per situation; `MusicPool` is a weighted,
+  tagged track list for region music.
 
 ## Assets
 - `assets/rpg16pack` is a Minecraft resource pack generated by `cmd/rpg16pack`.
