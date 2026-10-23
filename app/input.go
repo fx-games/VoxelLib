@@ -209,7 +209,7 @@ func (in *Input) dispatch(name string, pressed bool) {
 	case ActScreenshot:
 		a.shotReq = true
 	case ActStats:
-		a.Config.Debug.Verbose = !a.Config.Debug.Verbose
+		a.ShowDebug = !a.ShowDebug
 	default:
 		if len(name) == len(ActHotbar)+1 && name[:len(ActHotbar)] == ActHotbar {
 			if i := int(name[len(ActHotbar)] - '1'); i >= 0 && i < a.Player.HotbarSize {

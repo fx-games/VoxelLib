@@ -164,6 +164,9 @@ type App struct {
 	screens  []Screen
 	HUD      HUD // drawn every frame under the screens (nil = none)
 	Captured bool
+	// ShowDebug is F3's debug screen (GameSettings.showDebugInfo); the
+	// game fills ui.HUDState.Debug while it is on.
+	ShowDebug bool
 
 	quit, restart bool
 	shotReq       bool

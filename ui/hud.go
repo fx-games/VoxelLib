@@ -32,6 +32,9 @@ type HUDState struct {
 	Crosshair bool
 	Mount     *MountBar
 	Boss      *BossBar
+	// Debug are F3's lines, drawn top left (GuiIngame.renderGameOverlay:
+	// 2, 2+10*i, 0xE0E0E0 with shadow); nil: off.
+	Debug []string
 }
 
 // MountBar is the ridden animal's health (half hearts).
@@ -176,6 +179,9 @@ func (h *HUD) Draw(ctx *Context, partial float32) {
 			}
 		}
 		h.drawTitle(ctx, partial)
+		for i, l := range st.Debug {
+			f.Draw(c, l, 2, 2+10*i, 0xE0E0E0, true)
+		}
 	}
 	h.drawChat(ctx)
 }
