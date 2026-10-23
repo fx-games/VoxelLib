@@ -369,19 +369,7 @@ func (g *Graph) Step(budget int) (path []Pos, done bool) {
 			if n.closed {
 				continue
 			}
-			c := 10
-			if np.X != cur.pos.X && np.Z != cur.pos.Z {
-				c = 14
-			}
-			if g.Cost != nil {
-				c += g.Cost(np)
-			}
-			if dy := np.Y - cur.pos.Y; dy > 0 {
-				c += 5
-			} else if dy < 0 {
-				c += 2 * -dy
-			}
-			if ng := cur.g + c; ng < n.g {
+			if ng := cur.g + g.stepCost(cur.pos, np); ng < n.g {
 				n.g, n.f, n.parent = ng, ng+h(np, to), cur
 				if n.idx >= 0 {
 					heap.Fix(&g.open, n.idx)
@@ -395,6 +383,67 @@ func (g *Graph) Step(budget int) (path []Pos, done bool) {
 		return g.Step(1) // ended exactly at the budget: report it, with Closest
 	}
 	return nil, false
+}
+
+// stepCost is the cost of one step a..b (10 = straight, 14 = diagonal,
+// climbing and dropping cost extra) plus Cost(b).
+func (g *Graph) stepCost(a, b Pos) int {
+	c := 10
+	if b.X != a.X && b.Z != a.Z {
+		c = 14
+	}
+	if g.Cost != nil {
+		c += g.Cost(b)
+	}
+	if dy := b.Y - a.Y; dy > 0 {
+		c += 5
+	} else if dy < 0 {
+		c += 2 * -dy
+	}
+	return c
+}
+
+// Reach floods from "from" with the step costs of Path and returns every
+// cell reachable within maxCost: its cost and the cell it is entered from
+// (from itself has none). Trace a path back through prev. It does not
+// use the search cache, so it may run while a Begin search is unfinished.
+func (g *Graph) Reach(from Pos, maxCost int) (cost map[Pos]int, prev map[Pos]Pos) {
+	cost, prev = map[Pos]int{from: 0}, map[Pos]Pos{}
+	open := &reachHeap{{from, 0}}
+	var buf [8]Pos
+	for open.Len() > 0 {
+		cur := heap.Pop(open).(reachItem)
+		if cur.c > cost[cur.p] {
+			continue // stale entry
+		}
+		for _, np := range g.Neighbors(cur.p, buf[:0]) {
+			c := cur.c + g.stepCost(cur.p, np)
+			if old, seen := cost[np]; c > maxCost || seen && c >= old {
+				continue
+			}
+			cost[np], prev[np] = c, cur.p
+			heap.Push(open, reachItem{np, c})
+		}
+	}
+	return cost, prev
+}
+
+type reachItem struct {
+	p Pos
+	c int
+}
+
+type reachHeap []reachItem
+
+func (h reachHeap) Len() int           { return len(h) }
+func (h reachHeap) Less(i, j int) bool { return h[i].c < h[j].c }
+func (h reachHeap) Swap(i, j int)      { h[i], h[j] = h[j], h[i] }
+func (h *reachHeap) Push(x any)        { *h = append(*h, x.(reachItem)) }
+func (h *reachHeap) Pop() any {
+	o := *h
+	x := o[len(o)-1]
+	*h = o[:len(o)-1]
+	return x
 }
 
 // trace returns the path from the search's start to n.

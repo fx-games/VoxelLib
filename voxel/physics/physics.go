@@ -20,6 +20,11 @@ type Hit struct {
 	Box collide.AABB
 }
 
+// Blocks is the block source RaycastBox reads; *voxel.World is one.
+type Blocks interface {
+	Block(x, y, z int) voxel.StateID
+}
+
 // BoxFunc appends to buf a block's ray boxes in world coordinates; none
 // when the ray passes through the block (Minecraft: canCollideCheck, then
 // the bounds collisionRayTrace tests, several for stairs).
@@ -30,7 +35,7 @@ type BoxFunc func(x, y, z int, id voxel.StateID, buf []collide.AABB) []collide.A
 // cell is hit where the ray first enters one of its boxes. Hit.Dist is
 // the distance to that point, Hit.Face the box face entered and Hit.Box
 // the box.
-func RaycastBox(w *voxel.World, ox, oy, oz, dx, dy, dz, maxDist float64, boxes BoxFunc) (Hit, bool) {
+func RaycastBox(w Blocks, ox, oy, oz, dx, dy, dz, maxDist float64, boxes BoxFunc) (Hit, bool) {
 	l := math.Sqrt(dx*dx + dy*dy + dz*dz)
 	if l == 0 {
 		return Hit{}, false
@@ -39,7 +44,7 @@ func RaycastBox(w *voxel.World, ox, oy, oz, dx, dy, dz, maxDist float64, boxes B
 	var out Hit
 	var buf []collide.AABB
 	// No world lock around the walk: boxes may read neighbours.
-	ok := walk(w.Block, ox, oy, oz, ux, uy, uz, maxDist, func(x, y, z int, id voxel.StateID, _ voxel.Face, _ float64) bool {
+	ok := Walk(w.Block, ox, oy, oz, ux, uy, uz, maxDist, func(x, y, z int, id voxel.StateID, _ voxel.Face, _ float64) bool {
 		buf = boxes(x, y, z, id, buf[:0])
 		hit := false
 		for _, b := range buf {
@@ -104,7 +109,7 @@ func Raycast(w *voxel.World, ox, oy, oz, dx, dy, dz, maxDist float64, pick func(
 	var out Hit
 	w.RLock()
 	defer w.RUnlock()
-	ok := walk(w.BlockUnlocked, ox, oy, oz, dx/l, dy/l, dz/l, maxDist, func(x, y, z int, id voxel.StateID, f voxel.Face, t float64) bool {
+	ok := Walk(w.BlockUnlocked, ox, oy, oz, dx/l, dy/l, dz/l, maxDist, func(x, y, z int, id voxel.StateID, f voxel.Face, t float64) bool {
 		if int(id) < len(table) && pick(&table[id]) {
 			out = Hit{Block: voxel.BlockPos{X: x, Y: y, Z: z}, Face: f, Dist: t, State: id}
 			return true
@@ -114,10 +119,10 @@ func Raycast(w *voxel.World, ox, oy, oz, dx, dy, dz, maxDist float64, pick func(
 	return out, ok
 }
 
-// walk visits the grid cells along the unit ray (Amanatides & Woo DDA) up
+// Walk visits the grid cells along the unit ray (Amanatides & Woo DDA) up
 // to maxDist, with the face entered and the distance to it, until visit
-// returns true.
-func walk(block func(x, y, z int) voxel.StateID, ox, oy, oz, dx, dy, dz, maxDist float64, visit func(x, y, z int, id voxel.StateID, f voxel.Face, t float64) bool) bool {
+// returns true. block may be any grid's lookup.
+func Walk(block func(x, y, z int) voxel.StateID, ox, oy, oz, dx, dy, dz, maxDist float64, visit func(x, y, z int, id voxel.StateID, f voxel.Face, t float64) bool) bool {
 	x, y, z := int(math.Floor(ox)), int(math.Floor(oy)), int(math.Floor(oz))
 	step := func(d float64) int {
 		if d > 0 {

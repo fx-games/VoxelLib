@@ -56,3 +56,31 @@ func TestRaycastBox(t *testing.T) {
 		t.Fatalf("inside hit %+v %v", h, ok)
 	}
 }
+
+func TestWalkOrderAndFaces(t *testing.T) {
+	type cell struct {
+		x, y, z int
+		f       voxel.Face
+	}
+	var got []cell
+	stone := voxel.StateID(1)
+	block := func(x, y, z int) voxel.StateID {
+		if x == 3 {
+			return stone
+		}
+		return 0
+	}
+	hit := Walk(block, 0.5, 0.5, 0.5, 1, 0, 0, 10, func(x, y, z int, id voxel.StateID, f voxel.Face, _ float64) bool {
+		got = append(got, cell{x, y, z, f})
+		return id == stone
+	})
+	want := []cell{{0, 0, 0, voxel.FaceUp}, {1, 0, 0, voxel.FaceWest}, {2, 0, 0, voxel.FaceWest}, {3, 0, 0, voxel.FaceWest}}
+	if !hit || len(got) != len(want) {
+		t.Fatalf("hit %v, visited %v, want %v", hit, got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("visited %v, want %v", got, want)
+		}
+	}
+}

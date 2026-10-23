@@ -278,3 +278,31 @@ func TestStartInAir(t *testing.T) {
 		t.Error("search started inside a solid cell")
 	}
 }
+
+func TestReach(t *testing.T) {
+	m := floor()
+	m[Pos{2, 1, 0}], m[Pos{2, 2, 0}] = true, true // a pillar at x=2 on row z=0
+	g := &Graph{W: m}
+	cost, prev := g.Reach(Pos{0, 1, 0}, 34)
+	for _, c := range []struct {
+		p    Pos
+		want int // -1: out of reach
+	}{
+		{Pos{1, 1, 1}, 14}, // diagonal
+		{Pos{2, 1, 1}, 24}, // diagonal + straight
+		{Pos{3, 1, 0}, -1}, // 34 to (3,1,1) + 10 > 34
+		{Pos{3, 1, 1}, 34}, // 14+10+10: exactly the budget, no corner cut past the pillar
+	} {
+		got, ok := cost[c.p]
+		if c.want < 0 && ok || c.want >= 0 && got != c.want {
+			t.Errorf("cost%v = %d (reached %v), want %d", c.p, got, ok, c.want)
+		}
+	}
+	n, p := 0, Pos{3, 1, 1}
+	for p != (Pos{0, 1, 0}) {
+		if p = prev[p]; n > 5 {
+			t.Fatal("prev does not lead back to the start")
+		}
+		n++
+	}
+}

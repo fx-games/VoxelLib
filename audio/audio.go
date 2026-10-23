@@ -302,6 +302,13 @@ func (v *Voice) Move(x, y, z float64) {
 	v.m.mu.Unlock()
 }
 
+// SetVolume changes the voice volume; its range stays as started.
+func (v *Voice) SetVolume(vol float32) {
+	v.m.mu.Lock()
+	v.vol = vol
+	v.m.mu.Unlock()
+}
+
 // Stop ends the voice.
 func (v *Voice) Stop() {
 	v.m.mu.Lock()
