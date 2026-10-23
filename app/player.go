@@ -60,6 +60,9 @@ type Player struct {
 	CanFly     bool    // double jump toggles flight (default true)
 	Selected   int     // hotbar slot
 	HotbarSize int     // default 9
+	// EntityReach is how far entities are picked (0: Reach); EntityBorder
+	// grows their boxes for the pick (Entity.getCollisionBorderSize).
+	EntityReach, EntityBorder float64
 	// Spawn point, for Respawn.
 	SpawnX, SpawnY, SpawnZ float64
 	// Frozen: the chunk under the player isn't ready; the player waits.
@@ -371,11 +374,18 @@ func (a *App) Target() (hit physics.Hit, ent *Entity, ok bool) {
 	if ok {
 		best = hit.Dist
 	}
+	reach := p.Reach
+	if p.EntityReach > 0 {
+		reach = p.EntityReach
+	}
 	for _, e := range a.Entities.List {
 		if e.Removed || e.Width == 0 {
 			continue
 		}
-		if t, in := rayBox(ex, ey, ez, dx, dy, dz, e.Box()); in && t < best {
+		b := e.Box()
+		g := p.EntityBorder
+		b.MinX, b.MinY, b.MinZ, b.MaxX, b.MaxY, b.MaxZ = b.MinX-g, b.MinY-g, b.MinZ-g, b.MaxX+g, b.MaxY+g, b.MaxZ+g
+		if t, in := rayBox(ex, ey, ez, dx, dy, dz, b); in && t < best && t <= reach {
 			best, ent = t, e
 		}
 	}

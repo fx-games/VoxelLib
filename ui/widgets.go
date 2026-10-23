@@ -160,6 +160,11 @@ type TextField struct {
 	cursor     int // rune index
 	scroll     int
 	ticks      int
+
+	// Disabled (setEnabled false) keeps the cursor moving but the text
+	// unedited, drawn in DisabledColor (setDisabledTextColour; 0: 0x707070).
+	Disabled      bool
+	DisabledColor uint32
 }
 
 // NewTextField makes a text field.
@@ -200,6 +205,12 @@ func (t *TextField) Draw(ctx *Context, mx, my int) {
 	col := uint32(0xE0E0E0)
 	if t.Color != 0 {
 		col = t.Color
+	}
+	if t.Disabled {
+		col = 0x707070
+		if t.DisabledColor != 0 {
+			col = t.DisabledColor
+		}
 	}
 	rs := []rune(t.Text)
 	t.fixScroll(f)
@@ -281,7 +292,7 @@ func (t *TextField) Input(ctx *Context, ev Event) bool {
 			return t.Focused
 		}
 		rs := []rune(t.Text)
-		if len(rs) >= t.maxLen() {
+		if len(rs) >= t.maxLen() || t.Disabled {
 			return true
 		}
 		rs = append(rs[:t.cursor], append([]rune{ev.Char}, rs[t.cursor:]...)...)
@@ -295,12 +306,12 @@ func (t *TextField) Input(ctx *Context, ev Event) bool {
 		rs := []rune(t.Text)
 		switch ev.Key {
 		case KeyBackspace:
-			if t.cursor > 0 {
+			if t.cursor > 0 && !t.Disabled {
 				t.cursor--
 				t.edit(append(rs[:t.cursor:t.cursor], rs[t.cursor+1:]...))
 			}
 		case KeyDelete:
-			if t.cursor < len(rs) {
+			if t.cursor < len(rs) && !t.Disabled {
 				t.edit(append(rs[:t.cursor:t.cursor], rs[t.cursor+1:]...))
 			}
 		case KeyLeft:
