@@ -344,6 +344,7 @@ type playerSave struct {
 	X, Y, Z, Yaw, Pitch    float64
 	Flying                 bool
 	SpawnX, SpawnY, SpawnZ float64
+	Dim                    *int `json:",omitempty"` // nil: Config.Engine.Dimension
 }
 
 // Save saves the game to the save slot now: the world changes, the player
@@ -362,7 +363,11 @@ func (a *App) Save() error {
 
 func (a *App) encodeSave() ([]byte, error) {
 	p := a.Player
-	s := save{Player: playerSave{p.X, p.Y, p.Z, a.Cam.Yaw, a.Cam.Pitch, p.Flying, p.SpawnX, p.SpawnY, p.SpawnZ}}
+	s := save{Player: playerSave{p.X, p.Y, p.Z, a.Cam.Yaw, a.Cam.Pitch, p.Flying, p.SpawnX, p.SpawnY, p.SpawnZ, nil}}
+	if a.Eng != nil {
+		d := a.Eng.Dimension()
+		s.Player.Dim = &d
+	}
 	if a.Hooks.Save != nil {
 		s.Game = a.Hooks.Save()
 	}
@@ -380,12 +385,32 @@ func (a *App) decodeSave(b []byte) ([]byte, error) {
 		return nil, fmt.Errorf("save blob: %w", err)
 	}
 	p, ps := a.Player, s.Player
+	if ps.Dim != nil && a.Eng != nil && *ps.Dim != a.Eng.Dimension() {
+		if err := a.Eng.SwitchDimension(*ps.Dim); err != nil {
+			return nil, err
+		}
+	}
 	p.Teleport(ps.X, ps.Y, ps.Z)
 	p.Flying = ps.Flying
 	p.SpawnX, p.SpawnY, p.SpawnZ = ps.SpawnX, ps.SpawnY, ps.SpawnZ
 	p.findGround, p.spawnKnown = false, true
 	a.Cam.Yaw, a.Cam.Pitch = ps.Yaw, ps.Pitch
 	return s.Game, nil
+}
+
+// Travel takes the player to x, y, z of dimension dim (a portal): the
+// world streams in anew around it (engine.SwitchDimension) and the player
+// waits until the ground is there. The game moves its own entities.
+func (a *App) Travel(dim int, x, y, z float64) error {
+	if dim != a.Eng.Dimension() {
+		if err := a.Eng.SwitchDimension(dim); err != nil {
+			return err
+		}
+	}
+	p := a.Player
+	p.Teleport(x, y, z)
+	p.VX, p.VY, p.VZ = 0, 0, 0
+	return nil
 }
 
 // spawn picks a new game's start: Config.Start, the world's spawn, or the

@@ -53,6 +53,8 @@ type Config struct {
 	// the map's (0, 256); Textures defaults to the map's.
 	Map       *voxelmap.Map
 	Dimension int
+	// Skyless are the dimensions without a sky (voxel.World.NoSky).
+	Skyless map[int]bool
 	// SaveDir is the save slot of a Map world ("" = nothing is saved). It
 	// holds only what the player changed (the edited sections of each
 	// chunk) and the game's state blob (SaveGame); see NewGame.
@@ -76,17 +78,30 @@ type Config struct {
 	UploadBudget time.Duration // GPU upload time per frame, default 4ms
 }
 
+// dimSrc is one dimension of the world: where its chunks come from and
+// where its changes go.
+type dimSrc struct {
+	id    int
+	gen   Generator
+	noSky bool
+	store *anvil.Store // WorldDir, or the save slot's regions of this dimension
+	// Map deltas of chunks that streamed out since the last SaveGame
+	// (save.go), under unsavedMu. ponytail: kept in memory until saved, a
+	// few KB per edited chunk; spill to a scratch store if journeys ever
+	// edit that much.
+	unsaved map[voxel.ChunkPos]*anvil.Compound
+}
+
 // Engine owns world, workers and renderer.
 type Engine struct {
-	World    *voxel.World
-	Renderer *render.Renderer
-	cfg      Config
-	store    *anvil.Store
-	delta    bool // store holds Map deltas (only edited sections)
-	// Map deltas of chunks that streamed out since the last SaveGame
-	// (save.go). ponytail: kept in memory until saved, a few KB per edited
-	// chunk; spill to a scratch store if journeys ever edit that much.
-	unsaved   map[voxel.ChunkPos]*anvil.Compound
+	World     *voxel.World
+	Renderer  *render.Renderer
+	cfg       Config
+	delta     bool                   // the stores hold Map deltas (only edited sections)
+	src       atomic.Pointer[dimSrc] // the dimension new chunks are made of
+	switchMu  sync.RWMutex           // read-held while a chunk is made (SwitchDimension)
+	worldSrc  *dimSrc                // the dimension of the world's chunks: light worker, under stageMu
+	dims      map[int]*dimSrc        // every dimension opened, under unsavedMu
 	unsavedMu sync.Mutex
 	fresh     atomic.Bool // the slot holds no save: its regions are ignored
 	slotMu    sync.Mutex  // one SaveGame at a time
@@ -151,11 +166,7 @@ func New(cfg Config) (*Engine, error) {
 			cfg.Textures = m
 		}
 		if cfg.Generator == nil {
-			if f := worldgen.Lookup(d.Generator); f != nil {
-				cfg.Generator = f(m.Seed, m.State)
-			} else if d.Generator != "" {
-				log.Printf("engine: no generator %q registered; chunks the map lacks stay empty", d.Generator)
-			}
+			cfg.Generator = mapGenerator(m, d)
 		}
 	}
 	if cfg.Height == 0 {
@@ -172,6 +183,7 @@ func New(cfg Config) (*Engine, error) {
 	}
 	renderThread()
 	w := voxel.NewWorld(cfg.Registry, cfg.MinY, cfg.Height)
+	w.NoSky.Store(cfg.Skyless[cfg.Dimension])
 	ro := cfg.RenderOptions
 	ro.RenderDistance = cfg.RenderDistance
 	r, err := render.New(w, cfg.Textures, ro)
@@ -189,6 +201,9 @@ func New(cfg Config) (*Engine, error) {
 		staleMesh:  map[voxel.SectionPos]bool{},
 		mainMesher: mesh.NewMesher(), meshCfg: r.MeshConfig(), quit: make(chan struct{}),
 	}
+	src := &dimSrc{id: cfg.Dimension, gen: cfg.Generator, noSky: cfg.Skyless[cfg.Dimension]}
+	e.src.Store(src)
+	e.worldSrc, e.dims = src, map[int]*dimSrc{src.id: src}
 	switch {
 	case cfg.Map != nil:
 		if cfg.SaveDir != "" {
@@ -197,11 +212,11 @@ func New(cfg Config) (*Engine, error) {
 				r.Destroy()
 				return nil, err
 			}
-			e.store, e.delta, e.journal = st, true, j
+			src.store, e.delta, e.journal = st, true, j
 			e.fresh.Store(fresh)
 		}
 	case cfg.WorldDir != "":
-		e.store = anvil.OpenStore(cfg.WorldDir, !cfg.ReadOnly)
+		src.store = anvil.OpenStore(cfg.WorldDir, !cfg.ReadOnly)
 	}
 	for i := 0; i < cfg.Workers; i++ {
 		e.wg.Add(2)
@@ -232,12 +247,26 @@ func (e *Engine) loadWorker() {
 	}
 }
 
-func (e *Engine) produce(p voxel.ChunkPos) *voxel.Chunk {
-	if e.cfg.Map != nil {
-		return e.produceMap(p)
+// mapGenerator is the generator registered for a map dimension (nil: none).
+func mapGenerator(m *voxelmap.Map, d *voxelmap.Dimension) Generator {
+	if f := worldgen.Lookup(d.Generator); f != nil {
+		return f(m.Seed, m.State)
 	}
-	if e.store != nil {
-		nbt, err := e.store.Read(p.X, p.Z)
+	if d.Generator != "" {
+		log.Printf("engine: no generator %q registered; chunks the map lacks stay empty", d.Generator)
+	}
+	return nil
+}
+
+func (e *Engine) produce(p voxel.ChunkPos) *voxel.Chunk {
+	e.switchMu.RLock()
+	defer e.switchMu.RUnlock()
+	s := e.src.Load()
+	if e.cfg.Map != nil {
+		return e.produceMap(s, p)
+	}
+	if s.store != nil {
+		nbt, err := s.store.Read(p.X, p.Z)
 		if err == nil {
 			c, err := anvil.DecodeChunk(e.World, nbt)
 			if err == nil {
@@ -250,8 +279,8 @@ func (e *Engine) produce(p voxel.ChunkPos) *voxel.Chunk {
 		}
 	}
 	c := e.World.NewChunk(p)
-	if e.cfg.Generator != nil {
-		e.cfg.Generator.Generate(e.World, c)
+	if s.gen != nil {
+		s.gen.Generate(e.World, c)
 	}
 	return c
 }
@@ -264,6 +293,7 @@ type worldOp struct {
 	add    []*voxel.Chunk
 	remove []voxel.ChunkPos
 	light  []voxel.ChunkPos // nearest first
+	to     *dimSrc          // after remove: the world is now this dimension
 }
 
 func (e *Engine) lightWorker() {
@@ -280,13 +310,13 @@ func (e *Engine) lightWorker() {
 				e.stageMu.Lock()
 				for _, c := range e.World.RemoveChunks(op.remove) {
 					if c.Modified {
-						e.stage(c)
+						e.stage(e.worldSrc, c)
 					}
 				}
 				e.stageMu.Unlock()
 			} else if len(op.remove) > 0 {
 				for _, c := range e.World.RemoveChunks(op.remove) {
-					if c.Modified && e.store != nil {
+					if c.Modified && e.worldSrc.store != nil {
 						select {
 						case e.saveReq <- c:
 						case <-e.quit:
@@ -294,6 +324,12 @@ func (e *Engine) lightWorker() {
 						}
 					}
 				}
+			}
+			if op.to != nil {
+				e.stageMu.Lock()
+				e.worldSrc = op.to
+				e.stageMu.Unlock()
+				e.World.NoSky.Store(op.to.noSky)
 			}
 			if len(op.add) > 0 {
 				e.World.AddChunks(op.add)
@@ -326,17 +362,20 @@ func (e *Engine) saveWorker() {
 }
 
 func (e *Engine) save(c *voxel.Chunk) {
-	if e.store == nil || e.cfg.ReadOnly {
+	e.stageMu.Lock()
+	defer e.stageMu.Unlock()
+	st := e.worldSrc.store
+	if st == nil || e.cfg.ReadOnly {
 		return
 	}
 	if e.delta {
-		e.stage(c)
+		e.stage(e.worldSrc, c)
 		return
 	}
 	e.World.RLock()
 	nbt := anvil.EncodeChunk(e.World, c)
 	e.World.RUnlock()
-	if err := e.store.Write(c.Pos.X, c.Pos.Z, nbt); err != nil {
+	if err := st.Write(c.Pos.X, c.Pos.Z, nbt); err != nil {
 		log.Printf("engine: save %v: %v", c.Pos, err)
 	}
 }
@@ -560,7 +599,61 @@ func (e *Engine) unloadFar(r int) {
 // generator (or WorldDir), e.g. after the generator's input changed.
 // Chunks and meshes still being made from the old world are discarded when
 // they arrive. Call on the render thread, between Updates.
-func (e *Engine) Regenerate() {
+func (e *Engine) Regenerate() { e.dropAll(nil) }
+
+// SwitchDimension makes the world dimension dim of the Map: every chunk is
+// dropped (the edited ones are kept for the next SaveGame, per dimension)
+// and the world streams in again from dim's regions, generator and save.
+// Its generator is the one registered for dim's "generator" name
+// (Config.Generator for Config.Dimension). Once it returns, no OnMapChunk
+// of the old dimension runs any more. Call on the render thread, between
+// Updates.
+func (e *Engine) SwitchDimension(dim int) error {
+	s, err := e.useDim(dim, nil)
+	if err != nil {
+		return err
+	}
+	e.dropAll(s)
+	return nil
+}
+
+// useDim opens dimension dim (once) and makes new chunks of it; gen
+// overrides its generator.
+func (e *Engine) useDim(dim int, gen Generator) (*dimSrc, error) {
+	m := e.cfg.Map
+	if m == nil {
+		return nil, errors.New("engine: dimensions need a Map")
+	}
+	d := m.Dimension(dim)
+	if d == nil {
+		return nil, fmt.Errorf("engine: map has no dimension %d", dim)
+	}
+	e.unsavedMu.Lock()
+	s := e.dims[dim]
+	if s == nil {
+		s = &dimSrc{id: dim, noSky: e.cfg.Skyless[dim]}
+		if e.cfg.SaveDir != "" {
+			s.store = anvil.OpenStore(slotDim(e.cfg.SaveDir, dim), !e.cfg.ReadOnly)
+		}
+		e.dims[dim] = s
+	}
+	e.unsavedMu.Unlock()
+	if gen == nil && s.gen == nil {
+		gen = mapGenerator(m, d)
+	}
+	e.switchMu.Lock() // no chunk is being made of the old source
+	if gen != nil {
+		s.gen = gen
+	}
+	e.src.Store(s)
+	e.switchMu.Unlock()
+	return s, nil
+}
+
+// Dimension is the dimension new chunks are made of.
+func (e *Engine) Dimension() int { return e.src.Load().id }
+
+func (e *Engine) dropAll(to *dimSrc) {
 	for p := range e.pending {
 		e.stale[p] = true
 	}
@@ -573,7 +666,7 @@ func (e *Engine) Regenerate() {
 	for p := range e.loaded {
 		all = append(all, p)
 	}
-	e.worldOps <- worldOp{remove: all}
+	e.worldOps <- worldOp{remove: all, to: to}
 	for _, p := range all {
 		e.Renderer.RemoveColumn(p)
 	}
@@ -792,7 +885,7 @@ func (e *Engine) SurfaceY(x, z int) (int, bool) {
 func (e *Engine) Spawn() (x, y, z int, ok bool) {
 	if m := e.cfg.Map; m != nil {
 		sp := m.Spawn
-		return sp.X, sp.Y, sp.Z, sp.Dim == e.cfg.Dimension
+		return sp.X, sp.Y, sp.Z, sp.Dim == e.Dimension()
 	}
 	if e.cfg.WorldDir == "" {
 		return
@@ -839,17 +932,15 @@ func (e *Engine) Close() {
 		}
 		break
 	}
-	if e.store != nil {
-		if !e.cfg.ReadOnly && !e.delta {
-			// Includes chunks whose unload op was still queued.
-			for _, p := range e.World.Chunks() {
-				if c := e.World.Chunk(p); c != nil && c.Modified {
-					e.save(c)
-				}
+	if !e.cfg.ReadOnly && !e.delta {
+		// Includes chunks whose unload op was still queued.
+		for _, p := range e.World.Chunks() {
+			if c := e.World.Chunk(p); c != nil && c.Modified {
+				e.save(c)
 			}
 		}
-		e.store.Close()
 	}
+	e.closeStores()
 	e.Renderer.Destroy()
 }
 
@@ -857,7 +948,7 @@ func (e *Engine) Close() {
 // save), instead of waiting for unload or Close. With a save slot it only
 // stages them for the next SaveGame.
 func (e *Engine) Flush() {
-	if e.store == nil || e.cfg.ReadOnly {
+	if e.cfg.ReadOnly {
 		return
 	}
 	for _, p := range e.World.Chunks() {

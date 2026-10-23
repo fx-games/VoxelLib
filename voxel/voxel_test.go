@@ -34,9 +34,12 @@ func TestPalettedContainer(t *testing.T) {
 	}
 }
 
-func flatWorld(t *testing.T) (*World, StateID) {
+func flatWorld(t *testing.T) (*World, StateID) { return flatWorldSky(t, false) }
+
+func flatWorldSky(t *testing.T, noSky bool) (*World, StateID) {
 	reg := NewRegistry()
 	w := NewWorld(reg, -64, 384)
+	w.NoSky.Store(noSky)
 	stone := reg.Default("stone")
 	for cx := -2; cx <= 2; cx++ {
 		for cz := -2; cz <= 2; cz++ {
@@ -98,6 +101,21 @@ func TestLight(t *testing.T) {
 	w.SetBlock(3, 61, 3, Air)
 	if _, b := w.Light(4, 59, 3); b != 0 {
 		t.Fatalf("block light after removal %d", b)
+	}
+}
+
+func TestNoSky(t *testing.T) {
+	w, _ := flatWorldSky(t, true)
+	for _, y := range []int{64, 200, 400} {
+		if s, _ := w.Light(0, y, 0); s != 0 {
+			t.Fatalf("sky at %d: %d", y, s)
+		}
+	}
+	w.SetBlock(3, 63, 3, Air)
+	w.SetBlock(3, 319, 3, w.Reg.Default("glowstone"))
+	w.SetBlock(3, 319, 3, Air)
+	if s, b := w.Light(3, 63, 3); s != 0 || b != 0 {
+		t.Fatalf("dug: sky %d block %d", s, b)
 	}
 }
 

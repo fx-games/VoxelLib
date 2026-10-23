@@ -25,7 +25,7 @@ import (
 // laid over it.
 //
 // Saves are all-or-nothing through a journal. Between saves, edited chunks
-// that stream out are staged in memory (Engine.unsaved), never written to
+// that stream out are staged in memory (dimSrc.unsaved), never written to
 // the slot, so the regions always match game.dat. SaveGame writes the game
 // blob and every staged chunk into one file, fsyncs it and renames it to
 // save.journal: that rename is the commit. Only then are the chunks written
@@ -83,20 +83,21 @@ func openSlot(dir string, dim int, write bool) (st *anvil.Store, fresh bool, pen
 	return anvil.OpenStore(slotDim(dir, dim), write), fresh, j, nil
 }
 
-// journal is one committed save: the game blob and the staged chunks of
-// one dimension. reset clears every dimension's regions first (the first
-// save of a fresh slot).
+// journal is one committed save: the game blob and the staged chunks by
+// dimension. reset clears every dimension's regions first (the first save
+// of a fresh slot).
 type journal struct {
-	dim    int
 	reset  bool
 	game   []byte
-	chunks map[voxel.ChunkPos]anvil.Compound
+	chunks map[int]map[voxel.ChunkPos]anvil.Compound
 }
 
 func writeJournal(dir string, j *journal) error {
 	list := anvil.List{Type: anvil.TagCompound}
-	for p, c := range j.chunks {
-		list.Items = append(list.Items, anvil.Compound{"x": int32(p.X), "z": int32(p.Z), "chunk": c})
+	for dim, cs := range j.chunks {
+		for p, c := range cs {
+			list.Items = append(list.Items, anvil.Compound{"dim": int32(dim), "x": int32(p.X), "z": int32(p.Z), "chunk": c})
+		}
 	}
 	reset := int8(0)
 	if j.reset {
@@ -104,7 +105,7 @@ func writeJournal(dir string, j *journal) error {
 	}
 	var buf bytes.Buffer
 	if err := anvil.WriteNBT(&buf, "", anvil.Compound{
-		"dim": int32(j.dim), "reset": reset, "game": append([]byte{}, j.game...), "chunks": list,
+		"reset": reset, "game": append([]byte{}, j.game...), "chunks": list,
 	}); err != nil {
 		return err
 	}
@@ -120,53 +121,65 @@ func readJournal(dir string) (*journal, error) {
 	if err != nil {
 		return nil, fmt.Errorf("engine: %s: %w", journalFile, err)
 	}
-	j := &journal{dim: c.Int("dim"), reset: c.Int("reset") != 0, game: c.Bytes("game"), chunks: map[voxel.ChunkPos]anvil.Compound{}}
+	j := &journal{reset: c.Int("reset") != 0, game: c.Bytes("game"), chunks: map[int]map[voxel.ChunkPos]anvil.Compound{}}
 	for _, it := range c.List("chunks").Items {
 		e, _ := it.(anvil.Compound)
-		j.chunks[voxel.ChunkPos{X: e.Int("x"), Z: e.Int("z")}] = e.Compound("chunk")
+		dim := c.Int("dim") // journals of one dimension had it here
+		if e.Has("dim") {
+			dim = e.Int("dim")
+		}
+		if j.chunks[dim] == nil {
+			j.chunks[dim] = map[voxel.ChunkPos]anvil.Compound{}
+		}
+		j.chunks[dim][voxel.ChunkPos{X: e.Int("x"), Z: e.Int("z")}] = e.Compound("chunk")
 	}
 	return j, nil
 }
 
-// applyJournal writes a committed journal into the slot and removes it. st
-// is the open store of j.dim, or nil to open one here. Safe to repeat.
-func applyJournal(dir string, j *journal, st *anvil.Store) error {
+// applyJournal writes a committed journal into the slot and removes it.
+// stores are the open stores by dimension; the others are opened here.
+// Safe to repeat.
+func applyJournal(dir string, j *journal, stores map[int]*anvil.Store) error {
 	if j.reset {
-		if st != nil {
+		for _, st := range stores {
 			st.Close() // reopens its files on demand
 		}
 		if err := removeDims(dir); err != nil {
 			return err
 		}
-	}
-	if st == nil {
-		st = anvil.OpenStore(slotDim(dir, j.dim), true)
-		defer st.Close()
-	} else if j.reset {
-		os.MkdirAll(st.Dir, 0o755)
+		for _, st := range stores {
+			os.MkdirAll(st.Dir, 0o755)
+		}
 	}
 	// The first chunk goes alone so a test can crash between chunks; the
 	// rest share one fsync per region file.
-	rest := make(map[[2]int]anvil.Compound, len(j.chunks))
 	first := true
-	for p, c := range j.chunks {
-		if !first {
-			rest[[2]int{p.X, p.Z}] = c
-			continue
+	for dim, cs := range j.chunks {
+		st := stores[dim]
+		if st == nil {
+			st = anvil.OpenStore(slotDim(dir, dim), true)
+			defer st.Close()
 		}
-		if err := st.Write(p.X, p.Z, c); err != nil {
+		rest := make(map[[2]int]anvil.Compound, len(cs))
+		for p, c := range cs {
+			if !first {
+				rest[[2]int{p.X, p.Z}] = c
+				continue
+			}
+			if err := st.Write(p.X, p.Z, c); err != nil {
+				return err
+			}
+			if err := fault("chunk"); err != nil {
+				return err
+			}
+			first = false
+		}
+		if err := st.WriteAll(rest); err != nil {
 			return err
 		}
-		if err := fault("chunk"); err != nil {
+		if err := st.Sync(); err != nil {
 			return err
 		}
-		first = false
-	}
-	if err := st.WriteAll(rest); err != nil {
-		return err
-	}
-	if err := st.Sync(); err != nil {
-		return err
 	}
 	if err := writeFileSync(filepath.Join(dir, gameFile), j.game, "game"); err != nil {
 		return err
@@ -225,10 +238,10 @@ func removeDims(dir string) error {
 	return nil
 }
 
-// produceMap makes chunk p of a Map world: map regions, else the
-// generator, then the slot's edited sections on top.
-func (e *Engine) produceMap(p voxel.ChunkPos) *voxel.Chunk {
-	c, level, err := e.cfg.Map.ReadChunk(e.World, e.cfg.Dimension, p)
+// produceMap makes chunk p of dimension s of a Map world: map regions,
+// else the generator, then the slot's edited sections on top.
+func (e *Engine) produceMap(s *dimSrc, p voxel.ChunkPos) *voxel.Chunk {
+	c, level, err := e.cfg.Map.ReadChunk(e.World, s.id, p)
 	switch {
 	case err == nil:
 		if e.cfg.OnMapChunk != nil {
@@ -239,26 +252,26 @@ func (e *Engine) produceMap(p voxel.ChunkPos) *voxel.Chunk {
 			log.Printf("engine: map chunk %v: %v", p, err)
 		}
 		c = e.World.NewChunk(p)
-		if e.cfg.Generator != nil {
-			e.cfg.Generator.Generate(e.World, c)
+		if s.gen != nil {
+			s.gen.Generate(e.World, c)
 		}
 	}
-	if e.store != nil {
-		e.applyDelta(c)
+	if s.store != nil {
+		e.applyDelta(s, c)
 	}
 	return c
 }
 
-// applyDelta lays the slot's edited sections of c over it.
-func (e *Engine) applyDelta(c *voxel.Chunk) {
+// applyDelta lays the slot's edited sections of c (of dimension s) over it.
+func (e *Engine) applyDelta(s *dimSrc, c *voxel.Chunk) {
 	e.unsavedMu.Lock()
-	staged := e.unsaved[c.Pos]
+	staged := s.unsaved[c.Pos]
 	e.unsavedMu.Unlock()
 	var nbt anvil.Compound
 	var err error
 	var committed anvil.Compound
-	if j := e.journal; j != nil && j.dim == e.cfg.Dimension {
-		committed = j.chunks[c.Pos]
+	if j := e.journal; j != nil {
+		committed = j.chunks[s.id][c.Pos]
 	}
 	switch {
 	case staged != nil:
@@ -268,7 +281,7 @@ func (e *Engine) applyDelta(c *voxel.Chunk) {
 	case e.fresh.Load():
 		return
 	default:
-		nbt, err = e.store.Read(c.Pos.X, c.Pos.Z)
+		nbt, err = s.store.Read(c.Pos.X, c.Pos.Z)
 	}
 	if err != nil {
 		if !errors.Is(err, anvil.ErrNoChunk) {
@@ -311,9 +324,9 @@ func encodeDelta(w *voxel.World, c *voxel.Chunk) anvil.Compound {
 	return root
 }
 
-// stage keeps the edited sections of c (a Map world's chunk) until the next
-// SaveGame.
-func (e *Engine) stage(c *voxel.Chunk) {
+// stage keeps the edited sections of c (a Map world's chunk of dimension
+// s) until the next SaveGame. Caller holds stageMu.
+func (e *Engine) stage(s *dimSrc, c *voxel.Chunk) {
 	if stageHook != nil {
 		stageHook(c.Pos)
 	}
@@ -324,10 +337,10 @@ func (e *Engine) stage(c *voxel.Chunk) {
 		return
 	}
 	e.unsavedMu.Lock()
-	if e.unsaved == nil {
-		e.unsaved = map[voxel.ChunkPos]*anvil.Compound{}
+	if s.unsaved == nil {
+		s.unsaved = map[voxel.ChunkPos]*anvil.Compound{}
 	}
-	e.unsaved[c.Pos] = &nbt
+	s.unsaved[c.Pos] = &nbt
 	e.unsavedMu.Unlock()
 }
 
@@ -346,32 +359,47 @@ func (e *Engine) SaveGame(state []byte) error {
 	e.stageMu.Lock()
 	for _, p := range e.World.Chunks() {
 		if c := e.World.Chunk(p); c != nil && c.Modified {
-			e.stage(c)
+			e.stage(e.worldSrc, c)
 		}
 	}
 	e.unsavedMu.Lock()
-	snap := maps.Clone(e.unsaved)
+	snap := map[*dimSrc]map[voxel.ChunkPos]*anvil.Compound{}
+	stores := map[int]*anvil.Store{}
+	for _, s := range e.dims {
+		snap[s] = maps.Clone(s.unsaved)
+		if s.store != nil {
+			stores[s.id] = s.store
+		}
+	}
 	e.unsavedMu.Unlock()
 	e.stageMu.Unlock()
 	if err := os.MkdirAll(e.cfg.SaveDir, 0o755); err != nil {
 		return err
 	}
-	j := &journal{dim: e.cfg.Dimension, reset: e.fresh.Load(), game: state, chunks: make(map[voxel.ChunkPos]anvil.Compound, len(snap))}
-	for p, c := range snap {
-		j.chunks[p] = *c
+	j := &journal{reset: e.fresh.Load(), game: state, chunks: map[int]map[voxel.ChunkPos]anvil.Compound{}}
+	for s, cs := range snap {
+		if len(cs) == 0 {
+			continue
+		}
+		j.chunks[s.id] = make(map[voxel.ChunkPos]anvil.Compound, len(cs))
+		for p, c := range cs {
+			j.chunks[s.id][p] = *c
+		}
 	}
 	if err := writeJournal(e.cfg.SaveDir, j); err != nil {
 		os.Remove(filepath.Join(e.cfg.SaveDir, journalFile+".tmp"))
 		return err
 	}
-	if err := applyJournal(e.cfg.SaveDir, j, e.store); err != nil {
+	if err := applyJournal(e.cfg.SaveDir, j, stores); err != nil {
 		return err // committed: the next open finishes it
 	}
 	e.fresh.Store(false)
 	e.unsavedMu.Lock()
-	for p, c := range snap {
-		if e.unsaved[p] == c { // not staged again meanwhile
-			delete(e.unsaved, p)
+	for s, cs := range snap {
+		for p, c := range cs {
+			if s.unsaved[p] == c { // not staged again meanwhile
+				delete(s.unsaved, p)
+			}
 		}
 	}
 	e.unsavedMu.Unlock()
@@ -417,4 +445,15 @@ func NewGame(saveDir string) error {
 	}
 	syncDir(saveDir)
 	return removeDims(saveDir)
+}
+
+// closeStores closes every dimension's store.
+func (e *Engine) closeStores() {
+	e.unsavedMu.Lock()
+	defer e.unsavedMu.Unlock()
+	for _, s := range e.dims {
+		if s.store != nil {
+			s.store.Close()
+		}
+	}
 }

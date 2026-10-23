@@ -1,6 +1,7 @@
 package app
 
 import (
+	"encoding/json"
 	"math"
 	"testing"
 
@@ -53,6 +54,10 @@ func TestSaveRoundTrip(t *testing.T) {
 	p := c.Player
 	if err != nil || string(game) != "game" || p.X != 1 || p.Z != 3 || !p.Flying || p.SpawnX != 7 || c.Cam.Yaw != 0.5 || p.findGround {
 		t.Fatalf("decoded %q %v: %+v", game, err, p)
+	}
+	var ps save // a save from before dimensions: no Dim
+	if json.Unmarshal(b, &ps); ps.Player.Dim != nil {
+		t.Fatal("no engine, yet a dimension was saved")
 	}
 	if game, err := c.decodeSave(nil); game != nil || err != nil {
 		t.Fatal("new game must decode to nil")

@@ -18,7 +18,7 @@ type lightNode struct {
 
 func (w *World) lightAt(x, y, z int, sky bool) (uint8, bool) {
 	if y >= w.MaxY() {
-		if sky {
+		if sky && !w.NoSky.Load() {
 			return 15, true
 		}
 		return 0, true
@@ -176,7 +176,7 @@ func (w *World) relight(x, y, z int, oldInfo, newInfo StateInfo, t []StateInfo) 
 			w.lightQ = append(w.lightQ, lightNode{int32(x), int32(y), int32(z), newInfo.Emission})
 		}
 		if newInfo.Opacity < 15 {
-			if sky && y == w.MaxY()-1 && newInfo.Opacity == 0 {
+			if sky && y == w.MaxY()-1 && newInfo.Opacity == 0 && !w.NoSky.Load() {
 				w.setLight(x, y, z, true, 15)
 				w.lightQ = append(w.lightQ, lightNode{int32(x), int32(y), int32(z), 15})
 			}
@@ -241,12 +241,16 @@ func (w *World) lightChunk(c *Chunk) {
 		clear(s.Block)
 	}
 	maxH := w.MinY
+	skyTop := top // NoSky: nothing to seed
+	if w.NoSky.Load() {
+		skyTop = w.MinY
+	}
 	for i, h := range c.Height {
 		if int(h) > maxH {
 			maxH = int(h)
 		}
 		x, z := i&15, i>>4
-		for y := int(h); y < top; y++ {
+		for y := int(h); y < skyTop; y++ {
 			s := c.Sections[(y-w.MinY)>>4]
 			setNibble(s.Sky, SectionIndex(x, y, z), 15)
 		}
@@ -270,7 +274,7 @@ func (w *World) lightChunk(c *Chunk) {
 					m = nh
 				}
 			}
-			if h >= top {
+			if h >= skyTop {
 				continue
 			}
 			if m >= top {

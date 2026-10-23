@@ -28,6 +28,9 @@ type World struct {
 	cache   *Chunk
 
 	dyn atomic.Pointer[DynField] // dynamic lights (dynlight.go)
+	// NoSky makes the sky light 0 everywhere (a dimension without a sky:
+	// the reference's hasNoSky). Set it before chunks are lit.
+	NoSky atomic.Bool
 }
 
 // NewWorld creates an empty world spanning [minY, minY+height). The reference game
@@ -165,12 +168,16 @@ func (w *World) BlockUnlocked(x, y, z int) StateID {
 func (w *World) Light(x, y, z int) (sky, block uint8) {
 	w.mu.RLock()
 	defer w.mu.RUnlock()
+	open := uint8(15)
+	if w.NoSky.Load() {
+		open = 0
+	}
 	if y >= w.MaxY() {
-		return 15, 0
+		return open, 0
 	}
 	c := w.chunks[ChunkPos{x >> 4, z >> 4}]
 	if c == nil {
-		return 15, 0
+		return open, 0
 	}
 	s := c.Section(y)
 	if s == nil {
