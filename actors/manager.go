@@ -216,8 +216,19 @@ func (m *Manager) Tick() {
 // damage and picks the animation state.
 func (m *Manager) moveBody(a *Actor, in character.Input) {
 	b := a.Body
+	f := a.Fly
+	if f != nil && b.OnGround {
+		in.Forward, in.Strafe = 0, 0
+	}
 	b.Tick(m.body(), in)
-	if b.InWater || b.InLava {
+	if f != nil {
+		if f.Still {
+			b.VX, b.VY, b.VZ = 0, 0, 0
+		} else {
+			b.VY *= f.Hover
+		}
+	}
+	if b.InWater || b.InLava || f != nil {
 		a.fall = 0
 	} else if b.OnGround {
 		if a.fall > 3 {
@@ -279,7 +290,7 @@ func (m *Manager) push() {
 	}
 	grid := map[cell][]entry{}
 	for i, a := range m.Actors {
-		if a.Riding == nil && a.Alive() {
+		if a.Riding == nil && a.Alive() && a.Fly == nil {
 			c := cell{int(math.Floor(a.Body.X / 2)), int(math.Floor(a.Body.Z / 2))}
 			grid[c] = append(grid[c], entry{a, i})
 		}

@@ -2,6 +2,8 @@ package actors
 
 import (
 	"math"
+
+	"github.com/memmaker/voxellib/character"
 )
 
 // Mode is an actor's standing behaviour when not fighting.
@@ -81,6 +83,13 @@ func (b *Brain) speed() float64 {
 // think runs the actor's behaviour for one tick: combat first, then the
 // mode. It only sets the carrier's input; bodies move in Manager.Tick.
 func (m *Manager) think(a *Actor) {
+	if f := a.Fly; f != nil {
+		a.nav.in = character.Input{}
+		if f.Think != nil {
+			f.Think(a)
+		}
+		return
+	}
 	if a.panic > 0 {
 		a.panic--
 		if src := a.revenge; src != nil {

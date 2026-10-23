@@ -186,6 +186,7 @@ type Actor struct {
 	Melee                  Melee
 	Ranged                 *Ranged
 	Mount                  *MountStats // non-nil: rideable
+	Fly                    *Flight     // non-nil: a flier (Think replaces the Brain)
 	Brain                  Brain
 	Tags                   map[string]string // game data, saved
 	State                  State
