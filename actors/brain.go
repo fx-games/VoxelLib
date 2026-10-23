@@ -31,6 +31,7 @@ type Brain struct {
 	Home  Vec     `json:"home"`
 	Range float64 `json:"range,omitempty"` // wander radius, guard leash
 	Face  float64 `json:"face"`            // yaw while standing at Home or a route's end
+	Look  Look    `json:"look,omitempty"`  // idle looking; 0 = watch the nearest player
 	// SpeedMul is the AI speed factor (Minecraft tryMoveTo speed; 0 = 1).
 	SpeedMul float64 `json:"speedMul,omitempty"`
 
@@ -124,6 +125,10 @@ func away(p, threat Vec, dist float64) Vec {
 // idleLook turns the head toward the actor named in LookAt, else the
 // nearest player within 8 blocks (EntityAIWatchClosest), else to face.
 func (m *Manager) idleLook(a *Actor, face float64) {
+	if a.Brain.Look != LookPlayer && a.Brain.LookAt == "" {
+		m.cnpcLook(a)
+		return
+	}
 	var t *Actor
 	if a.Brain.LookAt != "" {
 		t = m.byID[a.Brain.LookAt]

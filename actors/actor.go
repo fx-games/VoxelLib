@@ -198,6 +198,7 @@ type Actor struct {
 	jump                   jumpCharge
 	jumpPower              float64
 	routeWait              int
+	look                   lookState
 }
 
 // New returns an actor with a humanoid body and 1.7.10 defaults (20 health,
