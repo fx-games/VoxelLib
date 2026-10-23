@@ -2,7 +2,6 @@ package actors
 
 import (
 	"math"
-	"time"
 
 	"github.com/memmaker/voxellib/character"
 	"github.com/memmaker/voxellib/voxel/nav"
@@ -38,20 +37,17 @@ type navigator struct {
 // approached in legs), and a path is replanned every replan ticks while the
 // goal moves.
 //
-// pathBudget caps the A* expansions of all actors in one tick (about 1 ms):
-// a search that needs more continues next tick, so one unreachable goal
-// (6000 expansions) no longer stalls a tick for 10-30 ms.
+// pathBudget caps the A* expansions of all actors in one tick: a search
+// that needs more continues next tick, so one unreachable goal (6000
+// expansions) no longer stalls a tick. A count, not a time: the AI is the
+// same on a fast or a busy machine. 500 costs what a 2 ms time cap did (a
+// cell test can cost 8 us: Bag End, 160 actors, pump p99 2.3 ms).
 const (
 	planRange  = 40
 	replan     = 40
-	pathBudget = 2000
-	// pumpTime is the default Manager.SearchTime: a tick's search time cap
-	// (the world's cell tests cost unevenly), checked every pumpSlice
-	// expansions.
-	pumpTime  = 2 * time.Millisecond
-	pumpSlice = 200
-	maxNodes  = 6000
-	turnRate  = 30 * math.Pi / 180 // EntityMoveHelper turns at most 30° a tick
+	pathBudget = 500
+	maxNodes   = 6000
+	turnRate   = 30 * math.Pi / 180 // EntityMoveHelper turns at most 30° a tick
 )
 
 func (m *Manager) graphFor(a *Actor) *nav.Graph {
@@ -144,8 +140,7 @@ func (m *Manager) plan(a *Actor, goal Vec) {
 // pump runs queued path searches, one at a time, until this tick's
 // expansion budget is spent; an unfinished search continues next tick.
 func (m *Manager) pump() {
-	start := time.Now()
-	for m.budget > 0 && (m.SearchTime <= 0 || time.Since(start) < m.SearchTime) {
+	for m.budget > 0 {
 		if m.searching == nil {
 			if len(m.queue) == 0 {
 				return
@@ -164,7 +159,7 @@ func (m *Manager) pump() {
 			m.searching = a
 		}
 		before := m.search.Expanded()
-		p, done := m.search.Step(min(m.budget, pumpSlice))
+		p, done := m.search.Step(m.budget)
 		m.budget -= m.search.Expanded() - before
 		if !done {
 			continue

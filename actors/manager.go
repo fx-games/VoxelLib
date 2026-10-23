@@ -4,7 +4,6 @@ import (
 	"github.com/memmaker/voxellib/voxel/collide"
 	"math"
 	"math/rand"
-	"time"
 
 	"github.com/memmaker/voxellib/character"
 	"github.com/memmaker/voxellib/projectile"
@@ -47,11 +46,6 @@ type Manager struct {
 	// may pick t as its nearest hostile (to fight, or to flee from in
 	// Flee mode); revenge is not asked.
 	CanTarget func(a, t *Actor) bool
-	// SearchTime caps a tick's path search time on top of the expansion
-	// budget (NewManager: 2 ms). The cap makes the AI depend on the
-	// machine's speed and load: a search ends a tick later on a busy
-	// machine. 0 keeps only the budget, so a run is the same every time.
-	SearchTime time.Duration
 	// OnExtinguish is called when water or rain puts a burning actor out
 	// (random.fizz 0.7, 1.6 + (r - r) * 0.4).
 	OnExtinguish func(a *Actor)
@@ -95,7 +89,7 @@ type Manager struct {
 func NewManager(w World, f *Factions, arrows *projectile.World, seed int64) *Manager {
 	m := &Manager{W: w, Factions: f, Arrows: arrows, Rand: rand.New(rand.NewSource(seed)), Difficulty: 2,
 		byID: map[string]*Actor{}, occupied: map[nav.Pos]bool{}, tracks: map[string][]Vec{},
-		shots: map[*projectile.Arrow]shot{}, SearchTime: pumpTime}
+		shots: map[*projectile.Arrow]shot{}}
 	if arrows != nil {
 		m.prevHit = arrows.Hit
 		arrows.Hit = m.arrowHit
