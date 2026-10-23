@@ -72,7 +72,15 @@ func (m *Manager) Mount(rider, mount *Actor) bool {
 	return true
 }
 
-// Dismount sets the rider down beside its mount, on the first free side.
+// playerYOffset is how far the reference's player position sits above
+// its feet (yOffset); other bodies stand on their position.
+const playerYOffset = 1.62
+
+// Dismount sets the rider down as EntityLivingBase.dismountEntity: one
+// block up, on the first neighbour cell (dx -1..1, dz -1..0) where its
+// raised box is free and the block at its position's height has a solid
+// top; else on the last such cell with a solid top or water one lower;
+// else on top of the mount.
 func (m *Manager) Dismount(rider *Actor) {
 	mount := rider.Riding
 	if mount == nil {
@@ -80,17 +88,53 @@ func (m *Manager) Dismount(rider *Actor) {
 	}
 	rider.Riding, mount.Rider = nil, nil
 	mb, rb := mount.Body, rider.Body
-	side := mb.Width/2 + rb.Width/2 + 0.1
-	for _, ang := range []float64{math.Pi / 2, -math.Pi / 2, math.Pi, 0} {
-		y := mount.Yaw + ang
-		x, z := mb.X+math.Cos(y)*side, mb.Z+math.Sin(y)*side
-		if collide.Fits(m.body(), collide.Box(x, mb.Y, z, rb.Width, rb.Height)) {
-			rb.X, rb.Y, rb.Z = x, mb.Y, z
-			rb.VX, rb.VY, rb.VZ = 0, 0, 0
-			return
+	yo := 0.0
+	if rider.Player {
+		yo = playerYOffset
+	}
+	w := m.body()
+	py := rb.Y + yo
+	// Fallback: mount.boundingBox.minY + height as the rider's position;
+	// never below the mount's feet (a player would sink into the floor).
+	x, y, z := mb.X, max(mb.Y+mb.Height-yo, mb.Y), mb.Z
+	for dx := -1; dx <= 1; dx++ {
+		for dz := -1; dz < 1; dz++ {
+			if dx == 0 && dz == 0 {
+				continue
+			}
+			bx, bz := int(rb.X+float64(dx)), int(rb.Z+float64(dz)) // (int): truncated, as the reference
+			if !collide.Fits(w, collide.Box(rb.X+float64(dx), rb.Y+1, rb.Z+float64(dz), rb.Width, rb.Height)) {
+				continue
+			}
+			if solidTop(w, bx, int(py), bz) {
+				rider.place(rb.X+float64(dx), rb.Y+1, rb.Z+float64(dz))
+				return
+			}
+			if solidTop(w, bx, int(py)-1, bz) || w.Liquid(bx, int(py)-1, bz) == character.LiquidWater {
+				x, y, z = rb.X+float64(dx), rb.Y+1, rb.Z+float64(dz)
+			}
 		}
 	}
-	rb.Y = mb.Y + mount.Mount.RideHeight // nowhere beside it: step off on top
+	rider.place(x, y, z)
+}
+
+func (a *Actor) place(x, y, z float64) {
+	b := a.Body
+	b.X, b.Y, b.Z = x, y, z
+	b.PrevX, b.PrevY, b.PrevZ = x, y, z
+	b.VX, b.VY, b.VZ = 0, 0, 0
+}
+
+// solidTop is World.doesBlockHaveSolidTopSurface: the cell holds a box
+// spanning its whole top face.
+func solidTop(w character.World, x, y, z int) bool {
+	cell := collide.Block(x, y, z)
+	for _, b := range collide.Colliders(w, cell, nil) {
+		if b.MaxY == cell.MaxY && b.MinX <= cell.MinX && b.MaxX >= cell.MaxX && b.MinZ <= cell.MinZ && b.MaxZ >= cell.MaxZ {
+			return true
+		}
+	}
+	return false
 }
 
 // seat puts the rider on its mount's back; a rearing horse tips it back

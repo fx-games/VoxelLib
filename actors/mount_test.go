@@ -3,6 +3,8 @@ package actors
 import (
 	"math"
 	"testing"
+
+	"github.com/memmaker/voxellib/voxel/nav"
 )
 
 func horseWorld(t *testing.T, s MountStats) (*Manager, *Actor, *Actor, *[]MountEvent) {
@@ -103,5 +105,25 @@ func TestMountFall(t *testing.T) {
 	m.Tick()
 	if math.Abs(h.Body.MoveSpeed-0.3*1.3) > 1e-12 {
 		t.Fatalf("sprinting move speed %.4f, want 0.39", h.Body.MoveSpeed)
+	}
+}
+
+// TestDismount: dismountEntity puts a player one block up on the first
+// free neighbour with a solid top at its position's height, else on the
+// last with a solid top or water one lower; on flat ground none qualifies
+// and it stands at the mount (top - 1.62, not below its feet).
+func TestDismount(t *testing.T) {
+	m, p, h, _ := horseWorld(t, MountStats{RideHeight: 0.8, Horse: true, Tame: true})
+	m.Dismount(p)
+	if p.Riding != nil || p.Body.X != h.Body.X || p.Body.Z != h.Body.Z || p.Body.Y != h.Body.Y {
+		t.Fatalf("flat: at %.2f %.2f %.2f, mount at %.2f %.2f %.2f", p.Body.X, p.Body.Y, p.Body.Z, h.Body.X, h.Body.Y, h.Body.Z)
+	}
+	w := m.W.(*testWorld)
+	w.water[nav.Pos{X: 1, Y: 2, Z: 0}] = true // water at (int)posY-1 (feet 1.8 + 1.62); (int) truncates -0.5 to 0, so dz -1 and 0 both see it and the last wins
+	m.Mount(p, h)
+	y := p.Body.Y
+	m.Dismount(p)
+	if p.Body.X != 1.5 || p.Body.Z != 0.5 || p.Body.Y != y+1 {
+		t.Fatalf("water: at %.2f %.2f %.2f, want 1.5 %.2f 0.5", p.Body.X, p.Body.Y, p.Body.Z, y+1)
 	}
 }

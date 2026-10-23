@@ -291,7 +291,7 @@ func TestRidingSteersMount(t *testing.T) {
 		t.Fatalf("pony speed %.3f", v)
 	}
 	m.Dismount(p)
-	if p.Riding != nil || pony.Rider != nil || p.Pos().hdist(pony.Pos()) < 0.9 {
+	if p.Riding != nil || pony.Rider != nil || p.Pos().hdist(pony.Pos()) != 0 { // dismountEntity on flat ground: at the mount
 		t.Fatal("dismount left the rider on the pony")
 	}
 }
