@@ -88,6 +88,9 @@ type Item struct {
 	OnUse func(*Ctx) bool
 	OnHit func(*Ctx)
 	OnEat func(*Ctx)
+	// Limit, if set, is a per-stack getItemStackLimit (a stack's tag can
+	// lower it); nil uses StackLimit.
+	Limit func(*Stack) int
 }
 
 // StackLimit returns the item's max stack size.
@@ -196,7 +199,12 @@ func (s *Stack) Split(n int) *Stack {
 }
 
 // MaxStack returns the item's stack limit.
-func (s *Stack) MaxStack() int { return s.Item.StackLimit() }
+func (s *Stack) MaxStack() int {
+	if s.Item.Limit != nil {
+		return s.Item.Limit(s)
+	}
+	return s.Item.StackLimit()
+}
 
 // Damageable reports ItemStack.isItemStackDamageable (honours the
 // "Unbreakable" tag).
