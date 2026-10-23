@@ -24,7 +24,7 @@ type gpuModel struct {
 
 func (mr *ModelRenderer) initGPU() error { return nil }
 
-func (mr *ModelRenderer) upload(vb []float32, ib []uint32, texs []image.Image) *gpuModel {
+func (mr *ModelRenderer) upload(vb []float32, ib []uint32, texs []image.Image, blur bool) *gpuModel {
 	g := &gpuModel{
 		vbo: newBuffer("model vertices", wgpu.BufferUsageVertex, bytesOf(vb), 0),
 		ebo: newBuffer("model indices", wgpu.BufferUsageIndex, bytesOf(ib), 0),
@@ -32,7 +32,13 @@ func (mr *ModelRenderer) upload(vb []float32, ib []uint32, texs []image.Image) *
 	for _, img := range texs {
 		t := uploadTexture2D(img)
 		g.textures = append(g.textures, t)
-		g.groups = append(g.groups, textureGroup(t))
+		if blur {
+			g.groups = append(g.groups, bindGroup("texture", dev.pipes.tex2D,
+				wgpu.BindGroupEntry{Binding: 0, TextureView: t.view},
+				wgpu.BindGroupEntry{Binding: 1, Sampler: dev.linearClp}))
+		} else {
+			g.groups = append(g.groups, textureGroup(t))
+		}
 	}
 	return g
 }

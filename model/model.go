@@ -56,6 +56,7 @@ type Model struct {
 	Bones    []Bone
 	Meshes   []Mesh
 	Textures []image.Image
+	Blur     bool // sample the textures with linear filtering (a pack texture's blur flag)
 	Clips    map[string]*Clip
 	// Tags carries importer hints, e.g. "flying" for winged creatures.
 	Tags map[string]bool

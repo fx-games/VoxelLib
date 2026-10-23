@@ -147,7 +147,7 @@ func (mr *ModelRenderer) Add(m *model.Model) (int, error) {
 	if len(texs) == 0 {
 		texs = []image.Image{whiteImage()}
 	}
-	g := mr.upload(vb, ib, texs)
+	g := mr.upload(vb, ib, texs, m.Blur)
 	g.parts, g.bones = parts, max(len(m.Bones), 1)
 	lo, hi := m.Bounds()
 	for k := 0; k < 3; k++ {
