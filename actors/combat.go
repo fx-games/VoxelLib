@@ -171,7 +171,10 @@ func (m *Manager) Attack(src, t *Actor, damage float64, knockback int) bool {
 	if src.Sprinting {
 		knockback++
 	}
-	if !m.Hurt(t, src, damage, false) {
+	m.inAttack = true
+	hurt := m.Hurt(t, src, damage, false)
+	m.inAttack = false
+	if !hurt {
 		return false
 	}
 	if knockback > 0 {
@@ -216,6 +219,13 @@ func (m *Manager) Hurt(t, src *Actor, amount float64, unblockable bool) bool {
 	}
 	if t.Resistance > 0 { // applyPotionDamageCalculations
 		dealt = float64(float32(dealt) * float32(25-t.Resistance*5) / 25)
+	}
+	if m.Protection != nil && dealt > 0 { // getEnchantmentModifierDamage
+		if p := min(m.Protection(t, src, m.inAttack), 25); p > 0 {
+			if i := min((p+1)>>1+m.Rand.Intn(p>>1+1), 20); i > 0 {
+				dealt = float64(float32(dealt) * float32(25-i) / 25)
+			}
+		}
 	}
 	t.Health -= dealt
 	t.age = 0
