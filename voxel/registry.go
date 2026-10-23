@@ -107,6 +107,9 @@ type BlockDef struct {
 	// UVRotate is a fixed RenderBlocks uvRotate (0..3) per face (logs
 	// lying along x or z), for faces not in UVRandom.
 	UVRotate [6]uint8
+	// Connect, when set, picks every face's texture by its in-plane
+	// neighbours (connected textures; overrides Textures and box textures).
+	Connect *Connect
 }
 
 // Part is a group of elements drawn when every condition holds. A Replace
@@ -183,6 +186,7 @@ type StateInfo struct {
 	UVRandom       uint8
 	UVSeed         *[6]uint8
 	UVRotate       [6]uint8
+	Connect        *ConnectInfo // BlockDef.Connect
 }
 
 // ModelResolver lets a resource pack decide shape and face textures of a state
@@ -360,6 +364,9 @@ func (r *Registry) bake(def *BlockDef, canon string, props map[string]string) St
 	}
 	for _, t := range def.Tags {
 		info.Tags = append(info.Tags, r.tagID(t))
+	}
+	if def.Connect != nil {
+		info.Connect = r.bakeConnect(def.Connect)
 	}
 	if len(def.Parts) > 0 {
 		info.Parts = make([]Part, len(def.Parts))

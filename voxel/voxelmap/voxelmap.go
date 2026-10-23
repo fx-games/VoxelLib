@@ -132,6 +132,7 @@ func readJSON(file string, v any) error {
 func (m *Map) register() {
 	for key, b := range m.Blocks {
 		name, meta, _ := strings.Cut(key, "#")
+		meta, _, _ = strings.Cut(meta, "|") // a tile-entity variant (Block.TE)
 		if meta != "*" {
 			n, _ := strconv.Atoi(meta)
 			m.reg.Register(m.def(key, b, n))
@@ -206,8 +207,35 @@ func (m *Map) ReadChunk(w *voxel.World, dim int, p voxel.ChunkPos) (*voxel.Chunk
 	if level == nil {
 		level = root
 	}
+	m.teVariants(c, level)
 	return c, level, nil
 }
+
+// teVariants swaps each block at a tile entity whose entry lists te fields
+// for the variant those fields' values name, when blocks.json defines it.
+func (m *Map) teVariants(c *voxel.Chunk, level anvil.Compound) {
+	for _, it := range level.List("TileEntities").Items {
+		t, _ := it.(anvil.Compound)
+		x, y, z := t.Int("x")-c.Pos.X*16, t.Int("y"), t.Int("z")-c.Pos.Z*16
+		if x < 0 || x > 15 || z < 0 || z > 15 {
+			continue
+		}
+		key := m.Key(c.Get(x, y, z))
+		b := m.Blocks[key]
+		if b == nil || len(b.TE) == 0 {
+			continue
+		}
+		for i, f := range b.TE {
+			key += string("|,"[min(i, 1)]) + strconv.Itoa(t.Int(f))
+		}
+		if _, ok := m.Blocks[key]; ok {
+			c.SetRaw(x, y, z, m.State(key))
+		}
+	}
+}
+
+// BaseKey strips a tile-entity variant ("|...", see Block.TE) from a key.
+func BaseKey(key string) string { k, _, _ := strings.Cut(key, "|"); return k }
 
 func (m *Map) store(dim int) (*anvil.Store, error) {
 	m.mu.Lock()

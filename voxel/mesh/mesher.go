@@ -376,6 +376,9 @@ func (m *Mesher) cubes() {
 					if info.Retex != nil {
 						tex = info.FaceTex(f, func(g voxel.Face) *voxel.StateInfo { return &t[st[i+nbOff[g]]] })
 					}
+					if info.Connect != nil { // a differing icon is a differing key: no merge across it
+						tex = m.connectTex(info, i, f)
+					}
 					tint := m.tint(info, f, tex, p[0], p[1], p[2])
 					uvs, rot := m.cubeUV(info, p, f)
 					if rot == 0 && info.Layer != voxel.LayerTranslucent && cl[0] == cl[1] && cl[1] == cl[2] && cl[2] == cl[3] {
@@ -626,6 +629,9 @@ func (m *Mesher) boxes(x, y, z, i int, info *voxel.StateInfo) {
 			if b.Tex[f] != "" {
 				tex = b.TexID[f]
 			}
+			if info.Connect != nil {
+				tex = m.connectTex(info, i, f)
+			}
 			tint := uint32(0xFFFFFF)
 			if b.NoTint&(1<<f) == 0 {
 				tint = m.tint(info, f, tex, x, y, z) // the face's own texture decides whether it is greyscale
@@ -633,6 +639,13 @@ func (m *Mesher) boxes(x, y, z, i int, info *voxel.StateInfo) {
 			m.boxFace(f, base, &b, tex, tint, info.Layer, &cl, m.uvRotate(info, [3]int{x, y, z}, f), info.UVRandom&(1<<f) != 0 || info.UVRotate[f] != 0)
 		}
 	}
+}
+
+// connectTex is face f's connected texture (voxel.Connect) of the block
+// at snapshot index i.
+func (m *Mesher) connectTex(info *voxel.StateInfo, i int, f voxel.Face) uint16 {
+	t, st := m.table, &m.Snap.States
+	return info.Connect.Tex(f, func(d [3]int) *voxel.StateInfo { return &t[st[i+d[0]+d[2]*18+d[1]*18*18]] })
 }
 
 // aoShade is the brightness of each cornerLight.ao level (shaders_gpu.go).

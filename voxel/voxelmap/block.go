@@ -40,6 +40,14 @@ import (
 //     (voxel.BlockDef.UVSeed; default mesh.RenderBlocksSides).
 //   - uvrotate: a fixed RenderBlocks uvRotate per face, six values 0..3
 //     (voxel.BlockDef.UVRotate).
+//   - connect: connected textures (voxel.Connect): "tag" a connecting
+//     neighbour carries, "plane" an axis 0..2 no connection crosses
+//     (default none), "below" a tag whose absence connects the blocks one
+//     lower, "icons" texture ids and "mask" (256 indices into icons, by
+//     in-plane neighbour mask, see voxel.ConnectOffsets).
+//   - te: tile-entity fields that pick a variant: a block at a tile entity
+//     becomes the entry "<key>|<v1>,<v2>,..." (the fields' integer values,
+//     0 when absent) when blocks.json has it (Map.ReadChunk).
 //
 // Every other field (sounds, ...) is left to the game in Raw.
 type Block struct {
@@ -63,7 +71,18 @@ type Block struct {
 	UVRandom  []string        `json:"uvrandom"`
 	UVSeed    *[6]uint8       `json:"uvseed"`
 	UVRotate  [6]uint8        `json:"uvrotate"`
+	Connect   *Connect        `json:"connect"`
+	TE        []string        `json:"te"`
 	Raw       json.RawMessage `json:"-"`
+}
+
+// Connect is a blocks.json "connect" entry (see Block).
+type Connect struct {
+	Tag   string   `json:"tag"`
+	Plane *int8    `json:"plane"`
+	Below string   `json:"below"`
+	Icons []string `json:"icons"`
+	Mask  []int    `json:"mask"` // not []uint8: JSON would want base64
 }
 
 // Part is a neighbour-dependent piece of a block (see voxel.Part): the model
@@ -191,6 +210,19 @@ func (m *Map) def(key string, b *Block, meta int) *voxel.BlockDef {
 	}
 	d.UVSeed, d.UVRotate = b.UVSeed, b.UVRotate
 	d.Tags = b.Tags
+	if c := b.Connect; c != nil {
+		if len(c.Mask) != 256 {
+			logf("%s: connect: mask needs 256 entries, has %d", d.Name, len(c.Mask))
+		} else {
+			d.Connect = &voxel.Connect{Tag: c.Tag, Plane: -1, Below: c.Below, Icons: c.Icons}
+			for i, v := range c.Mask {
+				d.Connect.Mask[i] = uint8(v)
+			}
+			if c.Plane != nil {
+				d.Connect.Plane = *c.Plane
+			}
+		}
+	}
 	if len(b.Parts) > 0 {
 		m.parts(d, b)
 	}
