@@ -66,7 +66,7 @@ func printBenchExtra(ticks, gpu []time.Duration, s render.Stats) {
 			sum += d
 		}
 		slices.Sort(ds)
-		return fmt.Sprintf("mean %.2fms p99 %.2fms max %.2fms", ms(sum/time.Duration(len(ds))), ms(ds[len(ds)*99/100]), ms(ds[len(ds)-1]))
+		return fmt.Sprintf("mean %.2fms p99 %.2fms max %.2fms p50 %.2fms", ms(sum/time.Duration(len(ds))), ms(ds[len(ds)*99/100]), ms(ds[len(ds)-1]), ms(ds[len(ds)/2]))
 	}
 	var m runtime.MemStats
 	runtime.ReadMemStats(&m)
