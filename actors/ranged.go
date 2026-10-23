@@ -16,6 +16,10 @@ const (
 	modeRanged
 )
 
+// RangedMode reports an attack-mode actor in its ranged mode, which
+// picks the item it holds.
+func (a *Actor) RangedMode() bool { return a.rs.mode == modeRanged }
+
 // rangedState is the running ranged task's state.
 type rangedState struct {
 	on        bool // the task is executing (resetTask runs when it stops)
