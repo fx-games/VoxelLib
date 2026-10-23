@@ -149,20 +149,37 @@ func clipZ(b, a AABB, d float64) float64 {
 	return d
 }
 
+// ClipY limits a y movement of box by the boxes (calculateYOffset over a list).
+func ClipY(boxes []AABB, box AABB, d float64) float64 {
+	for _, b := range boxes {
+		d = clipY(b, box, d)
+	}
+	return d
+}
+
+// ClipX is ClipY along x.
+func ClipX(boxes []AABB, box AABB, d float64) float64 {
+	for _, b := range boxes {
+		d = clipX(b, box, d)
+	}
+	return d
+}
+
+// ClipZ is ClipY along z.
+func ClipZ(boxes []AABB, box AABB, d float64) float64 {
+	for _, b := range boxes {
+		d = clipZ(b, box, d)
+	}
+	return d
+}
+
 // Move moves box by (dx,dy,dz) against the grid and returns the allowed
 // movement. Compare with the request to know which axes collided.
 func Move(s Solids, box AABB, dx, dy, dz float64) (float64, float64, float64) {
 	boxes := Colliders(s, box.Expand(dx, dy, dz), nil)
-	for _, b := range boxes {
-		dy = clipY(b, box, dy)
-	}
+	dy = ClipY(boxes, box, dy)
 	box = box.Offset(0, dy, 0)
-	for _, b := range boxes {
-		dx = clipX(b, box, dx)
-	}
+	dx = ClipX(boxes, box, dx)
 	box = box.Offset(dx, 0, 0)
-	for _, b := range boxes {
-		dz = clipZ(b, box, dz)
-	}
-	return dx, dy, dz
+	return dx, dy, ClipZ(boxes, box, dz)
 }

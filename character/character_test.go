@@ -3,6 +3,8 @@ package character
 import (
 	"math"
 	"testing"
+
+	"github.com/memmaker/voxellib/voxel/collide"
 )
 
 // grid is a test world: solid below y=0, water in [waterMin, waterMax) when set.
@@ -115,6 +117,33 @@ func TestUsingItemSlows(t *testing.T) {
 		run(c, grid{}, Input{Forward: 1, Sprint: sprint, Using: true}, 80)
 		if s := speed(c) * 20; math.Abs(s-0.8634) > 0.01 {
 			t.Errorf("sprint %v: using speed %.4f b/s, want 0.863", sprint, s)
+		}
+	}
+}
+
+// ledge is flat ground with a box of height h covering z < -2 (ahead when
+// walking north); h >= 1 is a full block.
+type ledge struct {
+	grid
+	h float64
+}
+
+func (l ledge) Boxes(area collide.AABB, out []collide.AABB) []collide.AABB {
+	return append(out, collide.AABB{MinX: -10, MinY: 0, MinZ: -10, MaxX: 10, MaxY: l.h, MaxZ: -2})
+}
+
+// TestStepUp is Entity.moveEntity's stepHeight 0.5: carpets and slabs are
+// walked onto, a full block stops the player.
+func TestStepUp(t *testing.T) {
+	for _, tc := range []struct {
+		h, wantY float64
+		past     bool
+	}{{0.0625, 0.0625, true}, {0.5, 0.5, true}, {0.5625, 0, false}, {1, 0, false}} {
+		c := New(0.5, 0, 0.5)
+		run(c, ledge{h: tc.h}, Input{}, 5)
+		run(c, ledge{h: tc.h}, Input{Forward: 1}, 40)
+		if past := c.Z < -2.5; past != tc.past || math.Abs(c.Y-tc.wantY) > 1e-9 {
+			t.Errorf("h %.4f: z %.3f y %.4f, want past %v y %.4f", tc.h, c.Z, c.Y, tc.past, tc.wantY)
 		}
 	}
 }

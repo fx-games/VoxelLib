@@ -125,7 +125,7 @@ const (
 	flyAccel     = 0.05
 	jumpVelocity = 0.42
 	liquidAccel  = 0.02
-	stepHeight   = 0.6
+	stepHeight   = 0.5 // EntityLivingBase.stepHeight
 )
 
 // Tick advances one 50 ms step.
@@ -269,7 +269,7 @@ func (c *Character) climbOut(w World, y0 float64) {
 	if !c.HorizontalCollision {
 		return
 	}
-	box := c.Box().Offset(c.VX, c.VY+stepHeight-(c.Y-y0), c.VZ)
+	box := c.Box().Offset(c.VX, c.VY+0.6-(c.Y-y0), c.VZ)
 	if collide.Fits(w, box) && !c.touches(w, box, LiquidNone, true) {
 		c.VY = 0.3
 	}
@@ -286,7 +286,7 @@ func (c *Character) move(w World, in Input) {
 	// Sneaking on the ground never walks off an edge (Player.maybeBackOffFromEdge).
 	if in.Sneak && c.OnGround && !c.Flying && dy <= 0 {
 		const step = 0.05
-		free := func(x, z float64) bool { return collide.Fits(w, box.Offset(x, -stepHeight, z)) }
+		free := func(x, z float64) bool { return collide.Fits(w, box.Offset(x, -1, z)) }
 		for dx != 0 && free(dx, 0) {
 			dx = shrink(dx, step)
 		}
@@ -298,7 +298,23 @@ func (c *Character) move(w World, in Input) {
 		}
 	}
 	mx, my, mz := collide.Move(w, box, dx, dy, dz)
-	c.OnGround = dy < 0 && my > dy
+	// Entity.moveEntity's step: blocked sideways while on (or landing on)
+	// the ground, retry raised by stepHeight, then settle back down; keep
+	// whichever goes further horizontally.
+	if (c.OnGround || my != dy && dy < 0) && (mx != dx || mz != dz) {
+		boxes := collide.Colliders(w, box.Expand(dx, stepHeight, dz), nil)
+		b, sy := box, collide.ClipY(boxes, box, stepHeight)
+		b = b.Offset(0, sy, 0)
+		sx := collide.ClipX(boxes, b, dx)
+		b = b.Offset(sx, 0, 0)
+		sz := collide.ClipZ(boxes, b, dz)
+		b = b.Offset(0, 0, sz)
+		sy += collide.ClipY(boxes, b, -stepHeight)
+		if mx*mx+mz*mz < sx*sx+sz*sz {
+			mx, my, mz = sx, sy, sz
+		}
+	}
+	c.OnGround = dy < 0 && my != dy
 	c.HorizontalCollision = mx != dx || mz != dz
 	if mx != dx {
 		c.VX = 0
