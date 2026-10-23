@@ -19,7 +19,7 @@ fn fogFactor(dist: f32, fog: vec4f) -> f32 {
 }
 `
 
-const terrainWGSL = `
+const terrainWGSL = wgslBlockTex + `
 struct U {
 	viewProj: mat4x4f, // rotation-only view * projection (camera-relative)
 	origin: vec4f,     // region origin minus camera position
@@ -73,7 +73,7 @@ fn vs(@location(0) d: vec4<u32>) -> VOut {
 
 @fragment
 fn fs(i: VOut) -> @location(0) vec4f {
-	let c = textureSample(tex, samp, i.uv, i.layer);
+	let c = blockTex(i.uv, i.layer);
 	if (c.a < u.params.z) { discard; }
 	let col = c.rgb * i.color * textureSampleLevel(lightmap, lightSamp, i.light, 0.0).rgb;
 	return vec4f(mix(col, u.fogColor.rgb, fogFactor(i.dist, u.fog)), c.a);

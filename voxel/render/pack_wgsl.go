@@ -187,7 +187,7 @@ func PackMaterial(name string) uint8 {
 }
 
 // terrainHeaderWGSL is terrainWGSL's uniform block and group 1.
-const terrainHeaderWGSL = `
+const terrainHeaderWGSL = wgslBlockTex + `
 struct U {
 	viewProj: mat4x4f,
 	origin: vec4f,
@@ -300,7 +300,7 @@ fn fs(i: GV) -> GOut {
 	// ShadersTess.calcNormal: faces without a fixed direction (crossed
 	// plants) get the quad's own normal, facing the eye on a front face.
 	let dn = normalize(cross(dpdy(i.vpos), dpdx(i.vpos)));
-	let albedo = textureSample(tex, samp, i.uv, i.layer) * i.color;
+	let albedo = blockTex(i.uv, i.layer) * i.color;
 	if (albedo.a <= 0.1) { discard; } // glAlphaFunc(GL_GREATER, 0.1)
 	var c = vec4f(ycocg(albedo.rgb), albedo.a);
 	if (pattern(glFrag(i.pos))) { c.g = c.b; }
@@ -472,7 +472,7 @@ fn fs(i: WV) -> WOut {
 	let bs = select(1.0, -1.0, dot(dPdv, cr) < 0.0); // a let: naga's MSL drops the parens of a select operand
 	let bn = normalize(cr * bs);
 	let viewVector = vec2f(dot(tg, i.vd), dot(bn, i.vd)) * 8.25;
-	var albedo = textureSample(tex, samp, i.uv, i.layer) * i.color;
+	var albedo = blockTex(i.uv, i.layer) * i.color;
 
 	let iswater = clamp(i.amb.a * 2.0 - 1.0, 0.0, 1.0);
 	albedo = vec4f(pow(albedo.rgb, vec3f(2.2)), albedo.a);
@@ -703,7 +703,7 @@ fn fs(i: VOut) -> TOut {
 
 // packBlockWGSL is blockWGSL's input (a BlockMesh as an entity) drawn
 // with gbuffers_textured; fogColor.w carries the light levels.
-var packBlockWGSL = `
+var packBlockWGSL = wgslBlockTex + `
 struct U {
 	mvp: mat4x4f,
 	model: mat4x4f,
@@ -761,7 +761,7 @@ fn vs(@location(0) d: vec4<u32>) -> VOut {
 }
 @fragment
 fn fs(i: VOut) -> TOut {
-	let c = textureSample(tex, samp, i.uv, i.layer) * vec4f(i.color, 1.0);
+	let c = blockTex(i.uv, i.layer) * vec4f(i.color, 1.0);
 	if (c.a <= 0.1) { discard; }
 	return fragTextured(c, i.normal, i.pos, i.sun, i.amb, i.skyL);
 }
@@ -909,7 +909,7 @@ fn vs(@location(0) d: vec4<u32>) -> SV {
 }
 @fragment
 fn fs(i: SV) -> @location(0) vec4f {
-	var color = textureSample(tex, samp, i.uv, i.layer);
+	var color = blockTex(i.uv, i.layer);
 	if (color.a <= 0.1) { discard; }
 	if (i.water == 1u) { color = vec4f(1.0, 1.0, 1.0, color.a); }
 	return color;

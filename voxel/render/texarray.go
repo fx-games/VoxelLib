@@ -1,8 +1,10 @@
 package render
 
 import (
+	"fmt"
 	"image"
 	"image/color"
+	"math/bits"
 )
 
 // TextureSource supplies block textures by resource name ("block/stone").
@@ -28,6 +30,10 @@ type anim struct{ base, extra, count, ticks int }
 // layer map (a 1-row R16UI texture the shader reads), which also points
 // animated textures at their current frame. Names learned later are
 // appended into spare layers (see add) without re-reading the others.
+//
+// The GPU caps array layers (Metal: 2048). Past that, physical layers are
+// packed as tiles of a 2^grid x 2^grid grid per array layer (see tileOf);
+// the layer map then holds codes (layerCode) that wgslBlockTex decodes.
 type textureArray struct {
 	gpu               gpuTexArray
 	size              int
@@ -38,6 +44,7 @@ type textureArray struct {
 	base              []uint16   // per name: frame 0's physical layer
 	mips              [][][]byte // per physical layer: cached mip chain
 	capLayers, capMap int        // GPU capacity (physical layers, layer map width)
+	grid              int        // tiles per array layer side: 1<<grid
 	gen               int        // bumped when the GPU textures are reallocated
 	lastTick          int
 
@@ -107,6 +114,9 @@ func newTextureArray(names []string, src TextureSource, missing func(int) image.
 			}
 		}
 	}
+	// a power of two, so smaller power-of-two textures scale by whole
+	// texels and grid tiles stay aligned at every mip level
+	t.size = 1 << bits.Len(uint(t.size-1))
 	t.levels = mipLevels
 	for s := t.size; s>>t.levels == 0; t.levels-- {
 	}
@@ -193,6 +203,11 @@ func (t *textureArray) place(names []string, imgs []image.Image) {
 		}
 		t.capLayers = max(len(t.mips)+len(t.mips)/4+16, 64)
 		t.capMap = max(len(t.mapPix)+len(t.mapPix)/4+16, 64)
+		maxLayers, maxDim := gpuArrayLimits()
+		t.grid = gridShift(t.capLayers, maxLayers)
+		if len(t.mips) > maxLayerCode || t.size<<t.grid > maxDim {
+			panic(fmt.Sprintf("render: %d block texture layers of %dpx exceed the GPU limits (%d array layers, %dpx)", len(t.mips), t.size, maxLayers, maxDim))
+		}
 		t.allocGPU()
 		first = 0
 	}
@@ -200,6 +215,35 @@ func (t *textureArray) place(names []string, imgs []image.Image) {
 		t.uploadLayer(i, t.mips[i])
 	}
 	t.uploadMap()
+}
+
+// maxLayerCode bounds physical layers: layerCode keeps 14 bits for them.
+const maxLayerCode = 1 << 14
+
+// gridShift is the smallest grid such that layers physical layers fit in
+// maxLayers array layers of (1<<grid)² tiles each.
+func gridShift(layers, maxLayers int) int {
+	g := 0
+	for layers > maxLayers<<(2*g) {
+		g++
+	}
+	return g
+}
+
+// tileOf places physical layer i: array layer, tile column and row.
+func tileOf(i, grid int) (layer, x, y int) {
+	m := 1<<grid - 1
+	return i >> (2 * grid), i & m, i >> grid & m
+}
+
+// layerCode is what the layer map stores for physical layer i: the grid
+// in the top 2 bits (wgslBlockTex decodes it; grid 0 is i itself).
+func layerCode(i, grid int) uint16 { return uint16(grid<<14 | i) }
+
+// arrayLayers is the number of array layers capLayers tiles take.
+func (t *textureArray) arrayLayers() int {
+	per := 1 << (2 * t.grid)
+	return (t.capLayers + per - 1) / per
 }
 
 // animate points animated layers at their frame for game tick (20 Hz).

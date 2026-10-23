@@ -9,7 +9,7 @@ import (
 // blockWGSL draws a BlockMesh: mesher vertices (mesh.VertexWords) placed
 // by a model matrix, lit like a reference item (two GL lights) or, for
 // the breaking overlay, the plain crack texture.
-const blockWGSL = `
+const blockWGSL = wgslBlockTex + `
 const damagePull = 0.002;
 
 struct U {
@@ -76,7 +76,7 @@ fn vs(@location(0) d: vec4<u32>) -> VOut {
 
 @fragment
 fn fs(i: VOut) -> @location(0) vec4f {
-	var c = textureSample(tex, samp, i.uv, i.layer);
+	var c = blockTex(i.uv, i.layer);
 	if (u.light.w > 0.5) { c.a = c.a * 0.5; } // glColor4f(1, 1, 1, 0.5)
 	if (c.a <= 0.1) { discard; }              // glAlphaFunc(GL_GREATER, 0.1)
 	return vec4f(mix(c.rgb * i.color, u.fogColor.rgb, fogFactor(i.dist, u.fog)), c.a);
