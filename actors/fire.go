@@ -23,6 +23,9 @@ func (a *Actor) fireResist() int {
 // OnFire is Entity.isBurning.
 func (a *Actor) OnFire() bool { return !a.FireImmune && a.fire > 0 }
 
+// Extinguish is Entity.extinguish: stop burning.
+func (a *Actor) Extinguish() { a.fire = 0 }
+
 // SetFire is Entity.setFire: burn for at least sec seconds.
 func (a *Actor) SetFire(sec int) {
 	if j := sec * 20; a.fire < j {
