@@ -8,6 +8,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"time"
 
@@ -62,6 +63,7 @@ func (a *App) loop() {
 	st.fpsTime = time.Now()
 	start := time.Now()
 	var benchFrames, benchCPU []time.Duration
+	var benchMem runtime.MemStats // at the first measured frame
 	for !a.Win.ShouldClose() && !a.quit && !a.restart {
 		if dbg.Verbose && !a.readyLogged && a.Ready() {
 			a.readyLogged = true
@@ -69,9 +71,12 @@ func (a *App) loop() {
 		}
 		if dbg.Bench > 0 {
 			if el := time.Since(start); el > dbg.Bench {
-				printBench(benchFrames, benchCPU)
+				printBench(benchFrames, benchCPU, &benchMem)
 				return
 			} else if el > 3*time.Second { // skip startup
+				if len(benchFrames) == 0 {
+					runtime.ReadMemStats(&benchMem)
+				}
 				benchFrames = append(benchFrames, time.Since(last))
 			}
 		}
@@ -136,6 +141,7 @@ func (a *App) loop() {
 		if a.Hooks.Draw != nil {
 			a.Hooks.Draw(alpha)
 		}
+		a.Eng.Renderer.DrawWeather(&a.Cam) // Options.Weather, after particles as in 1.7
 		if !a.Paused() {
 			a.Eng.Renderer.DrawCrosshair(float32(a.Cam.Aspect))
 		}
@@ -273,7 +279,7 @@ func ms(d time.Duration) float64 { return float64(d.Microseconds()) / 1000 }
 
 // printBench reports Debug.Bench: frame interval and CPU cost (frame start
 // to EndFrame, without the drawable wait), mean and 99th percentile.
-func printBench(frames, cpu []time.Duration) {
+func printBench(frames, cpu []time.Duration, m0 *runtime.MemStats) {
 	if len(frames) == 0 || len(cpu) == 0 {
 		return
 	}
@@ -289,4 +295,8 @@ func printBench(frames, cpu []time.Duration) {
 	cm, cp := stat(cpu)
 	fmt.Printf("bench %s: %d frames, %.0f fps, interval mean %.2fms p99 %.2fms, cpu mean %.2fms p99 %.2fms\n",
 		render.Backend, len(frames), float64(time.Second)/float64(fm), ms(fm), ms(fp), ms(cm), ms(cp))
+	var m1 runtime.MemStats
+	runtime.ReadMemStats(&m1)
+	n := uint64(len(frames))
+	fmt.Printf("bench: %d allocs, %d KiB per frame\n", (m1.Mallocs-m0.Mallocs)/n, (m1.TotalAlloc-m0.TotalAlloc)/n>>10)
 }

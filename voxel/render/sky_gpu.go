@@ -23,20 +23,25 @@ func uploadSkyTexture(img image.Image) *skyTexture {
 		wgpu.BindGroupEntry{Binding: 1, Sampler: dev.nearestRep})}
 }
 
+// skyWhiteTexture is a 1x1 white texture, for untextured draws.
+func skyWhiteTexture() *skyTexture {
+	if skyWhite == nil {
+		img := image.NewNRGBA(image.Rect(0, 0, 1, 1))
+		img.Set(0, 0, color.White)
+		skyWhite = uploadSkyTexture(img)
+	}
+	return skyWhite
+}
+
 // drawSky draws sky draws with the camera's rotation.
 func (r *Renderer) drawSky(cam *Camera, draws []SkyDraw) {
 	p := curPass()
 	if p == nil {
 		return
 	}
-	if skyWhite == nil {
-		img := image.NewNRGBA(image.Rect(0, 0, 1, 1))
-		img.Set(0, 0, color.White)
-		skyWhite = uploadSkyTexture(img)
-	}
 	for i := range draws {
 		d := &draws[i]
-		t := skyWhite
+		t := skyWhiteTexture()
 		if d.Texture != "" {
 			if t = r.skyTexture(d.Texture); t == nil {
 				continue

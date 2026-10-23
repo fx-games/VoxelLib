@@ -74,3 +74,134 @@ func TestLiquidCorners(t *testing.T) {
 		t.Errorf("shared corner %d, want 4", h)
 	}
 }
+
+// TestNeighbourLight: a useNeighborBrightness block (light blocking stairs)
+// takes the brightest light above or beside it, never from below.
+func TestNeighbourLight(t *testing.T) {
+	reg := voxel.NewRegistry()
+	reg.Register(&voxel.BlockDef{Name: "test:slab", Shape: voxel.ShapeBoxes, Layer: voxel.LayerSolid,
+		Textures: [6]string{"a", "a", "a", "a", "a", "a"}, NeighbourLight: true, LightOpacity: 15,
+		Boxes: []voxel.Box{{Max: [3]float32{16, 8, 16}}}})
+	slab := reg.State("test:slab", nil)
+	m := NewMesher()
+	i := idx(4, 4, 4)
+	m.Snap.States[i] = slab
+	m.Snap.Light[i+nbOff[voxel.FaceDown]] = 15<<4 | 15
+	m.Snap.Light[i+nbOff[voxel.FaceUp]] = 9 << 4
+	m.Snap.Light[i+nbOff[voxel.FaceEast]] = 3<<4 | 7
+	m.table = reg.Table()
+	m.neighbourLight()
+	if got := m.Snap.Light[i]; got != 9<<4|7 {
+		t.Errorf("mixed light sky %d block %d, want 9 and 7", got>>4, got&15)
+	}
+}
+
+func TestPlantOffset(t *testing.T) {
+	// Expected values from an independent transcription of 1.7's
+	// renderCrossedSquares / renderBlockDoublePlant arithmetic.
+	for _, c := range []struct {
+		o       voxel.PlantOffset
+		x, y, z int
+		want    [3]int
+	}{
+		{voxel.OffsetGrass, 0, 64, 0, [3]int{-23, -12, 15}},
+		{voxel.OffsetGrass, -123, 70, 4567, [3]int{19, -9, -19}},
+		{voxel.OffsetFlower, 1000, 3, -77, [3]int{-12, 0, 17}},
+		{voxel.OffsetDouble, 5, 9, -6, [3]int{-1, 0, -12}},
+		{voxel.OffsetDouble, 5, 10, -6, [3]int{-1, 0, -12}},
+		{voxel.OffsetNone, 5, 10, -6, [3]int{}},
+	} {
+		if got := plantOffset(c.o, c.x, c.y, c.z); got != c.want {
+			t.Errorf("%d at %d,%d,%d: %v, want %v", c.o, c.x, c.y, c.z, got, c.want)
+		}
+	}
+}
+
+// Each plane's back quad shows the texture unmirrored: at the same corner
+// its u is the front's 1-u (drawCrossedSquares).
+func TestCrossBackUV(t *testing.T) {
+	m := NewMesher()
+	m.cross(0, 0, 0, [3]int{}, 1, 0, voxel.LayerCutout, cornerLight{})
+	d := m.out[voxel.LayerCutout][GroupUnassigned]
+	if len(d) != 16*VertexWords {
+		t.Fatalf("%d words", len(d))
+	}
+	for q := 0; q < 4; q += 2 {
+		u := map[[3]uint32]uint32{}
+		for k := range 4 {
+			v := d[(q*4+k)*VertexWords:]
+			u[pos32(v)] = v[1] >> 12 & 31
+		}
+		for k := range 4 {
+			v := d[((q+1)*4+k)*VertexWords:]
+			if p := pos32(v); v[1]>>12&31 != 1-u[p] {
+				t.Errorf("plane %d corner %v: back u %d, front %d", q/2, p, v[1]>>12&31, u[p])
+			}
+		}
+	}
+}
+
+// A cube's Retex swaps its side textures while snow lies on it.
+func TestRetex(t *testing.T) {
+	reg := voxel.NewRegistry()
+	reg.Register(&voxel.BlockDef{Name: "test:stone", Shape: voxel.ShapeCube, Layer: voxel.LayerSolid, Opaque: true,
+		Textures: [6]string{"s", "s", "s", "s", "s", "s"}, LightOpacity: 15,
+		Retex: []voxel.Retex{{When: []voxel.Cond{{Face: voxel.FaceUp, Any: []voxel.TagTest{{Tag: "snow"}}}},
+			Tex: [6]string{2: "snowy", 3: "snowy", 4: "snowy", 5: "snowy"}}}})
+	reg.Register(&voxel.BlockDef{Name: "test:snow", Shape: voxel.ShapeNone, Tags: []string{"snow"}})
+	snowy := reg.Texture("snowy")
+	for _, snow := range []bool{false, true} {
+		w := voxel.NewWorld(reg, 0, 64)
+		w.AddChunk(w.NewChunk(voxel.ChunkPos{}))
+		w.SetBlock(1, 1, 1, reg.State("test:stone", nil))
+		if snow {
+			w.SetBlock(1, 2, 1, reg.State("test:snow", nil))
+		}
+		m := NewMesher()
+		m.Snap.Capture(w, voxel.SectionPos{})
+		res := m.Build(reg.Table(), nil)
+		n := 0
+		for i := 0; i+VertexWords <= len(res.Data); i += VertexWords {
+			if uint16(res.Data[i+1]&4095) == snowy {
+				n++
+			}
+		}
+		if want := 16 * b2i(snow); n != want {
+			t.Errorf("snow %v: %d snowy vertices, want %d", snow, n, want)
+		}
+	}
+}
+
+func b2i(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
+}
+
+// A bottom slab's top face is lit from the slab's own layer: a stone block
+// beside it darkens the corners on that side; a Flat box stays unshaded.
+func TestBoxSmoothLight(t *testing.T) {
+	for _, flat := range []bool{false, true} {
+		reg := voxel.NewRegistry()
+		reg.Register(&voxel.BlockDef{Name: "test:slab", Shape: voxel.ShapeBoxes, Layer: voxel.LayerSolid,
+			Textures: [6]string{"a", "a", "a", "a", "a", "a"}, Boxes: []voxel.Box{{Max: [3]float32{16, 8, 16}, Flat: flat}}})
+		m := NewMesher()
+		i := idx(4, 4, 4)
+		m.Snap.States[i] = reg.State("test:slab", nil)
+		m.Snap.States[i+nbOff[voxel.FaceEast]] = reg.Parse("stone")
+		m.table = reg.Table()
+		m.boxes(4, 4, 4, i, &m.table[m.Snap.States[i]])
+		d := m.out[voxel.LayerSolid][voxel.FaceUp]
+		if len(d) != 4*VertexWords {
+			t.Fatalf("%d words on top", len(d))
+		}
+		for k := 0; k < 4; k++ {
+			v := d[k*VertexWords:]
+			east := pos32(v)[0] == 5*32
+			if ao := v[0] >> 30; (ao < 3) != (east && !flat) {
+				t.Errorf("flat %v: corner %v ao %d", flat, pos32(v), ao)
+			}
+		}
+	}
+}

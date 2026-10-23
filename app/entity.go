@@ -119,11 +119,11 @@ func (a *App) drawEntities(alpha float64) {
 			continue
 		}
 		sky, blk := a.Light(x, y+e.Height/2, z)
-		in := render.ModelInstance{Model: e.Model, X: x, Y: y, Z: z, Yaw: yaw, Pitch: pitch, Sky: sky, Block: blk}
-		if e.Pose != nil && !e.Pose(e, alpha, &in) {
-			continue
+		// Posed in place in the reused slice: a local would escape to Pose.
+		es.insts = append(es.insts, render.ModelInstance{Model: e.Model, X: x, Y: y, Z: z, Yaw: yaw, Pitch: pitch, Sky: sky, Block: blk})
+		if e.Pose != nil && !e.Pose(e, alpha, &es.insts[len(es.insts)-1]) {
+			es.insts = es.insts[:len(es.insts)-1]
 		}
-		es.insts = append(es.insts, in)
 	}
 	a.Models.Draw(&a.Cam, es.insts)
 }

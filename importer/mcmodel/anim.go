@@ -44,9 +44,19 @@ type Track struct {
 }
 
 func (tr *Track) Sample(t float32) mgl32.Vec4 {
-	c := &Ctx{AnimTime: float64(t), LifeTime: float64(t)}
-	eval := func(e [3]Expr) mgl32.Vec4 {
-		return mgl32.Vec4{float32(e[0].Eval(c)) * tr.mul[0], float32(e[1].Eval(c)) * tr.mul[1], float32(e[2].Eval(c)) * tr.mul[2], 0}
+	var c *Ctx // made for the first non-constant: most keys are numbers
+	eval := func(e [3]Expr) (v mgl32.Vec4) {
+		for i, x := range e {
+			n, ok := x.(num)
+			if !ok {
+				if c == nil {
+					c = &Ctx{AnimTime: float64(t), LifeTime: float64(t)}
+				}
+				n = num(x.Eval(c))
+			}
+			v[i] = float32(n) * tr.mul[i]
+		}
+		return v
 	}
 	k := tr.keys
 	n := len(k)

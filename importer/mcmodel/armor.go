@@ -90,7 +90,7 @@ func sortBones(m *model.Model) {
 		for vi := range vs {
 			for j, w := range vs[vi].Weights {
 				if w > 0 {
-					vs[vi].Joints[j] = uint8(newIdx[vs[vi].Joints[j]])
+					vs[vi].Joints[j] = uint16(newIdx[vs[vi].Joints[j]])
 				}
 			}
 		}

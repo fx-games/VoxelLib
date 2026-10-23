@@ -70,3 +70,27 @@ func TestWallSignHangsOnWall(t *testing.T) {
 		t.Fatalf("board back not against the south wall: %v", p)
 	}
 }
+
+// TestLockBoxes: a uvlocked y=90 turn of a position-textured box is an
+// axis-aligned box with RenderBlocks UVs of its new bounds; the north
+// face's texture ends up east, as a blockstate y=90 turns it.
+func TestLockBoxes(t *testing.T) {
+	b := Box{Min: [3]float32{0, 0, 6}, Max: [3]float32{16, 16, 10}}
+	uv := RenderBlocksUV(b.Min, b.Max, false)
+	b.UV = &uv
+	b.Tex[FaceNorth] = "n"
+	out := LockBoxes([]Box{b}, 1, 90)[0]
+	if len(out.Rot) != 0 || out.Min != [3]float32{6, 0, 0} || out.Max != [3]float32{10, 16, 16} {
+		t.Fatalf("locked box %v..%v rot %v", out.Min, out.Max, out.Rot)
+	}
+	if *out.UV != RenderBlocksUV(out.Min, out.Max, false) {
+		t.Errorf("uv %v", *out.UV)
+	}
+	if out.Tex[FaceEast] != "n" {
+		t.Errorf("north texture went to %v", out.Tex)
+	}
+	b.UVRot[FaceUp] = 1 // not laid out by position: turns with the box
+	if out := LockBoxes([]Box{b}, 1, 90)[0]; len(out.Rot) != 1 {
+		t.Error("custom-UV box was baked")
+	}
+}

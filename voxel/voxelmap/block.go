@@ -13,7 +13,8 @@ import (
 //   - shape: "cube" (default), "cross", "liquid", "none" or
 //     "model:<model id>" (a JSON block model under models/). A model may be
 //     turned like a blockstate variant with "x"/"y" (multiples of 90°),
-//     given at the top level or as "rotation": {"x":..,"y":..}.
+//     given at the top level or as "rotation": {"x":..,"y":..,"uvlock":..};
+//     uvlock keeps position-laid textures in world space (voxel.LockBoxes).
 //   - textures: one texture id for every face; a list of six (down, up,
 //     north, south, west, east); or an object with "all", "side", "end",
 //     "top"/"up", "bottom"/"down" and the face names (most specific wins).
@@ -29,28 +30,40 @@ import (
 //   - flags: a list of words; "replaceable" lets a placed block overwrite it
 //     (default for cross, liquid and none); "opaque" makes a model or
 //     non-solid block hide its neighbours' faces like a full cube;
-//     "neighbour_light" lights it from its brightest neighbour.
+//     "neighbour_light" lights it from its brightest neighbour;
+//     "offset_grass", "offset_flower" and "offset_double" shift a cross
+//     plant like 1.7's tall grass, flowers and double plants
+//     (voxel.BlockDef.PlantOffset).
 //   - uvrandom: faces whose texture turns by a position-dependent quarter
-//     turn (voxel.BlockDef.UVRandom).
+//     turn (voxel.BlockDef.UVRandom); uvseed, six side indices (down, up,
+//     north, south, west, east), picks each face's hash side
+//     (voxel.BlockDef.UVSeed; default mesh.RenderBlocksSides).
+//   - uvrotate: a fixed RenderBlocks uvRotate per face, six values 0..3
+//     (voxel.BlockDef.UVRotate).
 //
 // Every other field (sounds, ...) is left to the game in Raw.
 type Block struct {
-	Key       string              `json:"key"`
-	Shape     string              `json:"shape"`
-	X         int                 `json:"x"`
-	Y         int                 `json:"y"`
-	Rotation  *struct{ X, Y int } `json:"rotation"`
-	Textures  json.RawMessage     `json:"textures"`
-	Layer     string              `json:"layer"`
-	Opacity   *int                `json:"opacity"`
-	Emission  int                 `json:"emission"`
-	Collision json.RawMessage     `json:"collision"`
-	Tint      string              `json:"tint"`
-	Flags     []string            `json:"flags"`
-	Tags      []string            `json:"tags"`
-	Parts     []Part              `json:"parts"`
-	UVRandom  []string            `json:"uvrandom"`
-	Raw       json.RawMessage     `json:"-"`
+	Key      string `json:"key"`
+	Shape    string `json:"shape"`
+	X        int    `json:"x"`
+	Y        int    `json:"y"`
+	Rotation *struct {
+		X, Y   int
+		UVLock bool
+	} `json:"rotation"`
+	Textures  json.RawMessage `json:"textures"`
+	Layer     string          `json:"layer"`
+	Opacity   *int            `json:"opacity"`
+	Emission  int             `json:"emission"`
+	Collision json.RawMessage `json:"collision"`
+	Tint      string          `json:"tint"`
+	Flags     []string        `json:"flags"`
+	Tags      []string        `json:"tags"`
+	Parts     []Part          `json:"parts"`
+	UVRandom  []string        `json:"uvrandom"`
+	UVSeed    *[6]uint8       `json:"uvseed"`
+	UVRotate  [6]uint8        `json:"uvrotate"`
+	Raw       json.RawMessage `json:"-"`
 }
 
 // Part is a neighbour-dependent piece of a block (see voxel.Part): the model
@@ -60,7 +73,10 @@ type Block struct {
 // list of a list of lists. Built-in tags:
 // "air", "opaque". replace swaps out everything gathered before; group lets
 // only the first matching part of a group count. collision overrides the
-// part's collision ("none" or boxes in 1/16).
+// part's collision ("none" or boxes in 1/16). A cube's parts have no model:
+// their textures (as a cube's: all, side, end, top, bottom, face names)
+// replace its faces' while they hold (voxel.BlockDef.Retex), the first
+// holding part per face.
 type Part struct {
 	When      map[string]json.RawMessage `json:"when"`
 	Model     string                     `json:"model"`
@@ -103,12 +119,14 @@ func (m *Map) def(key string, b *Block, meta int) *voxel.BlockDef {
 			d.Shape, d.Textures, d.Collides = voxel.ShapeCube, tex, true
 			break
 		}
-		rx, ry := b.X, b.Y
+		rx, ry, rotate := b.X, b.Y, voxel.RotateBoxes
 		if b.Rotation != nil {
 			rx, ry = b.Rotation.X, b.Rotation.Y
+			if b.Rotation.UVLock {
+				rotate = voxel.LockBoxes
+			}
 		}
-		boxes = voxel.RotateBoxes(boxes, 0, float32(rx))
-		d.Boxes = voxel.RotateBoxes(boxes, 1, float32(ry))
+		d.Boxes = rotate(rotate(boxes, 0, float32(rx)), 1, float32(ry))
 	default: // "none"
 		d.Shape, d.Replaceable = voxel.ShapeNone, true
 	}
@@ -151,6 +169,12 @@ func (m *Map) def(key string, b *Block, meta int) *voxel.BlockDef {
 			d.Replaceable = true
 		case "neighbour_light":
 			d.NeighbourLight = true
+		case "offset_grass":
+			d.PlantOffset = voxel.OffsetGrass
+		case "offset_flower":
+			d.PlantOffset = voxel.OffsetFlower
+		case "offset_double":
+			d.PlantOffset = voxel.OffsetDouble
 		case "opaque": // a model or cutout block that still hides its neighbours' faces
 			d.Opaque = true
 			if b.Opacity == nil {
@@ -165,6 +189,7 @@ func (m *Map) def(key string, b *Block, meta int) *voxel.BlockDef {
 			logf("%s: uvrandom: unknown face %q", d.Name, f)
 		}
 	}
+	d.UVSeed, d.UVRotate = b.UVSeed, b.UVRotate
 	d.Tags = b.Tags
 	if len(b.Parts) > 0 {
 		m.parts(d, b)
@@ -173,8 +198,19 @@ func (m *Map) def(key string, b *Block, meta int) *voxel.BlockDef {
 }
 
 // parts turns blocks.json parts into voxel.Parts; the block becomes
-// ShapeBoxes (with no own elements if its shape drew nothing).
+// ShapeBoxes (with no own elements if its shape drew nothing); a cube's
+// parts become its Retex.
 func (m *Map) parts(d *voxel.BlockDef, b *Block) {
+	if d.Shape == voxel.ShapeCube {
+		for _, p := range b.Parts {
+			if p.Model != "" {
+				logf("%s: a cube's parts only retexture (no model %s)", d.Name, p.Model)
+				continue
+			}
+			d.Retex = append(d.Retex, voxel.Retex{When: conds(d.Name, p.When), Tex: faceTextures(p.Textures)})
+		}
+		return
+	}
 	switch d.Shape {
 	case voxel.ShapeBoxes:
 	case voxel.ShapeNone:
@@ -198,33 +234,7 @@ func (m *Map) parts(d *voxel.BlockDef, b *Block) {
 		}
 		boxes = voxel.RotateBoxes(voxel.RotateBoxes(boxes, 0, float32(p.X)), 1, float32(p.Y))
 		vp := voxel.Part{Boxes: boxes, Replace: p.Replace, Group: p.Group}
-		for face, raw := range p.When {
-			f, ok := faceNames[face]
-			if !ok {
-				logf("%s: part condition on unknown face %q", d.Name, face)
-				continue
-			}
-			// a test, a list (any of), or a list of lists (all of, each any of)
-			var groups [][]string
-			var one string
-			var list []string
-			switch {
-			case json.Unmarshal(raw, &one) == nil:
-				groups = [][]string{{one}}
-			case json.Unmarshal(raw, &list) == nil:
-				groups = [][]string{list}
-			case json.Unmarshal(raw, &groups) != nil:
-				logf("%s: bad part condition %s", d.Name, raw)
-			}
-			for _, tests := range groups {
-				c := voxel.Cond{Face: f}
-				for _, t := range tests {
-					not := strings.HasPrefix(t, "!")
-					c.Any = append(c.Any, voxel.TagTest{Tag: strings.TrimPrefix(t, "!"), Not: not})
-				}
-				vp.When = append(vp.When, c)
-			}
-		}
+		vp.When = conds(d.Name, p.When)
 		if len(p.Collision) > 0 {
 			cd := &voxel.BlockDef{Name: d.Name, Shape: voxel.ShapeBoxes}
 			m.collision(cd, p.Collision)
@@ -232,6 +242,38 @@ func (m *Map) parts(d *voxel.BlockDef, b *Block) {
 		}
 		d.Parts = append(d.Parts, vp)
 	}
+}
+
+// conds parses a part's when (see Part).
+func conds(name string, when map[string]json.RawMessage) (cs []voxel.Cond) {
+	for face, raw := range when {
+		f, ok := faceNames[face]
+		if !ok {
+			logf("%s: part condition on unknown face %q", name, face)
+			continue
+		}
+		// a test, a list (any of), or a list of lists (all of, each any of)
+		var groups [][]string
+		var one string
+		var list []string
+		switch {
+		case json.Unmarshal(raw, &one) == nil:
+			groups = [][]string{{one}}
+		case json.Unmarshal(raw, &list) == nil:
+			groups = [][]string{list}
+		case json.Unmarshal(raw, &groups) != nil:
+			logf("%s: bad part condition %s", name, raw)
+		}
+		for _, tests := range groups {
+			c := voxel.Cond{Face: f}
+			for _, t := range tests {
+				not := strings.HasPrefix(t, "!")
+				c.Any = append(c.Any, voxel.TagTest{Tag: strings.TrimPrefix(t, "!"), Not: not})
+			}
+			cs = append(cs, c)
+		}
+	}
+	return
 }
 
 var faceNames = map[string]voxel.Face{"down": voxel.FaceDown, "up": voxel.FaceUp, "north": voxel.FaceNorth,

@@ -162,7 +162,7 @@ func ParseBBModel(data []byte) (*model.Model, []*Animation, error) {
 			continue
 		}
 		bone := boneFor(e.UUID)
-		if bone > 255 {
+		if bone > 65535 {
 			continue
 		}
 		lo := mgl32.Vec3{min(e.From[0], e.To[0]), min(e.From[1], e.To[1]), min(e.From[2], e.To[2])}.Sub(mgl32.Vec3{e.Inflate, e.Inflate, e.Inflate})
@@ -196,7 +196,7 @@ func ParseBBModel(data []byte) (*model.Model, []*Animation, error) {
 			base := uint32(len(me.Verts))
 			for i, c := range corners {
 				v := model.Vertex{Pos: mgl32.TransformCoordinate(c, xf), Normal: n, UV: uvs[(i-k+4)%4]}
-				v.Joints[0], v.Weights[0] = uint8(bone), 1
+				v.Joints[0], v.Weights[0] = uint16(bone), 1
 				me.Verts = append(me.Verts, v)
 			}
 			me.Indices = append(me.Indices, base, base+3, base+2, base, base+2, base+1)

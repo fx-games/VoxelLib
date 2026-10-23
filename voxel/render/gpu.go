@@ -75,8 +75,8 @@ var dev struct {
 }
 
 // uniformSlot is the bound size of a dynamic uniform block; every shader's
-// uniform struct fits in it.
-const uniformSlot = 8192
+// uniform struct fits in it (the model block: 208 bytes + MaxBones mat4).
+const uniformSlot = (208 + MaxBones*64 + 255) &^ 255
 
 // WindowHints sets the GLFW hints the backend needs; call before
 // glfw.CreateWindow.
@@ -472,8 +472,11 @@ type streamChunk struct {
 }
 
 // alloc copies data into the stream; it returns the chunk and the offset.
-func (s *stream) alloc(data []byte, reserve int) (*streamChunk, uint32) {
-	need := max(len(data), reserve)
+// room bytes from the offset must lie in the chunk (a bound window such as
+// uniformSlot); only data is written, so windows overlap later data, which
+// shaders don't read (every uniform writer fills its whole struct).
+func (s *stream) alloc(data []byte, room int) (*streamChunk, uint32) {
+	need := max(len(data), room)
 	for {
 		if s.cur >= len(s.chunks) {
 			size := max(s.chunk, need)
@@ -495,12 +498,6 @@ func (s *stream) alloc(data []byte, reserve int) (*streamChunk, uint32) {
 		if off+need <= len(c.shadow) {
 			copy(c.shadow[off:], data)
 			c.used = off + len(data)
-			if reserve > len(data) {
-				// Zero the tail like GL's unset uniforms: a model reads
-				// bones its skin did not set.
-				clear(c.shadow[off+len(data) : off+reserve])
-				c.used = off + reserve
-			}
 			return c, uint32(off)
 		}
 		s.cur++
@@ -528,8 +525,13 @@ func (s *stream) reset() {
 // bindUniforms writes a uniform block and binds it as group 0.
 func bindUniforms(p *wgpu.RenderPassEncoder, u *ubuf) {
 	c, off := dev.uniforms.alloc(u.b, uniformSlot)
-	p.SetBindGroup(0, c.bg, []uint32{off})
+	dynOffset[0] = off
+	p.SetBindGroup(0, c.bg, dynOffset[:]) // copied by the render pass
 }
+
+// dynOffset is bindUniforms' offsets argument, kept to avoid an allocation
+// per draw (render thread only).
+var dynOffset [1]uint32
 
 // ubuf packs a uniform block with WGSL layout (only mat4 and vec4 members,
 // so no padding rules apply beyond 16-byte vec4s).

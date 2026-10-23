@@ -85,14 +85,28 @@ type BlockDef struct {
 	// multipart): a ShapeBoxes block draws Boxes plus every Part whose
 	// conditions hold (see Connected).
 	Parts []Part
-	// NeighbourLight lights the block's faces with the brightest of its six
-	// neighbours instead of its own light (Minecraft's
+	// Retex swaps a ShapeCube's face textures by its neighbours: each face
+	// takes the first entry that names it and whose When holds (Minecraft's
+	// world-aware getIcon, as snowy grass, stone and podzol sides).
+	Retex []Retex
+	// NeighbourLight lights the block with the brightest light of the
+	// blocks above and beside it instead of its own (Minecraft's
 	// useNeighborBrightness: stairs, slabs, farmland, which block light).
 	NeighbourLight bool
-	// UVRandom marks faces (1<<Face) whose texture the renderer turns by a
-	// position-dependent quarter turn (LOTR's randomly rotated natural
-	// blocks).
+	// PlantOffset shifts a plant (ShapeCross, or ShapeBoxes for plant
+	// models) by a position hash (RenderBlocks.renderCrossedSquares and
+	// friends).
+	PlantOffset PlantOffset
+	// UVRandom marks faces (1<<Face) whose texture the mesher turns by a
+	// position-dependent uvRotate (Minecraft 1.7 RenderBlocks), as LOTR's
+	// randomly rotated natural blocks (see mesh.RenderBlocksSides).
 	UVRandom uint8
+	// UVSeed, when set, is per face the side index whose hash turns it
+	// (nil: mesh.RenderBlocksSides).
+	UVSeed *[6]uint8
+	// UVRotate is a fixed RenderBlocks uvRotate (0..3) per face (logs
+	// lying along x or z), for faces not in UVRandom.
+	UVRotate [6]uint8
 }
 
 // Part is a group of elements drawn when every condition holds. A Replace
@@ -104,6 +118,14 @@ type Part struct {
 	Collision []Box // nil: Boxes collide
 	Replace   bool
 	Group     string
+}
+
+// Retex is one neighbour-dependent set of face textures (see
+// BlockDef.Retex); an empty Tex keeps that face's texture.
+type Retex struct {
+	When []Cond
+	Tex  [6]string
+	ids  [6]uint16
 }
 
 // Cond holds when the neighbour on Face passes any of the tests.
@@ -155,8 +177,12 @@ type StateInfo struct {
 	// Tags and Parts as in BlockDef, tags interned (see Registry.tagID).
 	Tags           []uint16
 	Parts          []Part
+	Retex          []Retex
 	NeighbourLight bool
+	PlantOffset    PlantOffset
 	UVRandom       uint8
+	UVSeed         *[6]uint8
+	UVRotate       [6]uint8
 }
 
 // ModelResolver lets a resource pack decide shape and face textures of a state
@@ -310,6 +336,19 @@ func (r *Registry) State(name string, props map[string]string) StateID {
 	return id
 }
 
+// conds copies cs with their tags interned.
+func (r *Registry) conds(cs []Cond) []Cond {
+	cs = append([]Cond(nil), cs...)
+	for j, c := range cs {
+		c.Any = append([]TagTest(nil), c.Any...)
+		for k := range c.Any {
+			c.Any[k].id = r.tagID(c.Any[k].Tag)
+		}
+		cs[j] = c
+	}
+	return cs
+}
+
 func (r *Registry) bake(def *BlockDef, canon string, props map[string]string) StateInfo {
 	info := StateInfo{
 		Def: def, Name: def.Name, Props: canon,
@@ -317,7 +356,7 @@ func (r *Registry) bake(def *BlockDef, canon string, props map[string]string) St
 		Opaque: def.Opaque, Collides: def.Collides, Emission: def.LightEmission,
 		Opacity: def.LightOpacity, CullSelf: def.CullSelf, Connects: def.Connects,
 		Collision: def.Collision, TintColor: def.TintColor, Level: def.Level,
-		NeighbourLight: def.NeighbourLight, UVRandom: def.UVRandom,
+		NeighbourLight: def.NeighbourLight, PlantOffset: def.PlantOffset, UVRandom: def.UVRandom, UVSeed: def.UVSeed, UVRotate: def.UVRotate,
 	}
 	for _, t := range def.Tags {
 		info.Tags = append(info.Tags, r.tagID(t))
@@ -325,14 +364,7 @@ func (r *Registry) bake(def *BlockDef, canon string, props map[string]string) St
 	if len(def.Parts) > 0 {
 		info.Parts = make([]Part, len(def.Parts))
 		for i, p := range def.Parts {
-			p.When = append([]Cond(nil), p.When...)
-			for j, c := range p.When {
-				c.Any = append([]TagTest(nil), c.Any...)
-				for k := range c.Any {
-					c.Any[k].id = r.tagID(c.Any[k].Tag)
-				}
-				p.When[j] = c
-			}
+			p.When = r.conds(p.When)
 			p.Boxes = append([]Box(nil), p.Boxes...)
 			for j := range p.Boxes {
 				for f, t := range p.Boxes[j].Tex {
@@ -343,6 +375,15 @@ func (r *Registry) bake(def *BlockDef, canon string, props map[string]string) St
 			}
 			info.Parts[i] = p
 		}
+	}
+	for _, x := range def.Retex {
+		x.When = r.conds(x.When)
+		for f, t := range x.Tex {
+			if t != "" {
+				x.ids[f] = r.texture(t)
+			}
+		}
+		info.Retex = append(info.Retex, x)
 	}
 	if def.Shape == ShapeBoxes {
 		if def.Boxes != nil {
@@ -530,3 +571,13 @@ func canonicalProps(props map[string]string) string {
 	}
 	return b.String()
 }
+
+// PlantOffset is how Minecraft 1.7 moves a plant off its block's centre.
+type PlantOffset uint8
+
+const (
+	OffsetNone   PlantOffset = iota
+	OffsetGrass              // tall grass: x, z by ±0.25, y by -0.2..0
+	OffsetFlower             // flowers: x, z by ±0.15
+	OffsetDouble             // double plants: x, z by ±0.15, the same for both halves
+)

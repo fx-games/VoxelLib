@@ -1,6 +1,7 @@
 package mesh
 
 import (
+	"math"
 	"sort"
 
 	"github.com/memmaker/voxellib/voxel"
@@ -24,12 +25,28 @@ const (
 
 // VertexWords is the vertex size in uint32s (16 bytes).
 //
-//	w0: x:10 y:10 z:10 (1/32 block, section local) ao:2
-//	w1: texture layer:12 u:5 v:5 normal:3
+//	w0: x:10 y:10 z:10 (high bits of the position) ao:2
+//	w1: texture layer:12 u:5 v:5 normal:3 projected uv:1,
+//	    x:2 y:2 z:2 (low bits of the position)
+//
+// A position is section local in 1/128 block, biased by 8 blocks, so
+// geometry may reach from -8 to 24 blocks (plants offset past the section,
+// parts poking out of it); see vpos.
+//
 //	w2: tint r:8 g:8 b:8, section index in region:8
 //	w3: sky light:8 block light:8 (level*16, smoothly averaged),
 //	    dynamic tint weight:8 (see Config.BlockTint)
 const VertexWords = 4
+
+// vpos packs a section-local position in 1/128 block into w0 and w1 bits.
+func vpos(x, y, z int) (w0, w1 uint32) {
+	for a, v := range [3]int{x, y, z} {
+		q := uint32(min(max(v+8*128, 0), 4095))
+		w0 |= q >> 2 << (10 * a)
+		w1 |= q & 3 << (26 + 2*a)
+	}
+	return
+}
 
 // RegionOf returns the region coordinate containing a section.
 func RegionOf(p voxel.SectionPos) [3]int {
@@ -78,15 +95,11 @@ type Config struct {
 	// data, TintColors apply. It runs on mesh workers, concurrently, and
 	// is called at most once per block and mesh build.
 	BlockTint func(info *voxel.StateInfo, x, y, z int, biome func(x, z int) uint8) uint32
-	// FaceUVRot, when set, turns the texture of a visible face of a
-	// ShapeCube or ShapeBoxes block, e.g. to break up tiling on natural
-	// ground: bits 0-1 are n quarter turns, tile coordinates mapping
-	// (u,v) → (v, 1-u) per turn (corner k shows what corner k+n showed);
-	// bit 2 first transposes (u,v) → (v,u) (Minecraft's mirrored uvRotate
-	// on some faces).
-	// Turned cube faces are not merged. It runs concurrently on mesh
-	// workers.
-	FaceUVRot func(info *voxel.StateInfo, x, y, z int, f voxel.Face) uint8
+	// RenderBlocksUV maps cube faces and boxes without model UVs like
+	// Minecraft 1.7's RenderBlocks (bottom v along +z, north and east
+	// mirrored within the box) instead of 1.8 block models. Faces in a
+	// state's UVRandom always follow RenderBlocks.
+	RenderBlocksUV bool
 }
 
 // Tint colours (plains biome defaults).
@@ -106,6 +119,7 @@ type Mesher struct {
 	cfg   *Config
 	out   [voxel.LayerCount][GroupCount][]uint32
 	trans [][3]float32
+	nl    [][2]int32 // neighbourLight scratch: cell, mixed light
 	mask  [256]uint64
 	ridx  uint32
 	// BlockTint results per block of the section, valid where tintStamp
@@ -167,6 +181,7 @@ func (m *Mesher) Build(table []voxel.StateInfo, cfg *Config) *Mesh {
 	}
 	m.trans = m.trans[:0]
 
+	m.neighbourLight()
 	m.cubes()
 	m.specials()
 
@@ -192,6 +207,35 @@ func (m *Mesher) Build(table []voxel.StateInfo, cfg *Config) *Mesh {
 	res.Vis = m.visGraph()
 	res.Empty = len(res.Data) == 0 && len(res.Trans) == 0
 	return res
+}
+
+// neighbourLight gives every NeighbourLight cell of the snapshot the
+// brightest sky and block light of the cells above it and beside it, as
+// Minecraft's ChunkCache.getSkyBlockTypeBrightness does for
+// useNeighborBrightness blocks (the cell below does not count). Faces and
+// AO samples then read the mixed value like any other light.
+func (m *Mesher) neighbourLight() {
+	t, st, li := m.table, &m.Snap.States, &m.Snap.Light
+	m.nl = m.nl[:0]
+	for i, s := range st {
+		if !t[s].NeighbourLight {
+			continue
+		}
+		x, z, y := i%18, i/18%18, i/(18*18)
+		var sky, blk uint8
+		for _, d := range [5][3]int{{0, 1, 0}, {1, 0, 0}, {-1, 0, 0}, {0, 0, 1}, {0, 0, -1}} {
+			nx, ny, nz := x+d[0], y+d[1], z+d[2]
+			if nx < 0 || nx >= 18 || ny < 0 || ny >= 18 || nz < 0 || nz >= 18 {
+				continue
+			}
+			l := li[(ny*18+nz)*18+nx]
+			sky, blk = max(sky, l>>4), max(blk, l&15)
+		}
+		m.nl = append(m.nl, [2]int32{int32(i), int32(sky<<4 | blk)})
+	}
+	for _, e := range m.nl { // after the scan: neighbours read raw light
+		li[e[0]] = uint8(e[1])
+	}
 }
 
 func faceVisible(a, b *voxel.StateInfo) bool {
@@ -328,16 +372,20 @@ func (m *Mesher) cubes() {
 						continue // a model face without cullface (FaceCount) is never hidden
 					}
 					cl := m.light(p[0], p[1], p[2], f)
-					tint := m.tint(info, f, info.Tex[f], p[0], p[1], p[2])
-					rot := m.uvRot(info, p, f)
+					tex := info.Tex[f]
+					if info.Retex != nil {
+						tex = info.FaceTex(f, func(g voxel.Face) *voxel.StateInfo { return &t[st[i+nbOff[g]]] })
+					}
+					tint := m.tint(info, f, tex, p[0], p[1], p[2])
+					uvs, rot := m.cubeUV(info, p, f)
 					if rot == 0 && info.Layer != voxel.LayerTranslucent && cl[0] == cl[1] && cl[1] == cl[2] && cl[2] == cl[3] {
 						// key: tex 12 | layer 2 | ao 2 | sky 8 | blk 8 | tint 24 ; +1 so 0 = empty
-						m.mask[b<<4|a] = (uint64(info.Tex[f]) | uint64(info.Layer)<<12 | uint64(cl[0].ao)<<14 |
+						m.mask[b<<4|a] = (uint64(tex) | uint64(info.Layer)<<12 | uint64(cl[0].ao)<<14 |
 							uint64(cl[0].sky)<<16 | uint64(cl[0].blk)<<24 | uint64(tint)<<32) + 1
 						any = true
 						continue
 					}
-					m.quadTops(f, p, 1, 1, info.Tex[f], tint, info.Layer, cl, full, rot)
+					m.quadTops(f, p, 1, 1, tex, tint, info.Layer, cl, full, uvs)
 				}
 			}
 			if any {
@@ -390,21 +438,44 @@ func (m *Mesher) greedy(f voxel.Face, p [3]int, ax int) {
 // quad emits one face quad. p is the block position (section local), w/h the
 // size along the face's u/v axes, top the height of y=1 corners in 1/32.
 func (m *Mesher) quad(f voxel.Face, p [3]int, w, h int, tex uint16, tint uint32, layer voxel.Layer, cl [4]cornerLight, top int) {
-	m.quadTops(f, p, w, h, tex, tint, layer, cl, [4]int{top, top, top, top}, 0)
+	uvs := &uvTab[f]
+	if m.cfg != nil && m.cfg.RenderBlocksUV {
+		uvs = &rbTab[f][0]
+	}
+	m.quadTops(f, p, w, h, tex, tint, layer, cl, [4]int{top, top, top, top}, uvs)
 }
 
-// uvRot is Config.FaceUVRot for face f of the block at section-local p.
-func (m *Mesher) uvRot(info *voxel.StateInfo, p [3]int, f voxel.Face) uint8 {
-	if m.cfg == nil || m.cfg.FaceUVRot == nil {
-		return 0
+// uvRotate is the RenderBlocks uvRotate of face f of a block at
+// section-local p: random for UVRandom faces, else StateInfo.UVRotate.
+func (m *Mesher) uvRotate(info *voxel.StateInfo, p [3]int, f voxel.Face) int {
+	if info.UVRandom&(1<<f) == 0 {
+		return int(info.UVRotate[f] & 3)
 	}
 	sp := m.Snap.Pos
-	return m.cfg.FaceUVRot(info, sp.X*16+p[0], sp.Y*16+p[1], sp.Z*16+p[2], f) & 7
+	return uvRandom(info, sp.X*16+p[0], sp.Y*16+p[1], sp.Z*16+p[2], f)
+}
+
+// rbFace reports whether face f is drawn by RenderBlocks' mapping.
+func (m *Mesher) rbFace(info *voxel.StateInfo, f voxel.Face) bool {
+	return info.UVRandom&(1<<f) != 0 || info.UVRotate[f] != 0 || m.cfg != nil && m.cfg.RenderBlocksUV
+}
+
+// cubeUV is the corner UV table of cube face f, and 0 when the face may
+// merge with neighbours drawn by the default table.
+func (m *Mesher) cubeUV(info *voxel.StateInfo, p [3]int, f voxel.Face) (*[4][2]uint32, int) {
+	if !m.rbFace(info, f) {
+		return &uvTab[f], 0
+	}
+	r := m.uvRotate(info, p, f)
+	if r == 0 && !(m.cfg != nil && m.cfg.RenderBlocksUV) {
+		r = 4 // RenderBlocks orientation, unlike the 1.8 default
+	}
+	return &rbTab[f][r&3], r
 }
 
 // quadTops is quad with the top height per corner, indexed x|z<<1 (liquid
-// surfaces slope), and the texture turned rot quarter turns (1x1 only).
-func (m *Mesher) quadTops(f voxel.Face, p [3]int, w, h int, tex uint16, tint uint32, layer voxel.Layer, cl [4]cornerLight, top [4]int, rot uint8) {
+// surfaces slope), and the tile corners' UVs uvs (repeated over w×h).
+func (m *Mesher) quadTops(f voxel.Face, p [3]int, w, h int, tex uint16, tint uint32, layer voxel.Layer, cl [4]cornerLight, top [4]int, uvs *[4][2]uint32) {
 	ua, va := uAxis[f], vAxis[f]
 	var size [3]int
 	size[f.Axis()] = 1
@@ -433,21 +504,14 @@ func (m *Mesher) quadTops(f voxel.Face, p [3]int, w, h int, tex uint16, tint uin
 		cx += float32(x)
 		cy += float32(y)
 		cz += float32(z)
-		u, v := uvTab[f][k][0], uvTab[f][k][1]
-		if rot != 0 { // FaceUVRot (1x1 quads only): transpose, then turn
-			if rot&4 != 0 {
-				u, v = v, u
-			}
-			for n := rot & 3; n > 0; n-- {
-				u, v = v, 1-u
-			}
-		}
+		u, v := uvs[k][0], uvs[k][1]
 		u *= uint32(size[ua])
 		v *= uint32(size[va])
 		c := cl[k]
+		p0, p1 := vpos(x*4, y*4, z*4)
 		out = append(out,
-			uint32(x)|uint32(y)<<10|uint32(z)<<20|uint32(c.ao)<<30,
-			uint32(tex)|u<<12|v<<17|uint32(f)<<22,
+			p0|uint32(c.ao)<<30,
+			p1|uint32(tex)|u<<12|v<<17|uint32(f)<<22,
 			tint&0xffffff|m.ridx,
 			uint32(c.sky)|uint32(c.blk)<<8|tint>>24<<16)
 	}
@@ -489,7 +553,7 @@ func (m *Mesher) specials() {
 						cl := [4]cornerLight{c, c, c, c}
 						tint := m.tint(info, f, info.Tex[f], x, y, z)
 						p := [3]int{x, y, z}
-						m.quadTops(f, p, 1, 1, info.Tex[f], tint, info.Layer, cl, top, 0)
+						m.quadTops(f, p, 1, 1, info.Tex[f], tint, info.Layer, cl, top, &uvTab[f])
 						if f == voxel.FaceUp && info.Layer == voxel.LayerTranslucent {
 							m.quadReversed(p, info.Tex[f], tint, cl, top)
 						}
@@ -499,7 +563,7 @@ func (m *Mesher) specials() {
 				case voxel.ShapeCross:
 					l := li[i]
 					c := cornerLight{3, (l >> 4) * 16, (l & 15) * 16}
-					m.cross(x, y, z, info.Tex[0], m.tint(info, voxel.FaceUp, info.Tex[0], x, y, z), info.Layer, c)
+					m.cross(x, y, z, plantOffset(info.PlantOffset, m.Snap.Pos.X*16+x, m.Snap.Pos.Y*16+y, m.Snap.Pos.Z*16+z), info.Tex[0], m.tint(info, voxel.FaceUp, info.Tex[0], x, y, z), info.Layer, c)
 				}
 			}
 		}
@@ -517,6 +581,14 @@ func (m *Mesher) boxes(x, y, z, i int, info *voxel.StateInfo) {
 	t, st, li := m.table, &m.Snap.States, &m.Snap.Light
 	bs := voxel.Connected(info, func(f voxel.Face) *voxel.StateInfo { return &t[st[i+nbOff[f]]] })
 	base := [3]float32{float32(x * 16), float32(y * 16), float32(z * 16)}
+	if info.PlantOffset != voxel.OffsetNone { // a plant model (cross with overlay, a double plant's top)
+		sp := m.Snap.Pos
+		off := plantOffset(info.PlantOffset, sp.X*16+x, sp.Y*16+y, sp.Z*16+z)
+		for a := range 3 {
+			base[a] += float32(off[a]) / 8
+		}
+	}
+	smooth := info.Emission == 0 // RenderBlocks: AO only for blocks giving no light
 	for _, b := range bs {
 		for f := voxel.Face(0); f < voxel.FaceCount; f++ {
 			if b.Skip&(1<<f) != 0 {
@@ -529,14 +601,27 @@ func (m *Mesher) boxes(x, y, z, i int, info *voxel.StateInfo) {
 				side = b.Cull[f]
 				cull = side < voxel.FaceCount
 			}
-			l := li[i]
-			if cull { // lit from the side that can hide it, as Minecraft's flat lighting
-				if t[st[i+nbOff[side]]].Opaque {
-					continue
-				}
-				l = li[i+nbOff[side]]
+			if cull && t[st[i+nbOff[side]]].Opaque {
+				continue
 			}
-			c := cornerLight{3, (l >> 4) * 16, (l & 15) * 16}
+			var cl [4]cornerLight
+			if smooth && !b.Flat && len(b.Rot) == 0 {
+				// renderStandardBlockWithAmbientOcclusion samples the layer
+				// beyond a face on the block boundary, else the block's own.
+				lx, ly, lz := x, y, z
+				if !onEdge {
+					n := f.Normal()
+					lx, ly, lz = x-n.X, y-n.Y, z-n.Z
+				}
+				cl = m.light(lx, ly, lz, f)
+			} else {
+				l := li[i]
+				if cull { // lit from the side that can hide it, as Minecraft's flat lighting
+					l = li[i+nbOff[side]]
+				}
+				c := cornerLight{3, (l >> 4) * 16, (l & 15) * 16}
+				cl = [4]cornerLight{c, c, c, c}
+			}
 			tex := info.Tex[f]
 			if b.Tex[f] != "" {
 				tex = b.TexID[f]
@@ -545,9 +630,45 @@ func (m *Mesher) boxes(x, y, z, i int, info *voxel.StateInfo) {
 			if b.NoTint&(1<<f) == 0 {
 				tint = m.tint(info, f, tex, x, y, z) // the face's own texture decides whether it is greyscale
 			}
-			m.boxFace(f, base, &b, tex, tint, info.Layer, c, m.uvRot(info, [3]int{x, y, z}, f))
+			m.boxFace(f, base, &b, tex, tint, info.Layer, &cl, m.uvRotate(info, [3]int{x, y, z}, f), info.UVRandom&(1<<f) != 0 || info.UVRotate[f] != 0)
 		}
 	}
+}
+
+// aoShade is the brightness of each cornerLight.ao level (shaders_gpu.go).
+var aoShade = [4]float32{0.45, 0.65, 0.82, 1.0}
+
+// cornerMix blends the four block-corner lights of face f bilinearly at
+// point q (1/16) of the face, as 1.7 mixes its AO and brightness for
+// partial render bounds; AO lands on the nearest level.
+func cornerMix(f voxel.Face, cl *[4]cornerLight, q [3]float32) cornerLight {
+	if cl[0] == cl[1] && cl[1] == cl[2] && cl[2] == cl[3] {
+		return cl[0]
+	}
+	ua, va := uAxis[f], vAxis[f]
+	wu, wv := min(max(q[ua]/16, 0), 1), min(max(q[va]/16, 0), 1)
+	var ao, sky, blk float32
+	for k, co := range cornerOff[f] {
+		w := wu
+		if co[ua] == 0 {
+			w = 1 - wu
+		}
+		if co[va] == 0 {
+			w *= 1 - wv
+		} else {
+			w *= wv
+		}
+		ao += w * aoShade[cl[k].ao]
+		sky += w * float32(cl[k].sky)
+		blk += w * float32(cl[k].blk)
+	}
+	c := cornerLight{sky: uint8(sky + 0.5), blk: uint8(blk + 0.5)}
+	for l := uint8(1); l < 4; l++ {
+		if math.Abs(float64(ao-aoShade[l])) < math.Abs(float64(ao-aoShade[c.ao])) {
+			c.ao = l
+		}
+	}
+	return c
 }
 
 // projUV is the texture position (1/16) of point q on face f when a texture
@@ -568,8 +689,12 @@ func projUV(f voxel.Face, q [3]float32) (float32, float32) {
 	return 16 - q[2], 16 - q[1]
 }
 
-// boxFace emits face f of element b of the block at base (all 1/16).
-func (m *Mesher) boxFace(f voxel.Face, base [3]float32, b *voxel.Box, tex uint16, tint uint32, layer voxel.Layer, c cornerLight, rot uint8) {
+// boxFace emits face f of element b of the block at base (all 1/16), lit
+// by the face's block corner lights cl interpolated to each vertex
+// (renderStandardBlockWithAmbientOcclusionPartial, smooth lighting
+// "Maximum"). rot is its uvRotate; rb (or Config.RenderBlocksUV for a face without
+// model UVs) maps it like RenderBlocks, replacing the model's UVs.
+func (m *Mesher) boxFace(f voxel.Face, base [3]float32, b *voxel.Box, tex uint16, tint uint32, layer voxel.Layer, cl *[4]cornerLight, rot int, rb bool) {
 	var q [4][3]float32
 	var uv [4][2]float32
 	for k := 0; k < 4; k++ {
@@ -607,15 +732,8 @@ func (m *Mesher) boxFace(f voxel.Face, base [3]float32, b *voxel.Box, tex uint16
 			}
 		}
 	}
-	if rot&4 != 0 { // FaceUVRot: transpose, then (u,v) → (v, 1-u) per turn
-		for k := range uv {
-			uv[k] = [2]float32{uv[k][1], uv[k][0]}
-		}
-	}
-	for n := rot & 3; n > 0; n-- {
-		for k := range uv {
-			uv[k] = [2]float32{uv[k][1], 16 - uv[k][0]}
-		}
+	if len(b.Rot) == 0 && (rb || b.UV == nil && m.cfg != nil && m.cfg.RenderBlocksUV) {
+		uv = rbUV(f, b.Min, b.Max, rot)
 	}
 	group, normal := int(f), uint32(f)
 	if len(b.Rot) > 0 {
@@ -633,19 +751,19 @@ func (m *Mesher) boxFace(f voxel.Face, base [3]float32, b *voxel.Box, tex uint16
 	out := m.out[layer][group]
 	var sum [3]float32
 	for k := 0; k < 4; k++ {
-		var p [3]uint32
+		var p [3]int
 		for a := 0; a < 3; a++ {
 			v := base[a] + q[k][a]
 			sum[a] += v
-			// ponytail: parts poking out below a section's origin (a wall
-			// torch's foot) are clamped; vertices can't go negative.
-			p[a] = uint32(min(max(v*2+0.5, 0), 1023))
+			p[a] = int(math.Floor(float64(v*8) + 0.5))
 		}
+		p0, p1 := vpos(p[0], p[1], p[2])
+		c := cornerMix(f, cl, q[k])
 		u := uint32(min(max(uv[k][0]+0.5, 0), 31))
 		v := uint32(min(max(uv[k][1]+0.5, 0), 31))
 		out = append(out,
-			p[0]|p[1]<<10|p[2]<<20|uint32(c.ao)<<30,
-			uint32(tex)|u<<12|v<<17|normal<<22|projectedUV,
+			p0|uint32(c.ao)<<30,
+			p1|uint32(tex)|u<<12|v<<17|normal<<22|projectedUV,
 			tint&0xffffff|m.ridx,
 			uint32(c.sky)|uint32(c.blk)<<8|tint>>24<<16)
 	}
@@ -703,40 +821,69 @@ func (m *Mesher) quadReversed(p [3]int, tex uint16, tint uint32, cl [4]cornerLig
 		cx += float32(x)
 		cz += float32(z)
 		u, v := uvTab[voxel.FaceUp][k][0], uvTab[voxel.FaceUp][k][1]
-		out = append(out, uint32(x)|uint32(y)<<10|uint32(z)<<20|3<<30,
-			uint32(tex)|u<<12|v<<17|uint32(voxel.FaceDown)<<22, tint&0xffffff|m.ridx, uint32(cl[0].sky)|uint32(cl[0].blk)<<8|tint>>24<<16)
+		p0, p1 := vpos(x*4, y*4, z*4)
+		out = append(out, p0|3<<30,
+			p1|uint32(tex)|u<<12|v<<17|uint32(voxel.FaceDown)<<22, tint&0xffffff|m.ridx, uint32(cl[0].sky)|uint32(cl[0].blk)<<8|tint>>24<<16)
 	}
 	m.out[voxel.LayerTranslucent][GroupUnassigned] = out
 	m.trans = append(m.trans, [3]float32{cx / 128, float32(y) / 32, cz / 128})
 }
 
-// cross emits the two diagonal planes of a plant, double sided.
-func (m *Mesher) cross(x, y, z int, tex uint16, tint uint32, layer voxel.Layer, c cornerLight) {
-	const lo, hi = 2, 30 // 1/32 inset like vanilla's 0.8/16
-	bx, by, bz := x*32, y*32, z*32
+// cross emits the two diagonal planes of a plant moved by off (1/128),
+// double sided (RenderBlocks.drawCrossedSquares: planes 0.05..0.95, the
+// back of each plane with u mirrored so the texture reads the same from
+// both sides).
+func (m *Mesher) cross(x, y, z int, off [3]int, tex uint16, tint uint32, layer voxel.Layer, c cornerLight) {
+	const lo, hi = 6, 122 // 0.05, 0.95 to 1/128
+	bx, by, bz := x*128+off[0], y*128+off[1], z*128+off[2]
 	planes := [2][4][3]int{
-		{{lo, 0, lo}, {hi, 0, hi}, {hi, 32, hi}, {lo, 32, lo}},
-		{{hi, 0, lo}, {lo, 0, hi}, {lo, 32, hi}, {hi, 32, lo}},
+		{{lo, 0, lo}, {hi, 0, hi}, {hi, 128, hi}, {lo, 128, lo}},
+		{{hi, 0, lo}, {lo, 0, hi}, {lo, 128, hi}, {hi, 128, lo}},
 	}
 	uvs := [4][2]uint32{{0, 1}, {1, 1}, {1, 0}, {0, 0}}
 	group := GroupUnassigned
 	out := m.out[layer][group]
 	for _, pl := range planes {
-		for _, order := range [2][4]int{{0, 1, 2, 3}, {1, 0, 3, 2}} {
+		for side, order := range [2][4]int{{0, 1, 2, 3}, {1, 0, 3, 2}} {
 			for _, k := range order {
 				v := pl[k]
+				u := uvs[k][0] ^ uint32(side)
+				p0, p1 := vpos(bx+v[0], by+v[1], bz+v[2])
 				out = append(out,
-					uint32(bx+v[0])|uint32(by+v[1])<<10|uint32(bz+v[2])<<20|3<<30,
-					uint32(tex)|uvs[k][0]<<12|uvs[k][1]<<17|6<<22,
+					p0|3<<30,
+					p1|uint32(tex)|u<<12|uvs[k][1]<<17|6<<22,
 					tint&0xffffff|m.ridx,
 					uint32(c.sky)|uint32(c.blk)<<8|tint>>24<<16)
 			}
 			if layer == voxel.LayerTranslucent {
-				m.trans = append(m.trans, [3]float32{float32(x) + .5, float32(y) + .5, float32(z) + .5})
+				m.trans = append(m.trans, [3]float32{float32(bx+64) / 128, float32(by+64) / 128, float32(bz+64) / 128})
 			}
 		}
 	}
 	m.out[layer][group] = out
+}
+
+// plantOffset is the shift (1/128 block) 1.7 gives the plant at world
+// x,y,z: s = (long)(x*3129871) ^ z*116129781L ^ y (no y for double
+// plants), s = s*s*42317861 + s*11, then 4-bit fields of s pick each axis.
+func plantOffset(o voxel.PlantOffset, x, y, z int) (off [3]int) {
+	if o == voxel.OffsetNone {
+		return
+	}
+	s := int64(int32(x)*3129871) ^ int64(z)*116129781
+	if o != voxel.OffsetDouble {
+		s ^= int64(y)
+	}
+	s = s*s*42317861 + s*11
+	n := func(sh uint) float64 { return float64(float32(s>>sh&15) / 15) }
+	q := func(d float64) int { return int(math.Floor(d*128 + 0.5)) }
+	k := 0.3
+	if o == voxel.OffsetGrass {
+		k = 0.5
+		off[1] = q((n(20) - 1) * 0.2)
+	}
+	off[0], off[2] = q((n(16)-0.5)*k), q((n(24)-0.5)*k)
+	return
 }
 
 // SortTranslucent returns the translucent vertices ordered back to front for

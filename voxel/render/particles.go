@@ -1,6 +1,8 @@
 package render
 
 import (
+	"image"
+
 	"github.com/go-gl/mathgl/mgl32"
 	"github.com/memmaker/voxellib/particles"
 )
@@ -15,7 +17,7 @@ type ParticleRenderer struct {
 	buf []float32
 }
 
-const particleStride = 10 // rel pos 3, size 1, rgba 4, light 2
+const particleStride = 10 // rel pos 3, size 1, rgba 4, sprite 1, unused 1
 
 // particleCorners is the unit quad as two triangles.
 var particleCorners = []float32{-0.5, -0.5, 0.5, -0.5, 0.5, 0.5, -0.5, -0.5, 0.5, 0.5, -0.5, 0.5}
@@ -35,6 +37,10 @@ func NewParticleRenderer(r *Renderer) (*ParticleRenderer, error) {
 	}
 	return pr, nil
 }
+
+// SetAtlas sets the sprite atlas Particle.Sprite indexes: 16 x 16 cells
+// like Minecraft's particles.png.
+func (pr *ParticleRenderer) SetAtlas(img image.Image) { pr.setAtlas(img) }
 
 // Draw renders the particles, interpolated alpha (0..1) between ticks.
 // light gives the sky and block light (0..15) at a world position. Call
@@ -60,7 +66,7 @@ func (pr *ParticleRenderer) Draw(cam *Camera, ps []particles.Particle, alpha flo
 				lc = pr.r.LightColor(light(x, y, z))
 			}
 			pr.buf = append(pr.buf, float32(x-cam.X), float32(y-cam.Y), float32(z-cam.Z), size,
-				col[0]*lc[0], col[1]*lc[1], col[2]*lc[2], col[3], 0, 0)
+				col[0]*lc[0], col[1]*lc[1], col[2]*lc[2], col[3], float32(q.Sprite), 0)
 		}
 		if len(pr.buf) > 0 {
 			pr.drawPass(&pf, additive, pr.buf)

@@ -105,7 +105,7 @@ func ParseGeometry(data []byte, texture func(id string) image.Image) ([]*model.M
 					base := uint32(len(me.Verts))
 					for i, cn := range corners {
 						v := model.Vertex{Pos: mgl32.TransformCoordinate(cn, xf), Normal: n, UV: uvs[i]}
-						v.Joints[0], v.Weights[0] = uint8(bi), 1
+						v.Joints[0], v.Weights[0] = uint16(bi), 1
 						me.Verts = append(me.Verts, v)
 					}
 					me.Indices = append(me.Indices, base, base+3, base+2, base, base+2, base+1)

@@ -49,7 +49,10 @@ fn vs(@location(0) d: vec4<u32>) -> VOut {
 	var shade = array<f32, 7>(0.5, 1.0, 0.8, 0.8, 0.6, 0.6, 1.0);
 	var ao = array<f32, 4>(0.45, 0.65, 0.82, 1.0);
 	let w0 = d.x; let w1 = d.y; let w2 = d.z; let w3 = d.w;
-	let local = vec3f(f32(w0 & 1023u), f32((w0 >> 10u) & 1023u), f32((w0 >> 20u) & 1023u)) * (1.0 / 32.0);
+	// position: 1/128 block, biased by 8 blocks; high 10 bits in w0, low 2 in w1 (mesh.VertexWords)
+	let coarse = vec3f(f32(w0 & 1023u), f32((w0 >> 10u) & 1023u), f32((w0 >> 20u) & 1023u));
+	let fine = vec3f(f32((w1 >> 26u) & 3u), f32((w1 >> 28u) & 3u), f32(w1 >> 30u));
+	let local = (coarse * 4.0 + fine) * (1.0 / 128.0) - 8.0;
 	let si = w2 >> 24u;
 	let sec = vec3f(f32(si & 7u), f32((si >> 3u) & 3u), f32((si >> 5u) & 7u)) * 16.0;
 	let pos = u.origin.xyz + sec + local;
@@ -116,7 +119,7 @@ fn vs(@location(0) p: vec3f) -> @builtin(position) vec4f { return u.mvp * vec4f(
 fn fs() -> @location(0) vec4f { return u.color; }
 `
 
-const modelWGSL = `
+var modelWGSL = `
 struct U {
 	viewProj: mat4x4f,
 	model: mat4x4f,
@@ -125,7 +128,7 @@ struct U {
 	fog: vec4f,      // start, end, alpha cutoff, emissive
 	color: vec4f,    // texture multiplier (glColor4f)
 	overlay: vec4f,  // rgb mixed over the lit result by a (hurt flash)
-	bones: array<mat4x4f, 96>,
+	bones: array<mat4x4f, ` + maxBonesWGSL + `>,
 }
 @group(0) @binding(0) var<uniform> u: U;
 @group(1) @binding(0) var tex: texture_2d<f32>;
@@ -217,31 +220,46 @@ struct U {
 	fog: vec4f,
 }
 @group(0) @binding(0) var<uniform> u: U;
+@group(1) @binding(0) var atlas: texture_2d<f32>; // 16 x 16 sprite cells
+@group(1) @binding(1) var samp: sampler;
 struct VOut {
 	@builtin(position) pos: vec4f,
 	@location(0) color: vec4f,
-	@location(1) light: vec2f,
+	@location(1) uv: vec2f,
 	@location(2) dist: f32,
+	@location(3) sprite: f32,
 }
 ` + wgslLight + `
 @vertex
 fn vs(@location(0) corner: vec2f, @location(1) ipos: vec3f, @location(2) size: f32,
-	@location(3) color: vec4f, @location(4) light: vec2f) -> VOut {
+	@location(3) color: vec4f, @location(4) sprite: vec2f) -> VOut {
 	let p = ipos + (u.right.xyz * corner.x + u.up.xyz * corner.y) * size;
 	var o: VOut;
 	o.pos = u.viewProj * vec4f(p, 1.0);
 	o.color = color;
-	o.light = light;
+	// EntityFX.renderParticle: cell (i % 16, i / 16), 0.0624375 wide.
+	let cell = max(sprite.x - 1.0, 0.0);
+	let c0 = vec2f(cell % 16.0, floor(cell / 16.0)) / 16.0;
+	o.uv = c0 + vec2f(corner.x + 0.5, 0.5 - corner.y) * 0.0624375;
 	o.dist = length(p);
+	o.sprite = sprite.x;
 	return o;
 }
 @fragment
 fn fs(i: VOut) -> @location(0) vec4f {
+	var c = i.color;
+	let t = textureSample(atlas, samp, i.uv);
+	if (i.sprite > 0.5) {
+		c = c * t;
+	}
+	if (c.a <= 0.003921569) { // EffectRenderer's alpha test
+		discard;
+	}
 	let f = fogFactor(i.dist, u.fog);
 	if (u.params.z > 0.5) {
-		return vec4f(i.color.rgb * i.color.a * (1.0 - f), 1.0);
+		return vec4f(c.rgb * c.a * (1.0 - f), 1.0);
 	}
-	return vec4f(mix(i.color.rgb, u.fogColor.rgb, f), i.color.a); // lit on the CPU
+	return vec4f(mix(c.rgb, u.fogColor.rgb, f), c.a); // lit on the CPU
 }
 `
 
@@ -401,7 +419,7 @@ func (ps *pipelines) init() error {
 	modelBuf := []gputypes.VertexBufferLayout{{ArrayStride: modelStride * 4, StepMode: gputypes.VertexStepModeVertex,
 		Attributes: []gputypes.VertexAttribute{
 			attr(0, gputypes.VertexFormatFloat32x3, 0), attr(1, gputypes.VertexFormatFloat32x3, 12), attr(2, gputypes.VertexFormatFloat32x2, 24),
-			attr(3, gputypes.VertexFormatUint8x4, 32), attr(4, gputypes.VertexFormatFloat32x4, 36)}}}
+			attr(3, gputypes.VertexFormatUint16x4, 32), attr(4, gputypes.VertexFormatFloat32x4, 40)}}}
 	itemBuf := []gputypes.VertexBufferLayout{{ArrayStride: 32, StepMode: gputypes.VertexStepModeVertex,
 		Attributes: []gputypes.VertexAttribute{attr(0, gputypes.VertexFormatFloat32x3, 0), attr(1, gputypes.VertexFormatFloat32x2, 12), attr(2, gputypes.VertexFormatFloat32x3, 20)}}}
 	particleBuf := []gputypes.VertexBufferLayout{
@@ -430,8 +448,8 @@ func (ps *pipelines) init() error {
 		{&ps.modelAlpha, pipeSpec{"model alpha", modelWGSL, ps.tex2D, modelBuf, tri, none, blendAlpha, true, false, false}},
 		{&ps.modelAdd, pipeSpec{"model additive", modelWGSL, ps.tex2D, modelBuf, tri, none, blendAdd, true, false, false}},
 		{&ps.item, pipeSpec{"item", itemWGSL, ps.texArray, itemBuf, tri, none, nil, true, true, false}},
-		{&ps.particleAlpha, pipeSpec{"particles", particleWGSL, nil, particleBuf, tri, none, blendAlpha, true, false, false}},
-		{&ps.particleAdd, pipeSpec{"particles additive", particleWGSL, nil, particleBuf, tri, none, blendAdd, true, false, false}},
+		{&ps.particleAlpha, pipeSpec{"particles", particleWGSL, ps.tex2D, particleBuf, tri, none, blendAlpha, true, false, false}},
+		{&ps.particleAdd, pipeSpec{"particles additive", particleWGSL, ps.tex2D, particleBuf, tri, none, blendAdd, true, false, false}},
 		{&ps.overlay, pipeSpec{"overlay", overlayWGSL, ps.tex2D, nil, gputypes.PrimitiveTopologyTriangleStrip, none, blendAlpha, false, false, false}},
 		{&ps.blit, pipeSpec{"capture blit", blitWGSL, nil, nil, tri, none, nil, false, false, true}},
 	}

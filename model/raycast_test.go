@@ -7,10 +7,10 @@ import (
 )
 
 // quad is one bone's unit square in the XY plane at z, facing +Z.
-func quad(me *Mesh, z float32, bone uint8) {
+func quad(me *Mesh, z float32, bone uint16) {
 	base := uint32(len(me.Verts))
 	for _, p := range []mgl32.Vec3{{0, 0, z}, {1, 0, z}, {1, 1, z}, {0, 1, z}} {
-		me.Verts = append(me.Verts, Vertex{Pos: p, Joints: [4]uint8{bone}, Weights: [4]float32{1}})
+		me.Verts = append(me.Verts, Vertex{Pos: p, Joints: [4]uint16{bone}, Weights: [4]float32{1}})
 	}
 	me.Indices = append(me.Indices, base, base+1, base+2, base, base+2, base+3)
 }

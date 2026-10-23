@@ -42,6 +42,10 @@ type Particle struct {
 	Col0, Col1                   [4]float32
 	Gravity, Drag, Bounce        float64
 	Additive                     bool
+	// Sprite is 1 + a cell of the renderer's particle atlas (Minecraft's
+	// particles.png: 16 x 16 cells, index = row*16 + column); 0 draws a
+	// plain square.
+	Sprite uint16
 }
 
 // Lerp is the particle's position between the last two ticks, its size and
@@ -71,10 +75,6 @@ func (s *System) r() float64 {
 
 // Emit spawns a burst at x,y,z.
 func (s *System) Emit(x, y, z float64, p Props) {
-	limit := s.Max
-	if limit == 0 {
-		limit = 4000
-	}
 	for i := 0; i < p.Count; i++ {
 		ox, oy, oz := s.r()*p.Spread, s.r()*p.Spread, s.r()*p.Spread
 		vx, vy, vz := p.Vel[0]+s.r()*p.VelVar, p.Vel[1]+s.r()*p.VelVar, p.Vel[2]+s.r()*p.VelVar
@@ -90,12 +90,21 @@ func (s *System) Emit(x, y, z float64, p Props) {
 			Size0: float32(p.Size0) * k, Size1: float32(p.Size1) * k, Col0: p.Col0, Col1: p.Col1,
 			Gravity: p.Gravity, Drag: p.Drag, Bounce: p.Bounce, Additive: p.Additive}
 		q.PrevX, q.PrevY, q.PrevZ = q.X, q.Y, q.Z
-		if len(s.P) >= limit {
-			copy(s.P, s.P[1:]) // ponytail: O(n) drop of the oldest, only when full
-			s.P = s.P[:len(s.P)-1]
-		}
-		s.P = append(s.P, q)
+		s.Add(q) // ponytail: O(n) drop of the oldest, only when full
 	}
+}
+
+// Add appends one particle, dropping the oldest when full.
+func (s *System) Add(p Particle) {
+	limit := s.Max
+	if limit == 0 {
+		limit = 4000
+	}
+	if len(s.P) >= limit {
+		copy(s.P, s.P[1:])
+		s.P = s.P[:len(s.P)-1]
+	}
+	s.P = append(s.P, p)
 }
 
 // Tick advances every particle by dt seconds; solid reports blocks they

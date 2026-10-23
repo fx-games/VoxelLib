@@ -294,3 +294,27 @@ func (w *World) RenderableUnlocked(p ChunkPos) bool {
 func (w *World) SolidAt(x, y, z int) bool {
 	return w.Reg.Info(w.Block(x, y, z)).Collides
 }
+
+// PrecipitationHeight is Minecraft's World.getPrecipitationHeight: one
+// above the highest block that collides or is a liquid (rain and snow stop
+// there), or MinY for an empty or unloaded column.
+func (w *World) PrecipitationHeight(x, z int) int {
+	t := w.Reg.Table()
+	w.mu.RLock()
+	defer w.mu.RUnlock()
+	c := w.chunks[ChunkPos{x >> 4, z >> 4}]
+	if c == nil {
+		return w.MinY
+	}
+	for y := w.MaxY() - 1; y >= w.MinY; y-- {
+		s := c.Section(y)
+		if s.IsEmpty() {
+			y &^= 15 // skip to the section bottom
+			continue
+		}
+		if i := &t[s.Blocks.Get(SectionIndex(x&15, y, z&15))]; i.Collides || i.Shape == ShapeLiquid {
+			return y + 1
+		}
+	}
+	return w.MinY
+}

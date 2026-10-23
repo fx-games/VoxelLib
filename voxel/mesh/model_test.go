@@ -38,7 +38,7 @@ func meshBoxes(t *testing.T, def *voxel.BlockDef, stoneAt ...[3]int) []vert {
 			continue // a stone cube face
 		}
 		out = append(out, vert{
-			pos: [3]uint32{d[0] & 1023, d[0] >> 10 & 1023, d[0] >> 20 & 1023},
+			pos: pos32(d),
 			u:   d[1] >> 12 & 31, v: d[1] >> 17 & 31, normal: d[1] >> 22 & 7,
 			tint: d[2] & 0xFFFFFF,
 		})
@@ -287,54 +287,103 @@ func TestDynamicTintWeight(t *testing.T) {
 
 // TestFaceUVRotHook: turned cube faces are not merged, and turn n shows at
 // corner k the uv of corner k+n.
-func TestFaceUVRotHook(t *testing.T) {
+// TestRenderBlocksUV checks rbUV on full cubes against the uvRotate
+// tables derived independently by executing RenderBlocks.renderFace* (look
+// wave 2), written as turns | transpose<<2 applied to the 1.8 uvTab.
+func TestRenderBlocksUV(t *testing.T) {
+	ref := [6][4]uint8{{5, 4, 6, 7}, {0, 1, 3, 2}, {0, 6, 4, 2}, {0, 1, 3, 2}, {0, 1, 3, 2}, {0, 6, 4, 2}}
+	for f := voxel.Face(0); f < voxel.FaceCount; f++ {
+		for r := range 4 {
+			for k, uv := range uvTab[f] {
+				u, v := uv[0], uv[1]
+				if ref[f][r]&4 != 0 {
+					u, v = v, u
+				}
+				for n := ref[f][r] & 3; n > 0; n-- {
+					u, v = v, 1-u
+				}
+				if got := rbTab[f][r][k]; got != [2]uint32{u, v} {
+					t.Errorf("%v rot %d corner %d: %v, want %v", f, r, k, got, [2]uint32{u, v})
+				}
+			}
+		}
+	}
+	// a half slab's north face: u mirrored within x 0..8, v from y 0..8
+	uv := rbUV(voxel.FaceNorth, [3]float32{0, 0, 0}, [3]float32{8, 8, 16}, 0)
+	if uv[0] != [2]float32{0, 16} || uv[1] != [2]float32{8, 16} || uv[2] != [2]float32{8, 8} {
+		t.Errorf("north of a half box: %v", uv)
+	}
+}
+
+// TestUVRandom: the hash matches java.util.Random, and a turned top face
+// is not merged and shows RenderBlocks' uvRotate.
+func TestUVRandom(t *testing.T) {
+	ident := &[6]uint8{0, 1, 2, 3, 4, 5}
+	for _, c := range []struct {
+		x, y, z int
+		want    string
+	}{{0, 0, 0, "120211"}, {251, 64, -320, "200023"}, {-1234, 70, 98765, "112332"}, {7, 3, -9, "020211"}} {
+		got := ""
+		for f := voxel.Face(0); f < voxel.FaceCount; f++ {
+			got += string(rune('0' + uvRandom(&voxel.StateInfo{UVSeed: ident}, c.x, c.y, c.z, f)))
+		}
+		if got != c.want {
+			t.Errorf("rot(%d,%d,%d) = %s, want %s", c.x, c.y, c.z, got, c.want)
+		}
+	}
 	reg := voxel.NewRegistry()
+	reg.Register(&voxel.BlockDef{Name: "test:sand", Shape: voxel.ShapeCube, Opaque: true, Collides: true,
+		Textures: [6]string{"a", "a", "a", "a", "a", "a"}, UVRandom: 1 << voxel.FaceUp})
 	w := voxel.NewWorld(reg, 0, 64)
 	w.AddChunk(w.NewChunk(voxel.ChunkPos{}))
-	stone := reg.Parse("stone")
-	for x := 0; x < 4; x++ {
-		w.SetBlock(x, 1, 0, stone)
+	sand := reg.State("test:sand", nil)
+	for x := 0; x < 16; x++ {
+		w.SetBlock(x, 1, 0, sand)
 	}
 	m := NewMesher()
 	m.Snap.Capture(w, voxel.SectionPos{})
-	ups := func(cfg *Config) (quads int, uvs map[[2]uint32][2]uint32) {
-		res := m.Build(reg.Table(), cfg)
-		rg := res.Ranges[voxel.LayerSolid][voxel.FaceUp]
-		uvs = map[[2]uint32][2]uint32{}
-		for q := rg.First; q < rg.First+rg.Count; q += 4 {
-			quad := map[[2]uint32][2]uint32{}
-			maxX := uint32(0)
-			for i := q; i < q+4; i++ {
-				d := res.Data[i*VertexWords:]
-				maxX = max(maxX, d[0]&1023)
-				quad[[2]uint32{d[0] & 1023, d[0] >> 20 & 1023}] = [2]uint32{d[1] >> 12 & 31, d[1] >> 17 & 31}
+	res := m.Build(reg.Table(), &Config{RenderBlocksUV: true})
+	rg := res.Ranges[voxel.LayerSolid][voxel.FaceUp]
+	turned := map[int]bool{}
+	for x := 0; x < 16; x++ {
+		if r := uvRandom(reg.Info(sand), x, 1, 0, voxel.FaceUp); r != 0 {
+			turned[x] = true
+		}
+	}
+	for q := rg.First; q < rg.First+rg.Count; q += 4 {
+		d := res.Data[q*VertexWords:]
+		x0 := int(pos32(d)[0]) / 32
+		for k := range 4 {
+			x1 := int(pos32(d[k*VertexWords:])[0]) / 32
+			x0 = min(x0, x1)
+		}
+		r := uvRandom(reg.Info(sand), x0, 1, 0, voxel.FaceUp)
+		if !turned[x0] {
+			continue
+		}
+		for k := range 4 {
+			dv := d[k*VertexWords:]
+			cx, cz := pos32(dv)[0]/32-uint32(x0), pos32(dv)[2]/32
+			for j, co := range cornerOff[voxel.FaceUp] {
+				if uint32(co[0]) == cx && uint32(co[2]) == cz {
+					if uv := [2]uint32{dv[1] >> 12 & 31, dv[1] >> 17 & 31}; uv != rbTab[voxel.FaceUp][r][j] {
+						t.Errorf("x %d rot %d corner %d: uv %v, want %v", x0, r, j, uv, rbTab[voxel.FaceUp][r][j])
+					}
+				}
 			}
-			if maxX == 32 { // block x=0 alone
-				uvs = quad
-			}
 		}
-		return rg.Count / 4, uvs
+		delete(turned, x0)
 	}
-	if n, _ := ups(nil); n != 1 {
-		t.Fatalf("unturned: %d top quads, want 1 merged", n)
+	if len(turned) != 0 {
+		t.Errorf("turned blocks without their own quad: %v", turned)
 	}
-	n, uvs := ups(&Config{FaceUVRot: func(_ *voxel.StateInfo, x, _, _ int, f voxel.Face) uint8 {
-		if f == voxel.FaceUp && x == 0 {
-			return 1
-		}
-		return 0
-	}})
-	if n != 2 {
-		t.Fatalf("turned: %d top quads, want 2", n)
+}
+
+// pos32 decodes a vertex's section-local position to 1/32 block, rounded.
+func pos32(d []uint32) (p [3]uint32) {
+	for a := range 3 {
+		q := int(d[0]>>(10*a)&1023)<<2 | int(d[1]>>(26+2*a)&3) - 8*128
+		p[a] = uint32((q + 2) >> 2)
 	}
-	if len(uvs) != 4 {
-		t.Fatalf("%d corners of block 0", len(uvs))
-	}
-	// unturned top: u=x, v=z; one turn: (u,v) → (v, 1-u)
-	for p, uv := range uvs {
-		u0, v0 := p[0]/32, p[1]/32
-		if want := [2]uint32{v0, 1 - u0}; uv != want {
-			t.Errorf("corner %v: uv %v, want %v", p, uv, want)
-		}
-	}
+	return
 }

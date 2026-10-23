@@ -7,6 +7,7 @@ package render
 import (
 	"image"
 	"math"
+	"slices"
 	"sort"
 	"time"
 
@@ -33,8 +34,8 @@ type Options struct {
 	IsGreyscale func(image.Image) bool
 	// BlockTint colours tinted blocks by position and biome (mesh.Config).
 	BlockTint func(info *voxel.StateInfo, x, y, z int, biome func(x, z int) uint8) uint32
-	// FaceUVRot turns block face textures (mesh.Config).
-	FaceUVRot func(info *voxel.StateInfo, x, y, z int, f voxel.Face) uint8
+	// RenderBlocksUV maps block textures like Minecraft 1.7 (mesh.Config).
+	RenderBlocksUV bool
 	// DynamicTint is added to a vertex tint scaled by its BlockTint weight,
 	// so a colour that follows the camera (e.g. water) needs no remesh.
 	DynamicTint mgl32.Vec3
@@ -49,6 +50,8 @@ type Options struct {
 	// SkyTextures loads SkyDraw textures by name; nil uses the block
 	// texture source.
 	SkyTextures TextureSource
+	// Weather, when non-nil, is the rain and snow DrawWeather draws.
+	Weather *Weather
 }
 
 // Lightmap is a light colour table indexed [sky][block] by light level,
@@ -192,6 +195,10 @@ type Renderer struct {
 	lightDay, lightBright float32
 	skyTex                map[string]*skyTexture
 	skyVerts              []SkyVertex
+	mergeBuf              []int64
+	regionOrder           []*region
+	weatherDraws          []SkyDraw // DrawWeather, reused
+	weatherFog            Fog
 }
 
 // retire frees a span once in-flight frames can no longer read it.
@@ -272,7 +279,7 @@ func (r *Renderer) reloadTextures() {
 	names, ver := r.world.Reg.TextureNames()
 	if r.tex != nil && r.tex.add(names) { // new names into spare layers
 		r.texVersion = ver
-		r.cfg = &mesh.Config{Tintable: r.tex.tintable, BlockTint: r.Opt.BlockTint, FaceUVRot: r.Opt.FaceUVRot}
+		r.cfg = &mesh.Config{Tintable: r.tex.tintable, BlockTint: r.Opt.BlockTint, RenderBlocksUV: r.Opt.RenderBlocksUV}
 		return
 	}
 	if r.tex != nil {
@@ -288,7 +295,7 @@ func (r *Renderer) reloadTextures() {
 	}
 	r.tex = newTextureArray(names, r.src, missing, grey)
 	r.texVersion = ver
-	r.cfg = &mesh.Config{Tintable: r.tex.tintable, BlockTint: r.Opt.BlockTint, FaceUVRot: r.Opt.FaceUVRot}
+	r.cfg = &mesh.Config{Tintable: r.tex.tintable, BlockTint: r.Opt.BlockTint, RenderBlocksUV: r.Opt.RenderBlocksUV}
 }
 
 // MeshConfig returns the per-texture data the mesher needs. It changes when
@@ -324,15 +331,10 @@ func (r *Renderer) Upload(m *mesh.Mesh) {
 	s.transN = len(m.Trans) / mesh.VertexWords
 	s.n = dataN
 	key := mesh.RegionOf(m.Pos)
-	var reg *region
-	for _, pg := range r.regions[key] {
-		if a, b, ok := pg.allocPair(s.n, s.transN); ok {
-			reg, s.off, s.tOff = pg, a, b
-			break
-		}
-	}
-	if reg == nil {
-		reg = r.newRegion(key, max(pageVerts, s.n+s.transN))
+	reg, a, b, ok := fit(r.regions[key], s.n, s.transN)
+	s.off, s.tOff = a, b
+	if !ok {
+		reg = r.newRegion(key, max(minPageVerts, s.n+s.transN))
 		r.regions[key] = append(r.regions[key], reg)
 		s.off, s.tOff, _ = reg.allocPair(s.n, s.transN)
 	}
@@ -544,18 +546,24 @@ func (r *Renderer) buildBatches() {
 
 	// Group visible sections by region, keeping BFS (near to far) order of
 	// first appearance for good early-z rejection.
-	order := make([]*region, 0, len(r.regions))
-	bucket := map[*region][]*section{}
+	order := r.regionOrder[:0]
 	for _, s := range r.visible {
 		if s.reg == nil {
 			continue
 		}
-		if _, ok := bucket[s.reg]; !ok {
+		if len(s.reg.visible) == 0 {
 			order = append(order, s.reg)
 		}
-		bucket[s.reg] = append(bucket[s.reg], s)
+		s.reg.visible = append(s.reg.visible, s)
 		st.Quads += s.quads
 	}
+	r.regionOrder = order
+	defer func() {
+		for _, reg := range order {
+			clear(reg.visible)
+			reg.visible = reg.visible[:0]
+		}
+	}()
 
 	r.counts, r.bases, r.batches = r.counts[:0], r.bases[:0], r.batches[:0]
 	flush := func(reg *region, layer voxel.Layer, first int) {
@@ -568,7 +576,7 @@ func (r *Renderer) buildBatches() {
 	for layer := voxel.LayerSolid; layer < voxel.LayerTranslucent; layer++ {
 		for _, reg := range order {
 			first := len(r.counts)
-			for _, s := range bucket[reg] {
+			for _, s := range reg.visible {
 				o := s.pos.Origin()
 				ox, oy, oz := float64(o.X)-r.camX, float64(o.Y)-r.camY, float64(o.Z)-r.camZ
 				for g := 0; g < mesh.GroupCount; g++ {
@@ -580,6 +588,7 @@ func (r *Renderer) buildBatches() {
 					r.bases = append(r.bases, int32(s.off+rg.First))
 				}
 			}
+			r.mergeRanges(first)
 			flush(reg, layer, first)
 		}
 	}
@@ -607,6 +616,35 @@ func (r *Renderer) buildBatches() {
 	}
 	if cur != nil {
 		flush(cur, voxel.LayerTranslucent, first)
+	}
+}
+
+// mergeRanges sorts the ranges from first on by base vertex and joins the
+// ones that touch: each draw costs far more CPU than its vertices cost the
+// GPU. Only for opaque layers, whose order is just early-z.
+func (r *Renderer) mergeRanges(first int) {
+	n := len(r.counts) - first
+	if n < 2 {
+		return
+	}
+	keys := r.mergeBuf[:0]
+	for i := first; i < len(r.counts); i++ {
+		keys = append(keys, int64(r.bases[i])<<32|int64(r.counts[i]))
+	}
+	slices.Sort(keys)
+	r.mergeBuf = keys
+	r.counts, r.bases = r.counts[:first], r.bases[:first]
+	for _, k := range keys {
+		b, c := int32(k>>32), int32(k)
+		if j := len(r.counts) - 1; j >= first {
+			end := r.bases[j] + r.counts[j]/6*4
+			if b == end && int(r.counts[j]+c) <= maxQuadsPerDraw*6 {
+				r.counts[j] += c
+				continue
+			}
+		}
+		r.counts = append(r.counts, c)
+		r.bases = append(r.bases, b)
 	}
 }
 

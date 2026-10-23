@@ -324,8 +324,8 @@ func (l *loader) build() (*model.Model, error) {
 			return nil, err
 		}
 	}
-	if len(m.Bones) > 255 {
-		return nil, errors.New("gltf: more than 255 nodes")
+	if len(m.Bones) > 65535 {
+		return nil, errors.New("gltf: more than 65535 nodes")
 	}
 
 	// Inverse bind matrices from skins.
@@ -506,13 +506,13 @@ func (l *loader) primitive(attr map[string]int, indices *int, joints []int, bone
 				if j < len(joints) && joints[j] < len(boneOf) && boneOf[joints[j]] >= 0 {
 					b = boneOf[joints[j]]
 				}
-				v.Joints[k] = uint8(b)
+				v.Joints[k] = uint16(b)
 				v.Weights[k] = we[i*4+k]
 			}
 		} else {
 			// Unskinned: rigidly attached to its node (InvBind is identity
 			// for non-joint nodes, so the node's world transform applies).
-			v.Joints[0], v.Weights[0] = uint8(node), 1
+			v.Joints[0], v.Weights[0] = uint16(node), 1
 		}
 	}
 	if indices != nil {

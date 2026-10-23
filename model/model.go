@@ -13,6 +13,11 @@ import (
 	"github.com/go-gl/mathgl/mgl32"
 )
 
+// MaxBones is the most bones a model may have: joints are 16-bit, and
+// render.ModelRenderer keeps the skinning matrices in one uniform block
+// (64 KiB at most).
+const MaxBones = 512
+
 // Bone is one joint. Its local transform is T * R * S relative to its
 // parent (or the model origin for roots).
 type Bone struct {
@@ -34,7 +39,7 @@ type Vertex struct {
 	Pos     mgl32.Vec3
 	Normal  mgl32.Vec3
 	UV      mgl32.Vec2
-	Joints  [4]uint8
+	Joints  [4]uint16
 	Weights [4]float32
 }
 
@@ -175,7 +180,7 @@ func (m *Model) Subtree(name string) *Model {
 					xf := toLocal.Mul4(root).Mul4(world[v.Joints[0]]).Mul4(m.Bones[v.Joints[0]].InvBind)
 					v.Pos = mgl32.TransformCoordinate(v.Pos, xf)
 					v.Normal = xf.Mat3().Mul3x1(v.Normal).Normalize()
-					v.Joints, v.Weights = [4]uint8{}, [4]float32{1}
+					v.Joints, v.Weights = [4]uint16{}, [4]float32{1}
 					ni = uint32(len(nm.Verts))
 					remap[vi] = ni
 					nm.Verts = append(nm.Verts, v)

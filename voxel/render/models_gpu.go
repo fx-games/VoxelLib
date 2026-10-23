@@ -15,6 +15,7 @@ type gpuModelRenderer struct {
 
 type gpuModel struct {
 	radius   float32 // largest bind-pose extent from the origin
+	bones    int     // skinning matrices the vertices may use
 	vbo, ebo *wgpu.Buffer
 	parts    []gpuPart
 	textures []texture2D
@@ -101,7 +102,7 @@ func (mr *ModelRenderer) drawModel(g *gpuModel, model mgl32.Mat4, skin []mgl32.M
 	u := mr.gpu.u.reset().mat(l.vp).mat(model).f(lc[0], lc[1], lc[2], 0).
 		f(l.fog.Color[0], l.fog.Color[1], l.fog.Color[2], d.fade).f(l.fog.Start, l.fog.End, cutoff, emissive).
 		f(color[:]...).f(d.overlay[:]...)
-	for _, b := range bones(skin) {
+	for _, b := range bones(skin, g.bones) {
 		u.mat(b)
 	}
 	// clearDepth between begin and draw starts a new pass, so set the

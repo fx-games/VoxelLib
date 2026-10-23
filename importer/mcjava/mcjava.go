@@ -131,8 +131,8 @@ func (g *Geometry) Validate() error {
 			return fmt.Errorf("mcjava: %s: render part %d out of range", g.Name, r)
 		}
 	}
-	if len(g.Parts) > 255 {
-		return fmt.Errorf("mcjava: %s: %d parts (max 255)", g.Name, len(g.Parts))
+	if len(g.Parts) > model.MaxBones {
+		return fmt.Errorf("mcjava: %s: %d parts (max %d)", g.Name, len(g.Parts), model.MaxBones)
 	}
 	return nil
 }
@@ -188,7 +188,7 @@ func Build(g *Geometry, tex image.Image) (*model.Model, error) {
 				base := uint32(len(me.Verts))
 				for k := 0; k < 4; k++ {
 					v := model.Vertex{Pos: mgl32.TransformCoordinate(q.pos[k], w), Normal: en, UV: q.uv[k]}
-					v.Joints[0], v.Weights[0] = uint8(pi), 1
+					v.Joints[0], v.Weights[0] = uint16(pi), 1
 					me.Verts = append(me.Verts, v)
 				}
 				// GL_QUADS draws v0 v1 v2 and v0 v2 v3.

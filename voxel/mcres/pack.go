@@ -265,6 +265,7 @@ type model struct {
 	Parent   string            `json:"parent"`
 	Textures map[string]string `json:"textures"`
 	Elements []element         `json:"elements"`
+	AO       *bool             `json:"ambientocclusion"`
 	// resolved
 	chain []string
 }
@@ -326,6 +327,21 @@ func (p *Pack) resolve(id string) (tex map[string]string, elems []element, chain
 		id = m.Parent
 	}
 	return
+}
+
+// flat reports a model's (or its nearest parent's) "ambientocclusion": false.
+func (p *Pack) flat(id string) bool {
+	for depth := 0; id != "" && depth < 16; depth++ {
+		m, err := p.model(id)
+		if err != nil {
+			return false
+		}
+		if m.AO != nil {
+			return !*m.AO
+		}
+		id = m.Parent
+	}
+	return false
 }
 
 func lookupTex(tex map[string]string, ref string) string {
@@ -500,8 +516,9 @@ func (p *Pack) ModelBoxes(id string, vars map[string]string) ([]voxel.Box, error
 		tex[k] = v
 	}
 	out := make([]voxel.Box, 0, len(elems))
+	flat := p.flat(id)
 	for _, e := range elems {
-		b := voxel.Box{Min: e.From, Max: e.To, Skip: 0x3f}
+		b := voxel.Box{Min: e.From, Max: e.To, Skip: 0x3f, Flat: flat}
 		var uv [6][4]float32
 		hasUV := false
 		cull := [6]voxel.Face{voxel.FaceCount, voxel.FaceCount, voxel.FaceCount, voxel.FaceCount, voxel.FaceCount, voxel.FaceCount}

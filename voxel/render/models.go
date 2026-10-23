@@ -5,13 +5,17 @@ import (
 	"image"
 	"image/draw"
 	"math"
+	"strconv"
 
 	"github.com/go-gl/mathgl/mgl32"
 	"github.com/memmaker/voxellib/model"
 )
 
 // MaxBones is the most bones a model drawn by ModelRenderer may have.
-const MaxBones = 96
+const MaxBones = model.MaxBones
+
+// maxBonesWGSL is MaxBones in the model shader's uniform block.
+var maxBonesWGSL = strconv.Itoa(MaxBones)
 
 // ModelRenderer draws animated models (package model) with GPU skinning,
 // lit by the world's sky/block light like the terrain and fogged alike.
@@ -98,8 +102,8 @@ func TiltMatrix(angle, yaw float64) mgl32.Mat4 {
 }
 
 // modelStride is the model vertex size in floats; joints are packed as 4
-// bytes into one float slot.
-const modelStride = 3 + 3 + 2 + 1 + 4
+// uint16 into two float slots.
+const modelStride = 3 + 3 + 2 + 2 + 4
 
 // modelVertices flattens a model's meshes into one vertex and index buffer.
 func modelVertices(m *model.Model) (vb []float32, ib []uint32, parts []gpuPart) {
@@ -107,13 +111,14 @@ func modelVertices(m *model.Model) (vb []float32, ib []uint32, parts []gpuPart) 
 		base := uint32(len(vb) / modelStride)
 		first := int32(len(ib))
 		for _, v := range me.Verts {
-			j := uint32(v.Joints[0]) | uint32(v.Joints[1])<<8 | uint32(v.Joints[2])<<16 | uint32(v.Joints[3])<<24
+			j0 := uint32(v.Joints[0]) | uint32(v.Joints[1])<<16
+			j1 := uint32(v.Joints[2]) | uint32(v.Joints[3])<<16
 			w := v.Weights
 			if w == ([4]float32{}) {
 				w[0] = 1
 			}
 			vb = append(vb, v.Pos[0], v.Pos[1], v.Pos[2], v.Normal[0], v.Normal[1], v.Normal[2], v.UV[0], v.UV[1],
-				math.Float32frombits(j), w[0], w[1], w[2], w[3])
+				math.Float32frombits(j0), math.Float32frombits(j1), w[0], w[1], w[2], w[3])
 		}
 		for _, i := range me.Indices {
 			ib = append(ib, base+i)
@@ -143,7 +148,7 @@ func (mr *ModelRenderer) Add(m *model.Model) (int, error) {
 		texs = []image.Image{whiteImage()}
 	}
 	g := mr.upload(vb, ib, texs)
-	g.parts = parts
+	g.parts, g.bones = parts, max(len(m.Bones), 1)
 	lo, hi := m.Bounds()
 	for k := 0; k < 3; k++ {
 		g.radius = max(g.radius, float32(math.Abs(float64(lo[k]))), float32(math.Abs(float64(hi[k]))))
@@ -189,12 +194,16 @@ var identBones = func() (b [MaxBones]mgl32.Mat4) {
 	return
 }()
 
-// bones returns the skinning matrices to upload: skin, or the bind pose.
-func bones(skin []mgl32.Mat4) []mgl32.Mat4 {
-	if len(skin) > 0 {
-		return skin[:min(len(skin), MaxBones)]
+// bones returns the n skinning matrices to upload: skin (zeros past its
+// end, like GL's unset uniforms), or the bind pose.
+func bones(skin []mgl32.Mat4, n int) []mgl32.Mat4 {
+	if len(skin) == 0 {
+		return identBones[:n]
 	}
-	return identBones[:]
+	if len(skin) >= n {
+		return skin[:n]
+	}
+	return append(skin[:len(skin):len(skin)], make([]mgl32.Mat4, n-len(skin))...)
 }
 
 // modelLight is the uniform state shared by a batch of model draws.

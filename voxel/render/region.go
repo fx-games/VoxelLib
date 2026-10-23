@@ -66,8 +66,12 @@ type retired struct {
 
 const retireFrames = 4
 
-// pageVerts is the vertex capacity of a region page (2 MiB).
-const pageVerts = 1 << 17
+// A region page starts at minPageVerts vertices (256 KiB) and doubles when
+// full, up to maxPageVerts (8 MiB); then the region gets another page.
+const (
+	minPageVerts = 1 << 14
+	maxPageVerts = 1 << 19
+)
 
 func (a *arena) used() int {
 	u := a.cap
@@ -77,16 +81,15 @@ func (a *arena) used() int {
 	return u
 }
 
-// region is one fixed-size vertex buffer page shared by sections of the same
-// 8x4x8 region. Sections draw from it with one multidraw per layer. A full
-// region gets another page rather than growing: growing needs a GPU
-// read-back on macOS GL (no glCopyBufferSubData), which stalls the frame.
+// region is one vertex buffer page shared by sections of the same 8x4x8
+// region. Sections draw from it with one multidraw per layer.
 type region struct {
 	key      [3]int
 	gpu      gpuRegion
 	arena    arena
 	sections map[uint32]*section // by region index
 	dead     bool
+	visible  []*section // this frame's, in BFS order (buildBatches)
 }
 
 func (r *Renderer) newRegion(key [3]int, initial int) *region {
@@ -111,6 +114,27 @@ func (r *region) allocPair(a, b int) (int, int, bool) {
 		return 0, 0, false
 	}
 	return offA, offB, true
+}
+
+// fit allocates two spans in the region's pages, doubling the last page
+// while it is below maxPageVerts; ok is false when a new page is needed.
+func fit(pages []*region, a, b int) (pg *region, offA, offB int, ok bool) {
+	for _, pg := range pages {
+		if offA, offB, ok := pg.allocPair(a, b); ok {
+			return pg, offA, offB, true
+		}
+	}
+	if len(pages) == 0 {
+		return nil, 0, 0, false
+	}
+	last := pages[len(pages)-1]
+	for last.arena.cap < maxPageVerts {
+		last.grow(min(2*last.arena.cap, maxPageVerts))
+		if offA, offB, ok := last.allocPair(a, b); ok {
+			return last, offA, offB, true
+		}
+	}
+	return nil, 0, 0, false
 }
 
 func (r *region) destroy() {

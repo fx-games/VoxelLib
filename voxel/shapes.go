@@ -43,6 +43,10 @@ type Box struct {
 	// NoTint marks faces (1<<Face) drawn without the state's tint (model
 	// faces without "tintindex").
 	NoTint uint8
+	// Flat lights the box by one light value per face instead of smoothly
+	// (a model's "ambientocclusion": false; Minecraft 1.7's renderers
+	// that don't use renderStandardBlock).
+	Flat bool
 }
 
 func bx(x0, y0, z0, x1, y1, z1 float32) Box {
@@ -90,6 +94,97 @@ func RotateBoxes(bs []Box, axis int, deg float32) []Box {
 		out[i] = b
 	}
 	return out
+}
+
+// LockBoxes is RotateBoxes with uvlock for textures laid out by position
+// (Minecraft 1.7 draws every box by RenderBlocks, which projects textures
+// in world space): a box without element rotation whose faces all carry
+// RenderBlocksUV of their bounds is turned into an axis-aligned box whose
+// faces get RenderBlocksUV of the new bounds, each face keeping its
+// texture, cullface and tint. Other boxes turn as in RotateBoxes.
+func LockBoxes(bs []Box, axis int, deg float32) []Box {
+	if deg == 0 {
+		return bs
+	}
+	out := RotateBoxes(bs, axis, deg)
+	if int(deg)%90 != 0 {
+		return out
+	}
+	rot := []Rot{{Axis: axis, Deg: -deg, Origin: [3]float32{8, 8, 8}}}
+	for i, b := range bs {
+		flip, ok := rbDefaults(&b)
+		if !ok {
+			continue
+		}
+		p, q := RotatePoint(b.Min, rot), RotatePoint(b.Max, rot)
+		n := b
+		n.Rot, n.Skip, n.NoTint = nil, 0, 0
+		for a := range 3 {
+			lo, hi := min(p[a], q[a]), max(p[a], q[a])
+			n.Min[a], n.Max[a] = float32(math.Round(float64(lo)*1e4)/1e4), float32(math.Round(float64(hi)*1e4)/1e4)
+		}
+		var cull [6]Face
+		uv := RenderBlocksUV(n.Min, n.Max, flip)
+		for f := Face(0); f < FaceCount; f++ {
+			g := RotateFace(f, rot)
+			n.Tex[g], n.TexID[g] = b.Tex[f], b.TexID[f]
+			n.Skip |= (b.Skip >> f & 1) << g
+			n.NoTint |= (b.NoTint >> f & 1) << g
+			if b.Cull != nil {
+				cull[g] = b.Cull[f]
+				if cull[g] < FaceCount {
+					cull[g] = RotateFace(cull[g], rot)
+				}
+			}
+		}
+		if b.Cull != nil {
+			n.Cull = &cull
+		}
+		n.UV = &uv
+		out[i] = n
+	}
+	return out
+}
+
+// RenderBlocksUV is the model UV (u0,v0,u1,v1 per face, in the mesher's
+// 1.8 JSON mapping) that shows a box's texture as Minecraft 1.7's
+// RenderBlocks draws it: the bottom with v along +z, north and east
+// mirrored within the box unless flip (RenderBlocks.field_152631_f).
+func RenderBlocksUV(lo, hi [3]float32, flip bool) [6][4]float32 {
+	x1, y1, z1, x2, y2, z2 := lo[0], lo[1], lo[2], hi[0], hi[1], hi[2]
+	uv := [6][4]float32{
+		{x1, z2, x2, z1}, {x1, z1, x2, z2},
+		{x1, 16 - y2, x2, 16 - y1}, {x1, 16 - y2, x2, 16 - y1},
+		{z1, 16 - y2, z2, 16 - y1}, {z1, 16 - y2, z2, 16 - y1},
+	}
+	if flip {
+		uv[FaceNorth][0], uv[FaceNorth][2] = 16-x2, 16-x1
+		uv[FaceEast][0], uv[FaceEast][2] = 16-z2, 16-z1
+	}
+	return uv
+}
+
+// rbDefaults reports whether every drawn face of b has RenderBlocksUV of
+// its bounds, and with which flip.
+func rbDefaults(b *Box) (flip, ok bool) {
+	if b.UV == nil || len(b.Rot) > 0 || b.UVRot != [6]uint8{} {
+		return false, false
+	}
+	for _, fl := range [2]bool{false, true} {
+		want := RenderBlocksUV(b.Min, b.Max, fl)
+		ok = true
+		for f := range want {
+			for k := range 4 {
+				if d := b.UV[f][k] - want[f][k]; b.Skip&(1<<f) == 0 && (d > 1e-3 || d < -1e-3) {
+					ok = false
+				}
+			}
+		}
+		if ok {
+			return fl, true
+		}
+	}
+	return false, false
 }
 
 // RotateFace is where face f points after rots, or FaceCount when that's
@@ -503,8 +598,22 @@ func slicesContains(s []string, v string) bool {
 	return false
 }
 
-func (p *Part) holds(nb func(Face) *StateInfo) bool {
-	for _, c := range p.When {
+func (p *Part) holds(nb func(Face) *StateInfo) bool { return holds(p.When, nb) }
+
+// FaceTex is the texture of cube face f with the neighbours nb: Tex[f]
+// unless a Retex entry holds.
+func (info *StateInfo) FaceTex(f Face, nb func(Face) *StateInfo) uint16 {
+	for i := range info.Retex {
+		x := &info.Retex[i]
+		if x.Tex[f] != "" && holds(x.When, nb) {
+			return x.ids[f]
+		}
+	}
+	return info.Tex[f]
+}
+
+func holds(cs []Cond, nb func(Face) *StateInfo) bool {
+	for _, c := range cs {
 		o := nb(c.Face)
 		ok := false
 		for _, t := range c.Any {

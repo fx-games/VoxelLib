@@ -17,7 +17,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-	"sort"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -116,6 +116,11 @@ type Engine struct {
 	cfgMu       sync.RWMutex
 	meshCfg     *mesh.Config
 	dispatchBuf []meshCand
+	// request is set when requestChunks may find missing chunks: the
+	// centre moved, the load queue was full, or a chunk was dropped.
+	request bool
+	wantBuf []voxel.ChunkPos
+	seenBuf map[voxel.ChunkPos]bool
 
 	quit chan struct{}
 	wg   sync.WaitGroup
@@ -383,9 +388,12 @@ func (e *Engine) Update(x, y, z float64) {
 		e.started = true
 		e.center = c
 		e.unloadFar(R + 3)
+		e.request = true
 	}
 	e.mark(0, &t)
-	e.requestChunks(R + 1)
+	if e.request {
+		e.request = !e.requestChunks(R + 1)
+	}
 	e.mark(1, &t)
 
 	// arrivals, inserted under a single world lock
@@ -397,6 +405,7 @@ recv:
 			delete(e.pending, ch.Pos)
 			if e.stale[ch.Pos] {
 				delete(e.stale, ch.Pos) // made before Regenerate: requested again
+				e.request = true
 				continue
 			}
 			if e.inRange(ch.Pos, R+3) {
@@ -412,7 +421,11 @@ recv:
 		}
 		// Ask the light worker about each new column and its neighbours,
 		// nearest first; it lights those whose 3x3 is now complete.
-		seen := map[voxel.ChunkPos]bool{}
+		if e.seenBuf == nil {
+			e.seenBuf = map[voxel.ChunkPos]bool{}
+		}
+		seen := e.seenBuf
+		clear(seen)
 		var req []voxel.ChunkPos
 		for _, ch := range batch {
 			for dx := -1; dx <= 1; dx++ {
@@ -425,7 +438,7 @@ recv:
 				}
 			}
 		}
-		sort.Slice(req, func(i, j int) bool { return e.dist2(req[i]) < e.dist2(req[j]) })
+		slices.SortFunc(req, func(a, b voxel.ChunkPos) int { return e.dist2(a) - e.dist2(b) })
 		e.worldOps <- worldOp{add: batch, light: req}
 	}
 	e.mark(2, &t)
@@ -462,9 +475,10 @@ recv:
 	e.mark(6, &t)
 }
 
-// requestChunks queues missing chunks within radius, nearest first.
-func (e *Engine) requestChunks(r int) {
-	var want []voxel.ChunkPos
+// requestChunks queues missing chunks within radius, nearest first; false
+// if the queue filled up first.
+func (e *Engine) requestChunks(r int) bool {
+	want := e.wantBuf[:0]
 	for dz := -r; dz <= r; dz++ {
 		for dx := -r; dx <= r; dx++ {
 			p := e.center.Add(dx, dz)
@@ -476,15 +490,17 @@ func (e *Engine) requestChunks(r int) {
 			}
 		}
 	}
-	sort.Slice(want, func(i, j int) bool { return e.dist2(want[i]) < e.dist2(want[j]) })
+	e.wantBuf = want
+	slices.SortFunc(want, func(a, b voxel.ChunkPos) int { return e.dist2(a) - e.dist2(b) })
 	for _, p := range want {
 		select {
 		case e.loadReq <- p:
 			e.pending[p] = true
 		default:
-			return // queue full; retried on the next centre change / tick
+			return false // queue full: retried next Update
 		}
 	}
+	return true
 }
 
 // inBounds reports whether a chunk is inside Config.Bounds (or there are
@@ -564,6 +580,7 @@ func (e *Engine) Regenerate() {
 	}
 	clear(e.loaded)
 	clear(e.lit)
+	e.request = true
 }
 
 // dirtyAround queues every section of the 3x3 columns around p.
