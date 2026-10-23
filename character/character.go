@@ -162,6 +162,10 @@ func (c *Character) Tick(w World, in Input) {
 		c.Flying = true
 	}
 	c.updateLiquids(w)
+	if !c.Flying { // handleWaterMovement: the current pushes (isPushedByWater: not while flying)
+		_, vx, vy, vz := WaterPush(w, c.Box())
+		c.VX, c.VY, c.VZ = c.VX+vx, c.VY+vy, c.VZ+vz
+	}
 
 	fwd, strafe := in.Forward, in.Strafe
 	if l := math.Hypot(fwd, strafe); l > 1 {

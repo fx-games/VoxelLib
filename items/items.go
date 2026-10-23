@@ -60,6 +60,9 @@ func (d *Drop) Pose(alpha float64) (x, y, z, spin float64) {
 // World holds the drops.
 type World struct {
 	Drops []*Drop
+	// Flow, if set, is the current's push on a box (character.WaterPush),
+	// added at the start of each drop's tick as Entity.onUpdate does.
+	Flow func(collide.AABB) (vx, vy, vz float64)
 }
 
 // Spawn adds a drop at rest.
@@ -85,6 +88,10 @@ func (w *World) Toss(item string, x, y, z, yaw, pitch float64) *Drop {
 func (w *World) Tick(s collide.Solids) {
 	for _, d := range w.Drops {
 		d.PrevX, d.PrevY, d.PrevZ = d.X, d.Y, d.Z
+		if w.Flow != nil {
+			vx, vy, vz := w.Flow(d.Box())
+			d.VX, d.VY, d.VZ = d.VX+vx, d.VY+vy, d.VZ+vz
+		}
 		d.Age++
 		if d.PickupDelay > 0 {
 			d.PickupDelay--

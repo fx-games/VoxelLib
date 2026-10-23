@@ -46,6 +46,14 @@ type bodyWorld struct {
 	b BodySolids
 }
 
+// LiquidMeta passes the World's character.LiquidMeta on (0 without it).
+func (b bodyWorld) LiquidMeta(x, y, z int) int {
+	if lm, ok := b.World.(LiquidMeta); ok {
+		return lm.LiquidMeta(x, y, z)
+	}
+	return 0
+}
+
 func (w bodyWorld) Solid(x, y, z int) bool { return w.b.BodySolid(x, y, z) }
 
 // Boxes passes the World's collide.Boxer on (an embedded interface

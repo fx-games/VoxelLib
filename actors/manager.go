@@ -360,11 +360,15 @@ func (m *Manager) record(l *Actor) {
 	m.tracks[l.ID] = tr
 }
 
-// push is EntityLivingBase.collideWithNearbyEntities/applyEntityCollision:
-// actors whose boxes (grown by 0.2 sideways) overlap push each other apart
-// through their velocity. A rider and its mount don't push. Boats push
-// only boats of their own Kind (EntityBoat's instanceof check), but any
-// living actor pushes them.
+// push is the reference's per-entity push loops: each living actor's own
+// collideWithNearbyEntities (dying ones too: they run onLivingUpdate until
+// removed) and each boat's loop over boats of its own Kind push every
+// pushable actor whose box overlaps theirs grown by 0.2 sideways, through
+// applyEntityCollision, which moves both. A pair is so pushed once per
+// loop that reaches it: two living actors twice a tick, a living actor and
+// a boat once. A rider and its mount don't push each other; a rider pushes
+// but its own velocity is the mount's business (updateRidden zeroes it).
+// Fliers neither push nor are pushed.
 func (m *Manager) push() {
 	type cell struct{ x, z int }
 	type entry struct {
@@ -373,10 +377,16 @@ func (m *Manager) push() {
 	}
 	grid := map[cell][]entry{}
 	for i, a := range m.Actors {
-		if a.Riding == nil && a.Alive() && a.Fly == nil {
+		if a.Fly == nil && (a.Boat == nil || !a.Boat.broken) {
 			c := cell{int(math.Floor(a.Body.X / 2)), int(math.Floor(a.Body.Z / 2))}
 			grid[c] = append(grid[c], entry{a, i})
 		}
+	}
+	loops := func(a, b *Actor) int { // does a's loop push b?
+		if a.Boat == nil || b.Boat != nil && a.Kind == b.Kind {
+			return 1
+		}
+		return 0
 	}
 	for c, list := range grid {
 		for _, e := range list {
@@ -384,8 +394,12 @@ func (m *Manager) push() {
 			for dx := -1; dx <= 1; dx++ {
 				for dz := -1; dz <= 1; dz++ {
 					for _, f := range grid[cell{c.x + dx, c.z + dz}] {
-						if f.i > e.i && box.Intersects(f.a.Body.Box()) && (e.a.Boat == nil || f.a.Boat == nil || e.a.Kind == f.a.Kind) {
-							collidePair(e.a, f.a)
+						a, b := e.a, f.a
+						if f.i <= e.i || a.Riding == b || b.Riding == a || !box.Intersects(b.Body.Box()) {
+							continue
+						}
+						for range loops(a, b) + loops(b, a) {
+							collidePair(a, b)
 						}
 					}
 				}
@@ -394,18 +408,24 @@ func (m *Manager) push() {
 	}
 }
 
+// collidePair is applyEntityCollision: below 0.01 apart (the larger axis)
+// nothing happens; else both get 0.05 apart, scaled by min(1, 1/sqrt d),
+// along the offset over sqrt d (MathHelper's float square root).
 func collidePair(a, b *Actor) {
 	dx, dz := b.Body.X-a.Body.X, b.Body.Z-a.Body.Z
 	d := math.Max(math.Abs(dx), math.Abs(dz))
-	if d < 0.01 {
-		dx, dz, d = 0.01, 0.005, 0.01 // exactly stacked: pick a side
+	if d < 0.009999999776482582 {
+		return
 	}
-	d = math.Sqrt(d)
-	dx, dz = dx/d, dz/d
-	k := math.Min(1, 1/d) * 0.05
-	dx, dz = dx*k, dz*k
-	a.Body.VX -= dx
-	a.Body.VZ -= dz
-	b.Body.VX += dx
-	b.Body.VZ += dz
+	d = float64(float32(math.Sqrt(d)))
+	k := math.Min(1, 1/d)
+	dx, dz = dx/d*k*0.05000000074505806, dz/d*k*0.05000000074505806
+	if a.Riding == nil {
+		a.Body.VX -= dx
+		a.Body.VZ -= dz
+	}
+	if b.Riding == nil {
+		b.Body.VX += dx
+		b.Body.VZ += dz
+	}
 }

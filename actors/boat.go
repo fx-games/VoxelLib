@@ -55,27 +55,19 @@ func VanillaBoat() *Boat {
 		Strafe: true, Fragile: true}
 }
 
-// LiquidMeta is an optional World method: the liquid's metadata at a cell
-// (0 source, 1..7 lower flowing levels, 8+ falling). Without it every
-// liquid fills its cell.
-type LiquidMeta interface {
-	LiquidMeta(x, y, z int) int
-}
+// LiquidMeta is the optional World method character.LiquidMeta. Without it
+// every liquid fills its cell.
+type LiquidMeta = character.LiquidMeta
 
 // inWater is World.isAABBInMaterial(box, water): a water cell in the box
 // whose surface (y+1 - meta/8 below meta 8) reaches the box's bottom.
-// Without surface it is handleMaterialAcceleration's test, whose height
-// check (floor(maxY+1) >= the cell's surface) always holds: any water cell.
-func (m *Manager) inWater(b collide.AABB, surface bool) bool {
+func (m *Manager) inWater(b collide.AABB) bool {
 	lm, _ := m.W.(LiquidMeta)
 	for x := int(math.Floor(b.MinX)); x < int(math.Floor(b.MaxX+1)); x++ {
 		for y := int(math.Floor(b.MinY)); y < int(math.Floor(b.MaxY+1)); y++ {
 			for z := int(math.Floor(b.MinZ)); z < int(math.Floor(b.MaxZ+1)); z++ {
 				if m.W.Liquid(x, y, z) != character.LiquidWater {
 					continue
-				}
-				if !surface {
-					return true
 				}
 				top := float64(y + 1)
 				if lm != nil {
@@ -94,7 +86,7 @@ func (m *Manager) inWater(b collide.AABB, surface bool) bool {
 
 // InWater reports whether the actor's box is in water as the reference's
 // isAABBInMaterial sees it (the barrel's ride check).
-func (m *Manager) InWater(a *Actor) bool { return m.inWater(a.Body.Box(), true) }
+func (m *Manager) InWater(a *Actor) bool { return m.inWater(a.Body.Box()) }
 
 // boatTick is EntityBoat.onUpdate's server branch. It reports whether the
 // boat broke.
@@ -109,10 +101,10 @@ func (m *Manager) boatTick(a *Actor) bool {
 	if bt.Damage > 0 {
 		bt.Damage--
 	}
-	// handleWaterMovement: water in the box shrunk 0.4 from top and bottom
-	// resets the fall
-	// ponytail: no current push (the flow vector's 0.014), still water has none
-	if m.inWater(b.Box().Grow(-0.001, -0.401, -0.001), false) {
+	// handleWaterMovement: the current pushes, water resets the fall
+	in, wx, wy, wz := character.WaterPush(m.body(), b.Box())
+	b.VX, b.VY, b.VZ = b.VX+wx, b.VY+wy, b.VZ+wz
+	if in {
 		bt.fall = 0
 	}
 	b.PrevX, b.PrevY, b.PrevZ = b.X, b.Y, b.Z
@@ -122,7 +114,7 @@ func (m *Manager) boatTick(a *Actor) bool {
 		s := box
 		s.MinY = box.MinY + (box.MaxY-box.MinY)*float64(i)/5 - 0.125
 		s.MaxY = box.MinY + (box.MaxY-box.MinY)*float64(i+1)/5 - 0.125
-		if m.inWater(s, true) {
+		if m.inWater(s) {
 			water += 1.0 / 5
 		}
 	}
