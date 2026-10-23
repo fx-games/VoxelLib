@@ -233,6 +233,19 @@ type Actor struct {
 	Riding, Rider          *Actor
 	RideInput              RideInput // the rider's steering, set each tick for a player rider
 	OnHurt                 func(a, src *Actor, amount float64)
+	// Ward, if set, is an attackEntityFrom override: it gets each hurt
+	// first and returns the amount to apply (<= 0: the hurt is ignored).
+	Ward func(a, src *Actor, amount float64) float64
+	// OnDamage, if set, is a damageEntity override: it runs once the
+	// health is lowered, before OnHurt and the death check, with the
+	// amount before armour; it may raise Health again to cheat death.
+	OnDamage func(a, src *Actor, amount float64)
+	// OnLand, if set, is a fall override: it gets the fall distance on
+	// landing and returns the distance that deals fall damage.
+	OnLand func(a *Actor, fall float64) float64
+	// Blocked is isMovementBlocked: the brain does not run and the body
+	// has no drive (the game sets it).
+	Blocked bool
 	hurtResist             int
 	fire                   int // Entity.fire: > 0 burning ticks left, < 0 contact ticks to catch
 	lastDamage             float64

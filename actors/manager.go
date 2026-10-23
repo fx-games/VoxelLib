@@ -201,6 +201,10 @@ func (m *Manager) Tick() {
 				continue
 			}
 		}
+		if a.Blocked {
+			a.nav.in = character.Input{}
+			continue
+		}
 		m.think(a)
 	}
 	for _, a := range m.Actors {
@@ -261,6 +265,9 @@ func (m *Manager) moveBody(a *Actor, in character.Input) {
 	if b.InWater || b.InLava || f != nil {
 		a.fall = 0
 	} else if b.OnGround {
+		if a.OnLand != nil && a.fall > 0 {
+			a.fall = a.OnLand(a, a.fall)
+		}
 		if s := a.Mount; s != nil && s.Horse { // EntityHorse.fall
 			if a.fall > 1 {
 				s.event(a, MountLanded)

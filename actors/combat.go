@@ -210,7 +210,13 @@ func (m *Manager) hurtAs(k HurtKind, t, src *Actor, amount float64, unblockable 
 // and knockback away from src. Armour reduces it by armor/25 unless
 // unblockable (falls, drowning, magic). It reports whether damage was done.
 func (m *Manager) Hurt(t, src *Actor, amount float64, unblockable bool) bool {
-	if !t.Alive() || amount <= 0 {
+	if !t.Alive() {
+		return false
+	}
+	if t.Ward != nil {
+		amount = t.Ward(t, src, amount)
+	}
+	if amount <= 0 {
 		return false
 	}
 	fresh := true
@@ -244,6 +250,9 @@ func (m *Manager) Hurt(t, src *Actor, amount float64, unblockable bool) bool {
 	}
 	t.Health -= dealt
 	t.age = 0
+	if t.OnDamage != nil {
+		t.OnDamage(t, src, amount)
+	}
 	if src != nil && src != t {
 		t.revenge, t.revengeTicks = src, 100
 		if t.FleeWhenHurt {
