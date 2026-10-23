@@ -32,6 +32,22 @@ func NewGUITexture(img image.Image) *GUITexture {
 // Size returns the image size in pixels.
 func (t *GUITexture) Size() (w, h int) { return t.w, t.h }
 
+// Update replaces the pixels with img, which must have the texture's size
+// (a frame-by-frame image such as the inventory's player). It reports
+// whether it did; on false make a new texture.
+func (t *GUITexture) Update(img image.Image) bool {
+	b := img.Bounds()
+	if t.bg == nil || b.Dx() != t.w || b.Dy() != t.h {
+		return false
+	}
+	px, ok := img.(*image.NRGBA)
+	if !ok || px.Stride != 4*t.w || px.Rect.Min != (image.Point{}) {
+		px = toNRGBARect(img)
+	}
+	t.tex.write(0, 0, t.w, t.h, 4, px.Pix)
+	return true
+}
+
 // Release frees the GPU texture.
 func (t *GUITexture) Release() {
 	if t.bg != nil {

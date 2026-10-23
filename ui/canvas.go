@@ -39,6 +39,21 @@ type Canvas interface {
 	SetInvert(on bool)
 }
 
+// TextureUpdater is a Canvas that can replace a texture's pixels in place;
+// see UpdateTexture.
+type TextureUpdater interface {
+	UpdateTexture(t Texture, img image.Image) bool // false: not same size or not its texture
+}
+
+// UpdateTexture puts img into t without a new texture when c can (same
+// size), else returns a new one. t may be nil.
+func UpdateTexture(c Canvas, t Texture, img image.Image) Texture {
+	if u, ok := c.(TextureUpdater); ok && t != nil && u.UpdateTexture(t, img) {
+		return t
+	}
+	return c.NewTexture(img)
+}
+
 // ScaledResolution is Minecraft 1.7.10's GUI scale: guiScale 0 is auto,
 // 1..3 small, normal, large; the factor grows while the GUI stays at least
 // 320x240, and the unicode font forces an even factor. It returns the GUI

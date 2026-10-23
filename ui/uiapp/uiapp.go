@@ -179,6 +179,11 @@ type canvas UI
 
 func (c *canvas) NewTexture(img image.Image) ui.Texture { return render.NewGUITexture(img) }
 
+func (c *canvas) UpdateTexture(t ui.Texture, img image.Image) bool {
+	g, ok := t.(*render.GUITexture)
+	return ok && g.Update(img)
+}
+
 func (c *canvas) Quad(q ui.Quad) {
 	t, _ := q.Tex.(*render.GUITexture)
 	if q.Rot != 0 {

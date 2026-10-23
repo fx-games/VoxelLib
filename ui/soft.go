@@ -31,6 +31,15 @@ func (s *SoftCanvas) NewTexture(img image.Image) Texture {
 	return &softTex{n}
 }
 
+func (s *SoftCanvas) UpdateTexture(t Texture, img image.Image) bool {
+	st, ok := t.(*softTex)
+	if !ok || st.img.Rect.Dx() != img.Bounds().Dx() || st.img.Rect.Dy() != img.Bounds().Dy() {
+		return false
+	}
+	draw.Draw(st.img, st.img.Rect, img, img.Bounds().Min, draw.Src)
+	return true
+}
+
 func (s *SoftCanvas) SetScissor(r image.Rectangle) {
 	if r.Empty() {
 		s.clip = image.Rectangle{}
