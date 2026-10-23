@@ -13,6 +13,7 @@ import (
 
 	"github.com/go-gl/mathgl/mgl32"
 	"github.com/memmaker/voxellib/voxel"
+	"github.com/memmaker/voxellib/voxel/collide"
 	"github.com/memmaker/voxellib/voxel/mesh"
 )
 
@@ -724,6 +725,14 @@ func outlineMVP(cam *Camera, x, y, z int) mgl32.Mat4 {
 	const e = 0.002
 	o := mgl32.Vec3{float32(float64(x)-cam.X) - e, float32(float64(y)-cam.Y) - e, float32(float64(z)-cam.Z) - e}
 	return cam.ViewProj().Mul4(mgl32.Translate3D(o[0], o[1], o[2])).Mul4(mgl32.Scale3D(1+2*e, 1+2*e, 1+2*e))
+}
+
+// boxOutlineMVP places the unit cube of line vertices on box b, grown by
+// 0.002 on every side.
+func boxOutlineMVP(cam *Camera, b collide.AABB) mgl32.Mat4 {
+	const e = 0.002
+	return cam.ViewProj().Mul4(mgl32.Translate3D(float32(b.MinX-e-cam.X), float32(b.MinY-e-cam.Y), float32(b.MinZ-e-cam.Z))).
+		Mul4(mgl32.Scale3D(float32(b.MaxX-b.MinX+2*e), float32(b.MaxY-b.MinY+2*e), float32(b.MaxZ-b.MinZ+2*e)))
 }
 
 // crosshairMVP scales the crosshair lines; aspect = width/height.

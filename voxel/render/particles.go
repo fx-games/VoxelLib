@@ -17,7 +17,7 @@ type ParticleRenderer struct {
 	buf []float32
 }
 
-const particleStride = 10 // rel pos 3, size 1, rgba 4, sprite 1, unused 1
+const particleStride = 14 // rel pos 3, size 1, rgba 4, sprite 1, sheet flag 1, uv rect 4
 
 // particleCorners is the unit quad as two triangles.
 var particleCorners = []float32{-0.5, -0.5, 0.5, -0.5, 0.5, 0.5, -0.5, -0.5, 0.5, 0.5, -0.5, 0.5}
@@ -42,6 +42,10 @@ func NewParticleRenderer(r *Renderer) (*ParticleRenderer, error) {
 // like Minecraft's particles.png.
 func (pr *ParticleRenderer) SetAtlas(img image.Image) { pr.setAtlas(img) }
 
+// SetSheet sets sheet i (1..255) that particles with Sheet i sample by
+// their UV rectangle; a later call replaces it.
+func (pr *ParticleRenderer) SetSheet(i int, img image.Image) { pr.setSheet(i, img) }
+
 // Draw renders the particles, interpolated alpha (0..1) between ticks.
 // light gives the sky and block light (0..15) at a world position. Call
 // after the opaque world and models, with the same camera.
@@ -53,23 +57,33 @@ func (pr *ParticleRenderer) Draw(cam *Camera, ps []particles.Particle, alpha flo
 	right := f.Cross(mgl32.Vec3{0, 1, 0}).Normalize()
 	pf := particleFrame{vp: cam.ViewProj(), right: right, up: right.Cross(f).Normalize(), fog: pr.r.CurrentFog()}
 	pr.begin(&pf)
+	sheets := 0
+	for i := range ps {
+		sheets = max(sheets, int(ps[i].Sheet))
+	}
 	for _, additive := range []bool{false, true} {
-		pr.buf = pr.buf[:0]
-		for i := range ps {
-			q := &ps[i]
-			if q.Additive != additive {
-				continue
+		for sheet := 0; sheet <= sheets; sheet++ {
+			pr.buf = pr.buf[:0]
+			for i := range ps {
+				q := &ps[i]
+				if q.Additive != additive || int(q.Sheet) != sheet {
+					continue
+				}
+				x, y, z, size, col := q.Lerp(alpha)
+				lc := mgl32.Vec3{1, 1, 1}
+				if !additive && light != nil {
+					lc = pr.r.LightColor(light(x, y, z))
+				}
+				flag := float32(0)
+				if sheet > 0 {
+					flag = 1
+				}
+				pr.buf = append(pr.buf, float32(x-cam.X), float32(y-cam.Y), float32(z-cam.Z), size,
+					col[0]*lc[0], col[1]*lc[1], col[2]*lc[2], col[3], float32(q.Sprite), flag, q.UV[0], q.UV[1], q.UV[2], q.UV[3])
 			}
-			x, y, z, size, col := q.Lerp(alpha)
-			lc := mgl32.Vec3{1, 1, 1}
-			if !additive && light != nil {
-				lc = pr.r.LightColor(light(x, y, z))
+			if len(pr.buf) > 0 {
+				pr.drawPass(&pf, additive, sheet, pr.buf)
 			}
-			pr.buf = append(pr.buf, float32(x-cam.X), float32(y-cam.Y), float32(z-cam.Z), size,
-				col[0]*lc[0], col[1]*lc[1], col[2]*lc[2], col[3], float32(q.Sprite), 0)
-		}
-		if len(pr.buf) > 0 {
-			pr.drawPass(&pf, additive, pr.buf)
 		}
 	}
 	pr.end()

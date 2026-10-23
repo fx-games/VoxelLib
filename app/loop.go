@@ -135,6 +135,7 @@ func (a *App) loop() {
 		render.BeginFrame(fw, fh, 0.75, 0.85, 1)
 		acquire := time.Since(tAcq)
 		a.Cam.X, a.Cam.Y, a.Cam.Z = ix, iy+p.EyeHeight, iz
+		a.Cam.Bob = p.ViewBob(alpha)
 		a.Cam.Aspect = float64(fw) / float64(max(fh, 1))
 		opt := &a.Eng.Renderer.Opt
 		switch p.EyeIn {
@@ -154,15 +155,21 @@ func (a *App) loop() {
 			a.Mixer.SetListener(a.Cam.X, a.Cam.Y, a.Cam.Z, a.Cam.Yaw)
 		}
 		a.Eng.Render(&a.Cam)
-		if h, ent, ok := a.Target(); ok && ent == nil && !a.Paused() {
-			a.Eng.Renderer.DrawBlockOutline(&a.Cam, h.Block.X, h.Block.Y, h.Block.Z)
+		if h, ent, ok := a.Target(); ok && ent == nil && !a.ScreenOpen() {
+			if a.Hooks.SelectBox != nil {
+				if b, ok := a.Hooks.SelectBox(h); ok {
+					a.Eng.Renderer.DrawBoxOutline(&a.Cam, b)
+				}
+			} else {
+				a.Eng.Renderer.DrawBlockOutline(&a.Cam, h.Block.X, h.Block.Y, h.Block.Z)
+			}
 		}
 		a.drawEntities(alpha)
 		if a.Hooks.Draw != nil {
 			a.Hooks.Draw(alpha)
 		}
 		a.Eng.Renderer.DrawWeather(&a.Cam) // Options.Weather, after particles as in 1.7
-		if !a.Paused() {
+		if !a.ScreenOpen() {
 			a.Eng.Renderer.DrawCrosshair(float32(a.Cam.Aspect))
 		}
 		if a.shotReq { // before the HUD and screens, so they never hide the scene

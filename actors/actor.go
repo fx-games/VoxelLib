@@ -32,6 +32,39 @@ type World interface {
 	SetDoor(x, y, z int, open bool)
 }
 
+// BodySolids is an optional World method: the cells bodies collide with
+// as whole cubes. A World whose Solid is the path finder's cell test
+// (true for slabs, fences and doors too) implements it so bodies meet those
+// blocks' real boxes (World.Boxes) instead, as Minecraft entities do.
+type BodySolids interface {
+	BodySolid(x, y, z int) bool
+}
+
+// bodyWorld is a World seen by bodies: BodySolid as Solid.
+type bodyWorld struct {
+	World
+	b BodySolids
+}
+
+func (w bodyWorld) Solid(x, y, z int) bool { return w.b.BodySolid(x, y, z) }
+
+// Boxes passes the World's collide.Boxer on (an embedded interface
+// promotes only World's own methods).
+func (w bodyWorld) Boxes(area collide.AABB, out []collide.AABB) []collide.AABB {
+	if b, ok := w.World.(collide.Boxer); ok {
+		return b.Boxes(area, out)
+	}
+	return out
+}
+
+// body is the world bodies move in.
+func (m *Manager) body() character.World {
+	if b, ok := m.W.(BodySolids); ok {
+		return bodyWorld{m.W, b}
+	}
+	return m.W
+}
+
 // Vec is a world position.
 type Vec struct{ X, Y, Z float64 }
 
@@ -81,6 +114,27 @@ type Ranged struct {
 	Speed        float64 // launch speed in blocks/tick (skeleton 1.6)
 	Inaccuracy   float64 // (skeleton 14 - 4*difficulty)
 	MeleeInRange float64 // switch to melee closer than this (0 = never)
+
+	// AI picks the task: RangedSkeleton (the fields above), RangedLOTR
+	// (MinInterval, MaxInterval, MaxRange, MoveSpeed, Switch) or
+	// RangedCNPC (MinInterval/MaxInterval as minDelay/maxDelay, MaxRange
+	// as MaxFiringRange, and the fields below).
+	AI int
+	// MoveSpeed is LOTREntityAIRangedAttack's path speed factor toward a
+	// target out of range; Switch marks a LOTR class with both a melee
+	// and a ranged task that its attack mode swaps.
+	MoveSpeed float64
+	Switch    bool
+	// CustomNPC DataStats/DataAI: FireRate and BurstCount, RangeAndMelee
+	// (0 ranged only, 1 melee within DistanceToMelee, 2 both),
+	// FireIndirect (0 never, 1 beyond half the range, 2 when unseen),
+	// DirectLOS and TacticalVariant (EnumNavType ordinal).
+	FireRate, Burst int
+	UseRangeMelee   int
+	DistanceToMelee float64
+	Indirect        int
+	DirectLOS       bool
+	Tactic          int
 }
 
 // MountStats make an actor rideable, as 1.7.10's EntityHorse.
@@ -135,6 +189,7 @@ type Actor struct {
 	fall                   float64
 	attackCool, rangedCool int
 	seeTime                int
+	rs                     rangedState
 	revenge                *Actor
 	revengeTicks           int
 	panic                  int

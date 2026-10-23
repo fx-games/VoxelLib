@@ -33,6 +33,14 @@ type Manager struct {
 	// OnFire is called when an actor's ranged attack launches an arrow at
 	// t (attackEntityWithRangedAttack: the shot's sound).
 	OnFire func(a, t *Actor)
+	// Launch, if set, launches the projectile of a's ranged attack at t
+	// (attackEntityWithRangedAttack) instead of an Arrows arrow; f is the
+	// task's power argument (LOTR and skeleton: the draw, 0.1..1; CNPC:
+	// 1 for an indirect, arcing shot, else 0). OnFire is not called then.
+	Launch func(a, t *Actor, f float64)
+	// Sees, if set, is EntitySenses.canSee (the eye-to-eye block ray);
+	// nil sees everything.
+	Sees func(a, t *Actor) bool
 	// OnExtinguish is called when water or rain puts a burning actor out
 	// (random.fizz 0.7, 1.6 + (r - r) * 0.4).
 	OnExtinguish func(a *Actor)
@@ -208,7 +216,7 @@ func (m *Manager) Tick() {
 // damage and picks the animation state.
 func (m *Manager) moveBody(a *Actor, in character.Input) {
 	b := a.Body
-	b.Tick(m.W, in)
+	b.Tick(m.body(), in)
 	if b.InWater || b.InLava {
 		a.fall = 0
 	} else if b.OnGround {

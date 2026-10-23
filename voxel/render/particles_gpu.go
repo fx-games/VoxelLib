@@ -8,9 +8,24 @@ import (
 )
 
 type gpuParticleRenderer struct {
-	quad  *wgpu.Buffer
-	u     ubuf
-	atlas *skyTexture // nil: skyWhite
+	quad   *wgpu.Buffer
+	u      ubuf
+	atlas  *skyTexture // nil: skyWhite
+	sheets []*skyTexture
+}
+
+func (pr *ParticleRenderer) setSheet(i int, img image.Image) {
+	if i <= 0 || i > 255 {
+		return
+	}
+	for len(pr.gpu.sheets) <= i {
+		pr.gpu.sheets = append(pr.gpu.sheets, nil)
+	}
+	if a := pr.gpu.sheets[i]; a != nil {
+		a.bg.Release()
+		a.tex.release()
+	}
+	pr.gpu.sheets[i] = uploadSkyTexture(img)
 }
 
 func (pr *ParticleRenderer) setAtlas(img image.Image) {
@@ -28,7 +43,7 @@ func (pr *ParticleRenderer) initGPU() error {
 
 func (pr *ParticleRenderer) begin(*particleFrame) {}
 
-func (pr *ParticleRenderer) drawPass(pf *particleFrame, additive bool, buf []float32) {
+func (pr *ParticleRenderer) drawPass(pf *particleFrame, additive bool, sheet int, buf []float32) {
 	p := curPass()
 	if p == nil {
 		return
@@ -39,6 +54,12 @@ func (pr *ParticleRenderer) drawPass(pf *particleFrame, additive bool, buf []flo
 	}
 	p.SetPipeline(pl)
 	t := pr.gpu.atlas
+	if sheet > 0 {
+		t = nil
+		if sheet < len(pr.gpu.sheets) {
+			t = pr.gpu.sheets[sheet]
+		}
+	}
 	if t == nil {
 		t = skyWhiteTexture()
 	}

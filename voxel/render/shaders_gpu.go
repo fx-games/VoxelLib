@@ -232,17 +232,22 @@ struct VOut {
 ` + wgslLight + `
 @vertex
 fn vs(@location(0) corner: vec2f, @location(1) ipos: vec3f, @location(2) size: f32,
-	@location(3) color: vec4f, @location(4) sprite: vec2f) -> VOut {
+	@location(3) color: vec4f, @location(4) sprite: vec2f, @location(5) rect: vec4f) -> VOut {
 	let p = ipos + (u.right.xyz * corner.x + u.up.xyz * corner.y) * size;
 	var o: VOut;
 	o.pos = u.viewProj * vec4f(p, 1.0);
 	o.color = color;
+	let k = vec2f(corner.x + 0.5, 0.5 - corner.y);
 	// EntityFX.renderParticle: cell (i % 16, i / 16), 0.0624375 wide.
 	let cell = max(sprite.x - 1.0, 0.0);
 	let c0 = vec2f(cell % 16.0, floor(cell / 16.0)) / 16.0;
-	o.uv = c0 + vec2f(corner.x + 0.5, 0.5 - corner.y) * 0.0624375;
-	o.dist = length(p);
+	o.uv = c0 + k * 0.0624375;
 	o.sprite = sprite.x;
+	if (sprite.y > 0.5) { // a sheet's rectangle (block and item particles)
+		o.uv = mix(rect.xy, rect.zw, k);
+		o.sprite = 1.0;
+	}
+	o.dist = length(p);
 	return o;
 }
 @fragment
@@ -426,7 +431,7 @@ func (ps *pipelines) init() error {
 		{ArrayStride: 8, StepMode: gputypes.VertexStepModeVertex, Attributes: []gputypes.VertexAttribute{attr(0, gputypes.VertexFormatFloat32x2, 0)}},
 		{ArrayStride: particleStride * 4, StepMode: gputypes.VertexStepModeInstance, Attributes: []gputypes.VertexAttribute{
 			attr(1, gputypes.VertexFormatFloat32x3, 0), attr(2, gputypes.VertexFormatFloat32, 12),
-			attr(3, gputypes.VertexFormatFloat32x4, 16), attr(4, gputypes.VertexFormatFloat32x2, 32)}},
+			attr(3, gputypes.VertexFormatFloat32x4, 16), attr(4, gputypes.VertexFormatFloat32x2, 32), attr(5, gputypes.VertexFormatFloat32x4, 40)}},
 	}
 
 	skyBuf := []gputypes.VertexBufferLayout{{ArrayStride: 36, StepMode: gputypes.VertexStepModeVertex,

@@ -414,13 +414,11 @@ func (g *game) drawArrows(alpha float64) {
 // drawCrossbowHand draws the crossbow in the lower right of the view, with
 // walking bob and a recoil kick after each shot.
 func (g *game) drawCrossbowHand(alpha float64) {
-	t := g.Player.BobPhase(alpha)
-	bobX, bobY := float32(math.Sin(t))*0.02, -float32(math.Abs(math.Cos(t)))*0.03
 	kick := float32(0)
 	if g.recoil > 0 {
 		kick = (float32(g.recoil) - float32(alpha)) / recoilTicks
 	}
-	view := mgl32.Translate3D(0.42+bobX, -0.36+bobY, -0.75+0.12*kick).
+	view := g.Player.HandPose(alpha).Base().Mul4(mgl32.Translate3D(0.42, -0.36, -0.75+0.12*kick)).
 		Mul4(mgl32.HomogRotate3DY(mgl32.DegToRad(8))). // aim toward the crosshair
 		Mul4(mgl32.HomogRotate3DX(mgl32.DegToRad(4 + 8*kick))).
 		Mul4(bowHold).

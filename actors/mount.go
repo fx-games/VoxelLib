@@ -83,7 +83,7 @@ func (m *Manager) Dismount(rider *Actor) {
 	for _, ang := range []float64{math.Pi / 2, -math.Pi / 2, math.Pi, 0} {
 		y := mount.Yaw + ang
 		x, z := mb.X+math.Cos(y)*side, mb.Z+math.Sin(y)*side
-		if collide.Fits(m.W, collide.Box(x, mb.Y, z, rb.Width, rb.Height)) {
+		if collide.Fits(m.body(), collide.Box(x, mb.Y, z, rb.Width, rb.Height)) {
 			rb.X, rb.Y, rb.Z = x, mb.Y, z
 			rb.VX, rb.VY, rb.VZ = 0, 0, 0
 			return

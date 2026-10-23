@@ -14,6 +14,9 @@ type Camera struct {
 	FOV        float64 // vertical, radians
 	Aspect     float64
 	Near, Far  float64
+	// Bob is applied after the camera's turn, before the projection
+	// (EntityRenderer.setupViewBobbing in setupCameraTransform); zero: none.
+	Bob mgl32.Mat4
 }
 
 // Forward returns the view direction.
@@ -27,6 +30,9 @@ func (c *Camera) ViewProj() mgl32.Mat4 {
 	f := c.Forward()
 	view := mgl32.LookAtV(mgl32.Vec3{}, f, mgl32.Vec3{0, 1, 0})
 	proj := mgl32.Perspective(float32(c.FOV), float32(c.Aspect), float32(c.Near), float32(c.Far))
+	if c.Bob != (mgl32.Mat4{}) {
+		proj = proj.Mul4(c.Bob)
+	}
 	return proj.Mul4(view)
 }
 

@@ -210,3 +210,8 @@ func (d *DialogScreen) Input(ctx *Context, ev Event) bool {
 	}
 	return false
 }
+
+// PausesGame: CustomNPC's GuiNPCInterface (GuiDialogInteract) and
+// LOTRGuiScreenBase both return false from doesGuiPauseGame, so the world
+// keeps ticking while the player talks.
+func (d *DialogScreen) PausesGame() bool { return false }

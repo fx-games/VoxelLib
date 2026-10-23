@@ -104,3 +104,17 @@ func TestSneakStopsAtEdge(t *testing.T) {
 		t.Fatalf("sneaking walked off the edge: x=%.2f y=%.2f", c.X, c.Y)
 	}
 }
+
+// TestUsingItemSlows: EntityPlayerSP scales the input by 0.2 while an
+// item is in use and refuses to sprint, so the steady ground speed is a
+// fifth of walking (4.317 * 0.2 = 0.863 b/s), sprint key or not.
+func TestUsingItemSlows(t *testing.T) {
+	for _, sprint := range []bool{false, true} {
+		c := New(0.5, 0, 0.5)
+		run(c, grid{}, Input{}, 5)
+		run(c, grid{}, Input{Forward: 1, Sprint: sprint, Using: true}, 80)
+		if s := speed(c) * 20; math.Abs(s-0.8634) > 0.01 {
+			t.Errorf("sprint %v: using speed %.4f b/s, want 0.863", sprint, s)
+		}
+	}
+}

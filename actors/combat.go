@@ -43,9 +43,18 @@ func (m *Manager) fight(a *Actor) bool {
 	}
 	t := a.Target
 	if t == nil {
+		m.rangedIdle(a)
 		return false
 	}
 	a.age = 0
+	if r := a.Ranged; r != nil && r.AI == RangedLOTR {
+		m.lotrFight(a, t)
+		return true
+	}
+	if r := a.Ranged; r != nil && r.AI == RangedCNPC {
+		m.cnpcFight(a, t)
+		return true
+	}
 	if r := a.Ranged; r != nil && (r.MeleeInRange == 0 || t.Pos().dist2(a.Pos()) > r.MeleeInRange*r.MeleeInRange || a.Melee.Damage <= 0) {
 		m.shoot(a, t)
 	} else {
@@ -274,6 +283,11 @@ type shot struct {
 // fire launches an arrow from a's eyes at t (EntitySkeleton
 // attackEntityWithRangedAttack and the aiming EntityArrow constructor).
 func (m *Manager) fire(a, t *Actor, power float64) {
+	if m.Launch != nil {
+		a.Swing = 0
+		m.Launch(a, t, power)
+		return
+	}
 	if m.Arrows == nil {
 		return
 	}

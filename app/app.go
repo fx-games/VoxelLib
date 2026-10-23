@@ -28,6 +28,7 @@ import (
 	"github.com/memmaker/voxellib/audio"
 	"github.com/memmaker/voxellib/platform/glfw"
 	"github.com/memmaker/voxellib/voxel"
+	"github.com/memmaker/voxellib/voxel/collide"
 	"github.com/memmaker/voxellib/voxel/engine"
 	"github.com/memmaker/voxellib/voxel/physics"
 	"github.com/memmaker/voxellib/voxel/render"
@@ -106,6 +107,17 @@ type Hooks struct {
 	BlockInteract func(hit physics.Hit, act Action) bool
 	// EntityInteract: the player attacked or used an entity within reach.
 	EntityInteract func(e *Entity, act Action)
+	// RayBoxes, when set, makes the player's aim test each block's own
+	// boxes (world coordinates, appended to buf; none: the ray passes
+	// through) instead of whole cells (Block.collisionRayTrace).
+	RayBoxes func(x, y, z int, state voxel.StateID, buf []collide.AABB) []collide.AABB
+	// SelectBox, when set, is the world box the aimed-at block's outline
+	// draws (Block.getSelectedBoundingBoxFromPool), false: none; nil hook:
+	// the whole cell.
+	SelectBox func(hit physics.Hit) (collide.AABB, bool)
+	// BlockHit runs every tick the player digs at a block, cooldown
+	// included (Minecraft.sendClickBlockToController: the hit particles).
+	BlockHit func(hit physics.Hit)
 	// BreakTicks is how many ticks of holding attack break a block
 	// (0 = at once, <0 = unbreakable). nil: everything breaks at once.
 	BreakTicks func(state voxel.StateID) int
@@ -124,6 +136,9 @@ type Hooks struct {
 	// PauseScreen, when set, is opened by the pause action (Esc). Without
 	// it Esc releases the mouse, and a second Esc quits.
 	PauseScreen func() Screen
+	// UsingItem reports that the player is using an item (eating,
+	// drinking, drawing a bow): movement x0.2 and no sprint.
+	UsingItem func() bool
 	// Status is appended to the window title.
 	Status func() string
 }
@@ -418,8 +433,23 @@ func (a *App) TopScreen() Screen {
 	return a.screens[len(a.screens)-1]
 }
 
-// Paused reports whether the world stands still (a screen is open).
-func (a *App) Paused() bool { return len(a.screens) > 0 }
+// Paused reports whether the world stands still: Minecraft.isGamePaused,
+// the top screen's doesGuiPauseGame (a screen with a PausesGame method
+// that returns false, such as LOTR's map, lets the world run; any other
+// screen pauses).
+func (a *App) Paused() bool {
+	s := a.TopScreen()
+	if s == nil {
+		return false
+	}
+	if p, ok := s.(interface{ PausesGame() bool }); ok {
+		return p.PausesGame()
+	}
+	return true
+}
+
+// ScreenOpen reports whether a screen is open (the world gets no input).
+func (a *App) ScreenOpen() bool { return len(a.screens) > 0 }
 
 // Ready reports whether the terrain around the player has loaded (and the
 // player stands on it): spawn things only then.

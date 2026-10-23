@@ -46,6 +46,11 @@ type Particle struct {
 	// particles.png: 16 x 16 cells, index = row*16 + column); 0 draws a
 	// plain square.
 	Sprite uint16
+	// Sheet, when non-zero, draws UV (u0, v0, u1, v1) of the renderer's
+	// sheet Sheet instead of an atlas cell (Minecraft's block and item
+	// particles: a quarter of a terrain or item icon).
+	Sheet uint8
+	UV    [4]float32
 }
 
 // Lerp is the particle's position between the last two ticks, its size and

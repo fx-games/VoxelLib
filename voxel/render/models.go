@@ -294,6 +294,20 @@ func (mr *ModelRenderer) DrawHandSkinned(handle int, aspect float32, view mgl32.
 	mr.end()
 }
 
+// DrawHandInstance draws in.Model like DrawHand, with the instance's
+// texture, colour, blend, cutoff and emissive settings (its position and
+// pose fields are ignored: view places it), e.g. the first-person fire.
+func (mr *ModelRenderer) DrawHandInstance(aspect float32, view mgl32.Mat4, in ModelInstance) {
+	if in.Model < 0 || in.Model >= len(mr.models) {
+		return
+	}
+	clearHandDepth()
+	proj := mgl32.Perspective(mgl32.DegToRad(70), aspect, 0.05, 10)
+	mr.begin(modelLight{proj, Fog{Start: 1e6, End: 2e6}, mr.r.Opt.Daylight, mr.r.Opt.BlockBrightness})
+	mr.drawModel(mr.models[in.Model], view, nil, in.params())
+	mr.end()
+}
+
 func toNRGBARect(img image.Image) *image.NRGBA {
 	b := img.Bounds()
 	out := image.NewNRGBA(image.Rect(0, 0, b.Dx(), b.Dy()))

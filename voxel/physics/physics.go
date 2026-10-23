@@ -7,6 +7,7 @@ import (
 	"math"
 
 	"github.com/memmaker/voxellib/voxel"
+	"github.com/memmaker/voxellib/voxel/collide"
 )
 
 // Hit describes a raycast result.
@@ -15,7 +16,78 @@ type Hit struct {
 	Face  voxel.Face // face of Block that was hit
 	Dist  float64
 	State voxel.StateID
+	// Box is the world box the ray hit (RaycastBox); zero for Raycast.
+	Box collide.AABB
 }
+
+// BoxFunc appends to buf a block's ray boxes in world coordinates; none
+// when the ray passes through the block (Minecraft: canCollideCheck, then
+// the bounds collisionRayTrace tests, several for stairs).
+type BoxFunc func(x, y, z int, id voxel.StateID, buf []collide.AABB) []collide.AABB
+
+// RaycastBox is Raycast against each block's own boxes
+// (World.rayTraceBlocks): the grid walk visits the cells in order and a
+// cell is hit where the ray first enters one of its boxes. Hit.Dist is
+// the distance to that point, Hit.Face the box face entered and Hit.Box
+// the box.
+func RaycastBox(w *voxel.World, ox, oy, oz, dx, dy, dz, maxDist float64, boxes BoxFunc) (Hit, bool) {
+	l := math.Sqrt(dx*dx + dy*dy + dz*dz)
+	if l == 0 {
+		return Hit{}, false
+	}
+	ux, uy, uz := dx/l, dy/l, dz/l
+	var out Hit
+	var buf []collide.AABB
+	// No world lock around the walk: boxes may read neighbours.
+	ok := walk(w.Block, ox, oy, oz, ux, uy, uz, maxDist, func(x, y, z int, id voxel.StateID, _ voxel.Face, _ float64) bool {
+		buf = boxes(x, y, z, id, buf[:0])
+		hit := false
+		for _, b := range buf {
+			t, f, in := rayBox(ox, oy, oz, ux, uy, uz, b)
+			if in && t <= maxDist && (!hit || t < out.Dist) {
+				out, hit = Hit{voxel.BlockPos{X: x, Y: y, Z: z}, f, t, id, b}, true
+			}
+		}
+		return hit
+	})
+	return out, ok
+}
+
+// rayBox is the slab test of the unit ray against b: the entry distance and
+// face (the exit if the origin is inside, as collisionRayTrace).
+func rayBox(ox, oy, oz, dx, dy, dz float64, b collide.AABB) (float64, voxel.Face, bool) {
+	tmin, tmax := math.Inf(-1), math.Inf(1)
+	var fmin, fmax voxel.Face
+	for i, s := range [3][4]float64{{ox, dx, b.MinX, b.MaxX}, {oy, dy, b.MinY, b.MaxY}, {oz, dz, b.MinZ, b.MaxZ}} {
+		if s[1] == 0 {
+			if s[0] < s[2] || s[0] > s[3] {
+				return 0, 0, false
+			}
+			continue
+		}
+		t0, t1 := (s[2]-s[0])/s[1], (s[3]-s[0])/s[1]
+		lo, hi := faces[i][0], faces[i][1] // faces of the min and max planes
+		if t0 > t1 {
+			t0, t1, lo, hi = t1, t0, hi, lo
+		}
+		if t0 > tmin {
+			tmin, fmin = t0, lo
+		}
+		if t1 < tmax {
+			tmax, fmax = t1, hi
+		}
+	}
+	if tmin > tmax || tmax < 0 {
+		return 0, 0, false
+	}
+	if tmin < 0 {
+		return tmax, fmax, true
+	}
+	return tmin, fmin, true
+}
+
+// faces are the faces of a box's min and max plane per axis.
+var faces = [3][2]voxel.Face{{voxel.FaceWest, voxel.FaceEast}, {voxel.FaceDown, voxel.FaceUp}, {voxel.FaceNorth, voxel.FaceSouth}}
 
 // Raycast walks the voxel grid (Amanatides & Woo DDA) from origin along dir
 // (need not be normalised) up to maxDist, returning the first block for
@@ -25,10 +97,27 @@ func Raycast(w *voxel.World, ox, oy, oz, dx, dy, dz, maxDist float64, pick func(
 	if l == 0 {
 		return Hit{}, false
 	}
-	dx, dy, dz = dx/l, dy/l, dz/l
 	if pick == nil {
 		pick = func(s *voxel.StateInfo) bool { return s.Shape != voxel.ShapeNone && s.Shape != voxel.ShapeLiquid }
 	}
+	table := w.Reg.Table()
+	var out Hit
+	w.RLock()
+	defer w.RUnlock()
+	ok := walk(w.BlockUnlocked, ox, oy, oz, dx/l, dy/l, dz/l, maxDist, func(x, y, z int, id voxel.StateID, f voxel.Face, t float64) bool {
+		if int(id) < len(table) && pick(&table[id]) {
+			out = Hit{Block: voxel.BlockPos{X: x, Y: y, Z: z}, Face: f, Dist: t, State: id}
+			return true
+		}
+		return false
+	})
+	return out, ok
+}
+
+// walk visits the grid cells along the unit ray (Amanatides & Woo DDA) up
+// to maxDist, with the face entered and the distance to it, until visit
+// returns true.
+func walk(block func(x, y, z int) voxel.StateID, ox, oy, oz, dx, dy, dz, maxDist float64, visit func(x, y, z int, id voxel.StateID, f voxel.Face, t float64) bool) bool {
 	x, y, z := int(math.Floor(ox)), int(math.Floor(oy)), int(math.Floor(oz))
 	step := func(d float64) int {
 		if d > 0 {
@@ -59,13 +148,9 @@ func Raycast(w *voxel.World, ox, oy, oz, dx, dy, dz, maxDist float64, pick func(
 	tmx, tmy, tmz := tMax(ox, x, dx), tMax(oy, y, dy), tMax(oz, z, dz)
 	face := voxel.FaceUp
 	t := 0.0
-	table := w.Reg.Table()
-	w.RLock()
-	defer w.RUnlock()
 	for t <= maxDist {
-		id := w.BlockUnlocked(x, y, z)
-		if int(id) < len(table) && pick(&table[id]) {
-			return Hit{voxel.BlockPos{X: x, Y: y, Z: z}, face, t, id}, true
+		if visit(x, y, z, block(x, y, z), face, t) {
+			return true
 		}
 		switch {
 		case tmx < tmy && tmx < tmz:
@@ -94,5 +179,5 @@ func Raycast(w *voxel.World, ox, oy, oz, dx, dy, dz, maxDist float64, pick func(
 			}
 		}
 	}
-	return Hit{}, false
+	return false
 }

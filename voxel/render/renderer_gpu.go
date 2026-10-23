@@ -7,6 +7,7 @@ import (
 	"github.com/gogpu/gputypes"
 	"github.com/gogpu/wgpu"
 	"github.com/memmaker/voxellib/voxel"
+	"github.com/memmaker/voxellib/voxel/collide"
 )
 
 // gpuRenderer is the WebGPU state of a Renderer.
@@ -144,6 +145,12 @@ func (r *Renderer) multiDraw(p *wgpu.RenderPassEncoder, b drawBatch) {
 // selection outline).
 func (r *Renderer) DrawBlockOutline(cam *Camera, x, y, z int) {
 	r.drawLines(dev.pipes.outline, 0, 24, clip(outlineMVP(cam, x, y, z)), mgl32.Vec4{0, 0, 0, 0.6})
+}
+
+// DrawBoxOutline draws the wireframe of a world box grown by 0.002
+// (RenderGlobal.drawSelectionBox: a block's selected bounding box).
+func (r *Renderer) DrawBoxOutline(cam *Camera, b collide.AABB) {
+	r.drawLines(dev.pipes.outline, 0, 24, clip(boxOutlineMVP(cam, b)), mgl32.Vec4{0, 0, 0, 0.6})
 }
 
 // DrawCrosshair draws a screen-centre cross; aspect = width/height.

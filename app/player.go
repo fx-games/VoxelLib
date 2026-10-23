@@ -5,6 +5,7 @@ import (
 	"math"
 	"strings"
 
+	"github.com/go-gl/mathgl/mgl32"
 	"github.com/memmaker/voxellib/character"
 	"github.com/memmaker/voxellib/voxel"
 	"github.com/memmaker/voxellib/voxel/collide"
@@ -72,7 +73,14 @@ type Player struct {
 	breakTicks, breakCD    int
 	placeCD                int
 	swing                  int
-	walkDist, prevWalk     float64
+	walkDist, prevWalk     float64 // distanceWalkedModified
+	// View bobbing (EntityPlayer.cameraYaw, EntityLivingBase.cameraPitch)
+	// and arm lag (EntityPlayerSP.renderArmYaw/Pitch, our radians).
+	bobYaw, prevBobYaw     float64
+	bobPitch, prevBobPitch float64
+	armYaw, prevArmYaw     float64
+	armPitch, prevArmPitch float64
+	armInit                bool
 	stepDist               float64
 }
 
@@ -139,11 +147,12 @@ func (p *Player) tick() {
 		Forward: axis(in.Down(ActForward), in.Down(ActBack)),
 		Strafe:  axis(in.Down(ActRight), in.Down(ActLeft)),
 		Jump:    in.Down(ActJump), Sneak: in.Down(ActSneak), Sprint: in.Down(ActSprint)}
+	ci.Using = a.Hooks.UsingItem != nil && a.Hooks.UsingItem()
+	sneakEdge := p.OnGround && ci.Sneak // moveEntity's flag, from the last tick's onGround
 	p.Tick(a.Terrain, ci)
-	p.prevWalk = p.walkDist
+	p.bobTick(a.Cam.Yaw, a.Cam.Pitch, sneakEdge)
 	if p.OnGround {
 		d := math.Hypot(p.X-p.PrevX, p.Z-p.PrevZ)
-		p.walkDist += d
 		if p.stepDist += d; p.stepDist > 1.6 && !p.Sneaking() {
 			p.stepDist = 0
 			x, y, z := int(math.Floor(p.X)), int(math.Floor(p.Y-0.2)), int(math.Floor(p.Z))
@@ -225,6 +234,9 @@ func (p *Player) interact() {
 // breakStep advances breaking the targeted block by one tick.
 func (p *Player) breakStep(hit physics.Hit) {
 	a := p.a
+	if a.Hooks.BlockHit != nil {
+		a.Hooks.BlockHit(hit)
+	}
 	if p.breakCD > 0 {
 		p.breakCD--
 		return
@@ -317,7 +329,11 @@ func (a *App) Target() (hit physics.Hit, ent *Entity, ok bool) {
 	ex, ey, ez := p.Eye()
 	f := a.Cam.Forward()
 	dx, dy, dz := float64(f[0]), float64(f[1]), float64(f[2])
-	hit, ok = a.Eng.Raycast(ex, ey, ez, dx, dy, dz, p.Reach)
+	if a.Hooks.RayBoxes != nil {
+		hit, ok = physics.RaycastBox(a.Eng.World, ex, ey, ez, dx, dy, dz, p.Reach, a.Hooks.RayBoxes)
+	} else {
+		hit, ok = a.Eng.Raycast(ex, ey, ez, dx, dy, dz, p.Reach)
+	}
 	best := p.Reach
 	if ok {
 		best = hit.Dist
@@ -352,21 +368,66 @@ func rayBox(ox, oy, oz, dx, dy, dz float64, b collide.AABB) (float64, bool) {
 	return tmin, tmin <= tmax
 }
 
-// HandPose is the first-person hand's walking bob and swing at this
-// frame's partial tick, for render.ItemRenderer.DrawHand or a game's own
-// hand model.
+// bobTick is one tick of the bobbing and arm-lag state: Entity.moveEntity's
+// distanceWalkedModified (+0.6 x the horizontal move, not while sneaking
+// on the ground), EntityPlayer.onLivingUpdate's cameraYaw (horizontal
+// speed up to 0.1, 0 in the air) and cameraPitch (atan(-motionY*0.2)*15,
+// 0 on the ground), and EntityPlayerSP's renderArmYaw/Pitch, which follow
+// the look halfway each tick.
+// ponytail: riding and death are not seen here (both stop the bob in MC).
+func (p *Player) bobTick(yaw, pitch float64, sneakEdge bool) {
+	p.prevWalk = p.walkDist
+	if !sneakEdge {
+		p.walkDist += math.Hypot(p.X-p.PrevX, p.Z-p.PrevZ) * 0.6
+	}
+	f := min(math.Hypot(p.VX, p.VZ), 0.1)
+	f1 := math.Atan(-p.VY*0.20000000298023224) * 15
+	if !p.OnGround {
+		f = 0
+	} else {
+		f1 = 0
+	}
+	p.prevBobYaw, p.prevBobPitch = p.bobYaw, p.bobPitch
+	p.bobYaw += (f - p.bobYaw) * 0.4
+	p.bobPitch += (f1 - p.bobPitch) * 0.8
+	if !p.armInit {
+		p.armYaw, p.armPitch, p.armInit = yaw, pitch, true
+	}
+	p.prevArmYaw, p.prevArmPitch = p.armYaw, p.armPitch
+	p.armYaw += (yaw - p.armYaw) * 0.5
+	p.armPitch += (pitch - p.armPitch) * 0.5
+}
+
+// ViewBob is EntityRenderer.setupViewBobbing at this frame's alpha.
+func (p *Player) ViewBob(alpha float64) mgl32.Mat4 {
+	f1 := p.walkDist - p.prevWalk
+	f2 := float32(-(p.walkDist + f1*alpha))
+	f3 := float32(p.prevBobYaw + (p.bobYaw-p.prevBobYaw)*alpha)
+	f4 := float32(p.prevBobPitch + (p.bobPitch-p.prevBobPitch)*alpha)
+	sin := func(x float32) float32 { return float32(math.Sin(float64(x))) }
+	cos := func(x float32) float32 { return float32(math.Cos(float64(x))) }
+	abs := func(x float32) float32 { return float32(math.Abs(float64(x))) }
+	deg := mgl32.DegToRad
+	return mgl32.Translate3D(sin(f2*math.Pi)*f3*0.5, -abs(cos(f2*math.Pi)*f3), 0).
+		Mul4(mgl32.HomogRotate3DZ(deg(sin(f2*math.Pi) * f3 * 3))).
+		Mul4(mgl32.HomogRotate3DX(deg(abs(cos(f2*math.Pi-0.2)*f3) * 5))).
+		Mul4(mgl32.HomogRotate3DX(deg(f4)))
+}
+
+// HandPose is the first-person hand's view (the view bob, then
+// ItemRenderer.renderItemInFirstPerson's arm lag: the look minus the
+// interpolated render arm angles, x0.1, about X then Y) and swing.
 func (p *Player) HandPose(alpha float64) render.HandPose {
-	t := p.BobPhase(alpha)
-	pose := render.HandPose{BobX: float32(math.Sin(t)) * 0.02, BobY: -float32(math.Abs(math.Cos(t))) * 0.03}
+	yaw, pitch := p.a.Cam.Yaw, p.a.Cam.Pitch
+	ay := p.prevArmYaw + (p.armYaw-p.prevArmYaw)*alpha
+	ap := p.prevArmPitch + (p.armPitch-p.prevArmPitch)*alpha
+	// MC pitch grows looking down (ours up), its yaw turns the same way.
+	lag := mgl32.HomogRotate3DX(float32(-(pitch - ap) * 0.1)).Mul4(mgl32.HomogRotate3DY(float32((yaw - ay) * 0.1)))
+	pose := render.HandPose{View: p.ViewBob(alpha).Mul4(lag)}
 	if p.swing > 0 {
 		pose.Swing = 1 - (float32(p.swing)-float32(alpha))/SwingTicks
 	}
 	return pose
-}
-
-// BobPhase is the walking bob's phase, interpolated between ticks.
-func (p *Player) BobPhase(alpha float64) float64 {
-	return (p.prevWalk + (p.walkDist-p.prevWalk)*alpha) * 1.6
 }
 
 // applyEdits applies Debug.Edits relative to the player, once.

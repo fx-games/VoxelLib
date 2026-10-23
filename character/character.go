@@ -40,6 +40,7 @@ type Input struct {
 	Jump            bool    // jump; swim up; fly up
 	Sneak           bool    // sneak (slow, won't walk off edges); sink; fly down
 	Sprint          bool    // sprint; sprint-swim (dive along the look direction)
+	Using           bool    // using an item (eating, drawing a bow): x0.2, no sprint
 	// Yaw and Pitch in radians: yaw 0 looks toward -Z and grows clockwise
 	// seen from above; positive pitch looks up (as render.Camera).
 	Yaw, Pitch float64
@@ -68,6 +69,7 @@ type Character struct {
 	InWater, InLava     bool   // body touches the liquid
 	EyeIn               Liquid // liquid at eye height (for underwater fog)
 	Swimming            bool   // sprint-swimming underwater
+	Sprinting           bool   // sprinting this tick (Input.Sprint walking forward, no item in use)
 }
 
 // Player dimensions, as Minecraft's.
@@ -143,6 +145,12 @@ func (c *Character) Tick(w World, in Input) {
 	if in.Sneak && !c.Flying && !c.InWater && !c.InLava {
 		fwd, strafe = fwd*0.3, strafe*0.3
 	}
+	if in.Using {
+		// EntityPlayerSP.onLivingUpdate: moveForward and moveStrafe x0.2;
+		// sprinting needs !isUsingItem and stops below 0.8 forward.
+		fwd, strafe, sprint = fwd*0.2, strafe*0.2, false
+	}
+	c.Sprinting = sprint
 	c.Swimming = sprint && c.InWater && c.EyeIn == LiquidWater && !c.Flying
 
 	accel := func(a float64) {

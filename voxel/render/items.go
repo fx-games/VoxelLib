@@ -118,8 +118,18 @@ func (ir *ItemRenderer) DrawPosed(cam *Camera, items []ItemPose) {
 
 // HandPose describes the first-person held item's motion.
 type HandPose struct {
-	BobX, BobY float32 // view bobbing offset (walking), in view units
-	Swing      float32 // 0..1 swing progress (breaking/placing); 0 = idle
+	// View is the hand's modelview before its own placement: renderHand's
+	// setupViewBobbing and renderItemInFirstPerson's arm lag; zero: none.
+	View  mgl32.Mat4
+	Swing float32 // 0..1 swing progress (breaking/placing); 0 = idle
+}
+
+// Base is View, the identity when unset.
+func (p HandPose) Base() mgl32.Mat4 {
+	if p.View == (mgl32.Mat4{}) {
+		return mgl32.Ident4()
+	}
+	return p.View
 }
 
 // DrawHand draws the held item in the lower right of the view, over the
@@ -128,7 +138,7 @@ type HandPose struct {
 func (ir *ItemRenderer) DrawHand(item string, aspect float32, pose HandPose, sky, block uint8) {
 	sw := float32(math.Sin(float64(pose.Swing) * math.Pi))
 	sw2 := float32(math.Sin(math.Sqrt(float64(pose.Swing)) * math.Pi))
-	model := mgl32.Translate3D(0.5+pose.BobX-0.25*sw2, -0.38+pose.BobY+0.15*sw2, -0.9-0.15*sw).
+	model := pose.Base().Mul4(mgl32.Translate3D(0.5-0.25*sw2, -0.38+0.15*sw2, -0.9-0.15*sw)).
 		Mul4(mgl32.HomogRotate3DY(mgl32.DegToRad(-70 + 20*sw))).
 		Mul4(mgl32.HomogRotate3DZ(mgl32.DegToRad(20))).
 		Mul4(mgl32.HomogRotate3DX(mgl32.DegToRad(-80 * sw2))).

@@ -184,3 +184,6 @@ func (s *QuestLogScreen) Input(ctx *Context, ev Event) bool {
 	}
 	return false
 }
+
+// PausesGame: CustomNPC's GuiQuestLog (a GuiNPCInterface) does not pause.
+func (q *QuestLogScreen) PausesGame() bool { return false }
