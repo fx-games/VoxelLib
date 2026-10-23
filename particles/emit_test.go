@@ -46,3 +46,19 @@ func TestBurst(t *testing.T) {
 		t.Errorf("%d particles, %d draws", n, draws)
 	}
 }
+
+func TestFlipbookScatter(t *testing.T) {
+	if u, v, e, ok := Flipbook(3, 0.5, 7); !ok || u != 0.75 || v != 0.25 || e != 0.24975 { // frame 7
+		t.Fatalf("frame %v %v %v %v", u, v, e, ok)
+	}
+	if _, _, _, ok := Flipbook(9, 0, 8); ok {
+		t.Fatal("frame past 15")
+	}
+	r := []float64{0.75, 0.25, 0, 0, 0.5, 0.5}
+	i := 0
+	Scatter(func() float64 { i++; return r[i-1] }, 1, 1, 2, 3, 4, func(x, y, z float64) {
+		if x != 3 || y != 2 || z != 3 {
+			t.Fatalf("scatter %v %v %v", x, y, z)
+		}
+	})
+}

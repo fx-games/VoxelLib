@@ -47,3 +47,25 @@ func Burst(rnd func() float32, n int, lo, hi float32, emit func(vx, vy, vz float
 		emit(float64(fmath.Cos(xz)*fmath.Cos(y)*sp), float64(fmath.Sin(y)*sp), float64(fmath.Sin(xz)*fmath.Cos(y)*sp))
 	}
 }
+
+// Flipbook is the frame of a 4x4-frame sheet animation over life ticks:
+// frame (int)((age+pt)*15/life), its top-left UV (frames run along the
+// rows) and the frame edge 0.24975; ok is false past the last frame.
+func Flipbook(age int, pt float32, life int) (u, v, edge float32, ok bool) {
+	f := int((float32(age) + pt) * 15 / float32(life))
+	if f > 15 {
+		return 0, 0, 0, false
+	}
+	return float32(f%4) / 4, float32(f/4) / 4, 0.24975, true
+}
+
+// Scatter emits n points around (x, y, z), each axis offset by
+// (r-r)*spread with double draws in x, y, z order.
+func Scatter(rnd func() float64, n int, x, y, z, spread float64, emit func(x, y, z float64)) {
+	for i := 0; i < n; i++ {
+		px := x + (rnd()-rnd())*spread
+		py := y + (rnd()-rnd())*spread
+		pz := z + (rnd()-rnd())*spread
+		emit(px, py, pz)
+	}
+}
