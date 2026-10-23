@@ -71,6 +71,9 @@ func (s *Snapshot) Capture(w *voxel.World, p voxel.SectionPos) {
 			}
 		}
 	}
+	if f := w.DynLights(); len(f) > 0 {
+		defer s.foldDyn(f) // after the border
+	}
 	// border: per cell
 	for y := -1; y <= 16; y++ {
 		for z := -1; z <= 16; z++ {
@@ -97,6 +100,52 @@ func (s *Snapshot) Capture(w *voxel.World, p voxel.SectionPos) {
 			}
 		}
 	}
+}
+
+// foldDyn raises the block light of the snapshot to the dynamic lights
+// field (World.SetDynLights): max(stored, dynamic), as the mod's client
+// world holds it.
+func (s *Snapshot) foldDyn(f voxel.DynField) {
+	p := s.Pos
+	for dy := -1; dy <= 1; dy++ {
+		for dz := -1; dz <= 1; dz++ {
+			for dx := -1; dx <= 1; dx++ {
+				a := f[voxel.SectionPos{X: p.X + dx, Y: p.Y + dy, Z: p.Z + dz}]
+				if a == nil {
+					continue
+				}
+				x0, x1 := span(dx)
+				y0, y1 := span(dy)
+				z0, z1 := span(dz)
+				for y := y0; y <= y1; y++ {
+					for z := z0; z <= z1; z++ {
+						for x := x0; x <= x1; x++ {
+							v := a[voxel.SectionIndex(x, y, z)]
+							if v == 0 {
+								continue
+							}
+							i := idx(x+dx*16, y+dy*16, z+dz*16)
+							if l := s.Light[i]; l&15 < v {
+								s.Light[i] = l&0xF0 | v
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+}
+
+// span is the range of local coordinates of the section at offset d that
+// the padded grid holds.
+func span(d int) (int, int) {
+	switch d {
+	case -1:
+		return 15, 15
+	case 1:
+		return 0, 0
+	}
+	return 0, 15
 }
 
 func sidx(v int) int {

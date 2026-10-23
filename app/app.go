@@ -464,9 +464,10 @@ func (a *App) ScreenOpen() bool { return len(a.screens) > 0 }
 // player stands on it): spawn things only then.
 func (a *App) Ready() bool { return !a.Player.Frozen && !a.Player.findGround }
 
-// Light returns the sky and block light at a world position.
+// Light returns the sky and block light at a world position, with the
+// dynamic lights (voxel.World.RenderLight): for drawing, not game rules.
 func (a *App) Light(x, y, z float64) (sky, block uint8) {
-	return a.Eng.World.Light(int(math.Floor(x)), int(math.Floor(y)), int(math.Floor(z)))
+	return a.Eng.World.RenderLight(int(math.Floor(x)), int(math.Floor(y)), int(math.Floor(z)))
 }
 
 // Alpha is the current frame's partial tick (0..1).

@@ -1,6 +1,9 @@
 package voxel
 
-import "sync"
+import (
+	"sync"
+	"sync/atomic"
+)
 
 // World is a thread-safe store of chunk columns.
 //
@@ -23,6 +26,8 @@ type World struct {
 	lightQ  []lightNode
 	removeQ []lightNode
 	cache   *Chunk
+
+	dyn atomic.Pointer[DynField] // dynamic lights (dynlight.go)
 }
 
 // NewWorld creates an empty world spanning [minY, minY+height). Minecraft
