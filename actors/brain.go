@@ -97,6 +97,12 @@ func (m *Manager) think(a *Actor) {
 			return
 		}
 	}
+	if a.Away != nil {
+		if m.moveTo(a, *a.Away, a.AwaySpeed) {
+			a.Away = nil
+		}
+		return
+	}
 	if m.fight(a) {
 		return
 	}

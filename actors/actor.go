@@ -133,6 +133,9 @@ type Melee struct {
 	// OnHit, when set, runs after each blow that hurt t (weapon effects:
 	// setting it alight, slowing it).
 	OnHit func(src, t *Actor)
+	// Hold makes the chase strike no blows (an attack task that only
+	// closes in, the game acting on arrival).
+	Hold bool
 }
 
 // Ranged is a bow or other launcher, as 1.7.10's EntityAIArrowAttack.
@@ -244,14 +247,19 @@ type Actor struct {
 	speedOff float64 // the effects' speed modifiers: their product - 1
 	// Blocking: a raised blade lets blockable damage through as
 	// weapon.Blocked before armour (the game sets it while in use).
-	Blocking            bool
-	AggroRange          float64
-	Melee               Melee
-	Ranged              *Ranged
-	Mount               *MountStats // non-nil: rideable
-	Boat                *Boat       // non-nil: a vehicle (rideable, not living)
-	Fly                 *Flight     // non-nil: a flier (Think replaces the Brain)
-	Brain               Brain
+	Blocking   bool
+	AggroRange float64
+	Melee      Melee
+	Ranged     *Ranged
+	Mount      *MountStats // non-nil: rideable
+	Boat       *Boat       // non-nil: a vehicle (rideable, not living)
+	Fly        *Flight     // non-nil: a flier (Think replaces the Brain)
+	Brain      Brain
+	// Away, when set, is an avoid task above fighting (EntityAIAvoidEntity):
+	// the actor walks there at the speed factor AwaySpeed and Away clears
+	// on arrival (the game may clear or move it sooner).
+	Away                *Vec
+	AwaySpeed           float64
 	Tags                map[string]string // game data, saved
 	State               State
 	StateTicks          int

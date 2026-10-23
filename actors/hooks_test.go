@@ -63,3 +63,34 @@ func TestHurtHooks(t *testing.T) {
 		t.Fatal("a blocked actor moved")
 	}
 }
+
+// TestHoldAway: a holding chaser closes in but strikes no blow; Away
+// walks the actor off to its point before any fighting, then clears.
+func TestHoldAway(t *testing.T) {
+	f := NewFactions(&Faction{Name: "orcs", Enemies: []string{"men"}}, &Faction{Name: "men"})
+	m := NewManager(flat(10), f, nil, 1)
+	orc := New("orc", "orc", 0.5, 1, 0.5)
+	orc.Faction, orc.Melee = "orcs", Melee{Damage: 3, Cooldown: 20, Hold: true}
+	man := New("man", "man", 4.5, 1, 0.5)
+	man.Faction, man.Brain = "men", Brain{Mode: Stand, Home: Vec{4.5, 1, 0.5}}
+	m.Add(orc)
+	m.Add(man)
+	hits := 0
+	man.OnHurt = func(a, src *Actor, n float64) { hits++ }
+	for range 100 {
+		m.Tick()
+	}
+	if hits != 0 || orc.Target != man || orc.Pos().hdist(man.Pos()) > 1.5 {
+		t.Fatalf("hold: %d hits, %.1f away", hits, orc.Pos().hdist(man.Pos()))
+	}
+	orc.Away, orc.AwaySpeed = &Vec{-4.5, 1, 0.5}, 1.5
+	for i := 0; orc.Away != nil; i++ {
+		if i > 200 {
+			t.Fatalf("away: stuck at %v", orc.Pos())
+		}
+		m.Tick()
+	}
+	if orc.Pos().hdist(Vec{-4.5, 1, 0.5}) > 0.4 {
+		t.Fatalf("away: at %v", orc.Pos())
+	}
+}
