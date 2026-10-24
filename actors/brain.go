@@ -121,7 +121,9 @@ func (m *Manager) think(a *Actor) {
 		m.idleLook(a, b.Face)
 	case Wander, Stroll:
 		if a.CNPC != nil { // its own wander task (cnWander)
-			m.stop(a)
+			if !a.rs.goalSet || a.walked() { // else the path left walks on
+				m.clearPath(a)
+			}
 			m.idleLook(a, a.Yaw)
 			return
 		}
@@ -365,6 +367,13 @@ func (m *Manager) route(a *Actor) {
 	if len(b.Points) == 0 || b.Done {
 		m.stop(a)
 		m.idleLook(a, b.Face)
+		return
+	}
+	// a custom NPC's EntityAIMovingPath stops while interacting
+	// (addInteract cleared the path); decreaseMovingPath keeps the point.
+	if a.CNPC != nil && a.cnpcInteracting() {
+		m.stop(a)
+		m.idleLook(a, a.Yaw)
 		return
 	}
 	if a.routeWait > 0 {

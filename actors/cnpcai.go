@@ -411,7 +411,7 @@ func (m *Manager) cnpcCont(a *Actor, i int) bool {
 	case cnReturn:
 		return a.Alive() && !st.attacking && !a.homeNear() && st.rTotal <= 600 && !a.cnpcInteracting()
 	case cnWander: // EntityAIWander.continueExecuting
-		if n := st.near; n != nil && (!m.meetable(a, n) || a.Pos().dist2(n.Pos()) < a.Body.Width*1.5) {
+		if n := st.near; n != nil && (!m.interactSel(a, n) || a.Pos().dist2(n.Pos()) < a.Body.Width*1.5) {
 			return false
 		}
 		return a.pathing() && !a.walked() && a.Alive() && !a.cnpcInteracting()
@@ -499,13 +499,18 @@ func (m *Manager) cnpcReset(a *Actor, i int) {
 		st.rWas = false
 		m.clearPath(a)
 		return
-	case cnWander: // EntityAIWander.resetTask
-		// ponytail: the meeting's "........." is a chat bubble only
-		// (hideText); bubbles are not drawn, so it is not said.
-		// ponytail: the walk always stops here (the reference walks on
-		// when the one met turned unmeetable on the way)
-		m.clearPath(a)
+	case cnWander: // EntityAIWander.resetTask: a path not walked walks on
+		if a.walked() {
+			m.clearPath(a)
+		}
 		if n := st.near; n != nil && a.Pos().dist2(n.Pos()) < 12 {
+			sp := a // a bubble only (hideText), said by one of the two
+			if m.Rand.Intn(2) != 0 {
+				sp = n
+			}
+			if m.CNPCSay != nil {
+				m.CNPCSay(sp, ".........", true)
+			}
 			m.CNPCInteract(a, n)
 			m.CNPCInteract(n, a)
 		}
@@ -1086,12 +1091,12 @@ func (m *Manager) interactLook(a *Actor) bool {
 	return true
 }
 
-// meetable is NPCInteractSelector with getNearbyNPC's own filter:
-// another living custom NPC that stops to interact and is not attacking,
-// of a faction a is not hostile to, while a is alive and stops too.
-func (m *Manager) meetable(a, o *Actor) bool {
-	return o != a && o.CNPC != nil && a.Alive() && o.Alive() && a.CNPC.StopInteract && o.CNPC.StopInteract &&
-		!o.cn.attacking && (m.Factions == nil || m.Factions.Sees(a, o) != Hostile)
+// interactSel is NPCInteractSelector: another custom NPC, not attacking,
+// of a faction a is not hostile to, while a is alive and stops to
+// interact.
+func (m *Manager) interactSel(a, o *Actor) bool {
+	return o != a && o.CNPC != nil && a.Alive() && !o.cn.attacking &&
+		(m.Factions == nil || m.Factions.Sees(a, o) != Hostile) && a.CNPC.StopInteract
 }
 
 // wanderShould is CustomNPC's EntityAIWander.shouldExecute: idle (age
@@ -1100,7 +1105,8 @@ func (m *Manager) meetable(a, o *Actor) bool {
 // range (7 up and down at most), which waits for it; else a random spot
 // within the walking range around the start (toward it when near the
 // edge), at most the nav range of 32.
-// ponytail: no flier height (canFly).
+// canFly (the flier's height) is not ported: it is MovingType 1, and
+// the map's 1591 custom NPCs all walk (MovingType 0 or none).
 func (m *Manager) wanderShould(a *Actor) bool {
 	st, b := &a.cn, &a.Brain
 	if a.age >= 100 || a.pathing() || a.cnpcInteracting() || m.Rand.Intn(80) != 0 {
@@ -1138,12 +1144,13 @@ func (m *Manager) wanderShould(a *Actor) bool {
 }
 
 // nearbyNPC is EntityAIWander.getNearbyNPC: one at random of the
-// meetable custom NPCs whose box meets a's grown by the walking range.
+// custom NPCs whose box meets a's grown by the walking range, by the
+// selector and its own filter (living, stopping to interact).
 func (m *Manager) nearbyNPC(a *Actor, wr int) *Actor {
 	box := a.Box().Grow(float64(wr), float64(min(wr, 7)), float64(wr))
 	var list []*Actor
 	for _, o := range m.Actors {
-		if m.meetable(a, o) && o.Box().Intersects(box) {
+		if m.interactSel(a, o) && o.CNPC.StopInteract && o.Alive() && o.Box().Intersects(box) {
 			list = append(list, o)
 		}
 	}

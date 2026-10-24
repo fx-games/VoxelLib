@@ -66,6 +66,9 @@ type Manager struct {
 	// not see it as hostile (a target task's own pick: a wolf's sheep, a
 	// skirmish); a dead or out-of-range target still goes.
 	Keeps func(a, t *Actor) bool
+	// CNPCSay, if set, is a custom NPC's saySurrounding of a line to the
+	// players around; hide is the line's hideText (a chat bubble only).
+	CNPCSay func(a *Actor, text string, hide bool)
 	// PathWeight, if set, is a's getBlockPathWeight at a cell (the random
 	// spots a CustomNPC's tasks pick); nil weighs all alike.
 	PathWeight func(a *Actor, x, y, z int) float32
