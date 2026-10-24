@@ -24,7 +24,7 @@ func (m *Manager) fight(a *Actor) bool {
 	if t := a.Target; t != nil {
 		r := a.AggroRange * 1.5
 		if !t.Alive() || t.Pos().dist2(a.Pos()) > r*r ||
-			(m.Factions.Sees(a, t) != Hostile && t != a.revenge) {
+			(m.Factions.Sees(a, t) != Hostile && t != a.revenge && (m.Keeps == nil || !m.Keeps(a, t))) {
 			a.Target = nil
 		}
 	}
