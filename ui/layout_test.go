@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"image"
 	"io/fs"
 	"slices"
 	"testing"
@@ -104,23 +105,75 @@ func TestArmourSlotIcons(t *testing.T) {
 	}
 }
 
-func TestFiveSlotInventoryLayout(t *testing.T) {
-	spec := inventory.PlayerSpec{Equip: append([]inventory.EquipSlot{{Name: "ring", Icon: "textures/items/ring.png"}}, inventory.DefaultEquip...)}
-	c, _ := inventory.NewPlayerContainer(inventory.NewPlayer(spec), nil)
-	for _, o := range []InventoryOptions{{Equip: spec.Equip}, {Equip: spec.Equip, NoCrafting: true, NoPreview: true}} {
-		l := InventoryLayout(o)
-		if len(l.Slots) != len(c.Slots) {
-			t.Fatalf("%d layout slots, %d container slots", len(l.Slots), len(c.Slots))
-		}
-		for i, a := range l.Slots {
-			for j, b := range l.Slots[:i] {
-				if a[0] > -1000 && a[0] < b[0]+18 && b[0] < a[0]+18 && a[1] < b[1]+18 && b[1] < a[1]+18 {
-					t.Fatalf("slots %d %v and %d %v overlap", j, b, i, a)
+// TestInventoryParts lays out every mix of the parts, with the default
+// column and with rings beside a chest slot, and expects every shown
+// slot and piece inside the window, no slots overlapping, and the
+// shown slots exactly those of the shown parts.
+func TestInventoryParts(t *testing.T) {
+	ring := inventory.EquipSlot{Name: "ring", Icon: "textures/items/ring.png"}
+	five := append([]inventory.EquipSlot{ring}, inventory.DefaultEquip...)
+	rogue := []inventory.EquipSlot{ring, ring, {Name: "armor"}, {Name: "amulet"}}
+	for _, eq := range []struct {
+		slots []inventory.EquipSlot
+		at    [][2]int
+	}{{five, nil}, {rogue, [][2]int{{0, 1}, {2, 1}, {1, 1}, {1, 0}}}} {
+		c, _ := inventory.NewPlayerContainer(inventory.NewPlayer(inventory.PlayerSpec{Equip: eq.slots}), nil)
+		for m := range 8 {
+			o := InventoryOptions{Equip: eq.slots, EquipAt: eq.at, NoEquip: m&1 != 0, NoPreview: m&2 != 0, NoCrafting: m&4 != 0}
+			l := InventoryLayout(o)
+			if len(l.Slots) != len(c.Slots) {
+				t.Fatalf("%+v: %d layout slots, %d container slots", o, len(l.Slots), len(c.Slots))
+			}
+			for _, p := range l.Parts {
+				if p.X < 0 || p.Y < 0 || p.X+p.W > l.W || p.Y+p.H > l.H {
+					t.Fatalf("%+v: piece %+v outside %dx%d", o, p, l.W, l.H)
+				}
+			}
+			for i, a := range l.Slots {
+				shown := a != off
+				if want := !(i < 5 && o.NoCrafting || i >= 5 && i < 5+len(eq.slots) && o.NoEquip); shown != want {
+					t.Fatalf("%+v: slot %d at %v", o, i, a)
+				}
+				if shown && (a[0] < 7 || a[1] < 7 || a[0]+17 > l.W-7 || a[1]+17 > l.H-6) {
+					t.Fatalf("%+v: slot %d %v outside %dx%d", o, i, a, l.W, l.H)
+				}
+				for j, b := range l.Slots[:i] {
+					if shown && a[0] < b[0]+18 && b[0] < a[0]+18 && a[1] < b[1]+18 && b[1] < a[1]+18 {
+						t.Fatalf("%+v: slots %d %v and %d %v overlap", o, j, b, i, a)
+					}
 				}
 			}
 		}
-		if l.SlotIcons[9] != "textures/items/ring.png" || l.SlotIcons[5] != "textures/items/empty_armor_slot_helmet.png" {
-			t.Fatalf("icons %v", l.SlotIcons)
+	}
+	l := InventoryLayout(InventoryOptions{Equip: rogue, EquipAt: [][2]int{{0, 1}, {2, 1}, {1, 1}, {1, 0}}, NoCrafting: true})
+	// slots 5+d show rogue[3-d]: the amulet over the armour, a ring each side
+	am, ar, r1, r0 := l.Slots[5], l.Slots[6], l.Slots[7], l.Slots[8]
+	if am != [2]int{ar[0], ar[1] - 18} || r0 != [2]int{ar[0] - 18, ar[1]} || r1 != [2]int{ar[0] + 18, ar[1]} {
+		t.Fatalf("rogue equipment at %v", l.Slots[5:9])
+	}
+}
+
+// TestInventoryPieces draws the default layout's pieces and expects
+// inventory.png's 176x166 exactly.
+func TestInventoryPieces(t *testing.T) {
+	ctx, _ := testContext(t)
+	l := InventoryLayout(InventoryOptions{})
+	if l.W != 176 || l.H != 166 {
+		t.Fatalf("%dx%d", l.W, l.H)
+	}
+	draw := func(parts []TexPart) *image.NRGBA {
+		c := NewSoftCanvas(176, 166, 1)
+		for _, p := range parts {
+			DrawTexturedModalRect(c, ctx.Tex(l.Texture), p.X, p.Y, p.U, p.V, p.W, p.H)
+		}
+		return c.Img
+	}
+	got, want := draw(l.Parts), draw([]TexPart{{0, 0, 0, 0, 176, 166}})
+	for y := range 166 {
+		for x := range 176 {
+			if got.NRGBAAt(x, y) != want.NRGBAAt(x, y) {
+				t.Fatalf("%d,%d: %v, inventory.png %v", x, y, got.NRGBAAt(x, y), want.NRGBAAt(x, y))
+			}
 		}
 	}
 }

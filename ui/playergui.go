@@ -66,8 +66,10 @@ type PlayerGUI struct {
 	Item func(*inventory.Stack) ItemStack
 	// Keys open and close the screen (vanilla's inventory key, E).
 	Keys []int
-	// NoCrafting and NoPreview are the screen's InventoryOptions.
-	NoCrafting, NoPreview bool
+	// The screen's InventoryOptions (Equip is the player's).
+	EquipAt                        [][2]int
+	NoEquip, NoPreview, NoCrafting bool
+	Model                          func(ctx *Context, x, y, mx, my int)
 	// OnOpen runs after the screen opened, OnClose after it closed and
 	// the cursor stack was dropped (Container.Close).
 	OnOpen, OnClose func()
@@ -93,7 +95,8 @@ func (g *PlayerGUI) Open() {
 		return
 	}
 	g.open = true
-	lay := InventoryLayout(InventoryOptions{Equip: g.Player.EquipSlots(), NoCrafting: g.NoCrafting, NoPreview: g.NoPreview})
+	lay := InventoryLayout(InventoryOptions{Equip: g.Player.EquipSlots(), EquipAt: g.EquipAt,
+		NoEquip: g.NoEquip, NoPreview: g.NoPreview, NoCrafting: g.NoCrafting, Model: g.Model})
 	g.Ctx.Screens.Open(&ContainerScreen{Layout: lay, Model: NewContainerView(g.Container, g.Item, nil)})
 	if g.OnOpen != nil {
 		g.OnOpen()

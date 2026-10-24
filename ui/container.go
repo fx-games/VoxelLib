@@ -103,58 +103,128 @@ func PlayerSlots(slots [][2]int, x, y, hy int) [][2]int {
 	return slots
 }
 
-// InventoryOptions shape InventoryLayout.
+// InventoryOptions pick InventoryLayout's parts; the window fits what is
+// shown, and with everything shown it is GuiInventory's.
 type InventoryOptions struct {
 	// Equip is the player's equipment (Player.EquipSlots); nil is
 	// inventory.DefaultEquip.
 	Equip []inventory.EquipSlot
-	// NoCrafting paints plain panel over the 2x2 grid, its result and the
-	// title, and moves their slots off the GUI; NoPreview paints it over
-	// the player model's box.
-	NoCrafting, NoPreview bool
+	// EquipAt places Equip[i] at column, row EquipAt[i] of the equipment
+	// block (18 apart); nil is columns of four, Equip's last on top.
+	EquipAt [][2]int
+	// NoEquip, NoPreview and NoCrafting leave out the equipment, the
+	// player's box and the 2x2 crafting; their slots move off the GUI.
+	NoEquip, NoPreview, NoCrafting bool
+	// Model draws the player in the box, x, y its top-left corner
+	// (guientity.Player.Draw).
+	Model func(ctx *Context, x, y, mx, my int)
 }
 
-// InventoryLayout is GuiInventory. Slots as NewPlayerContainer: 0 craft
-// result, 1-4 craft grid, then the equipment (the spec's last first,
-// head to feet by default), 27 main and 9 hotbar. The equipment fills
-// the column four to a column; up to 12 more slots take columns over the
-// player model's box, which is painted plain then.
+// off is where a left-out slot goes.
+var off = [2]int{-10000, -10000}
+
+// InventoryLayout is GuiInventory, built from inventory.png's pieces.
+// Slots as NewPlayerContainer: 0 craft result, 1-4 craft grid, then the
+// equipment (the spec's last first), 27 main and 9 hotbar. The top row
+// (equipment, the player's box, crafting) is centred over the main grid,
+// the equipment block centred in its height.
 func InventoryLayout(o InventoryOptions) ContainerLayout {
 	eq := o.Equip
 	if eq == nil {
 		eq = inventory.DefaultEquip
 	}
 	n := len(eq)
-	s := [][2]int{{144, 36}}
-	for r := 0; r < 2; r++ {
-		for c := 0; c < 2; c++ {
-			s = append(s, [2]int{88 + c*18, 26 + r*18})
+	cells := make([][2]int, n) // by slot 5+d, which shows eq[n-1-d]
+	cols, rows := 0, 0
+	if !o.NoEquip && n > 0 {
+		c0, r0 := math.MaxInt, math.MaxInt
+		for d := range n {
+			cells[d] = [2]int{d / 4, d % 4}
+			if o.EquipAt != nil {
+				cells[d] = o.EquipAt[n-1-d]
+			}
+			c0, r0 = min(c0, cells[d][0]), min(r0, cells[d][1])
+		}
+		for d := range cells {
+			cells[d][0] -= c0
+			cells[d][1] -= r0
+			cols, rows = max(cols, cells[d][0]+1), max(rows, cells[d][1]+1)
 		}
 	}
-	parts := []TexPart{{0, 0, 0, 0, 176, 166}}
-	labels := []Label{{Text: "container.crafting", X: 86, Y: 16}}
-	if o.NoCrafting {
-		for i := range s {
-			s[i] = [2]int{-10000, -10000}
-		}
-		parts, labels = append(parts, plainPanel(87, 25, 76, 36)...), nil
+	// The top row's parts left to right, x from its left edge (7).
+	w, topH := cols*18, rows*18
+	eqX, boxX, craftX := 0, w, 0
+	if !o.NoPreview {
+		w, topH = w+54, max(topH, 73)
 	}
-	if o.NoPreview || n > 4 {
-		parts = append(parts, plainPanel(25, 7, 54, 72)...)
+	if !o.NoCrafting {
+		if w > 0 {
+			w += 7
+		}
+		craftX, w, topH = w, w+83, max(topH, 54)
+	}
+	W := max(176, w+14)
+	x0 := (W-w)/2 - 7
+	mainY := 7 // the main grid's frame
+	if topH > 0 {
+		mainY += topH + 3
+	}
+	H := mainY + 83
+	parts := panel(W, H)
+	s := [][2]int{off, off, off, off, off}
+	var labels []Label
+	if !o.NoCrafting {
+		x := x0 + 7 + craftX // inventory.png's 86
+		parts = append(parts, TexPart{x, 15, 86, 15, 83, 47})
+		labels = append(labels, Label{Text: "container.crafting", X: x, Y: 16})
+		s[0] = [2]int{x + 58, 36}
+		for r := 0; r < 2; r++ {
+			for c := 0; c < 2; c++ {
+				s[1+r*2+c] = [2]int{x + 2 + c*18, 26 + r*18}
+			}
+		}
+	}
+	var extra func(ctx *Context, left, top, mx, my int)
+	if !o.NoPreview {
+		x := x0 + 7 + boxX
+		parts = append(parts, TexPart{x, 7, 25, 7, 54, 73})
+		if o.Model != nil {
+			extra = func(ctx *Context, left, top, mx, my int) { o.Model(ctx, left+x, top+7, mx, my) }
+		}
 	}
 	icons := map[int]string{}
+	eqY := 7 + (topH-rows*18)/2
 	for d := range n {
-		x, y := 8+d/4*18, 8+d%4*18
-		s = append(s, [2]int{x, y})
-		if d >= 4 {
-			parts = append(parts, TexPart{x - 1, y - 1, 7, 7, 18, 18}) // the column's slot frame
+		if o.NoEquip {
+			s = append(s, off)
+			continue
 		}
+		x, y := x0+7+eqX+cells[d][0]*18, eqY+cells[d][1]*18
+		parts = append(parts, TexPart{x, y, 7, 7, 18, 18})
+		s = append(s, [2]int{x + 1, y + 1})
 		if ic := eq[n-1-d].Icon; ic != "" {
 			icons[5+d] = ic
 		}
 	}
-	return ContainerLayout{Texture: "textures/gui/container/inventory.png", W: 176, H: 166,
-		Parts: parts, Labels: labels, Slots: playerSlots(s, 84), SlotIcons: icons}
+	mx := (W - 162) / 2
+	parts = append(parts, TexPart{mx, mainY, 7, 83, 162, 77})
+	return ContainerLayout{Texture: "textures/gui/container/inventory.png", W: W, H: H, Parts: parts,
+		Labels: labels, Slots: PlayerSlots(s, mx+1, mainY+1, mainY+59), SlotIcons: icons, Extra: extra}
+}
+
+// panel is inventory.png's frame around w x h of its plain grey.
+func panel(w, h int) []TexPart {
+	ps := plainPanel(3, 3, w-6, h-6)
+	for x := 4; x < w-4; x += 168 {
+		l := min(168, w-4-x)
+		ps = append(ps, TexPart{x, 0, 4, 0, l, 3}, TexPart{x, h - 3, 4, 163, l, 3})
+	}
+	for y := 4; y < h-4; y += 158 {
+		l := min(158, h-4-y)
+		ps = append(ps, TexPart{0, y, 0, 4, 3, l}, TexPart{w - 3, y, 173, 4, 3, l})
+	}
+	return append(ps, TexPart{0, 0, 0, 0, 4, 4}, TexPart{w - 4, 0, 172, 0, 4, 4},
+		TexPart{0, h - 4, 0, 162, 4, 4}, TexPart{w - 4, h - 4, 172, 162, 4, 4})
 }
 
 // plainPanel covers w x h at x, y with pieces of inventory.png's blank

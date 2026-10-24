@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/go-gl/mathgl/mgl32"
+	"github.com/memmaker/voxellib/importer/cuboid"
 	"github.com/memmaker/voxellib/model"
 )
 
@@ -34,5 +35,24 @@ func TestRegion(t *testing.T) {
 	}
 	if _, _, _, _, ok := Region(mgl32.Translate3D(1000, 0, 0), ds, 427, 240); ok {
 		t.Fatal("off-screen draw has a region")
+	}
+}
+
+// TestBiped builds the player model and expects it to stand in the
+// inventory's preview box (guiLeft+51, guiTop+75 the feet, 30 the scale).
+func TestBiped(t *testing.T) {
+	g := Biped()
+	m, err := cuboid.Build(g, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	view, body := Matrices(51, 75, 30, 0, -50)
+	w := g.RestPose().World(g, nil)
+	for i := range w {
+		w[i] = body.Mul4(w[i])
+	}
+	_, top, _, b, ok := Region(view, []Draw{{Model: m, Skin: m.SkinWorld(w, nil)}}, 176, 166)
+	if !ok || top < 8 || top > 25 || b < 75 {
+		t.Fatalf("player at rows %d..%d (%v)", top, b, ok)
 	}
 }
