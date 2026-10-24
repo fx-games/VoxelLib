@@ -85,6 +85,10 @@ type ModelInstance struct {
 	// GlintTicks, the entity's ticksExisted plus the partial tick.
 	Glint      bool
 	GlintTicks float32
+	// UVOffset shifts the texture coordinates, wrapping around the
+	// texture (glMatrixMode(GL_TEXTURE) glTranslatef on a repeating
+	// texture), e.g. a scrolling glow; zero leaves them.
+	UVOffset [2]float32
 }
 
 // drawParams is the per-draw state of an instance.
@@ -99,10 +103,16 @@ type drawParams struct {
 	boost          float32
 	glint          bool
 	glintTicks     float32
+	uvOff          [2]float32
+	uvWrap         float32
 }
 
 func (in *ModelInstance) params() drawParams {
-	return drawParams{in.Sky, in.Block, in.Fade, in.Color, in.Overlay, in.Emissive, in.Blend, in.AlphaCutoff, in.Texture, in.BlockBoost, in.Glint, in.GlintTicks}
+	d := drawParams{in.Sky, in.Block, in.Fade, in.Color, in.Overlay, in.Emissive, in.Blend, in.AlphaCutoff, in.Texture, in.BlockBoost, in.Glint, in.GlintTicks, in.UVOffset, 0}
+	if in.UVOffset != ([2]float32{}) {
+		d.uvWrap = 1
+	}
+	return d
 }
 
 // modelLight is the lightmap colour of an instance's light.

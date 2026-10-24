@@ -137,6 +137,7 @@ struct U {
 	fog: vec4f,      // start, end, alpha cutoff, emissive
 	color: vec4f,    // texture multiplier (glColor4f)
 	overlay: vec4f,  // rgb mixed over the lit result by a (hurt flash)
+	uvOff: vec4f,    // texture offset xy, z > 0.5: offset and wrap (ModelInstance.UVOffset)
 	bones: array<mat4x4f, ` + maxBonesWGSL + `>,
 }
 @group(0) @binding(0) var<uniform> u: U;
@@ -168,7 +169,7 @@ fn vs(@location(0) pos: vec3f, @location(1) normal: vec3f, @location(2) uv: vec2
 }
 @fragment
 fn fs(i: VOut) -> @location(0) vec4f {
-	let c = textureSample(tex, samp, i.uv) * u.color;
+	let c = textureSample(tex, samp, select(i.uv, fract(i.uv + u.uvOff.xy), u.uvOff.z > 0.5)) * u.color;
 	if (c.a <= u.fog.z) { discard; }
 	// Interleaved gradient noise: a stable screen-space dither for fading.
 	let fade = u.fogColor.a;

@@ -608,6 +608,7 @@ struct U {
 	fog: vec4f,
 	color: vec4f,
 	overlay: vec4f,
+	uvOff: vec4f,
 	bones: array<mat4x4f, ` + maxBonesWGSL + `>,
 }
 @group(0) @binding(0) var<uniform> u: U;
@@ -645,7 +646,7 @@ fn vs(@location(0) pos: vec3f, @location(1) normal: vec3f, @location(2) uv: vec2
 }
 @fragment
 fn fs(i: VOut) -> TOut {
-	var c = textureSample(tex, samp, i.uv) * u.color;
+	var c = textureSample(tex, samp, select(i.uv, fract(i.uv + u.uvOff.xy), u.uvOff.z > 0.5)) * u.color;
 	if (c.a <= u.fog.z) { discard; }
 	let fade = u.fogColor.a;
 	if (fade > 0.0 && fract(52.9829189 * fract(dot(i.pos.xy, vec2f(0.06711056, 0.00583715)))) < fade) { discard; }
@@ -785,6 +786,7 @@ struct U {
 	color: vec4f,    // GlintColor
 	gu: vec4f,
 	gv: vec4f,
+	uvOff: vec4f,
 	bones: array<mat4x4f, ` + maxBonesWGSL + `>,
 }
 @group(0) @binding(0) var<uniform> u: U;

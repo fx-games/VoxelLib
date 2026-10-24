@@ -108,7 +108,7 @@ func (mr *ModelRenderer) drawModel(g *gpuModel, model mgl32.Mat4, skin []mgl32.M
 	// light.w: the light levels for the shader pack
 	u := mr.gpu.u.reset().mat(l.vp).mat(model).f(lc[0], lc[1], lc[2], lightCode(d.sky, d.block)).
 		f(l.fog.Color[0], l.fog.Color[1], l.fog.Color[2], d.fade).f(fx(l.fog), fy(l.fog), cutoff, emissive).
-		f(color[:]...).f(d.overlay[:]...)
+		f(color[:]...).f(d.overlay[:]...).f(d.uvOff[0], d.uvOff[1], d.uvWrap, 0)
 	for _, b := range bones(skin, g.bones) {
 		u.mat(b)
 	}
@@ -157,7 +157,7 @@ func (mr *ModelRenderer) drawGlint(p *wgpu.RenderPassEncoder, g *gpuModel, model
 		a := modelGlint(d.glintTicks, k)
 		u := mr.gpu.u.reset().mat(l.vp).mat(model).f(lc[0], lc[1], lc[2], 0).
 			f(l.fog.Color[0], l.fog.Color[1], l.fog.Color[2], 0).f(fx(l.fog), fy(l.fog), cutoff, 0).
-			f(GlintColor[0], GlintColor[1], GlintColor[2], 1).f(a[0], a[1], a[2], 0).f(a[3], a[4], a[5], 0)
+			f(GlintColor[0], GlintColor[1], GlintColor[2], 1).f(a[0], a[1], a[2], 0).f(a[3], a[4], a[5], 0).f(0, 0, 0, 0)
 		for _, b := range bones(skin, g.bones) {
 			u.mat(b)
 		}
