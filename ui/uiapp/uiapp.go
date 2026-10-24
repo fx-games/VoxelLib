@@ -1,6 +1,7 @@
 // Package uiapp runs ui screens and the ui HUD inside an app.App: it draws
-// through render.GUIBatch after the world and converts app events
-// (framebuffer pixels) to ui events (GUI pixels).
+// through ui/guicanvas after the world and converts app events
+// (framebuffer pixels) to ui events (GUI pixels) with ui.GLFWInput. A game
+// with its own loop uses guicanvas and ui.PlayerGUI instead.
 //
 //	u, _ := uiapp.New(a, packs, lang)
 //	a.HUD = u                       // the overlay, every frame
@@ -9,14 +10,12 @@
 package uiapp
 
 import (
-	"image"
 	"io/fs"
 
 	"github.com/memmaker/voxellib/app"
 	"github.com/memmaker/voxellib/i18n"
-	"github.com/memmaker/voxellib/platform/glfw"
 	"github.com/memmaker/voxellib/ui"
-	"github.com/memmaker/voxellib/voxel/render"
+	"github.com/memmaker/voxellib/ui/guicanvas"
 )
 
 // UI is the bridge. It implements app.HUD (draws HUD) and, via Screen,
@@ -30,8 +29,8 @@ type UI struct {
 	// achievement window, drawn last in the game loop).
 	Top func(ctx *ui.Context)
 
-	batch    render.GUIBatch
-	mx, my   int
+	canvas   *guicanvas.Canvas
+	in       ui.GLFWInput
 	px       float64 // framebuffer pixels per GUI pixel (resize)
 	lastTick int64
 	open     bool
@@ -40,8 +39,8 @@ type UI struct {
 // New loads the font from assets (resource pack stack) and wires the
 // manager to the app's screen stack.
 func New(a *app.App, assets fs.FS, lang *i18n.Catalog) (*UI, error) {
-	u := &UI{App: a, HUD: &ui.HUD{}}
-	ctx, err := ui.NewContext((*canvas)(u), assets, lang)
+	u := &UI{App: a, HUD: &ui.HUD{}, canvas: guicanvas.New()}
+	ctx, err := ui.NewContext(u.canvas, assets, lang)
 	if err != nil {
 		return nil, err
 	}
@@ -102,7 +101,7 @@ func (u *UI) Draw(fbW, fbH int) {
 	if u.Top != nil && u.Ctx.Screens.Len() == 0 {
 		u.Top(u.Ctx)
 	}
-	u.batch.Flush(fbW, fbH, px)
+	u.canvas.Flush(fbW, fbH, px)
 }
 
 // resize runs ScaledResolution over the window size in points, as LWJGL2's
@@ -134,11 +133,11 @@ func (s *screen) Update() {
 func (s *screen) Draw(fbW, fbH int) {
 	u := (*UI)(s)
 	px := u.resize(fbW, fbH)
-	u.Ctx.Screens.Draw(u.mx, u.my, float32(u.App.Alpha()))
+	u.Ctx.Screens.Draw(u.in.X, u.in.Y, float32(u.App.Alpha()))
 	if u.Top != nil {
 		u.Top(u.Ctx)
 	}
-	u.batch.Flush(fbW, fbH, px)
+	u.canvas.Flush(fbW, fbH, px)
 }
 
 // PausesGame forwards the top ui screen's PausesGame (GuiScreen's
@@ -156,72 +155,24 @@ func (s *screen) HandleInput(ev app.Event) bool {
 	if sc <= 0 {
 		sc = float64(max(u.Ctx.Scale, 1))
 	}
-	e := ui.Event{X: u.mx, Y: u.my, Mods: int(ev.Mods)}
+	var e ui.Event
 	switch ev.Type {
 	case app.KeyEvent:
-		e.Key, e.Repeat = int(ev.Key), ev.Action == glfw.Repeat
-		e.Type = ui.KeyPress
-		if ev.Action == glfw.Release {
-			e.Type = ui.KeyRelease
-		}
+		e = u.in.Key(int(ev.Key), int(ev.Action), int(ev.Mods))
 	case app.CharEvent:
-		e.Type, e.Char = ui.CharTyped, ev.Char
+		e = u.in.Char(ev.Char)
 	case app.ButtonEvent:
-		u.mx, u.my = int(ev.X/sc), int(ev.Y/sc)
-		e.X, e.Y, e.Button = u.mx, u.my, int(ev.Button)
-		e.Type = ui.MousePress
-		if ev.Action == glfw.Release {
-			e.Type = ui.MouseRelease
-		}
+		u.in.Cursor(ev.X, ev.Y, sc)
+		e = u.in.Button(int(ev.Button), int(ev.Action), int(ev.Mods))
 	case app.ScrollEvent:
 		if ev.Y == 0 {
 			return true
 		}
-		e.Type, e.DY = ui.MouseScroll, ev.Y
+		e = u.in.Scroll(ev.Y)
 	case app.CursorEvent:
-		u.mx, u.my = int(ev.X/sc), int(ev.Y/sc)
-		e.Type, e.X, e.Y = ui.MouseMove, u.mx, u.my
+		e = u.in.Cursor(ev.X, ev.Y, sc)
 	default:
 		return false
 	}
 	return u.Ctx.Screens.Input(e)
-}
-
-// canvas implements ui.Canvas over the GUIBatch.
-type canvas UI
-
-func (c *canvas) NewTexture(img image.Image) ui.Texture { return render.NewGUITexture(img) }
-
-func (c *canvas) UpdateTexture(t ui.Texture, img image.Image) bool {
-	g, ok := t.(*render.GUITexture)
-	return ok && g.Update(img)
-}
-
-func (c *canvas) Quad(q ui.Quad) {
-	t, _ := q.Tex.(*render.GUITexture)
-	c.batch.Linear(q.Linear)
-	if q.Rot != 0 {
-		c.batch.QuadRot(t, q.X0, q.Y0, q.X1, q.Y1, q.U0, q.V0, q.U1, q.V1, q.Skew, q.Top, q.Bottom, q.Rot, q.RX, q.RY)
-		return
-	}
-	c.batch.Quad(t, q.X0, q.Y0, q.X1, q.Y1, q.U0, q.V0, q.U1, q.V1, q.Skew, q.Top, q.Bottom)
-}
-
-func (c *canvas) SetScissor(r image.Rectangle) {
-	if r.Empty() {
-		c.batch.Scissor(0, 0, 0, 0)
-		return
-	}
-	c.batch.Scissor(r.Min.X, r.Min.Y, r.Dx(), r.Dy())
-}
-
-func (c *canvas) SetInvert(on bool) { c.batch.Invert(on) }
-
-func (c *canvas) SetOrReverse(on bool) { c.batch.OrReverse(on) }
-
-func (c *canvas) NewTarget(w, h int) ui.Texture { return render.NewGUITarget(w, h) }
-
-func (c *canvas) SetTarget(t ui.Texture, clear uint32) {
-	g, _ := t.(*render.GUITexture)
-	c.batch.Target(g, clear)
 }

@@ -20,6 +20,7 @@ import (
 	"testing/fstest"
 
 	"github.com/memmaker/voxellib/i18n"
+	"github.com/memmaker/voxellib/inventory"
 	"github.com/memmaker/voxellib/resloc"
 	"github.com/memmaker/voxellib/ui"
 )
@@ -74,8 +75,23 @@ func main() {
 	icon := func(name string) *ui.Sprite {
 		return &ui.Sprite{Tex: ctx.Tex("textures/items/" + name + ".png"), W: 16, H: 16, TW: 16, TH: 16}
 	}
-	apple := ui.ItemStack{Icon: icon("apple"), Count: 5, Tooltip: []string{"Apple"}}
-	sword := ui.ItemStack{Icon: icon("iron_sword"), Count: 1, Damage: 0.4, Bar: true, Tooltip: []string{"Iron Sword", "§9+6 Attack Damage"}}
+	apple := &inventory.Item{Key: "apple"}
+	sword := &inventory.Item{Key: "iron_sword", MaxStack: 1, MaxDamage: 250}
+	item := func(s *inventory.Stack) ui.ItemStack {
+		switch {
+		case s == nil:
+			return ui.ItemStack{}
+		case s.Item == sword:
+			return ui.ItemStack{Icon: icon("iron_sword"), Count: 1, Damage: float64(s.Damage) / float64(s.Item.MaxDamage), Bar: true, Tooltip: []string{"Iron Sword", "§9+6 Attack Damage"}}
+		}
+		return ui.ItemStack{Icon: icon("apple"), Count: s.Count, Tooltip: []string{"Apple"}}
+	}
+	p := inventory.NewPlayer(inventory.PlayerSpec{})
+	p.Main[0], p.Main[2], p.Main[20] = &inventory.Stack{Item: sword, Count: 1, Damage: 100}, inventory.New(apple, 5), inventory.New(apple, 5)
+	inv, _ := inventory.NewPlayerContainer(p, nil)
+	pg := ui.NewPlayerGUI(ctx, p, inv, item)
+	chest := inventory.NewChest(3)
+	chest.Slots[0], chest.Slots[4] = inventory.New(apple, 5), &inventory.Stack{Item: sword, Count: 1, Damage: 100}
 
 	shots := []struct {
 		name   string
@@ -93,9 +109,7 @@ func main() {
 			}
 		}, -1, -1},
 		{"chest", func() ui.Screen {
-			m := &model{n: 27 + 36}
-			m.slots = map[int]ui.ItemStack{0: apple, 4: sword, 30: apple, 54: sword}
-			return &ui.ContainerScreen{Layout: ui.ChestLayout(3, "container.chest"), Model: m}
+			return &ui.ContainerScreen{Layout: ui.ChestLayout(3, "container.chest"), Model: ui.NewContainerView(inventory.NewChestContainer(p, chest), item, nil)}
 		}, 0, 0},
 		{"settings", func() ui.Screen {
 			return &ui.SettingsScreen{Title: "options.title", Settings: []ui.Setting{ui.GUIScaleSetting(ctx, func(int) {}), ui.LanguageSetting(ctx)}, OnDone: noop}
@@ -118,18 +132,26 @@ func main() {
 		save(filepath.Join(*out, sh.name+".png"), canvas)
 	}
 
-	// HUD over a plain sky.
+	// The player inventory, the mouse over the sword in the hotbar.
+	clear(canvas.Img.Pix)
 	ctx.Screens.CloseAll()
+	pg.Open()
+	pg.In.X, pg.In.Y = (ctx.W-176)/2+8+8, (ctx.H-166)/2+142+8
+	pg.Draw(*w, *h, *w, *h, 0)
+	save(filepath.Join(*out, "inventory.png"), canvas)
+
+	// HUD over a plain sky.
+	pg.Close()
 	ui.DrawRect(canvas, 0, 0, ctx.W, ctx.H, 0xFF7FA8FF)
-	hud := &ui.HUD{}
-	hud.State = ui.HUDState{Health: 13, MaxHealth: 20, LastHealth: 13, Food: 17, Saturation: 2, Armor: 7, ShowXP: true, XP: 0.6, Level: 12, Crosshair: true, Selected: 2}
-	hud.State.Hotbar[0], hud.State.Hotbar[2] = sword, apple
+	hud := pg.HUD
+	hud.State = ui.HUDState{Health: 13, MaxHealth: 20, LastHealth: 13, Food: 17, Saturation: 2, Armor: 7, ShowXP: true, XP: 0.6, Level: 12, Crosshair: true}
+	p.Hold(2)
 	hud.Message("§e<Bilbo>§r Ich bin auf ein Abenteuer gegangen!")
 	hud.Title("Beutelsend", "Das Auenland", 10, 70, 20)
 	for i := 0; i < 15; i++ {
-		hud.Update()
+		pg.Update()
 	}
-	hud.Draw(ctx, 0)
+	pg.Draw(*w, *h, *w, *h, 0)
 	save(filepath.Join(*out, "hud.png"), canvas)
 }
 
@@ -183,14 +205,3 @@ func save(path string, c *ui.SoftCanvas) {
 	}
 	fmt.Println(path)
 }
-
-// model is a static container for the demo.
-type model struct {
-	n     int
-	slots map[int]ui.ItemStack
-}
-
-func (m *model) Slot(i int) ui.ItemStack      { return m.slots[i] }
-func (m *model) Cursor() ui.ItemStack         { return ui.ItemStack{} }
-func (m *model) Click(i, button int, sh bool) {}
-func (m *model) Drag(slots []int, button int) {}

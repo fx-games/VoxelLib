@@ -54,6 +54,8 @@ const (
 	KeyEnd       = 269
 	KeyKPEnter   = 335
 	KeyV         = 86
+	KeyE         = 69
+	Key1         = 49 // Key1+8 is 9
 	ModShift     = 1
 	ModControl   = 2
 	ModSuper     = 8 // Cmd on macOS

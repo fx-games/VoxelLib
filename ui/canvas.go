@@ -3,8 +3,19 @@
 // views, dialogs, a quest log, a world map and the in-game HUD. Everything is
 // drawn in GUI pixels (the reference's scaled resolution) onto a Canvas; textures
 // come from the game's resource packs (an fs.FS with the assets/<domain>/...
-// layout). The package is pure Go: voxellib/ui/uiapp draws it with the GPU
-// and plugs it into app; SoftCanvas renders to an image for tests.
+// layout). The package is pure Go: ui/guicanvas draws it with the GPU,
+// ui/uiapp plugs it into app, and SoftCanvas renders to an image for tests.
+// PlayerGUI is the player inventory, hotbar and inventory screen for a
+// game with its own render loop.
+//
+// NewContext and the screens read a 1.7.10 client jar's layout (open the
+// jar with archive/zip; it is an fs.FS): assets/minecraft/ +
+// font/ascii.png (the font), textures/gui/widgets.png (hotbar, buttons),
+// textures/gui/icons.png (hearts, armour, food, crosshair),
+// textures/gui/container/inventory.png (and the other container sheets),
+// textures/items/empty_armor_slot_*.png, and lang/*.lang through an
+// i18n.Catalog (Catalog.LoadFS on the same jar). A game overlays its own
+// files, such as textures/items/* icons, with StackFS{its own, jar}.
 //
 // Colours are the reference's 0xAARRGGBB ints.
 package ui

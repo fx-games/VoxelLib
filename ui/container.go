@@ -3,6 +3,8 @@ package ui
 import (
 	"math"
 	"strconv"
+
+	"github.com/memmaker/voxellib/inventory"
 )
 
 // ItemStack is what a slot shows; the game builds it from its item stacks.
@@ -101,20 +103,70 @@ func PlayerSlots(slots [][2]int, x, y, hy int) [][2]int {
 	return slots
 }
 
-// InventoryLayout is GuiInventory. Slots as ContainerPlayer: 0 craft
-// result, 1-4 craft grid, 5-8 armour (head to feet), 9-35 main, 36-44 hotbar.
-func InventoryLayout() ContainerLayout {
+// InventoryOptions shape InventoryLayout.
+type InventoryOptions struct {
+	// Equip is the player's equipment (Player.EquipSlots); nil is
+	// inventory.DefaultEquip.
+	Equip []inventory.EquipSlot
+	// NoCrafting paints plain panel over the 2x2 grid, its result and the
+	// title, and moves their slots off the GUI; NoPreview paints it over
+	// the player model's box.
+	NoCrafting, NoPreview bool
+}
+
+// InventoryLayout is GuiInventory. Slots as NewPlayerContainer: 0 craft
+// result, 1-4 craft grid, then the equipment (the spec's last first,
+// head to feet by default), 27 main and 9 hotbar. The equipment fills
+// the column four to a column; up to 12 more slots take columns over the
+// player model's box, which is painted plain then.
+func InventoryLayout(o InventoryOptions) ContainerLayout {
+	eq := o.Equip
+	if eq == nil {
+		eq = inventory.DefaultEquip
+	}
+	n := len(eq)
 	s := [][2]int{{144, 36}}
 	for r := 0; r < 2; r++ {
 		for c := 0; c < 2; c++ {
 			s = append(s, [2]int{88 + c*18, 26 + r*18})
 		}
 	}
-	for i := 0; i < 4; i++ {
-		s = append(s, [2]int{8, 8 + i*18})
+	parts := []TexPart{{0, 0, 0, 0, 176, 166}}
+	labels := []Label{{Text: "container.crafting", X: 86, Y: 16}}
+	if o.NoCrafting {
+		for i := range s {
+			s[i] = [2]int{-10000, -10000}
+		}
+		parts, labels = append(parts, plainPanel(87, 25, 76, 36)...), nil
+	}
+	if o.NoPreview || n > 4 {
+		parts = append(parts, plainPanel(25, 7, 54, 72)...)
+	}
+	icons := map[int]string{}
+	for d := range n {
+		x, y := 8+d/4*18, 8+d%4*18
+		s = append(s, [2]int{x, y})
+		if d >= 4 {
+			parts = append(parts, TexPart{x - 1, y - 1, 7, 7, 18, 18}) // the column's slot frame
+		}
+		if ic := eq[n-1-d].Icon; ic != "" {
+			icons[5+d] = ic
+		}
 	}
 	return ContainerLayout{Texture: "textures/gui/container/inventory.png", W: 176, H: 166,
-		Labels: []Label{{Text: "container.crafting", X: 86, Y: 16}}, Slots: playerSlots(s, 84), SlotIcons: ArmourSlotIcons(5)}
+		Parts: parts, Labels: labels, Slots: playerSlots(s, 84), SlotIcons: icons}
+}
+
+// plainPanel covers w x h at x, y with pieces of inventory.png's blank
+// panel right of the crafting title (90 x 20 at 80, 3).
+func plainPanel(x, y, w, h int) []TexPart {
+	var ps []TexPart
+	for j := 0; j < h; j += 20 {
+		for i := 0; i < w; i += 90 {
+			ps = append(ps, TexPart{x + i, y + j, 80, 3, min(90, w-i), min(20, h-j)})
+		}
+	}
+	return ps
 }
 
 // ArmourSlotIcons maps slots first..first+3 (head to feet) to the empty

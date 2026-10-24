@@ -21,7 +21,7 @@ func TestGameHooks(t *testing.T) {
 	defer func() { inventory.ArmorPoints, inventory.WearNegated = nil, nil }()
 	var a [4]*inventory.Stack
 	a[2] = inventory.New(armorItem(inventory.Chestplate, 4, 240), 1)
-	b := NewPlayer(&a)
+	b := NewPlayer(a[:])
 	if b.TotalArmor() != 5 {
 		t.Fatalf("armour points hook: %d", b.TotalArmor())
 	}
@@ -48,7 +48,7 @@ func TestProtectionHooks(t *testing.T) {
 			t.Fatalf("EPF kind %d level %d: %d, want %d", c.kind, c.level, got, c.want)
 		}
 	}
-	b := NewPlayer(&[4]*inventory.Stack{})
+	b := NewPlayer(make([]*inventory.Stack, 4))
 	b.ProtectionAdjust = func(d *Damage, i int) int { return i + 5 } // not randomised: 25-5 of 25 left
 	b.Hurt(MobAttack(nil), 10, Normal)
 	if d := b.Health - 12; d > 1e-5 || d < -1e-5 {

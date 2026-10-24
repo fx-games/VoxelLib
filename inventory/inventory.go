@@ -77,18 +77,89 @@ func (g *Grid) At(x, y int) *Stack {
 	return g.Slots[x+y*g.W]
 }
 
-// Player is InventoryPlayer plus the cursor stack: 36 main slots (0–8 hotbar),
-// 4 armour slots (Armor[0] boots .. Armor[3] helmet, as in 1.7.10) and the
-// selected hotbar slot. As an Inventory, slots 36–39 are the armour.
+// EquipSlot is one equipment slot of a player: what it is called, the
+// 16x16 icon (resource location) drawn while it is empty, what it takes
+// (nil: anything) and its stack size cap (0: the inventory's limit).
+type EquipSlot struct {
+	Name   string
+	Icon   string
+	Accept func(*Stack) bool
+	Max    int
+}
+
+// PlayerSpec shapes a player inventory: its equipment slots, in inventory
+// order (the screen's column lists them last first, top to bottom). Nil
+// Equip is DefaultEquip.
+type PlayerSpec struct {
+	Equip []EquipSlot
+}
+
+// DefaultEquip is the 1.7.10 armour inventory: boots, leggings,
+// chestplate, helmet (armorInventory 0..3), each taking one piece whose
+// Item.Armor.Slot matches.
+var DefaultEquip = []EquipSlot{armourSlot(Boots, "boots"), armourSlot(Leggings, "leggings"),
+	armourSlot(Chestplate, "chestplate"), armourSlot(Helmet, "helmet")}
+
+func armourSlot(slot int, name string) EquipSlot {
+	return EquipSlot{Name: name, Icon: "textures/items/empty_armor_slot_" + name + ".png", Max: 1,
+		Accept: func(s *Stack) bool { return s != nil && s.Item.Armor != nil && s.Item.Armor.Slot == slot }}
+}
+
+// Player is InventoryPlayer plus the cursor stack: 36 main slots (0–8
+// hotbar), the equipment slots of Spec (the default: Equip[0] boots ..
+// Equip[3] helmet, as in 1.7.10) and the selected hotbar slot. As an
+// Inventory, slots 36 and up are the equipment. The zero Player has the
+// default spec; NewPlayer makes one with another.
+//
+// The events run after the slot was written: OnChange for every slot Set
+// (container clicks and Add go through it) whose stack changed, then
+// OnEquip for an equipment slot (its index in Equip); OnHeld when Hold
+// changes the held hotbar slot. A count changing inside a stack (a merge
+// topping it up) is no slot write and fires nothing.
 type Player struct {
 	Main     [36]*Stack
-	Armor    [4]*Stack
+	Equip    []*Stack
+	Spec     PlayerSpec
 	Held     int    // hotbar index 0–8
 	Cursor   *Stack // stack carried by the mouse
 	Creative bool
 	// Ender is the player's InventoryEnderChest, shared by every ender
 	// chest (nil until EnderChest makes it).
 	Ender *Grid
+
+	OnChange func(i int, old, new *Stack)
+	OnEquip  func(slot int, old, new *Stack)
+	OnHeld   func(old, new int)
+}
+
+// NewPlayer makes an empty player inventory with spec's equipment slots.
+func NewPlayer(spec PlayerSpec) *Player {
+	p := &Player{Spec: spec}
+	p.equip()
+	return p
+}
+
+// EquipSlots is the spec's equipment slots (DefaultEquip when unset).
+func (p *Player) EquipSlots() []EquipSlot {
+	if p.Spec.Equip == nil {
+		return DefaultEquip
+	}
+	return p.Spec.Equip
+}
+
+func (p *Player) equip() []*Stack {
+	if p.Equip == nil {
+		p.Equip = make([]*Stack, len(p.EquipSlots()))
+	}
+	return p.Equip
+}
+
+// Hold selects hotbar slot i (0–8), firing OnHeld when it changed.
+func (p *Player) Hold(i int) {
+	old := p.Held
+	if p.Held = i; old != i && p.OnHeld != nil {
+		p.OnHeld(old, i)
+	}
 }
 
 // UseHeld is the consumption every item use repeats: unless keep (a
@@ -98,12 +169,12 @@ type Player struct {
 func (p *Player) UseHeld(st *Stack, n int, keep, always bool) {
 	if keep {
 		if always && st.Count <= 0 {
-			p.Main[p.Held] = nil
+			p.Set(p.Held, nil)
 		}
 		return
 	}
 	if st.Count -= n; st.Count <= 0 {
-		p.Main[p.Held] = nil
+		p.Set(p.Held, nil)
 	}
 }
 
@@ -115,21 +186,31 @@ func (p *Player) EnderChest() *Grid {
 	return p.Ender
 }
 
-func (p *Player) Size() int  { return 40 }
+func (p *Player) Size() int  { return 36 + len(p.EquipSlots()) }
 func (p *Player) Limit() int { return 64 }
 func (p *Player) Changed()   {}
 func (p *Player) Get(i int) *Stack {
 	if i >= 36 {
-		return p.Armor[i-36]
+		return p.equip()[i-36]
 	}
 	return p.Main[i]
 }
 func (p *Player) Set(i int, s *Stack) {
+	old := p.Get(i)
 	if i >= 36 {
-		p.Armor[i-36] = s
+		p.Equip[i-36] = s
+	} else {
+		p.Main[i] = s
+	}
+	if old == s {
 		return
 	}
-	p.Main[i] = s
+	if p.OnChange != nil {
+		p.OnChange(i, old, s)
+	}
+	if i >= 36 && p.OnEquip != nil {
+		p.OnEquip(i-36, old, s)
+	}
 }
 
 // Current returns the held hotbar stack.
@@ -140,8 +221,9 @@ func (p *Player) Current() *Stack {
 	return p.Main[p.Held]
 }
 
-// ArmorIn returns the worn piece for an armour type (Helmet..Boots).
-func (p *Player) ArmorIn(slot int) *Stack { return p.Armor[3-slot] }
+// ArmorIn returns the worn piece for an armour type (Helmet..Boots) of
+// the default spec.
+func (p *Player) ArmorIn(slot int) *Stack { return p.Get(39 - slot) }
 
 // FirstEmpty returns the first empty main slot or -1.
 func (p *Player) FirstEmpty() int {
@@ -170,7 +252,7 @@ func (p *Player) storePartial(s *Stack) int {
 		if j < 0 {
 			return n
 		}
-		p.Main[j] = s.Copy()
+		p.Set(j, s.Copy())
 		return 0
 	}
 	j := p.storeSlot(s)
@@ -183,7 +265,7 @@ func (p *Player) storePartial(s *Stack) int {
 	if p.Main[j] == nil {
 		c := s.Copy()
 		c.Count = 0
-		p.Main[j] = c
+		p.Set(j, c)
 	}
 	m := p.Main[j]
 	k := min(n, m.MaxStack()-m.Count, p.Limit()-m.Count)
@@ -203,7 +285,7 @@ func (p *Player) Add(s *Stack) bool {
 	}
 	if s.Damaged() {
 		if i := p.FirstEmpty(); i >= 0 {
-			p.Main[i] = s.Copy()
+			p.Set(i, s.Copy())
 			s.Count = 0
 			return true
 		}
@@ -231,24 +313,18 @@ func (p *Player) Add(s *Stack) bool {
 // TotalArmor sums the worn armour points (getTotalArmorValue).
 func (p *Player) TotalArmor() int {
 	t := 0
-	for _, s := range p.Armor {
+	for _, s := range p.Equip {
 		t += s.ArmorValue()
 	}
 	return t
 }
 
-// DropAll empties main and armour slots through drop (death without keepInventory).
+// DropAll empties main and equipment slots through drop (death without keepInventory).
 func (p *Player) DropAll(drop func(*Stack)) {
-	for i := range p.Main {
-		if p.Main[i] != nil {
-			drop(p.Main[i])
-			p.Main[i] = nil
-		}
-	}
-	for i := range p.Armor {
-		if p.Armor[i] != nil {
-			drop(p.Armor[i])
-			p.Armor[i] = nil
+	for i := range p.Size() {
+		if s := p.Get(i); s != nil {
+			drop(s)
+			p.Set(i, nil)
 		}
 	}
 }

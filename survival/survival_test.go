@@ -99,9 +99,9 @@ func TestBreakerDelayAndInstant(t *testing.T) {
 }
 
 func TestBreakBlock(t *testing.T) {
-	p := &inventory.Player{}
+	p := inventory.NewPlayer(inventory.PlayerSpec{})
 	p.Main[0] = &inventory.Stack{Item: woodPick, Count: 1, Damage: 59}
-	body := NewPlayer(&p.Armor)
+	body := NewPlayer(p.Equip)
 	r := rand.New(rand.NewPCG(1, 1))
 	out := BreakBlock(stone, p, body, 0, r)
 	if len(out.Drops) != 1 || out.Drops[0].Item != cobble || !out.ToolBroke || p.Main[0] != nil {
@@ -219,7 +219,7 @@ func TestArmor(t *testing.T) {
 	a[2] = inventory.New(armorItem(inventory.Chestplate, 6, 240), 1)
 	a[1] = inventory.New(armorItem(inventory.Leggings, 5, 225), 1)
 	a[0] = inventory.New(armorItem(inventory.Boots, 2, 195), 1)
-	b := NewPlayer(&a)
+	b := NewPlayer(a[:])
 	b.Hurt(MobAttack(nil), 10, Normal)
 	if d := b.Health - 16; d > 1e-5 || d < -1e-5 {
 		t.Fatalf("full iron vs 10: health %v, want 16", b.Health)
@@ -237,7 +237,7 @@ func TestArmor(t *testing.T) {
 	// a nearly broken piece absorbs at most its remaining durability
 	var c [4]*inventory.Stack
 	c[2] = &inventory.Stack{Item: armorItem(inventory.Chestplate, 8, 528), Count: 1, Damage: 528}
-	p := NewPlayer(&c)
+	p := NewPlayer(c[:])
 	p.Hurt(Generic(), 1) // bypasses
 	p.HurtResist = 0
 	p.Hurt(Cactus(), 10) // absorb capped at 1/25 of a point → 10 - 0.04
@@ -384,7 +384,7 @@ func TestAnvilHelmet(t *testing.T) {
 	var a [4]*inventory.Stack
 	a[inventory.Helmet] = inventory.New(armorItem(inventory.Helmet, 2, 165), 1)
 	a[inventory.Boots] = inventory.New(armorItem(inventory.Boots, 2, 195), 1)
-	b := NewPlayer(&a)
+	b := NewPlayer(a[:])
 	b.Hurt(Anvil(), 10, Normal)
 	if h := a[inventory.Helmet].Damage; h < 40 || h > 61 || a[inventory.Boots].Damage > 1 {
 		t.Fatalf("helmet %d boots %d", h, a[inventory.Boots].Damage)

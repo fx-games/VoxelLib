@@ -17,9 +17,9 @@ type Body struct {
 	Creative          bool // capabilities.disableDamage
 	Invulnerable      bool
 
-	// Armour worn: for players the inventory's armour array (index 0 boots);
+	// Armour worn: for players the inventory's equipment (index 0 boots);
 	// it wears down. Mobs may set it too (no wear) and add NaturalArmor.
-	Armor        *[4]*inventory.Stack
+	Armor        []*inventory.Stack
 	NaturalArmor int
 	Blocking     bool // sword blocking: halves blockable damage
 
@@ -59,7 +59,7 @@ type Body struct {
 }
 
 // NewPlayer returns a player body with 20 health, full food and air.
-func NewPlayer(armor *[4]*inventory.Stack) *Body {
+func NewPlayer(armor []*inventory.Stack) *Body {
 	return &Body{Health: 20, MaxHealth: 20, Player: true, Armor: armor, Food: NewFood(),
 		MaxHurtResist: 20, FireCooldown: 20, Air: 300}
 }

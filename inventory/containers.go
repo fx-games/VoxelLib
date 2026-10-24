@@ -77,33 +77,40 @@ func AddPlayerSlots(c *Container, p *Player) {
 }
 
 // NewPlayerContainer is ContainerPlayer: slot 0 craft result, 1–4 the 2×2
-// grid, 5–8 armour (helmet first), 9–35 main, 36–44 hotbar.
+// grid, then the player's equipment slots (the last of its Equip first:
+// helmet .. boots by default), then 27 main and 9 hotbar (9–35 and 36–44
+// with the default four). Shift-click sends a stack to the first empty
+// equipment slot that takes it.
 func NewPlayerContainer(p *Player, match Matcher) (*Container, *Crafting) {
 	c := &Container{Player: p}
 	cr := &Crafting{Grid: NewGrid(2, 2), Result: NewGrid(1, 1), Match: match}
 	cr.add(c)
-	for i := range 4 {
-		c.Add(&Slot{Inv: p, Index: 39 - i, Max: 1, Accept: func(s *Stack) bool {
-			return s != nil && s.Item.Armor != nil && s.Item.Armor.Slot == i
-		}})
+	eq := p.EquipSlots()
+	n := len(eq)
+	p.equip()
+	for i := range n {
+		e := eq[n-1-i]
+		c.Add(&Slot{Inv: p, Index: 36 + n - 1 - i, Max: e.Max, Accept: e.Accept})
 	}
 	AddPlayerSlots(c, p)
+	main, hot := 5+n, 5+n+27
 	c.Transfer = func(c *Container, i int) *Stack {
 		return transferWith(c, i, func(s *Stack) bool {
 			switch {
 			case i == 0:
-				return c.Merge(s, 9, 45, true)
-			case i >= 1 && i < 9:
-				return c.Merge(s, 9, 45, false)
-			case s.Item.Armor != nil && !c.Slots[5+s.Item.Armor.Slot].Has():
-				j := 5 + s.Item.Armor.Slot
-				return c.Merge(s, j, j+1, false)
-			case i >= 9 && i < 36:
-				return c.Merge(s, 36, 45, false)
-			case i >= 36 && i < 45:
-				return c.Merge(s, 9, 36, false)
+				return c.Merge(s, main, hot+9, true)
+			case i < main:
+				return c.Merge(s, main, hot+9, false)
 			}
-			return c.Merge(s, 9, 45, false)
+			for j := 5; j < main; j++ {
+				if !c.Slots[j].Has() && c.Slots[j].Valid(s) {
+					return c.Merge(s, j, j+1, false)
+				}
+			}
+			if i < hot {
+				return c.Merge(s, hot, hot+9, false)
+			}
+			return c.Merge(s, main, hot, false)
 		}, true)
 	}
 	return c, cr

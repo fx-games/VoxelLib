@@ -88,16 +88,16 @@ func TestArmourSlots(t *testing.T) {
 	c, _ := NewPlayerContainer(p, nil)
 	p.Cursor = New(stone, 1)
 	c.Click(5, 0, Pickup)
-	if p.Armor[3] != nil {
+	if p.Equip[3] != nil {
 		t.Fatal("stone accepted as helmet")
 	}
 	p.Cursor = New(helmet, 1)
 	c.Click(6, 0, Pickup) // chestplate slot rejects a helmet
-	if p.Armor[2] != nil {
+	if p.Equip[2] != nil {
 		t.Fatal("helmet in chest slot")
 	}
 	c.Click(5, 0, Pickup)
-	if p.Armor[3] == nil || p.Cursor != nil || p.TotalArmor() != 2 {
+	if p.Equip[3] == nil || p.Cursor != nil || p.TotalArmor() != 2 {
 		t.Fatal("helmet not worn")
 	}
 }
@@ -120,7 +120,7 @@ func TestShiftClickPlayer(t *testing.T) {
 	// armour goes to its slot when empty
 	p.Main[20] = New(boots, 1)
 	c.Click(20, 0, QuickMove)
-	if p.Armor[0] == nil || p.Main[20] != nil {
+	if p.Equip[0] == nil || p.Main[20] != nil {
 		t.Fatal("boots not equipped")
 	}
 	// second boots: armour slot taken → hotbar
@@ -131,7 +131,7 @@ func TestShiftClickPlayer(t *testing.T) {
 	}
 	// armour slot → main inventory
 	c.Click(8, 0, QuickMove)
-	if p.Armor[0] != nil || p.Main[10] == nil {
+	if p.Equip[0] != nil || p.Main[10] == nil {
 		t.Fatalf("unequip: %v", p.Main[10])
 	}
 }
@@ -329,5 +329,107 @@ func TestUseHeld(t *testing.T) {
 	}
 	if p.UseHeld(st, 1, true, true); p.Main[2] != nil {
 		t.Fatal("always did not clear")
+	}
+}
+
+func TestHotbarFreePlacement(t *testing.T) {
+	p := &Player{}
+	c, _ := NewPlayerContainer(p, nil)
+	p.Main[0] = New(stone, 5)
+	c.Click(36, 0, Pickup)
+	if p.Main[0] != nil || count(p.Cursor) != 5 {
+		t.Fatalf("on the cursor: slot %v cursor %d", p.Main[0], count(p.Cursor))
+	}
+	c.Click(44, 0, Pickup)
+	if p.Main[0] != nil || count(p.Main[8]) != 5 || p.Cursor != nil {
+		t.Fatalf("placed: slot 0 %v slot 8 %d", p.Main[0], count(p.Main[8]))
+	}
+}
+
+func TestEquipEvents(t *testing.T) {
+	p := NewPlayer(PlayerSpec{})
+	c, _ := NewPlayerContainer(p, nil)
+	type ev struct {
+		slot     int
+		old, new *Stack
+	}
+	var got []ev
+	p.OnEquip = func(slot int, old, new *Stack) { got = append(got, ev{slot, old, new}) }
+	gold := &Item{Key: "test:golden_helmet", MaxStack: 1, Armor: &Armor{Slot: Helmet, Points: 2}}
+	h1, h2 := New(helmet, 1), New(gold, 1)
+	p.Main[9] = h1
+	c.Click(9, 0, QuickMove) // into the helmet slot
+	if len(got) != 1 || got[0].slot != 3 || got[0].old != nil || got[0].new == nil || got[0].new.Item != helmet {
+		t.Fatalf("shift-click equip: %+v", got)
+	}
+	got = nil
+	worn := p.Equip[3]
+	p.Cursor = h2
+	c.Click(5, 0, Pickup) // swap with the cursor
+	if len(got) != 1 || got[0].old != worn || got[0].new != h2 || p.Cursor != worn {
+		t.Fatalf("swap: %+v", got)
+	}
+	got = nil
+	c.Click(5, 0, Pickup) // put worn back: h2 to the cursor
+	c.Click(9, 0, Pickup) // h2 into the main inventory
+	if len(got) != 1 || got[0].old != h2 || got[0].new != worn {
+		t.Fatalf("swap back: %+v", got)
+	}
+	got = nil
+	c.Deny = func(slot, button, mode int) bool { return true }
+	c.Click(5, 0, Pickup)
+	if len(got) != 0 || p.Equip[3] != worn {
+		t.Fatalf("denied click fired %+v", got)
+	}
+	var held [][2]int
+	p.OnHeld = func(old, new int) { held = append(held, [2]int{old, new}) }
+	p.Hold(3)
+	p.Hold(3)
+	if len(held) != 1 || held[0] != [2]int{0, 3} {
+		t.Fatalf("held %v", held)
+	}
+}
+
+func TestNoSplit(t *testing.T) {
+	p := &Player{}
+	c, _ := NewPlayerContainer(p, nil)
+	c.NoSplit = true
+	p.Main[9] = New(stone, 10)
+	c.Click(9, 1, Pickup) // right click: half
+	if count(p.Main[9]) != 10 || p.Cursor != nil {
+		t.Fatalf("right pickup split: slot %d cursor %d", count(p.Main[9]), count(p.Cursor))
+	}
+	c.Click(9, 0, Pickup)
+	c.Click(Outside, DragButton(DragEven, DragStart), Drag)
+	c.Click(10, DragButton(DragEven, DragAdd), Drag)
+	c.Click(11, DragButton(DragEven, DragAdd), Drag)
+	c.Click(Outside, DragButton(DragEven, DragEnd), Drag)
+	if count(p.Cursor) != 10 || p.Main[10] != nil || p.Main[11] != nil {
+		t.Fatalf("drag spread: cursor %d", count(p.Cursor))
+	}
+	c.Click(9, 0, Pickup)
+	for i := range 9 { // the hotbar can take 4 of the 10 only by splitting
+		p.Main[i] = New(stone, 64)
+	}
+	p.Main[0].Count = 60
+	c.Click(9, 0, QuickMove)
+	if count(p.Main[0]) != 60 || count(p.Main[9]) != 10 {
+		t.Fatalf("shift-click split: hotbar %d main %d", count(p.Main[0]), count(p.Main[9]))
+	}
+}
+
+func TestFiveEquipSlots(t *testing.T) {
+	ring := &Item{Key: "test:ring", MaxStack: 1}
+	isRing := func(s *Stack) bool { return s != nil && s.Item == ring }
+	spec := PlayerSpec{Equip: append([]EquipSlot{{Name: "ring", Accept: isRing, Max: 1}}, DefaultEquip...)}
+	p := NewPlayer(spec)
+	c, _ := NewPlayerContainer(p, nil)
+	if len(c.Slots) != 5+5+36 || p.Size() != 41 {
+		t.Fatalf("%d slots, size %d", len(c.Slots), p.Size())
+	}
+	p.Main[0] = New(ring, 1)
+	c.Click(46-9, 0, QuickMove) // hotbar 0 → the ring slot (the column's last)
+	if p.Equip[0] == nil || p.Main[0] != nil || c.Slots[9].Index != 36 {
+		t.Fatalf("ring not equipped: %v", p.Equip)
 	}
 }

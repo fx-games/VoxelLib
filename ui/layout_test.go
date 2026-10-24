@@ -2,8 +2,11 @@ package ui
 
 import (
 	"io/fs"
+	"slices"
 	"testing"
 	"testing/fstest"
+
+	"github.com/memmaker/voxellib/inventory"
 )
 
 func testContext(t *testing.T) (*Context, *SoftCanvas) {
@@ -95,8 +98,58 @@ func TestHUDTitleFade(t *testing.T) {
 }
 
 func TestArmourSlotIcons(t *testing.T) {
-	m := InventoryLayout().SlotIcons
+	m := InventoryLayout(InventoryOptions{}).SlotIcons
 	if len(m) != 4 || m[5] != "textures/items/empty_armor_slot_helmet.png" || m[8] != "textures/items/empty_armor_slot_boots.png" {
 		t.Fatal(m)
+	}
+}
+
+func TestFiveSlotInventoryLayout(t *testing.T) {
+	spec := inventory.PlayerSpec{Equip: append([]inventory.EquipSlot{{Name: "ring", Icon: "textures/items/ring.png"}}, inventory.DefaultEquip...)}
+	c, _ := inventory.NewPlayerContainer(inventory.NewPlayer(spec), nil)
+	for _, o := range []InventoryOptions{{Equip: spec.Equip}, {Equip: spec.Equip, NoCrafting: true, NoPreview: true}} {
+		l := InventoryLayout(o)
+		if len(l.Slots) != len(c.Slots) {
+			t.Fatalf("%d layout slots, %d container slots", len(l.Slots), len(c.Slots))
+		}
+		for i, a := range l.Slots {
+			for j, b := range l.Slots[:i] {
+				if a[0] > -1000 && a[0] < b[0]+18 && b[0] < a[0]+18 && a[1] < b[1]+18 && b[1] < a[1]+18 {
+					t.Fatalf("slots %d %v and %d %v overlap", j, b, i, a)
+				}
+			}
+		}
+		if l.SlotIcons[9] != "textures/items/ring.png" || l.SlotIcons[5] != "textures/items/empty_armor_slot_helmet.png" {
+			t.Fatalf("icons %v", l.SlotIcons)
+		}
+	}
+}
+
+func TestPlayerGUIInput(t *testing.T) {
+	ctx, _ := testContext(t)
+	p := inventory.NewPlayer(inventory.PlayerSpec{})
+	c, _ := inventory.NewPlayerContainer(p, nil)
+	g := NewPlayerGUI(ctx, p, c, func(*inventory.Stack) ItemStack { return ItemStack{} })
+	var held []int
+	p.OnHeld = func(_, n int) { held = append(held, n) }
+	g.Key(Key1+4, 1, 0)
+	g.Scroll(0, -1)
+	g.Scroll(0, 1)
+	g.Scroll(0, 1)
+	if !slices.Equal(held, []int{4, 5, 4, 3}) {
+		t.Fatalf("held %v", held)
+	}
+	closed := 0
+	g.OnClose = func() { closed++ }
+	g.Key(KeyE, 1, 0)
+	if !g.IsOpen() || ctx.Screens.Len() != 1 || !g.Key(Key1, 1, 0) || p.Held != 3 {
+		t.Fatalf("open %v, held %d", g.IsOpen(), p.Held)
+	}
+	p.Cursor = inventory.New(&inventory.Item{Key: "test:stone"}, 1)
+	dropped := 0
+	c.Drop = func(*inventory.Stack) { dropped++ }
+	g.Key(KeyEscape, 1, 0)
+	if g.IsOpen() || ctx.Screens.Len() != 0 || closed != 1 || dropped != 1 || p.Cursor != nil {
+		t.Fatalf("escape: open %v closed %d dropped %d", g.IsOpen(), closed, dropped)
 	}
 }

@@ -113,8 +113,13 @@ type Container struct {
 	// OnClose runs after the cursor was dropped on Close.
 	OnClose func(c *Container)
 	// Deny, if set, is a slotClick override: a click it denies does nothing
-	// and returns nil (a bag container locks the open bag's hotbar slot).
+	// and returns nil (a bag container locks the open bag's hotbar slot, a
+	// game keeps cursed equipment in place).
 	Deny func(slot, button, mode int) bool
+	// NoSplit refuses every half-stack operation: a right click (taking
+	// half, placing or dropping one), drag spreading, and a shift-click
+	// merge that would leave part of the stack behind.
+	NoSplit bool
 
 	dragKind, dragStage int
 	dragSlots           []*Slot
@@ -157,6 +162,9 @@ func (c *Container) inDrag(sl *Slot) bool {
 // before the click (nil for none), as 1.7.10 does.
 func (c *Container) Click(slot, button, mode int) *Stack {
 	if c.Deny != nil && c.Deny(slot, button, mode) {
+		return nil
+	}
+	if c.NoSplit && (mode == Drag || mode == Pickup && button == 1) {
 		return nil
 	}
 	var ret *Stack
@@ -316,7 +324,7 @@ func (c *Container) Click(slot, button, mode int) *Stack {
 
 	case mode == Swap && button >= 0 && button < 9:
 		sl := c.Slots[slot]
-		hot := p.Main[button]
+		hot := p.Get(button)
 		ok := hot == nil || sl.Inv == Inventory(p) && sl.Valid(hot)
 		empty := -1
 		if !ok {
@@ -325,7 +333,7 @@ func (c *Container) Click(slot, button, mode int) *Stack {
 		}
 		if sl.Has() && ok {
 			in := sl.Stack()
-			p.Main[button] = in.Copy()
+			p.Set(button, in.Copy())
 			if (sl.Inv != Inventory(p) || !sl.Valid(hot)) && hot != nil {
 				if empty > -1 {
 					p.Add(hot)
@@ -339,7 +347,7 @@ func (c *Container) Click(slot, button, mode int) *Stack {
 				sl.pickedUp(c, in)
 			}
 		} else if !sl.Has() && hot != nil && sl.Valid(hot) {
-			p.Main[button] = nil
+			p.Set(button, nil)
 			sl.Put(hot)
 		}
 
@@ -392,7 +400,8 @@ func (c *Container) Click(slot, button, mode int) *Stack {
 
 // Merge is mergeItemStack: move s into slots [from,to), filling matching
 // stacks first, then the first empty slot; reverse walks backwards. It
-// reduces s.Count and reports whether anything moved.
+// reduces s.Count and reports whether anything moved. With NoSplit a
+// matching stack only takes all of s.
 func (c *Container) Merge(s *Stack, from, to int, reverse bool) bool {
 	moved := false
 	k, step := from, 1
@@ -409,7 +418,7 @@ func (c *Container) Merge(s *Stack, from, to int, reverse bool) bool {
 					o.Count = t
 					sl.Changed()
 					moved = true
-				} else if o.Count < s.MaxStack() {
+				} else if o.Count < s.MaxStack() && !c.NoSplit {
 					s.Count -= s.MaxStack() - o.Count
 					o.Count = s.MaxStack()
 					sl.Changed()
