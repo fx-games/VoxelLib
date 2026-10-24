@@ -732,44 +732,64 @@ func (info *StateInfo) hasTag(id uint16) bool {
 func (w *World) Boxes(area collide.AABB, out []collide.AABB) []collide.AABB {
 	var bp *[]Box // the part boxes, reused across the blocks and calls
 	area.Grow(0, 0.5, 0).Blocks(func(x, y, z int) {
-		info := w.Reg.Info(w.Block(x, y, z))
-		boxes := info.Collision
-		if len(info.Parts) > 0 {
-			if bp == nil {
-				bp = partBoxes.Get().(*[]Box)
-			}
-			buf := info.appendPartBoxes(*bp, func(d [3]int) *StateInfo {
-				return w.Reg.Info(w.Block(x+d[0], y+d[1], z+d[2]))
-			}, [3]int{x, y, z}, true)
-			*bp, boxes = buf, buf
-		} else if boxes == nil {
-			if info.Shape != ShapeBoxes || !collidable(info.Name) {
-				return
-			}
-			nb := func(d [3]int) *StateInfo {
-				return w.Reg.Info(w.Block(x+d[0], y+d[1], z+d[2]))
-			}
-			boxes = ConnectedAt(info, nb, [3]int{x, y, z})
-		}
-		for _, b := range boxes {
-			if len(b.Rot) > 0 {
-				b = axisAligned(b)
-			}
-			top := float64(b.Max[1])
-			if info.Connects {
-				top = 24
-			}
-			bb := collide.AABB{
-				MinX: float64(x) + float64(b.Min[0])/16, MinY: float64(y) + float64(b.Min[1])/16, MinZ: float64(z) + float64(b.Min[2])/16,
-				MaxX: float64(x) + float64(b.Max[0])/16, MaxY: float64(y) + top/16, MaxZ: float64(z) + float64(b.Max[2])/16,
-			}
-			if bb.Intersects(area) {
-				out = append(out, bb)
-			}
-		}
+		out = w.cellBoxes(w.Reg.Info(w.Block(x, y, z)), x, y, z, area, &bp, out)
 	})
 	if bp != nil {
 		partBoxes.Put(bp)
+	}
+	return out
+}
+
+// StateBoxes appends the collision boxes state id would have at x, y, z
+// among the blocks around it, whatever is there now (a block a piston
+// moves into the cell).
+func (w *World) StateBoxes(id StateID, x, y, z int, out []collide.AABB) []collide.AABB {
+	var bp *[]Box
+	fx, fy, fz := float64(x), float64(y), float64(z)
+	all := collide.AABB{MinX: fx - 1, MinY: fy - 1, MinZ: fz - 1, MaxX: fx + 2, MaxY: fy + 3, MaxZ: fz + 2}
+	out = w.cellBoxes(w.Reg.Info(id), x, y, z, all, &bp, out)
+	if bp != nil {
+		partBoxes.Put(bp)
+	}
+	return out
+}
+
+// cellBoxes appends the boxes of info at x, y, z overlapping area; *bp is
+// the part box buffer, taken from the pool when first needed.
+func (w *World) cellBoxes(info *StateInfo, x, y, z int, area collide.AABB, bp **[]Box, out []collide.AABB) []collide.AABB {
+	boxes := info.Collision
+	if len(info.Parts) > 0 {
+		if *bp == nil {
+			*bp = partBoxes.Get().(*[]Box)
+		}
+		buf := info.appendPartBoxes(**bp, func(d [3]int) *StateInfo {
+			return w.Reg.Info(w.Block(x+d[0], y+d[1], z+d[2]))
+		}, [3]int{x, y, z}, true)
+		**bp, boxes = buf, buf
+	} else if boxes == nil {
+		if info.Shape != ShapeBoxes || !collidable(info.Name) {
+			return out
+		}
+		nb := func(d [3]int) *StateInfo {
+			return w.Reg.Info(w.Block(x+d[0], y+d[1], z+d[2]))
+		}
+		boxes = ConnectedAt(info, nb, [3]int{x, y, z})
+	}
+	for _, b := range boxes {
+		if len(b.Rot) > 0 {
+			b = axisAligned(b)
+		}
+		top := float64(b.Max[1])
+		if info.Connects {
+			top = 24
+		}
+		bb := collide.AABB{
+			MinX: float64(x) + float64(b.Min[0])/16, MinY: float64(y) + float64(b.Min[1])/16, MinZ: float64(z) + float64(b.Min[2])/16,
+			MaxX: float64(x) + float64(b.Max[0])/16, MaxY: float64(y) + top/16, MaxZ: float64(z) + float64(b.Max[2])/16,
+		}
+		if bb.Intersects(area) {
+			out = append(out, bb)
+		}
 	}
 	return out
 }
