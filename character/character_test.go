@@ -310,3 +310,14 @@ func TestInWeb(t *testing.T) {
 		t.Fatalf("web fall dy %v vy %v", dy, c.VY)
 	}
 }
+
+// Moved is the motion after the move's collisions and before gravity and
+// drag: in free air the move's 1 east, while VX is already dragged.
+func TestMovedBeforeDrag(t *testing.T) {
+	c := New(0.5, 10, 0.5)
+	c.VX = 1
+	c.Tick(grid{}, Input{})
+	if c.Moved[0] != 1 || c.VX >= 1 {
+		t.Fatal(c.Moved, c.VX)
+	}
+}

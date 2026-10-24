@@ -39,3 +39,17 @@ func TestActorClimbsLadder(t *testing.T) {
 		t.Fatal("came down with fall", a.fall, a.Body.Y)
 	}
 }
+
+// A web touched in the last move (Entity.setInWeb) zeroes the fall
+// distance, so a body dropped into one lands unhurt.
+func TestWebClearsFall(t *testing.T) {
+	m := NewManager(flat(8), nil, nil, 1)
+	a := New("faller", "npc", 0.5, 12, 0.5)
+	m.Add(a)
+	a.fall = 10
+	a.Body.InWeb = true
+	m.moveBody(a, character.Input{})
+	if a.fall > 0.1 {
+		t.Fatal("fall kept", a.fall)
+	}
+}

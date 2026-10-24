@@ -84,6 +84,9 @@ type Character struct {
 	X, Y, Z             float64 // feet centre
 	VX, VY, VZ          float64 // blocks per tick
 	PrevX, PrevY, PrevZ float64 // position before the last tick
+	// Moved is the motion right after the last move's collisions, before
+	// gravity and drag: what doBlockCollisions' onEntityCollidedWithBlock sees.
+	Moved [3]float64
 
 	Width, Height, EyeHeight float64
 
@@ -322,8 +325,8 @@ func (c *Character) Tick(w World, in Input) {
 					a *= sprintAccel / walkAccel
 				}
 			}
-			// ponytail: the drag's f2 is the block under the feet before
-			// the move, as for the default ground, not after it
+			// the drag's f2 is the block under the feet before the move,
+			// as moveEntityWithHeading reads it
 			if f2, k := c.groundSlip(w); f2 > 0 {
 				a, drag = a*k, f2
 			}
@@ -359,6 +362,7 @@ func (c *Character) climbOut(w World, y0 float64) {
 }
 
 func (c *Character) move(w World, in Input) {
+	defer func() { c.Moved = [3]float64{c.VX, c.VY, c.VZ} }()
 	dx, dy, dz := c.VX, c.VY, c.VZ
 	if c.NoClip {
 		c.X, c.Y, c.Z = c.X+dx, c.Y+dy, c.Z+dz

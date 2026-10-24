@@ -347,6 +347,9 @@ func (m *Manager) moveBody(a *Actor, in character.Input) {
 	if f != nil && b.OnGround {
 		in.Forward, in.Strafe = 0, 0
 	}
+	if b.InWeb { // Entity.setInWeb (the last move's block contacts) zeroes fallDistance
+		a.fall = 0
+	}
 	b.Tick(m.body(), in)
 	if f != nil {
 		if f.Still {
