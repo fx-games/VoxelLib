@@ -43,6 +43,9 @@ type CNPCAI struct {
 	// NPC to meet it. StopInteract (stopAndInteract): it stops and faces
 	// whoever interacts with it (Manager.CNPCInteract).
 	NPCInteract, StopInteract bool
+	// WorldLines: it has world lines, said by EntityAIWorldLines through
+	// Manager.CNPCWorldLine.
+	WorldLines bool
 }
 
 // EnumNavType ordinals.
@@ -63,6 +66,7 @@ const (
 	cnAttack
 	cnWander
 	cnReturn
+	cnWorld
 	cnTasks
 )
 
@@ -151,6 +155,8 @@ func (a *Actor) cnpcResp() int {
 func (a *Actor) cnpcHas(i int) bool {
 	c := a.CNPC
 	switch i {
+	case cnWorld:
+		return c.WorldLines
 	case cnDoor:
 		return c.DoorInteract == 0
 	case cnShelter:
@@ -174,7 +180,7 @@ func (a *Actor) cnpcMutex(i int) int {
 	switch i {
 	case cnDoor:
 		return 0
-	case cnShelter, cnSprint, cnReturn, cnWander:
+	case cnShelter, cnSprint, cnReturn, cnWander, cnWorld:
 		return 1
 	case cnLeap:
 		return 5
@@ -245,7 +251,7 @@ func (m *Manager) cnpcTasks(a *Actor) bool {
 	for i := range cnTasks {
 		if st.on[i] {
 			m.cnpcUpdate(a, i)
-			busy = true
+			busy = busy || i != cnWorld // the world line holds no movement
 		}
 	}
 	if !st.on[cnAttack] || a.cnpcMutex(cnAttack) == 4 { // PathNavigate.onUpdateNavigation
@@ -313,6 +319,8 @@ func (a *Actor) moving() bool { return math.Abs(a.Body.VX) >= 0.005 && math.Abs(
 func (m *Manager) cnpcShould(a *Actor, i int) bool {
 	st, c, t := &a.cn, a.CNPC, a.Target
 	switch i {
+	case cnWorld: // EntityAIWorldLines.shouldExecute (its cooldown is never read)
+		return !st.attacking && a.Alive() && m.Rand.Intn(1800) == 1
 	case cnDoor:
 		return m.bustShould(a)
 	case cnShelter:
@@ -391,6 +399,8 @@ func (m *Manager) cnpcShould(a *Actor, i int) bool {
 func (m *Manager) cnpcCont(a *Actor, i int) bool {
 	st, c := &a.cn, a.CNPC
 	switch i {
+	case cnWorld: // EntityAIBase.continueExecuting: shouldExecute again
+		return m.cnpcShould(a, i)
 	case cnDoor: // EntityAIBustDoor.continueExecuting
 		d := st.door
 		dx, dy, dz := a.Body.X-float64(d.X), a.Body.Y-float64(d.Y), a.Body.Z-float64(d.Z)
@@ -436,6 +446,11 @@ func (m *Manager) cnpcCont(a *Actor, i int) bool {
 func (m *Manager) cnpcStart(a *Actor, i int) {
 	st := &a.cn
 	switch i {
+	case cnWorld: // saySurrounding(getWorldLine())
+		if m.CNPCWorldLine != nil {
+			m.CNPCWorldLine(a)
+		}
+		return
 	case cnDoor:
 		st.bust = 0
 		return
@@ -481,6 +496,8 @@ func (m *Manager) cnpcStart(a *Actor, i int) {
 func (m *Manager) cnpcReset(a *Actor, i int) {
 	st, c := &a.cn, a.CNPC
 	switch i {
+	case cnWorld:
+		return
 	case cnDoor:
 		m.Doors.Crack(a, st.door.X, st.door.Y, st.door.Z, -1)
 		return
@@ -540,6 +557,8 @@ func (m *Manager) cnpcReset(a *Actor, i int) {
 func (m *Manager) cnpcUpdate(a *Actor, i int) {
 	st, c := &a.cn, a.CNPC
 	switch i {
+	case cnWorld:
+		return
 	case cnDoor: // EntityAIBustDoor.updateTask
 		d := st.door
 		if m.Rand.Intn(20) == 0 {

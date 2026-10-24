@@ -69,6 +69,9 @@ type Manager struct {
 	// CNPCSay, if set, is a custom NPC's saySurrounding of a line to the
 	// players around; hide is the line's hideText (a chat bubble only).
 	CNPCSay func(a *Actor, text string, hide bool)
+	// CNPCWorldLine, if set, says one of a custom NPC's world lines to
+	// the players around (CNPCAI.WorldLines).
+	CNPCWorldLine func(a *Actor)
 	// PathWeight, if set, is a's getBlockPathWeight at a cell (the random
 	// spots a CustomNPC's tasks pick); nil weighs all alike.
 	PathWeight func(a *Actor, x, y, z int) float32

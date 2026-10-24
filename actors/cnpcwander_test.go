@@ -144,3 +144,28 @@ func TestCNPCRoutePause(t *testing.T) {
 		t.Fatal("did not walk on after the interaction")
 	}
 }
+
+// TestCNPCWorldLines: EntityAIWorldLines rolls 1 in 1800 at each task
+// check (every third tick), so about once in 5400 ticks, and the wanderer
+// still wanders.
+func TestCNPCWorldLines(t *testing.T) {
+	m := NewManager(flat(60), nil, nil, 1)
+	a := New("a", "npc", 20.5, 1, 20.5)
+	a.CNPC, a.PersistReq = &CNPCAI{OnAttack: 3, FindShelter: 2, WorldLines: true}, true
+	a.Brain = Brain{Mode: Wander, Home: a.Pos(), Range: 5, Look: LookRotate}
+	m.Add(a)
+	n := 0
+	m.CNPCWorldLine = func(s *Actor) {
+		if s == a {
+			n++
+		}
+	}
+	far := 0.0
+	for range 54000 {
+		m.Tick()
+		far = max(far, a.Pos().hdist(a.Brain.Home))
+	}
+	if n < 3 || n > 25 || far < 1 {
+		t.Fatalf("%d world lines in 54000 ticks (about 10), wandered %.1f", n, far)
+	}
+}
