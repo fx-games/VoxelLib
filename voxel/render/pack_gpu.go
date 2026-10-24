@@ -110,6 +110,7 @@ type packGPU struct {
 	ubuf *wgpu.Buffer
 
 	a, b                       [8]packTarget // ping-pong sides; the gbuffers write a
+	blockEnt                   [2]*wgpu.RenderPipeline // gbuffers_block: blended, opaque
 	depth                      [3]packTarget // depthtex0 (attachment), depthtex1 (no translucent), depthtex2 (no hand)
 	shadow, shadow1, shadowCol packTarget    // shadowtex0, shadowtex1 (opaque only), shadowcolor0
 	// R8 attachments the depth copies render into with no writes: gogpu
@@ -786,7 +787,11 @@ func setPipe(p *wgpu.RenderPassEncoder, pl *wgpu.RenderPipeline) {
 		if pl == dev.pipes.blockDamage {
 			depth.DepthBias, depth.DepthBiasSlopeScale = -3, -3
 		}
-		v = pk.pipeline("pack "+sp.label, src, []*wgpu.BindGroupLayout{dev.uniLayout, g1, pk.g2Layout}, sp.buffers,
+		groups := []*wgpu.BindGroupLayout{dev.uniLayout, g1, pk.g2Layout}
+		if pl == dev.pipes.itemGlint || pl == dev.pipes.modelGlint { // group 3: the glint texture (bindGlint)
+			groups = append(groups, dev.pipes.tex2D)
+		}
+		v = pk.pipeline("pack "+sp.label, src, groups, sp.buffers,
 			&gputypes.PrimitiveState{Topology: sp.topology, FrontFace: gputypes.FrontFaceCCW, CullMode: sp.cull}, targets[:], depth)
 		pk.variants[key] = v
 	}
@@ -809,7 +814,8 @@ func replaceOnce(s, old, new string) string {
 // program is the pack program that replaces an engine pipeline: its
 // source, the gbuffer outputs it writes (packGbuffer indices) and whether
 // it has a HAND_FLAG variant. OptiFine's fallbacks: entities, hand,
-// particles and held blocks use gbuffers_textured, the breaking overlay
+// particles and held blocks use gbuffers_textured, the glint
+// gbuffers_armor_glint, the breaking overlay
 // gbuffers_terrain, the outline gbuffers_basic, rain and snow
 // gbuffers_weather (the only sky list draws in a pack frame).
 func (pk *packGPU) program(pl *wgpu.RenderPipeline) (string, []int, bool) {
@@ -826,6 +832,12 @@ func (pk *packGPU) program(pl *wgpu.RenderPipeline) (string, []int, bool) {
 	case ps.item, ps.itemNoDepth:
 		return packItemWGSL, []int{3, 4}, true
 	case ps.blockItem:
+		return packBlockWGSL, []int{3, 4}, true
+	case ps.itemGlint:
+		return packItemGlintWGSL, []int{3}, true
+	case ps.modelGlint:
+		return packModelGlintWGSL, []int{3}, true
+	case ps.blockFlash: // glDisable(GL_TEXTURE_2D) keeps gbuffers_entities (OptiFine switches only textured/textured_lit to basic), so the textured block again
 		return packBlockWGSL, []int{3, 4}, true
 	case ps.particleAlpha, ps.particleAdd:
 		return packParticleWGSL, []int{3, 4}, false
@@ -858,10 +870,11 @@ func (pk *packGPU) worldEnd() {
 	pk.castShadows()
 	gpuMark("pack depthtex1 copy")
 	pk.copyDepthTo(pk.copyDepth, pk.depth[1].view, pk.dummy.view)
-	if len(pk.trans) > 0 {
+	if be := pk.r.Opt.Pack.BlockEntities; len(pk.trans) > 0 || len(be) > 0 {
 		gpuMark("pack gbuffers water")
 		dev.pass = pk.gbufferPass(false)
 		pk.r.drawBatches(dev.pass, pk.vp, pk.fog, pk.fogCol, pk.trans)
+		pk.drawBlockEntities(dev.pass, be)
 		endPass()
 		gpuMark("pack depthtex2 copy")
 	}
@@ -869,6 +882,58 @@ func (pk *packGPU) worldEnd() {
 	gpuMark("pack gbuffers hand")
 	dev.pass = pk.gbufferPass(false)
 	pk.ended = true
+}
+
+// drawBlockEntities draws PackFrame.BlockEntities with gbuffers_block:
+// an Opaque draw with blending off and depth writes, the others with
+// glBlendFunc(SRC_ALPHA, ONE_MINUS_SRC_ALPHA, ONE, ZERO) and no depth writes.
+func (pk *packGPU) drawBlockEntities(p *wgpu.RenderPassEncoder, draws []SkyDraw) {
+	r := pk.r
+	for i := range draws {
+		d := &draws[i]
+		t := skyWhiteTexture()
+		if d.Texture != "" {
+			if t = r.skyTexture(d.Texture); t == nil {
+				continue
+			}
+		}
+		r.skyVerts = d.triangles(r.skyVerts[:0])
+		if len(r.skyVerts) == 0 {
+			continue
+		}
+		k := 0
+		if d.Opaque {
+			k = 1
+		}
+		if pk.blockEnt[k] == nil {
+			sp := dev.pipes.specs[dev.pipes.skyAlpha]
+			var targets [6]gputypes.ColorTargetState
+			for i, t := range packGbuffer {
+				targets[i] = gputypes.ColorTargetState{Format: packFormats[t], WriteMask: gputypes.ColorWriteMaskNone}
+			}
+			for _, o := range []int{3, 4} { // DRAWBUFFERS:56
+				targets[o].WriteMask = gputypes.ColorWriteMaskAll
+				if k == 0 {
+					targets[o].Blend = blendAlphaOneZero
+				}
+			}
+			pk.blockEnt[k] = pk.pipeline("pack block entity", packBlockEntityWGSL, []*wgpu.BindGroupLayout{dev.uniLayout, sp.group1, pk.g2Layout},
+				sp.buffers, nil, targets[:], &wgpu.DepthStencilState{Format: gputypes.TextureFormatDepth32Float,
+					DepthWriteEnabled: k == 1, DepthCompare: gputypes.CompareFunctionLessEqual})
+		}
+		m := d.Transform
+		if m == (mgl32.Mat4{}) {
+			m = mgl32.Ident4()
+		}
+		p.SetPipeline(pk.blockEnt[k])
+		bindUniforms(p, r.gpu.u.reset().mat(clip(pk.vp.Mul4(m))).mat(m).f(float32(d.Light), d.AlphaTest, 0, 0))
+		p.SetBindGroup(1, t.bg, nil)
+		p.SetBindGroup(2, pk.g2, nil)
+		vc, off := dev.vertices.alloc(bytesOf(r.skyVerts), 0)
+		p.SetVertexBuffer(0, vc.buf, uint64(off))
+		dev.draws++
+		p.Draw(gputypes.DrawArgs{VertexCount: uint32(len(r.skyVerts)), InstanceCount: 1})
+	}
 }
 
 // packResolve ends a pack frame: the composite passes and final into the

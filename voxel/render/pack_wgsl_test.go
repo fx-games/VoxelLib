@@ -17,7 +17,7 @@ import (
 func TestPackWGSL(t *testing.T) {
 	progs := map[string]string{
 		"terrain": packTerrainWGSL, "water": packWaterWGSL, "shadow": packShadowWGSL,
-		"basic": packBasicWGSL, "damage": packDamageWGSL, "weather": packWeatherWGSL,
+		"basic": packBasicWGSL, "damage": packDamageWGSL, "weather": packWeatherWGSL, "block entity": packBlockEntityWGSL,
 		"particle":  packParticleWGSL,
 		"composite": packCompositeWGSL, "composite1": packComposite1WGSL, "composite2": packComposite2WGSL,
 		"composite3": packComposite3WGSL, "composite4": packComposite4WGSL, "final": packFinalWGSL,
@@ -32,6 +32,8 @@ func TestPackWGSL(t *testing.T) {
 		progs["model/"+hand] = strings.Replace(packModelWGSL, "HAND_FLAG", hand, 1)
 		progs["item/"+hand] = strings.Replace(packItemWGSL, "HAND_FLAG", hand, 1)
 		progs["block/"+hand] = strings.Replace(packBlockWGSL, "HAND_FLAG", hand, 1)
+		progs["itemGlint/"+hand] = strings.Replace(packItemGlintWGSL, "HAND_FLAG", hand, 1)
+		progs["modelGlint/"+hand] = strings.Replace(packModelGlintWGSL, "HAND_FLAG", hand, 1)
 	}
 	for _, k := range []string{"model", "item", "block"} {
 		progs["caster/"+k] = packCasterWGSL(k)

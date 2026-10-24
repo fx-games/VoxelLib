@@ -706,6 +706,117 @@ fn fs(i: VOut) -> TOut {
 }
 `
 
+// packGlintWGSL is gbuffers_armor_glint.fsh (DRAWBUFFERS:56, only
+// gl_FragData[0] written): the glint texture times gl_Color (GlintColor),
+// made "a somewhat consistent effect across day/night/cave/raining".
+// Group 3 is the glint texture (group 2 is the pack's).
+const packGlintWGSL = `
+@group(3) @binding(0) var glint: texture_2d<f32>;
+@group(3) @binding(1) var gsamp: sampler;
+struct GOut {
+	@location(3) c5: vec4f,
+}
+fn fragGlint(albedo: vec4f) -> GOut {
+	let nt = night();
+	let rain = rainStrength();
+	let cavelight = pow(eyeSmoothY() / 255.0, 6.0) * 1.0 + (0.7 + 0.5 * nt);
+	var lighting = vec3f(1.0 + (0.4 * rain - 0.4 * rain * nt));
+	lighting /= 0.8 - 0.5 * nt;
+	lighting /= cavelight;
+	var o: GOut;
+	o.c5 = vec4f(pow(albedo.rgb * 0.33, lighting), albedo.a);
+	return o;
+}
+`
+
+// packItemGlintWGSL is itemGlintWGSL's input drawn with
+// gbuffers_armor_glint (its vsh: ftransform, the TAA offset, texcoord by
+// gl_TextureMatrix[0], here the glintAffine rows). The sprite's alpha test
+// stands in for the reference's depth equal, as in itemGlintWGSL.
+var packItemGlintWGSL = `
+struct U {
+	mvp: mat4x4f,
+	model: mat4x4f,
+	light: vec4f,
+	fogColor: vec4f, // rgb, layer
+	fog: vec4f,
+	color: vec4f,    // GlintColor
+	gu: vec4f,
+	gv: vec4f,
+}
+@group(0) @binding(0) var<uniform> u: U;
+@group(1) @binding(0) var tex: texture_2d_array<f32>;
+@group(1) @binding(1) var samp: sampler;
+const HAND = HAND_FLAG;
+` + packCommonWGSL + packGroupWGSL + packGlintWGSL + `
+struct VOut {
+	@builtin(position) pos: vec4f,
+	@location(0) uv: vec2f,
+	@location(1) guv: vec2f,
+}
+@vertex
+fn vs(@location(0) pos: vec3f, @location(1) uv: vec2f, @location(2) normal: vec3f) -> VOut {
+	var o: VOut;
+	o.pos = jitter(u.mvp * vec4f(pos, 1.0));
+	if (HAND) { o.pos.z = o.pos.z * 0.1; } // in front of the world (see packHand)
+	o.uv = uv;
+	let b = vec3f(0.5 - pos.x, 0.5 - pos.y, 1.0);
+	o.guv = vec2f(dot(u.gu.xyz, b), dot(u.gv.xyz, b));
+	return o;
+}
+@fragment
+fn fs(i: VOut) -> GOut {
+	let c = textureSample(tex, samp, i.uv, i32(u.fogColor.a));
+	let g = textureSample(glint, gsamp, i.guv);
+	if (c.a < 0.5) { discard; }
+	return fragGlint(g * u.color);
+}
+`
+
+// packModelGlintWGSL is modelGlintWGSL's input drawn with
+// gbuffers_armor_glint; the model texture keeps only its alpha test.
+var packModelGlintWGSL = `
+struct U {
+	viewProj: mat4x4f,
+	model: mat4x4f,
+	light: vec4f,
+	fogColor: vec4f,
+	fog: vec4f,      // start, end, alpha cutoff
+	color: vec4f,    // GlintColor
+	gu: vec4f,
+	gv: vec4f,
+	bones: array<mat4x4f, ` + maxBonesWGSL + `>,
+}
+@group(0) @binding(0) var<uniform> u: U;
+@group(1) @binding(0) var tex: texture_2d<f32>;
+@group(1) @binding(1) var samp: sampler;
+const HAND = HAND_FLAG;
+` + packCommonWGSL + packGroupWGSL + packGlintWGSL + `
+struct VOut {
+	@builtin(position) pos: vec4f,
+	@location(0) uv: vec2f,
+	@location(1) guv: vec2f,
+}
+@vertex
+fn vs(@location(0) pos: vec3f, @location(1) normal: vec3f, @location(2) uv: vec2f,
+	@location(3) j: vec4<u32>, @location(4) w: vec4f) -> VOut {
+	let skin = u.bones[j.x] * w.x + u.bones[j.y] * w.y + u.bones[j.z] * w.z + u.bones[j.w] * w.w;
+	var o: VOut;
+	o.pos = jitter(u.viewProj * (u.model * skin * vec4f(pos, 1.0)));
+	if (HAND) { o.pos.z = o.pos.z * 0.1; } // in front of the world (see packHand)
+	o.uv = uv;
+	o.guv = vec2f(dot(u.gu.xyz, vec3f(uv, 1.0)), dot(u.gv.xyz, vec3f(uv, 1.0)));
+	return o;
+}
+@fragment
+fn fs(i: VOut) -> GOut {
+	let c = textureSample(tex, samp, i.uv);
+	let g = textureSample(glint, gsamp, i.guv);
+	if (c.a <= u.fog.z) { discard; }
+	return fragGlint(g * u.color);
+}
+`
+
 // packBlockWGSL is blockWGSL's input (a BlockMesh as an entity) drawn
 // with gbuffers_textured; fogColor.w carries the light levels.
 var packBlockWGSL = wgslBlockTex + `
@@ -766,7 +877,8 @@ fn vs(@location(0) d: vec4<u32>) -> VOut {
 }
 @fragment
 fn fs(i: VOut) -> TOut {
-	let c = blockTex(i.uv, i.layer) * vec4f(i.color, 1.0);
+	var c = blockTex(i.uv, i.layer) * vec4f(i.color, 1.0);
+	if (u.light.w > 1.5) { c.a = c.a * u.l0.w; } // the flash: glColor4f(1, 1, 1, a)
 	if (c.a <= 0.1) { discard; }
 	return fragTextured(c, i.normal, i.pos, i.sun, i.amb, i.skyL);
 }
@@ -868,6 +980,46 @@ fn fs(i: VOut) -> WOut {
 	var o: WOut;
 	o.c7 = vec4f(vec3f(1.0, i.color.g, 1.0), t.a * length(t.rgb) / 1.732);
 	return o;
+}
+`
+
+// packBlockEntityWGSL is skyListWGSL's input for PackFrame.BlockEntities,
+// drawn with gbuffers_block (DRAWBUFFERS:56; its torch light halved). No
+// glNormal is set: ShadersTess gives each quad its face normal,
+// cross(v2-v0, v3-v1), which faces the side the quad winds
+// counter-clockwise to; here from the position derivatives. light.x is
+// sky + 16*block, light.y the alpha test.
+var packBlockEntityWGSL = `
+struct U { mvp: mat4x4f, model: mat4x4f, light: vec4f }
+@group(0) @binding(0) var<uniform> u: U;
+@group(1) @binding(0) var tex: texture_2d<f32>;
+@group(1) @binding(1) var samp: sampler;
+` + packCommonWGSL + packGroupWGSL + packTexturedLightWGSL + `
+struct VOut {
+	@builtin(position) pos: vec4f,
+	@location(0) uv: vec2f,
+	@location(1) color: vec4f,
+	@location(2) wp: vec3f,
+}
+@vertex
+fn vs(@location(0) pos: vec3f, @location(1) uv: vec2f, @location(2) color: vec4f) -> VOut {
+	var o: VOut;
+	o.pos = jitter(u.mvp * vec4f(pos, 1.0));
+	o.uv = uv;
+	o.color = color;
+	o.wp = (u.model * vec4f(pos, 1.0)).xyz;
+	return o;
+}
+@fragment
+fn fs(i: VOut, @builtin(front_facing) front: bool) -> TOut {
+	var n = normalize(cross(dpdx(i.wp), dpdy(i.wp)));
+	if ((dot(n, i.wp) > 0.0) == front) { n = -n; } // toward the eye (at the origin) on the front face
+	n = normalize(m3(pu.mv) * n);
+	let c = textureSample(tex, samp, i.uv) * i.color;
+	if (c.a <= u.light.y) { discard; }
+	let lv = u32(u.light.x);
+	let tl = lightTextured(n, lmOf(f32(lv >> 4u), f32(lv & 15u)), 0.5);
+	return fragTextured(c, n, i.pos, tl.sun, tl.amb, tl.skyL);
 }
 `
 

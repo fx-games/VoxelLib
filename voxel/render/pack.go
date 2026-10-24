@@ -33,6 +33,10 @@ type PackFrame struct {
 	NightVision float32 // getNightVisionBrightness, 0 without the effect
 	Blindness   float32 // 0..1
 	Far         float32 // renderDistanceChunks*16
+	// BlockEntities are tile entity quads of Forge's render pass 1 (a
+	// beacon beam): drawn with gbuffers_block after the translucent
+	// terrain, lit by each draw's Light; Fog and Additive are not read.
+	BlockEntities []SkyDraw
 	// Sneaking etc. are not read by the pack.
 }
 

@@ -152,7 +152,7 @@ func (mr *ModelRenderer) drawModel(g *gpuModel, model mgl32.Mat4, skin []mgl32.M
 func (mr *ModelRenderer) drawGlint(p *wgpu.RenderPassEncoder, g *gpuModel, model mgl32.Mat4, skin []mgl32.Mat4, d drawParams, lc [3]float32, cutoff float32) {
 	l := &mr.gpu.light
 	setPipe(p, dev.pipes.modelGlint)
-	p.SetBindGroup(2, glintTex.bg, nil)
+	bindGlint(p)
 	for k := range 2 {
 		a := modelGlint(d.glintTicks, k)
 		u := mr.gpu.u.reset().mat(l.vp).mat(model).f(lc[0], lc[1], lc[2], 0).

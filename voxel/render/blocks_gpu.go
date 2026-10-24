@@ -171,9 +171,8 @@ func (r *Renderer) drawBlockMode(b *BlockMesh, mvp, model mgl32.Mat4, lc mgl32.V
 	}
 	pl, bg, mode, layer := dev.pipes.blockItem, r.terrainBG(), float32(0), float32(0)
 	if flash > 0 {
-		if dev.pk != nil { // ponytail: no flash in a shader pack frame (its world pass has the pack's targets)
-			return
-		}
+		// In a pack frame gbuffers_textured draws it into colortex5/6, which
+		// have no alpha: GL_DST_ALPHA reads 1, so SrcAlpha/One is exact.
 		pl, mode = dev.pipes.blockFlash, 2
 	}
 	if damage >= 0 {

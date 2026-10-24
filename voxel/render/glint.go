@@ -93,11 +93,18 @@ func (r *Renderer) SetGlintTexture(img image.Image) error {
 	return nil
 }
 
-// glintOn reports whether a glint pass can draw: a texture is set and no
-// shader pack frame is open.
-// ponytail: no glint in pack frames (the packs' gbuffers_armor_glint is
-// not ported).
-func glintOn() bool { return glintTex.bg != nil && dev.pk == nil }
+// glintOn reports whether a glint pass can draw: a texture is set.
+func glintOn() bool { return glintTex.bg != nil }
+
+// bindGlint binds the glint texture after setPipe: group 2, or 3 in a
+// shader pack frame (gbuffers_armor_glint; group 2 is the pack's).
+func bindGlint(p *wgpu.RenderPassEncoder) {
+	g := uint32(2)
+	if dev.pk != nil {
+		g = 3
+	}
+	p.SetBindGroup(g, glintTex.bg, nil)
+}
 
 // blendGlint is glBlendFunc(GL_SRC_COLOR, GL_ONE), the target's alpha kept.
 var blendGlint = &gputypes.BlendState{

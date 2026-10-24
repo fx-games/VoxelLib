@@ -30,6 +30,9 @@ type SkyDraw struct {
 	// identity.
 	Transform mgl32.Mat4
 	Verts     []SkyVertex
+	// Light is sky + 16*block light, the lightmap coordinates of a
+	// PackFrame.BlockEntities draw (unused elsewhere).
+	Light uint8
 }
 
 // SkyVertex is a sky vertex: position, texture coordinate and an RGBA

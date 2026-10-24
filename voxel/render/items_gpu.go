@@ -59,7 +59,7 @@ func (ir *ItemRenderer) drawRange(i int, mvp, model mgl32.Mat4, sky, block uint8
 		return
 	}
 	setPipe(p, dev.pipes.itemGlint)
-	p.SetBindGroup(2, glintTex.bg, nil)
+	bindGlint(p)
 	ms := glintClock()
 	for n := range passes * 2 {
 		a := itemGlint(ms, n%2)
