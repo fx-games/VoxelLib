@@ -22,13 +22,24 @@ var (
 
 // GPUMark times the GPU work recorded since the last mark (under that
 // mark's label) and starts the part named next. Not inside the world part of
-// a shader-pack frame (packResolve times that part and its composites).
+// a shader-pack frame, whose pass is open (the pack code marks its passes).
 func GPUMark(next string) {
-	if !gpuMarks || dev.enc == nil || dev.pk != nil {
+	if dev.pk == nil {
+		gpuMark(next)
+	}
+}
+
+// gpuMark is GPUMark where no pass is open.
+func gpuMark(next string) {
+	if !gpuMarks || dev.enc == nil {
 		return
 	}
 	t := time.Now()
+	// Inside a pack frame submit must not resolve it nor open a clear pass.
+	pk, cn, cd := dev.pk, dev.clearNext, dev.clearDepth
+	dev.pk, dev.clearNext, dev.clearDepth = nil, false, false
 	submit(false)
+	dev.pk, dev.clearNext, dev.clearDepth = pk, cn, cd
 	dev.device.WaitIdle()
 	if markPart != "" {
 		if _, ok := gpuPartTime[markPart]; !ok {

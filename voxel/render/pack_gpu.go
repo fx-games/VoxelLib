@@ -518,7 +518,9 @@ func (r *Renderer) packFrame(cam *Camera) {
 	writeBuffer(pk.ubuf, 0, unsafe.Slice((*byte)(unsafe.Pointer(&pk.u)), unsafe.Sizeof(pk.u)))
 
 	pk.r, pk.hand, pk.ended, pk.trans, pk.casters = r, false, false, nil, pk.casters[:0]
+	gpuMark("pack shadow")
 	pk.shadowPass(r)
+	gpuMark("pack gbuffers")
 	dev.pass = pk.gbufferPass(true)
 	dev.pk = pk
 }
@@ -620,7 +622,9 @@ func (pk *packGPU) drawShadows(r *Renderer) {
 		}
 		endPassOf(p)
 		if !trans {
+			gpuMark("pack shadowtex1 copy")
 			pk.copyDepthTo(pk.copyShadow, pk.shadow1.view, pk.dummyShadow.view)
+			gpuMark("pack shadow translucent")
 		}
 	}
 }
@@ -738,14 +742,19 @@ func packHand() {
 // gbuffers_water, copies depthtex2 and reopens the gbuffer pass.
 func (pk *packGPU) worldEnd() {
 	endPass()
+	gpuMark("pack shadow casters")
 	pk.castShadows()
+	gpuMark("pack depthtex1 copy")
 	pk.copyDepthTo(pk.copyDepth, pk.depth[1].view, pk.dummy.view)
 	if len(pk.trans) > 0 {
+		gpuMark("pack gbuffers water")
 		dev.pass = pk.gbufferPass(false)
 		pk.r.drawBatches(dev.pass, pk.vp, pk.fog, pk.fogCol, pk.trans)
 		endPass()
+		gpuMark("pack depthtex2 copy")
 	}
 	pk.copyDepthTo(pk.copyDepth, pk.depth[2].view, pk.dummy.view)
+	gpuMark("pack gbuffers hand")
 	dev.pass = pk.gbufferPass(false)
 	pk.ended = true
 }
@@ -787,10 +796,7 @@ func packResolve() {
 		p.SetScissorRect(gputypes.ScissorRect{X: 0, Y: h - qh, Width: qw, Height: qh})
 		return p
 	}
-	if gpuMarks { // the bench's pass times: the world part (gbuffers, shadow) and each composite
-		markPart = "pack world"
-	}
-	GPUMark("composite")
+	gpuMark("composite")
 	full(beginPass("composite", att(pk.b[3].mips[0], pk.b[4].mips[0]), nil), pk.comps[0], pk.comp[0])
 	mip(pk.mip, pk.mipB4, pk.b[4].mips[1])
 	GPUMark("composite1")
