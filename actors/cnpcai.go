@@ -4,6 +4,7 @@ import (
 	"math"
 
 	"github.com/memmaker/voxellib/character"
+	"github.com/memmaker/voxellib/voxel/nav"
 )
 
 // CNPCAI is a CustomNPC's DataAI combat response, the attack tasks
@@ -11,7 +12,10 @@ import (
 // OnAttack 0 fights (LeapType 1 EntityAILeapAtTarget(0.4), the
 // TacticalVariant's task, then EntityAIAttackTarget and with a projectile
 // EntityAIRangedAttack), 1 panics (EntityAIPanic(1.2)), 2 retreats
-// (EntityAIAvoidTarget), 3 does nothing. They run as EntityAITasks runs
+// (EntityAIAvoidTarget), 3 does nothing; before them doorInteractType's
+// DoorInteract 0 EntityAIBustDoor (Manager.Doors) and seekShelter's
+// FindShelter 0 EntityAIMoveIndoors, 1 EntityAIFindShade (Manager.Sky
+// answers their questions). They run as EntityAITasks runs
 // them: a task starts on every third tick if no running task of the same
 // or a higher priority shares a mutex bit with it, and stops a running
 // one of a lower priority that does.
@@ -25,6 +29,12 @@ type CNPCAI struct {
 	CanSprint bool
 	Leap      int // LeapType
 	DirectLOS bool
+	// DoorInteract: 0 busts wooden doors in its way (paths through doors,
+	// opening none), 1 opens doors (Actor.OpensDoors), 2 neither.
+	DoorInteract int
+	// FindShelter: 0 indoors at night and in the rain, 1 into the shade by
+	// day (and RestrictSun), 2 never.
+	FindShelter int
 }
 
 // EnumNavType ordinals.
@@ -37,7 +47,9 @@ const (
 
 // The tasks in priority order (taskCount order in setResponse).
 const (
-	cnSprint = iota
+	cnDoor = iota
+	cnShelter
+	cnSprint
 	cnLeap
 	cnResp
 	cnAttack
@@ -71,7 +83,14 @@ type cnpcState struct {
 	wait     int     // stalk tick
 	override bool    // stalk overRide
 	halted   bool    // the attack's reset cleared the path (kept to walk on)
+	home     Vec     // EntityAIMoveIndoors / EntityAIFindShade.shelterX/Y/Z
+	door     nav.Pos // EntityAIDoorInteract.entityPosX/Y/Z
+	bust     int     // EntityAIBustDoor.breakingTime
+	crack    int     // its field_75358_j, the last crack stage sent
 }
+
+// init is the tasks' state as made (field_75358_j starts at -1).
+func (st *cnpcState) init(a *Actor) { st.inited, st.health, st.crack = true, a.Health, -1 }
 
 func (a *Actor) cnpcProj() bool { return a.Ranged != nil && a.Ranged.AI == RangedCNPC }
 
@@ -103,6 +122,10 @@ func (a *Actor) cnpcResp() int {
 func (a *Actor) cnpcHas(i int) bool {
 	c := a.CNPC
 	switch i {
+	case cnDoor:
+		return c.DoorInteract == 0
+	case cnShelter:
+		return c.FindShelter == 0 || c.FindShelter == 1
 	case cnSprint:
 		return c.CanSprint
 	case cnLeap:
@@ -116,7 +139,9 @@ func (a *Actor) cnpcHas(i int) bool {
 // cnpcMutex is each task's setMutexBits (PASSIVE 1, LOOK 2, PATHING 4).
 func (a *Actor) cnpcMutex(i int) int {
 	switch i {
-	case cnSprint:
+	case cnDoor:
+		return 0
+	case cnShelter, cnSprint:
 		return 1
 	case cnLeap:
 		return 5
@@ -149,7 +174,7 @@ func (a *Actor) cnpcCanUse(i int) bool {
 func (m *Manager) cnpcTasks(a *Actor) bool {
 	st := &a.cn
 	if !st.inited {
-		st.inited, st.health = true, a.Health
+		st.init(a)
 	}
 	var start [cnTasks]bool
 	if st.tick%3 == 0 {
@@ -200,6 +225,17 @@ func (m *Manager) cnpcTasks(a *Actor) bool {
 	return busy
 }
 
+// cnpcFlip is EntityNPCInterface.attackEntityFrom's choice of target when
+// src hurts a: one not attacking takes src, one attacking (combat policy
+// Flip) turns on src when src is the nearer.
+// ponytail: no Brute, Stubborn or Tactical policy (TacticalChance): every
+// map NPC has Flip.
+func (m *Manager) cnpcFlip(a, src *Actor) {
+	if a.Target == nil || a.Pos().dist2(a.Target.Pos()) > a.Pos().dist2(src.Pos()) {
+		a.Target = src
+	}
+}
+
 // pathing is !PathNavigate.noPath. The attack's reset (clearPathEntity)
 // only halts the walker: the path it keeps is walked on when the attack
 // starts again, as the reference's path is found at once in its
@@ -218,6 +254,12 @@ func (a *Actor) moving() bool { return math.Abs(a.Body.VX) >= 0.005 && math.Abs(
 func (m *Manager) cnpcShould(a *Actor, i int) bool {
 	st, c, t := &a.cn, a.CNPC, a.Target
 	switch i {
+	case cnDoor:
+		return m.bustShould(a)
+	case cnShelter:
+		p, ok := m.shelterShould(a)
+		st.home = p
+		return ok
 	case cnSprint:
 		if t == nil || !a.pathing() || !a.Body.OnGround {
 			return false
@@ -286,6 +328,13 @@ func (m *Manager) cnpcShould(a *Actor, i int) bool {
 func (m *Manager) cnpcCont(a *Actor, i int) bool {
 	st, c := &a.cn, a.CNPC
 	switch i {
+	case cnDoor: // EntityAIBustDoor.continueExecuting
+		d := st.door
+		dx, dy, dz := a.Body.X-float64(d.X), a.Body.Y-float64(d.Y), a.Body.Z-float64(d.Z)
+		_, open := m.W.Door(d.X, d.Y, d.Z)
+		return st.bust <= 240 && !open && dx*dx+dy*dy+dz*dz < 4
+	case cnShelter:
+		return a.pathing()
 	case cnSprint:
 		return a.Alive() && a.Body.OnGround && a.HurtTime <= 0 && a.moving()
 	case cnLeap:
@@ -317,6 +366,12 @@ func (m *Manager) cnpcCont(a *Actor, i int) bool {
 func (m *Manager) cnpcStart(a *Actor, i int) {
 	st := &a.cn
 	switch i {
+	case cnDoor:
+		st.bust = 0
+		return
+	case cnShelter:
+		m.setPath(a, st.home, 1)
+		return
 	case cnSprint:
 		a.Sprinting = true
 		return
@@ -349,6 +404,11 @@ func (m *Manager) cnpcStart(a *Actor, i int) {
 func (m *Manager) cnpcReset(a *Actor, i int) {
 	st, c := &a.cn, a.CNPC
 	switch i {
+	case cnDoor:
+		m.Doors.Crack(a, st.door.X, st.door.Y, st.door.Z, -1)
+		return
+	case cnShelter:
+		return
 	case cnSprint:
 		a.Sprinting = false
 		return
@@ -382,7 +442,22 @@ func (m *Manager) cnpcReset(a *Actor, i int) {
 func (m *Manager) cnpcUpdate(a *Actor, i int) {
 	st, c := &a.cn, a.CNPC
 	switch i {
-	case cnSprint, cnLeap:
+	case cnDoor: // EntityAIBustDoor.updateTask
+		d := st.door
+		if m.Rand.Intn(20) == 0 {
+			m.Doors.Hit(a, d.X, d.Y, d.Z)
+			a.Swing = 0
+		}
+		st.bust++
+		if s := int(float32(st.bust) / 240 * 10); s != st.crack {
+			m.Doors.Crack(a, d.X, d.Y, d.Z, s)
+			st.crack = s
+		}
+		if st.bust == 240 {
+			m.Doors.Bust(a, d.X, d.Y, d.Z)
+		}
+		return
+	case cnShelter, cnSprint, cnLeap:
 		return
 	case cnAttack:
 		if t := a.Target; t != nil {
@@ -415,6 +490,67 @@ func (m *Manager) cnpcUpdate(a *Actor, i int) {
 	case respStalk:
 		m.stalkUpdate(a)
 	}
+}
+
+// bustShould is EntityAIBustDoor.shouldExecute: blocked by something, a
+// closed wooden door one up from the path's cells up to two past the next
+// within 1.5 (horizontally), else at its own head.
+// ponytail: mobGriefing is taken as on.
+func (m *Manager) bustShould(a *Actor) bool {
+	b, n := a.Body, &a.nav
+	if m.Doors == nil || !b.HorizontalCollision || n.path == nil || n.i >= len(n.path) {
+		return false
+	}
+	found := false
+	for i := 0; i < min(n.i+2, len(n.path)); i++ {
+		p := n.path[i]
+		dx, dz := b.X-float64(p.X), b.Z-float64(p.Z)
+		if dx*dx+dz*dz <= 2.25 && m.Doors.Bustable(p.X, p.Y+1, p.Z) {
+			a.cn.door, found = nav.Pos{X: p.X, Y: p.Y + 1, Z: p.Z}, true
+			break
+		}
+	}
+	if !found {
+		q := nav.Pos{X: int(math.Floor(b.X)), Y: int(math.Floor(b.Y + 1)), Z: int(math.Floor(b.Z))}
+		if !m.Doors.Bustable(q.X, q.Y, q.Z) {
+			return false
+		}
+		a.cn.door = q
+	}
+	_, open := m.W.Door(a.cn.door.X, a.cn.door.Y, a.cn.door.Z)
+	return !open
+}
+
+// shelterShould is EntityAIMoveIndoors.shouldExecute (FindShelter 0: at
+// night or in the rain, unless standing under a roof in light above 8, ten
+// tries for such a block 10 around and 3 up or down) and
+// EntityAIFindShade's (1: by day under the open sky, ten tries for a block
+// under cover darker than brightness 0.5).
+func (m *Manager) shelterShould(a *Actor) (Vec, bool) {
+	w := m.Sky
+	if w == nil {
+		return Vec{}, false
+	}
+	b := a.Body
+	x, y, z := int(math.Floor(b.X)), int(b.Y), int(math.Floor(b.Z)) // (int)boundingBox.minY
+	ok := func(x, y, z int) bool { return !w.SeesSky(x, y, z) && w.FullLight(x, y, z) > 8 }
+	if a.CNPC.FindShelter == 1 {
+		if !w.Daytime() || !w.SeesSky(x, y, z) {
+			return Vec{}, false
+		}
+		ok = func(x, y, z int) bool { return !w.SeesSky(x, y, z) && w.Brightness(x, y, z)-0.5 < 0 }
+	} else if w.Daytime() && !w.Raining() || ok(x, y, z) {
+		return Vec{}, false
+	}
+	for range 10 {
+		i := int(math.Floor(b.X + float64(m.Rand.Intn(20)) - 10))
+		j := int(math.Floor(b.Y + float64(m.Rand.Intn(6)) - 3))
+		k := int(math.Floor(b.Z + float64(m.Rand.Intn(20)) - 10))
+		if ok(i, j, k) {
+			return Vec{float64(i), float64(j), float64(k)}, true
+		}
+	}
+	return Vec{}, false
 }
 
 // avoidShould is EntityAIAvoidTarget.shouldExecute: the nearest player

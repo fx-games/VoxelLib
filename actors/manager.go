@@ -53,6 +53,12 @@ type Manager struct {
 	// PathWeight, if set, is a's getBlockPathWeight at a cell (the random
 	// spots a CustomNPC's tasks pick); nil weighs all alike.
 	PathWeight func(a *Actor, x, y, z int) float32
+	// Sky answers the CustomNPC shelter tasks (CNPCAI.FindShelter); nil:
+	// they never run.
+	Sky SkyWorld
+	// Doors is the world as the CustomNPC door buster sees it
+	// (CNPCAI.DoorInteract 0); nil: it never runs.
+	Doors DoorBuster
 	// Opaque is Block.isOpaqueCube and RayHits World.rayTraceBlocks (a
 	// block meets the segment): the cover a CustomNPC ambushes or stalks
 	// from. Without both it finds none.
@@ -451,4 +457,21 @@ func collidePair(a, b *Actor) {
 		b.Body.VX += dx
 		b.Body.VZ += dz
 	}
+}
+
+// SkyWorld is the world's sky and light as the shelter tasks ask them.
+type SkyWorld interface {
+	SeesSky(x, y, z int) bool       // World.canBlockSeeTheSky
+	FullLight(x, y, z int) int      // World.getFullBlockLightValue
+	Brightness(x, y, z int) float32 // World.getLightBrightness
+	Daytime() bool                  // World.isDaytime
+	Raining() bool                  // World.isRaining
+}
+
+// DoorBuster is what EntityAIBustDoor does to the world.
+type DoorBuster interface {
+	Bustable(x, y, z int) bool          // a wooden door (func_151503_a)
+	Hit(a *Actor, x, y, z int)          // playAuxSFX 1010
+	Crack(a *Actor, x, y, z, stage int) // destroyBlockInWorldPartially (-1 clears)
+	Bust(a *Actor, x, y, z int)         // setBlock air, playAuxSFX 1012 and 2001
 }

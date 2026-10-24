@@ -30,7 +30,8 @@ type navigator struct {
 	detour int
 	detAng float64
 	tries  int
-	nodes  int // the search's expansion cap
+	nodes  int  // the search's expansion cap
+	cut    bool // the path was cut short of the sun (shade): its end is the end
 }
 
 // Planning limits: A* reaches at most planRange blocks ahead (a far goal is
@@ -67,13 +68,15 @@ func (m *Manager) setGraph(g *nav.Graph, a *Actor) {
 			return 0
 		}
 	}
-	g.W, g.Door, g.Water, g.Cost = m.W, nil, nil, m.costFn
+	g.W, g.Door, g.Water, g.Dry, g.Cost = m.W, nil, nil, nil, m.costFn
 	g.Size, g.Closest = nav.SizeOf(a.Body.Width, a.Body.Height), true
 	m.half = a.Body.Width / 2
-	if a.OpensDoors {
+	if a.OpensDoors || a.CNPC != nil && a.CNPC.DoorInteract == 0 && m.Doors != nil { // setBreakDoors
 		g.Door = m.doorFn
 	}
-	if a.CanSwim {
+	if a.AvoidsWater {
+		g.Dry = m.waterFn
+	} else if a.CanSwim {
 		g.Water = m.waterFn
 	}
 }
@@ -166,10 +169,13 @@ func (m *Manager) pump() {
 		}
 		a := m.searching
 		m.searching = nil
+		cut := false
 		if p != nil {
+			p, cut = m.shade(a, p)
 			p = m.search.Smooth(p)
 		}
 		m.finish(a, p)
+		a.nav.cut = cut
 	}
 }
 
@@ -218,6 +224,10 @@ func (m *Manager) moveTo(a *Actor, goal Vec, mul float64) bool {
 		if n.detour == 0 || n.path != nil && n.i >= len(n.path) { // detour walked
 			n.detour, n.has = 0, false
 		}
+	}
+	if n.cut && n.path != nil && n.i >= len(n.path) && goal == n.goal && !n.pending { // the shaded path's end
+		m.stop(a)
+		return true
 	}
 	if !n.has || (goal.dist2(n.goal) > 2.25 && n.age > 10) || (goal != n.goal && n.age > replan) ||
 		(n.path != nil && n.i >= len(n.path) && pos.hdist(goal) > 2) {
@@ -295,6 +305,25 @@ func (m *Manager) moveTo(a *Actor, goal Vec, mul float64) bool {
 		n.check, n.checkT = pos, 0
 	}
 	return false
+}
+
+// shade is PathNavigate.removeSunnyPath for a CustomNPC kept from the sun
+// (FindShelter 1's EntityAIRestrictSun, by day): one standing out of the
+// open sky has its path end two cells before the first cell under it.
+func (m *Manager) shade(a *Actor, p []nav.Pos) ([]nav.Pos, bool) {
+	if a.CNPC == nil || a.CNPC.FindShelter != 1 || m.Sky == nil || !m.Sky.Daytime() {
+		return p, false
+	}
+	b := a.carrier().Body
+	if m.Sky.SeesSky(int(math.Floor(b.X)), int(b.Y+0.5), int(math.Floor(b.Z))) {
+		return p, false
+	}
+	for i, q := range p {
+		if m.Sky.SeesSky(q.X, q.Y, q.Z) {
+			return p[:max(i-1, 0)], true
+		}
+	}
+	return p, false
 }
 
 // stop leaves the carrier standing.

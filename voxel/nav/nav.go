@@ -28,6 +28,10 @@ type Graph struct {
 	// without a floor (the walker swims), and walkers drop into water from
 	// any height.
 	Water func(x, y, z int) bool
+	// Dry, if set instead of Water, marks water cells a walker keeps out
+	// of (PathNavigate.setAvoidsWater, PathFinder.func_82565_a's -1): no
+	// footprint cell may hold water, and a drop ends at none.
+	Dry func(x, y, z int) bool
 	// Cost, if set, adds a cost (10 = one straight step) for entering p,
 	// e.g. for cells other walkers stand in.
 	Cost func(p Pos) int
@@ -140,14 +144,17 @@ func (g *Graph) solid(x, y, z int) bool {
 }
 
 func (g *Graph) water(x, y, z int) bool {
-	if g.Water == nil {
-		return false
+	f := g.Water
+	if f == nil {
+		if f = g.Dry; f == nil {
+			return false
+		}
 	}
 	c := g.cell(x, y, z)
 	if c != nil && *c&cellWaterKnown != 0 {
 		return *c&cellWater != 0
 	}
-	v := g.Water(x, y, z)
+	v := f(x, y, z)
 	if c != nil {
 		*c |= cellWaterKnown
 		if v {
@@ -182,13 +189,35 @@ func (g *Graph) clear(x, y, z, h int) bool {
 	return true
 }
 
+// swim reports whether a swimmer's feet cell is water.
+func (g *Graph) swim(x, y, z int) bool { return g.Water != nil && g.water(x, y, z) }
+
+// wet reports whether, for a walker keeping dry, any footprint cell at p
+// holds water.
+func (g *Graph) wet(p Pos) bool {
+	if g.Dry == nil {
+		return false
+	}
+	w, h := g.size()
+	for i := range h {
+		for a := range w {
+			for b := range w {
+				if g.water(p.X+a, p.Y+i, p.Z+b) {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
 // floor reports whether any footprint cell at (x,z) in layer y is solid.
 func (g *Graph) floor(x, y, z int) bool { return !g.clear(x, y, z, 1) }
 
 // Walkable reports whether p is a valid feet cell.
 func (g *Graph) Walkable(p Pos) bool {
 	_, h := g.size()
-	return g.clear(p.X, p.Y, p.Z, h) && (g.floor(p.X, p.Y-1, p.Z) || g.water(p.X, p.Y, p.Z))
+	return g.clear(p.X, p.Y, p.Z, h) && (g.floor(p.X, p.Y-1, p.Z) || g.swim(p.X, p.Y, p.Z)) && !g.wet(p)
 }
 
 // Neighbors appends the cells reachable from p in one step to buf[:0].
@@ -231,15 +260,21 @@ func (g *Graph) neighbors(p Pos, buf []Pos) (all []Pos, walk int) {
 				}
 			case !g.clear(tx, p.Y+1, tz, ht-1): // low ceiling at target
 				continue
-			case g.floor(tx, p.Y-1, tz) || g.water(tx, p.Y, tz):
+			case g.floor(tx, p.Y-1, tz) || g.swim(tx, p.Y, tz):
 				to = Pos{tx, p.Y, tz}
+				if g.wet(to) {
+					continue
+				}
 			default: // drop
 				ok, limit := false, md+1
 				if g.Water != nil {
 					limit = 64
 				}
 				for d := 2; d <= limit; d++ {
-					if g.water(tx, p.Y-d+1, tz) { // any height into water
+					if g.Dry != nil && g.wet(Pos{tx, p.Y - d + 1, tz}) {
+						break // PathFinder.getSafePoint: water below returns null
+					}
+					if g.swim(tx, p.Y-d+1, tz) { // any height into water
 						to, ok = Pos{tx, p.Y - d + 1, tz}, true
 						break
 					}

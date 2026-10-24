@@ -233,6 +233,7 @@ type Actor struct {
 	KnockDiv             float64 // a knockBack override dividing the motion after it (0: none)
 	Speed                float64 // movementSpeed attribute (player 0.1, zombie 0.23)
 	CanSwim, OpensDoors  bool
+	AvoidsWater          bool // PathNavigate.setAvoidsWater: paths keep out of water
 	FleeWhenHurt         bool // panics when hit (animals)
 	Unpushed             bool // collisions push others but leave its own motion (the game sets it)
 	FireImmune           bool // isImmuneToFire

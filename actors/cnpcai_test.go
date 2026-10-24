@@ -3,6 +3,8 @@ package actors
 import (
 	"math"
 	"testing"
+
+	"github.com/memmaker/voxellib/voxel/nav"
 )
 
 func cnpcPair(t *testing.T, ai CNPCAI, tx float64) (*Manager, *Actor, *Actor) {
@@ -122,5 +124,144 @@ func TestCNPCAI(t *testing.T) {
 	tg.Yaw += math.Pi
 	if !m.lookingAway(a, tg) {
 		t.Fatal("looking away, not seen so")
+	}
+}
+
+// TestCNPCFlip: a hurt CustomNPC turns on the one who hurt it when that one
+// is nearer than its target (combat policy Flip), else keeps its target;
+// one with no target takes the attacker.
+func TestCNPCFlip(t *testing.T) {
+	m, a, tg := cnpcPair(t, CNPCAI{}, 10.5)
+	far := New("far", "man", 20.5, 1, 0.5)
+	near := New("near", "man", 3.5, 1, 0.5)
+	far.Faction, near.Faction = "men", "men"
+	m.Add(far)
+	m.Add(near)
+	m.Hurt(a, far, 1, false)
+	if a.Target != tg {
+		t.Fatalf("far attacker taken: %v", a.Target.ID)
+	}
+	a.hurtResist = 0
+	m.Hurt(a, near, 1, false)
+	if a.Target != near {
+		t.Fatalf("near attacker not taken: %v", a.Target.ID)
+	}
+	a.Target, a.hurtResist = nil, 0
+	m.Hurt(a, far, 1, false)
+	if a.Target != far {
+		t.Fatal("no target from the attack")
+	}
+}
+
+// fakeSky: a roof over x >= 5, light 12 under it, dark (brightness 0.1)
+// under it past x 8.
+type fakeSky struct{ day, rain bool }
+
+func (s fakeSky) SeesSky(x, y, z int) bool  { return x < 5 }
+func (s fakeSky) FullLight(x, y, z int) int { return 12 }
+func (s fakeSky) Brightness(x, y, z int) float32 {
+	if x > 8 {
+		return 0.1
+	}
+	return 0.9
+}
+func (s fakeSky) Daytime() bool { return s.day }
+func (s fakeSky) Raining() bool { return s.rain }
+
+// TestCNPCShelter: FindShelter 1 seeks a dark covered block by day from
+// under the open sky; 0 seeks a lit covered block at night, but not when
+// under one; a shaded walker's path ends two cells short of the sun.
+func TestCNPCShelter(t *testing.T) {
+	m, a, _ := cnpcPair(t, CNPCAI{FindShelter: 1}, 30.5)
+	m.Sky = fakeSky{day: true}
+	a.Target = nil
+	for range 200 {
+		if p, ok := m.shelterShould(a); ok {
+			if p.X <= 8 {
+				t.Fatalf("shade at %v", p)
+			}
+			break
+		}
+	}
+	m.Tick()
+	if !a.cn.on[cnShelter] || a.cn.home.X <= 8 {
+		t.Fatalf("shade task %v home %v", a.cn.on[cnShelter], a.cn.home)
+	}
+	m.Sky = fakeSky{}
+	if _, ok := m.shelterShould(a); ok {
+		t.Fatal("shade by night")
+	}
+	a.CNPC.FindShelter = 0
+	got := false
+	for range 50 {
+		if p, ok := m.shelterShould(a); ok {
+			got = true
+			if p.X < 5 {
+				t.Fatalf("indoors at %v", p)
+			}
+		}
+	}
+	if !got {
+		t.Fatal("no shelter at night")
+	}
+	a.Body.X = 6.5
+	if _, ok := m.shelterShould(a); ok {
+		t.Fatal("seeks shelter under a roof")
+	}
+	a.CNPC.FindShelter = 1
+	m.Sky = fakeSky{day: true}
+	p, cut := m.shade(a, []nav.Pos{{X: 6, Y: 1}, {X: 5, Y: 1}, {X: 4, Y: 1}, {X: 3, Y: 1}})
+	if !cut || len(p) != 1 {
+		t.Fatalf("cut %v %v", cut, p)
+	}
+}
+
+type fakeDoors struct {
+	w      *testWorld
+	stages []int
+	hits   int
+	busted bool
+}
+
+func (d *fakeDoors) Bustable(x, y, z int) bool {
+	_, ok := d.w.door[nav.Pos{X: x, Y: y, Z: z}]
+	return ok
+}
+func (d *fakeDoors) Hit(a *Actor, x, y, z int) { d.hits++ }
+func (d *fakeDoors) Crack(a *Actor, x, y, z, stage int) {
+	d.stages = append(d.stages, stage)
+}
+func (d *fakeDoors) Bust(a *Actor, x, y, z int) {
+	delete(d.w.door, nav.Pos{X: x, Y: y, Z: z})
+	delete(d.w.door, nav.Pos{X: x, Y: y - 1, Z: z})
+	d.busted = true
+}
+
+// TestCNPCBustDoor: DoorInteract 0 walks its path up to a closed door in
+// a wall, hits it for 240 ticks (cracks 0..9, then 10) and breaks it
+// without ever opening it.
+func TestCNPCBustDoor(t *testing.T) {
+	m, a, _ := cnpcPair(t, CNPCAI{DoorInteract: 0, FindShelter: 2}, 8.5)
+	w := m.W.(*testWorld)
+	for z := -40; z < 40; z++ {
+		w.solid[nav.Pos{X: 3, Y: 1, Z: z}], w.solid[nav.Pos{X: 3, Y: 2, Z: z}] = true, true
+	}
+	delete(w.solid, nav.Pos{X: 3, Y: 1})
+	delete(w.solid, nav.Pos{X: 3, Y: 2})
+	w.door[nav.Pos{X: 3, Y: 1}], w.door[nav.Pos{X: 3, Y: 2}] = false, false
+	d := &fakeDoors{w: w}
+	m.Doors = d
+	a.OpensDoors = false
+	for i := 0; i < 600 && !d.busted; i++ {
+		m.Tick()
+		if w.door[nav.Pos{X: 3, Y: 1}] {
+			t.Fatal("opened the door")
+		}
+	}
+	if !d.busted || d.hits == 0 {
+		t.Fatalf("busted %v hits %d stages %v", d.busted, d.hits, d.stages)
+	}
+	if n := len(d.stages); n < 11 || d.stages[0] != 0 || d.stages[n-1] != 10 {
+		t.Fatalf("stages %v", d.stages)
 	}
 }

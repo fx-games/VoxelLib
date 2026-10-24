@@ -170,6 +170,37 @@ func TestSwimAcross(t *testing.T) {
 	}
 }
 
+// TestDry: a walker keeping dry (setAvoidsWater) walks round a shallow
+// puddle the others wade through, and finds no way when it spans the floor.
+func TestDry(t *testing.T) {
+	m := floor()
+	water := map[Pos]bool{}
+	for z := 0; z < 9; z++ { // ankle deep at x 4..6, open at z 9
+		for x := 4; x <= 6; x++ {
+			water[Pos{x, 1, z}] = true
+		}
+	}
+	g := &Graph{W: m}
+	p, ok := g.Path(Pos{1, 1, 1}, Pos{8, 1, 1}, 0)
+	if !ok || len(p) > 9 {
+		t.Fatalf("no wading path: %v", p)
+	}
+	g.Dry = func(x, y, z int) bool { return water[Pos{x, y, z}] }
+	p, ok = g.Path(Pos{1, 1, 1}, Pos{8, 1, 1}, 0)
+	if !ok {
+		t.Fatal("no dry path")
+	}
+	for _, q := range p {
+		if water[q] {
+			t.Fatalf("path wades at %v: %v", q, p)
+		}
+	}
+	water[Pos{5, 1, 9}] = true
+	if p, ok := g.Path(Pos{1, 1, 1}, Pos{8, 1, 1}, 0); ok {
+		t.Fatalf("crossed the water: %v", p)
+	}
+}
+
 // TestStepSlices: a search run in slices of one expansion finds the same
 // path as Path, and the cell cache never changes an answer.
 func TestStepSlices(t *testing.T) {
