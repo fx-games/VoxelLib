@@ -18,6 +18,10 @@ type Entity struct {
 	Yaw, Pitch          float64 // radians, as render.ModelInstance
 	PrevYaw, PrevPitch  float64
 	Width, Height       float64 // box for picking (0 width: not pickable)
+	// Bounds, when set, is the pick box in place of Width x Height: a flat
+	// hanging entity's, which may be inside out along its thin axis until
+	// the player's pick border grows it.
+	Bounds *collide.AABB
 
 	Model int // render.ModelRenderer handle in App.Models; -1 = not drawn
 	// Tick runs each tick after the previous pose was saved.
@@ -32,7 +36,12 @@ type Entity struct {
 }
 
 // Box is the entity's collision box.
-func (e *Entity) Box() collide.AABB { return collide.Box(e.X, e.Y, e.Z, e.Width, e.Height) }
+func (e *Entity) Box() collide.AABB {
+	if e.Bounds != nil {
+		return *e.Bounds
+	}
+	return collide.Box(e.X, e.Y, e.Z, e.Width, e.Height)
+}
 
 // Lerp interpolates the pose between the last two ticks (yaw the short
 // way round).
