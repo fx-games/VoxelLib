@@ -26,6 +26,10 @@ type World struct {
 	lightQ  []lightNode
 	removeQ []lightNode
 	cache   *Chunk
+	// blockCache is Block's last column: set by any reader (a pointer
+	// compared by position, so a race only costs a miss), cleared under
+	// the write lock whenever the chunk map changes.
+	blockCache atomic.Pointer[Chunk]
 
 	dyn  atomic.Pointer[DynField] // dynamic lights (dynlight.go)
 	emit map[BlockPos]uint8       // block light emission overrides (SetEmission)
@@ -98,6 +102,7 @@ func (w *World) AddChunk(c *Chunk) {
 	defer w.mu.Unlock()
 	w.chunks[c.Pos] = c
 	w.cache = nil
+	w.blockCache.Store(nil)
 }
 
 // AddChunks inserts several columns under one lock.
@@ -108,6 +113,7 @@ func (w *World) AddChunks(cs []*Chunk) {
 		w.chunks[c.Pos] = c
 	}
 	w.cache = nil
+	w.blockCache.Store(nil)
 }
 
 // RemoveChunks unloads several columns under one lock and returns those that
@@ -123,6 +129,7 @@ func (w *World) RemoveChunks(ps []ChunkPos) []*Chunk {
 		}
 	}
 	w.cache = nil
+	w.blockCache.Store(nil)
 	return out
 }
 
@@ -133,6 +140,7 @@ func (w *World) RemoveChunk(pos ChunkPos) *Chunk {
 	c := w.chunks[pos]
 	delete(w.chunks, pos)
 	w.cache = nil
+	w.blockCache.Store(nil)
 	return c
 }
 
@@ -152,7 +160,15 @@ func (w *World) chunkAt(x, z int) *Chunk {
 func (w *World) Block(x, y, z int) StateID {
 	w.mu.RLock()
 	defer w.mu.RUnlock()
-	return w.BlockUnlocked(x, y, z)
+	p := ChunkPos{x >> 4, z >> 4}
+	c := w.blockCache.Load()
+	if c == nil || c.Pos != p {
+		if c = w.chunks[p]; c == nil {
+			return Air
+		}
+		w.blockCache.Store(c)
+	}
+	return c.Get(x&15, y, z&15)
 }
 
 // BlockUnlocked is Block for callers holding a lock. It does not use the
