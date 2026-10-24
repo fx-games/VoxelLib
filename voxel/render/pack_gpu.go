@@ -138,7 +138,8 @@ type packGPU struct {
 	cached                       bool // the cache holds shadowKey's terrain
 	withCasters                  bool // the frame's maps hold casters
 	order                        []shadowItem
-	hull                         [][2]float32 // casterHull of this frame
+	regD                         map[*region]float32 // drawShadowsOpaque: a region's nearest section to the light
+	hull                         [][2]float32        // casterHull of this frame
 
 	modules                             map[string]*wgpu.ShaderModule
 	variants                            map[packVariant]*wgpu.RenderPipeline
@@ -175,7 +176,7 @@ func (pk *packGPU) module(label, src string) *wgpu.ShaderModule {
 }
 
 func newPackGPU(q PackQuality) *packGPU {
-	pk := &packGPU{q: q, modules: map[string]*wgpu.ShaderModule{}, variants: map[packVariant]*wgpu.RenderPipeline{},
+	pk := &packGPU{q: q, regD: map[*region]float32{}, modules: map[string]*wgpu.ShaderModule{}, variants: map[packVariant]*wgpu.RenderPipeline{},
 		casterPipes: map[packVariant]*wgpu.RenderPipeline{}}
 	sampler := func(label string, addr gputypes.AddressMode, cmp gputypes.CompareFunction) *wgpu.Sampler {
 		s, err := dev.device.CreateSampler(&wgpu.SamplerDescriptor{Label: label,
@@ -637,10 +638,10 @@ func (pk *packGPU) drawShadows(r *Renderer) {
 	}
 }
 
-// drawShadowsOpaque draws the opaque terrain in the shadow frustum nearest
-// the light first, so the depth test rejects what lies below before the
-// fragment shader runs; ties keep a fixed order. The solid layer goes
-// without the alpha test unless a texture of it needs the test.
+// drawShadowsOpaque draws the opaque terrain that can shade a visible pixel,
+// regions nearest the light first, so the depth test rejects much of what
+// lies below before the fragment shader runs. The solid layer goes without
+// the alpha test unless a texture of it needs the test.
 func (pk *packGPU) drawShadowsOpaque(r *Renderer, p *wgpu.RenderPassEncoder, fr frustum) {
 	mv := pk.u.ShadowMV
 	pk.order = pk.order[:0]
@@ -661,17 +662,22 @@ func (pk *packGPU) drawShadowsOpaque(r *Renderer, p *wgpu.RenderPassEncoder, fr 
 			}
 		}
 	}
-	slices.SortFunc(pk.order, func(a, b shadowItem) int {
-		if c := cmp.Compare(b.d, a.d); c != 0 {
-			return c
+	// Regions nearest the light first (by their nearest section), each
+	// region's ranges merged in vertex order: few draws (mergeRanges) at
+	// the GPU time of a strict per-section light order.
+	clear(pk.regD)
+	for _, it := range pk.order {
+		if d, ok := pk.regD[it.s.reg]; !ok || it.d > d {
+			pk.regD[it.s.reg] = it.d
 		}
-		if c := cmp.Compare(a.s.pos.X, b.s.pos.X); c != 0 {
-			return c
+	}
+	// (stable: the pages of one region key keep their order)
+	slices.SortStableFunc(pk.order, func(a, b shadowItem) int {
+		if a.s.reg != b.s.reg {
+			ka, kb := a.s.reg.key, b.s.reg.key
+			return cmp.Or(cmp.Compare(pk.regD[b.s.reg], pk.regD[a.s.reg]), cmp.Compare(ka[0], kb[0]), cmp.Compare(ka[1], kb[1]), cmp.Compare(ka[2], kb[2]))
 		}
-		if c := cmp.Compare(a.s.pos.Y, b.s.pos.Y); c != 0 {
-			return c
-		}
-		return cmp.Compare(a.s.pos.Z, b.s.pos.Z)
+		return 0 // mergeRanges orders a region's ranges
 	})
 	// Two parts: the solid layer (a prefix of the section's vertices) of
 	// sections without cut textures, then the rest with the alpha test.
@@ -700,6 +706,7 @@ func (pk *packGPU) drawShadowsOpaque(r *Renderer, p *wgpu.RenderPassEncoder, fr 
 			if reg == nil || len(r.counts) == first {
 				return
 			}
+			r.mergeRanges(first)
 			ro := r.regionOrigin(reg)
 			bindUniforms(p, pk.shadowU.reset().mat(mgl32.Ident4()).f(ro[0], ro[1], ro[2], 0).f(0, 0, 0, 0).f(0, 0, 0, 0).f(0, 0, 0, 0).f(0, 0, 0, 0))
 			p.SetVertexBuffer(0, reg.gpu.vbo, 0)
