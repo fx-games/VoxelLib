@@ -107,6 +107,8 @@ type Manager struct {
 	half            float64 // half the width of the walker the graph is set for
 
 	bodyW bodyWorld // body's
+
+	pushGrid map[pushCell][]pushEntry // push's, reused
 }
 
 // NewManager returns a Manager. If arrows is not nil, the Manager installs
@@ -412,13 +414,24 @@ func (m *Manager) record(l *Actor) {
 // a boat once. A rider and its mount don't push each other; a rider pushes
 // but its own velocity is the mount's business (updateRidden zeroes it).
 // Fliers neither push nor are pushed.
+// pushCell and pushEntry are push's grid of bodies by 2×2 column.
+type pushCell struct{ x, z int }
+type pushEntry struct {
+	a *Actor
+	i int
+}
+
 func (m *Manager) push() {
-	type cell struct{ x, z int }
-	type entry struct {
-		a *Actor
-		i int
+	type cell = pushCell
+	type entry = pushEntry
+	grid := m.pushGrid
+	if grid == nil || len(grid) > 4*len(m.Actors)+64 {
+		grid = map[cell][]entry{}
+		m.pushGrid = grid
 	}
-	grid := map[cell][]entry{}
+	for c, l := range grid { // reused tick to tick: keep the slices
+		grid[c] = l[:0]
+	}
 	for i, a := range m.Actors {
 		if a.Fly == nil && (a.Boat == nil || !a.Boat.broken) {
 			c := cell{int(math.Floor(a.Body.X / 2)), int(math.Floor(a.Body.Z / 2))}
