@@ -74,3 +74,25 @@ func TestRandomPicks(t *testing.T) {
 		t.Fatalf("ticks %d, want %d", n, hits)
 	}
 }
+
+// A due tick counts as scheduled this tick until it has run.
+func TestScheduledThisTick(t *testing.T) {
+	w, a, _ := world(t)
+	tk := New(w, func(id voxel.StateID) int32 { return int32(id) })
+	p0, p1 := voxel.BlockPos{X: 0, Y: 1}, voxel.BlockPos{X: 1, Y: 1}
+	w.SetBlock(0, 1, 0, a)
+	w.SetBlock(1, 1, 0, a)
+	tk.Schedule(p0, int32(a), 1, 0, 0)
+	tk.Schedule(p1, int32(a), 1, 0, 0)
+	var seen []bool
+	tk.OnScheduled = func(x, y, z int, id voxel.StateID) {
+		seen = append(seen, tk.ScheduledThisTick(p0, int32(a)), tk.ScheduledThisTick(p1, int32(a)))
+	}
+	tk.RunScheduled(1)
+	if len(seen) != 4 || seen[0] || !seen[1] || seen[2] || seen[3] {
+		t.Fatalf("seen %v", seen)
+	}
+	if tk.ScheduledThisTick(p1, int32(a)) {
+		t.Fatal("still scheduled after the run")
+	}
+}

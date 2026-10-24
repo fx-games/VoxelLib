@@ -36,6 +36,7 @@ type Ticks struct {
 	queue   entries
 	seq     int64
 	due     []*Entry
+	next    int // the index in due of the next tick to run
 	parked  map[voxel.ChunkPos][]*Entry
 	picks   []pick
 }
@@ -135,7 +136,8 @@ func (t *Ticks) RunScheduled(now int64) {
 		delete(t.pending, key{e.Pos, e.Block})
 		t.due = append(t.due, e)
 	}
-	for _, e := range t.due {
+	for i, e := range t.due {
+		t.next = i + 1
 		if !t.loaded(e.Pos) {
 			c := voxel.ChunkPos{X: e.Pos.X >> 4, Z: e.Pos.Z >> 4}
 			e.Time -= now // the delay left, taken up again on load
@@ -147,6 +149,18 @@ func (t *Ticks) RunScheduled(now int64) {
 			t.OnScheduled(e.Pos.X, e.Pos.Y, e.Pos.Z, id)
 		}
 	}
+	t.due, t.next = t.due[:0], 0
+}
+
+// ScheduledThisTick is isBlockTickScheduledThisTick: a tick of block at p
+// left the queue this tick and has not run yet.
+func (t *Ticks) ScheduledThisTick(p voxel.BlockPos, block int32) bool {
+	for _, e := range t.due[t.next:] {
+		if e.Pos == p && e.Block == block {
+			return true
+		}
+	}
+	return false
 }
 
 // ChunkLoaded takes up the ticks parked with chunk c again.
