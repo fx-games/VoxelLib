@@ -347,6 +347,7 @@ type pipelines struct {
 	outline, crosshair          *wgpu.RenderPipeline
 	model, item                 *wgpu.RenderPipeline
 	modelAlpha, modelAdd        *wgpu.RenderPipeline
+	modelOver                   *wgpu.RenderPipeline
 	particleAlpha, particleAdd  *wgpu.RenderPipeline
 	overlay                     *wgpu.RenderPipeline
 	blockItem, blockDamage      *wgpu.RenderPipeline
@@ -456,6 +457,7 @@ func (ps *pipelines) init() error {
 		{&ps.model, pipeSpec{"model", modelWGSL, ps.tex2D, modelBuf, tri, none, nil, true, true, false}},
 		{&ps.modelAlpha, pipeSpec{"model alpha", modelWGSL, ps.tex2D, modelBuf, tri, none, blendAlpha, true, false, false}},
 		{&ps.modelAdd, pipeSpec{"model additive", modelWGSL, ps.tex2D, modelBuf, tri, none, blendAdd, true, false, false}},
+		{&ps.modelOver, pipeSpec{"model over", modelWGSL, ps.tex2D, modelBuf, tri, none, blendAlpha, false, false, false}},
 		{&ps.item, pipeSpec{"item", itemWGSL, ps.texArray, itemBuf, tri, none, nil, true, true, false}},
 		{&ps.particleAlpha, pipeSpec{"particles", particleWGSL, ps.tex2D, particleBuf, tri, none, blendAlpha, true, false, false}},
 		{&ps.particleAdd, pipeSpec{"particles additive", particleWGSL, ps.tex2D, particleBuf, tri, none, blendAdd, true, false, false}},

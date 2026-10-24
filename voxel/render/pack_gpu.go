@@ -690,7 +690,7 @@ func (pk *packGPU) program(pl *wgpu.RenderPipeline) (string, []int, bool) {
 		return packTerrainWGSL, []int{0, 1}, false
 	case ps.terrainTrans:
 		return packWaterWGSL, []int{2, 3, 4}, false
-	case ps.model, ps.modelAlpha, ps.modelAdd:
+	case ps.model, ps.modelAlpha, ps.modelAdd, ps.modelOver:
 		return packModelWGSL, []int{3, 4}, true
 	case ps.item:
 		return packItemWGSL, []int{3, 4}, true

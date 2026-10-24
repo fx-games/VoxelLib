@@ -119,6 +119,8 @@ func (mr *ModelRenderer) drawModel(g *gpuModel, model mgl32.Mat4, skin []mgl32.M
 		setPipe(p, dev.pipes.modelAlpha)
 	case BlendAdditive:
 		setPipe(p, dev.pipes.modelAdd)
+	case BlendOver:
+		setPipe(p, dev.pipes.modelOver)
 	default:
 		setPipe(p, dev.pipes.model)
 	}

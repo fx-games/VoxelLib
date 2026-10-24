@@ -31,6 +31,9 @@ const (
 	BlendNone     = iota // opaque, alpha-tested
 	BlendAlpha           // src alpha, 1 - src alpha; no depth writes
 	BlendAdditive        // one, one (e.g. glowing eyes); no depth writes
+	// BlendOver is BlendAlpha without the depth test: drawn over what is
+	// there, in submission order (e.g. a label seen through walls).
+	BlendOver
 )
 
 type gpuPart struct {
