@@ -98,7 +98,12 @@ func (m *Manager) lookStart(a *Actor, t *LookTask) {
 // EntityLookHelper and EntityBodyHelper. busy: a task of a higher
 // priority holding the look (attack, panic) runs; moving: a move task
 // runs, which resets WatchClosest2 and LookIdle.
-func (m *Manager) lookTasks(a *Actor, busy, moving bool) {
+func (m *Manager) lookTasks(a *Actor, busy, moving bool) { m.lookRun(a, busy, moving, moving) }
+
+// lookRun is lookTasks with the movement tasks' mutex (gate: only
+// WatchClosest runs) apart from the body's motion (moving: the head kept
+// within 75 of it).
+func (m *Manager) lookRun(a *Actor, busy, gate, moving bool) {
 	l := &a.lt
 	stop := func() { *l = lookRun{ran: l.ran, busy: l.busy} }
 	if busy {
@@ -107,7 +112,7 @@ func (m *Manager) lookTasks(a *Actor, busy, moving bool) {
 	}
 	if l.on != 0 {
 		t := &a.Looks[l.on-1]
-		if moving && t.Kind != LookWatch || !m.lookCont(a, t) {
+		if gate && t.Kind != LookWatch || !m.lookCont(a, t) {
 			stop()
 		}
 	}
@@ -117,7 +122,7 @@ func (m *Manager) lookTasks(a *Actor, busy, moving bool) {
 			if l.on != 0 && t.Priority >= a.Looks[l.on-1].Priority {
 				break
 			}
-			if moving && t.Kind != LookWatch {
+			if gate && t.Kind != LookWatch {
 				continue
 			}
 			keep := *l

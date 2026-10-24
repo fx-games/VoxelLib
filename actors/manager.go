@@ -378,6 +378,12 @@ func (m *Manager) moveBody(a *Actor, in character.Input) {
 	default:
 		a.set(Idle)
 	}
+	if f != nil && len(a.Looks) > 0 && a.Brain.LookAt == "" {
+		// a flier's look tasks: its flight is no AI task, so all of them
+		// run aloft; EntityBodyHelper by the horizontal motion
+		m.lookRun(a, false, false, speed*speed > 2.5e-7)
+		return
+	}
 	if len(a.Looks) > 0 && a.Brain.LookAt == "" && a.Fly == nil && !a.lt.ran && a.State != Idle {
 		m.lookTasks(a, a.lt.busy, true) // moving: WatchClosest keeps the head
 		if !a.lt.busy {

@@ -55,3 +55,45 @@ func TestLookTasks(t *testing.T) {
 		t.Fatal("moving kept WatchClosest2")
 	}
 }
+
+// TestFlierLooks: a flier's look tasks run though it flies: an idle look
+// is not dropped by the motion, the head turns to a watched player and,
+// moving, stays within 75 of the body, which keeps the flight's yaw.
+func TestFlierLooks(t *testing.T) {
+	m := NewManager(flat(16), nil, nil, 1)
+	p := New("p", "player", 0.5, 1, -6.5) // straight ahead (yaw 0 faces -z)
+	p.Player = true
+	b := New("b", "bird", 0.5, 4, 0.5)
+	b.Fly = &Flight{Hover: 1}
+	b.Looks = []LookTask{{Priority: 0, Kind: LookWatch, Dist: 12, Chance: 1}}
+	m.Add(p)
+	m.Add(b)
+	for range 30 {
+		m.Tick()
+	}
+	if !b.Watching() || math.Abs(math.Remainder(b.HeadYaw-yawTo(b.Pos(), p.Pos()), 2*math.Pi)) > 0.01 {
+		t.Fatal("still bird not watching", b.lt, b.HeadYaw)
+	}
+	p.Body.Teleport(-6.5, 1, 0.5) // to the side: 90 off the body
+	b.Yaw = 0
+	b.Body.VX, b.Body.VZ = 0, -0.2 // flying ahead
+	for range 15 {
+		b.Body.VZ = -0.2
+		m.Tick()
+		b.Yaw = 0
+	}
+	if d := math.Remainder(b.HeadYaw-b.Yaw, 2*math.Pi); math.Abs(math.Abs(d)-75*math.Pi/180) > 0.01 {
+		t.Fatalf("flying head %.1f deg off the body, want 75", d*180/math.Pi)
+	}
+	b.Looks = []LookTask{{Kind: LookIdle, Chance: 1}}
+	b.lt = lookRun{}
+	ran := false
+	for range 600 {
+		b.Body.VZ = -0.2
+		m.Tick()
+		ran = ran || b.Watching()
+	}
+	if !ran {
+		t.Error("idle look dropped while flying")
+	}
+}
