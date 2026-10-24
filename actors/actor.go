@@ -312,7 +312,10 @@ type Actor struct {
 	speedOff float64 // the effects' speed modifiers: their product - 1
 	// Blocking: a raised blade lets blockable damage through as
 	// weapon.Blocked before armour (the game sets it while in use).
-	Blocking   bool
+	Blocking bool
+	// Use is the actor's item in use when it may raise a blocker (a
+	// shield: ItemUse.Guard sets it); BlockingWith reads it.
+	Use        *ItemUse
 	AggroRange float64
 	Melee      Melee
 	Ranged     *Ranged
@@ -346,8 +349,8 @@ type Actor struct {
 	// (EntityNPCInterface.updateHitbox on mountEntity); standHeight keeps
 	// the other.
 	SeatHeight, standHeight float64
-	RideInput           RideInput // the rider's steering, set each tick for a player rider
-	OnHurt              func(a, src *Actor, amount float64)
+	RideInput               RideInput // the rider's steering, set each tick for a player rider
+	OnHurt                  func(a, src *Actor, amount float64)
 	// Ward, if set, is an attackEntityFrom override: it gets each hurt
 	// first and returns the amount to apply (< 0: refused, as an override
 	// returning false; 0: still a Blow, as super.attackEntityFrom(src, 0)).

@@ -79,8 +79,10 @@ func AddPlayerSlots(c *Container, p *Player) {
 // NewPlayerContainer is ContainerPlayer: slot 0 craft result, 1–4 the 2×2
 // grid, then the player's equipment slots (the last of its Equip first:
 // helmet .. boots by default), then 27 main and 9 hotbar (9–35 and 36–44
-// with the default four). Shift-click sends a stack to the first empty
-// equipment slot that takes it.
+// with the default four), then with Spec.OffHand the off hand (45, the
+// last). Shift-click sends a stack to the first empty equipment slot that
+// takes it, a blocker (Item.Blocks) to an empty off hand, and from the off
+// hand to the main slots and the hotbar.
 func NewPlayerContainer(p *Player, match Matcher) (*Container, *Crafting) {
 	c := &Container{Player: p}
 	cr := &Crafting{Grid: NewGrid(2, 2), Result: NewGrid(1, 1), Match: match}
@@ -94,6 +96,11 @@ func NewPlayerContainer(p *Player, match Matcher) (*Container, *Crafting) {
 	}
 	AddPlayerSlots(c, p)
 	main, hot := 5+n, 5+n+27
+	off := -1
+	if p.Spec.OffHand {
+		off = len(c.Slots)
+		c.Add(&Slot{Inv: p, Index: p.OffSlot()})
+	}
 	c.Transfer = func(c *Container, i int) *Stack {
 		return transferWith(c, i, func(s *Stack) bool {
 			switch {
@@ -106,6 +113,12 @@ func NewPlayerContainer(p *Player, match Matcher) (*Container, *Crafting) {
 				if !c.Slots[j].Has() && c.Slots[j].Valid(s) {
 					return c.Merge(s, j, j+1, false)
 				}
+			}
+			if off >= 0 && i != off && s.Item.Blocks != nil && !c.Slots[off].Has() {
+				return c.Merge(s, off, off+1, false)
+			}
+			if i == off {
+				return c.Merge(s, main, hot+9, false)
 			}
 			if i < hot {
 				return c.Merge(s, hot, hot+9, false)

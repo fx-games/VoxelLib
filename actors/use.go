@@ -13,15 +13,36 @@ const Endless = 72000
 type ItemUse struct {
 	Using    *inventory.Stack
 	UseCount int
+	// Hand is the hand the stack in use is held in (inventory.MainHand
+	// or OffHand): the game's Keep passes Inv.InHand(Hand).
+	Hand int
+	// Inv is the user's inventory, for a blocker's cooldown and break
+	// (nil: no cooldowns, a broken blocker stays in the hand).
+	Inv *inventory.Player
+	// Sound plays a blocker's sounds at the user (nil: silent).
+	Sound func(event string, vol, pitch float32)
+	// The blocker's feedback; set, each replaces its sound: OnBlocked a
+	// blow taken (amount the part blocked), OnDisabled a disabling weapon
+	// (ticks of cooldown), OnBroken the blocker worn out (the hand is
+	// already empty).
+	OnBlocked  func(a *Actor, st *inventory.Stack, amount float64)
+	OnDisabled func(a *Actor, st *inventory.Stack, ticks int)
+	OnBroken   func(a *Actor, st *inventory.Stack)
 }
 
-// Begin is setItemInUse for n ticks. Using the same stack again keeps the
-// count; it reports whether the use started.
+// Begin is setItemInUse for n ticks with the main hand's stack. Using
+// the same stack again keeps the count; it reports whether the use
+// started.
 func (u *ItemUse) Begin(st *inventory.Stack, n int) bool {
+	return u.BeginIn(inventory.MainHand, st, n)
+}
+
+// BeginIn is startUsingItem(hand) for n ticks.
+func (u *ItemUse) BeginIn(hand int, st *inventory.Stack, n int) bool {
 	if u.Using == st {
 		return false
 	}
-	u.Using, u.UseCount = st, n
+	u.Using, u.UseCount, u.Hand = st, n, hand
 	return true
 }
 
@@ -33,7 +54,7 @@ func (u *ItemUse) Raise(a *Actor, st *inventory.Stack) {
 }
 
 // Clear is clearItemInUse: nothing in use, the blade down.
-func (u *ItemUse) Clear(a *Actor) { u.Using, u.UseCount, a.Blocking = nil, 0, false }
+func (u *ItemUse) Clear(a *Actor) { u.Using, u.UseCount, u.Hand, a.Blocking = nil, 0, 0, false }
 
 // Held is how long an endless use has been held (72000 - itemInUseCount).
 func (u *ItemUse) Held() int { return Endless - u.UseCount }
@@ -85,6 +106,23 @@ type Blow struct {
 	// Landed is the game's work after a blow that hurt: hitEntity, the
 	// enchantment crit, item wear. It runs before the fire takes hold.
 	Landed func()
+
+	// Charge turns on the charged blow (Player.attack's attack strength,
+	// read at 0.5 and reset by the blow): Damage scales by 0.2+s²·0.8 and
+	// Bonus by s; only a blow above 0.9 gets the sprint knockback, the
+	// Crit (and then only while not sprinting) and the sweep. nil keeps
+	// the classic blow.
+	Charge *Charge
+	// Sweep marks the main-hand item a sword, which a charged blow on
+	// the ground, near standing still, sweeps with.
+	Sweep bool
+	// Allied spares an actor from the sweep (isAlliedTo; nil: none).
+	Allied func(o *Actor) bool
+	// Sound plays a charged blow's SoundAttack* event (nil: silent).
+	Sound func(event string)
+	// Swept is the sweep's particle cue, with p's facing dx, dz (one
+	// block ahead, at half its height).
+	Swept func(dx, dz float64)
 }
 
 // Critical is attackTargetEntityWithCurrentItem's falling blow: p has
@@ -101,6 +139,9 @@ func Critical(p *Actor, fall float32, blind bool) bool {
 // kill burns) and puts it out again when the blow fails, and after Landed
 // sets fire*4 seconds. It reports whether the blow hurt.
 func (m *Manager) Strike(p, t *Actor, b Blow) bool {
+	if b.Charge != nil {
+		return m.strikeCharged(p, t, b)
+	}
 	if b.Damage <= 0 && b.Bonus <= 0 {
 		return false
 	}

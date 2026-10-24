@@ -115,6 +115,11 @@ type InventoryOptions struct {
 	// NoEquip, NoPreview and NoCrafting leave out the equipment, the
 	// player's box and the 2x2 crafting; their slots move off the GUI.
 	NoEquip, NoPreview, NoCrafting bool
+	// OffHand adds the off-hand slot (NewPlayerContainer's last, with
+	// inventory.PlayerSpec.OffHand) at the player's box's bottom right
+	// (InventoryMenu's 77, 62), its empty icon inventory.OffHandIcon; it
+	// stays off the GUI with NoPreview.
+	OffHand bool
 	// Model draws the player in the box, x, y its top-left corner
 	// (guientity.Player.Draw).
 	Model func(ctx *Context, x, y, mx, my int)
@@ -185,9 +190,14 @@ func InventoryLayout(o InventoryOptions) ContainerLayout {
 		}
 	}
 	var extra func(ctx *Context, left, top, mx, my int)
+	offAt := off
 	if !o.NoPreview {
 		x := x0 + 7 + boxX
 		parts = append(parts, TexPart{x, 7, 25, 7, 54, 73})
+		if o.OffHand {
+			offAt = [2]int{x + 52, 62}
+			parts = append(parts, TexPart{x + 51, 61, 7, 7, 18, 18})
+		}
 		if o.Model != nil {
 			extra = func(ctx *Context, left, top, mx, my int) { o.Model(ctx, left+x, top+7, mx, my) }
 		}
@@ -208,8 +218,13 @@ func InventoryLayout(o InventoryOptions) ContainerLayout {
 	}
 	mx := (W - 162) / 2
 	parts = append(parts, TexPart{mx, mainY, 7, 83, 162, 77})
+	slots := PlayerSlots(s, mx+1, mainY+1, mainY+59)
+	if o.OffHand {
+		icons[len(slots)] = inventory.OffHandIcon
+		slots = append(slots, offAt)
+	}
 	return ContainerLayout{Texture: "textures/gui/container/inventory.png", W: W, H: H, Parts: parts,
-		Labels: labels, Slots: PlayerSlots(s, mx+1, mainY+1, mainY+59), SlotIcons: icons, Extra: extra}
+		Labels: labels, Slots: slots, SlotIcons: icons, Extra: extra}
 }
 
 // panel is inventory.png's frame around w x h of its plain grey.

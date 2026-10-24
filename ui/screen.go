@@ -55,6 +55,7 @@ const (
 	KeyKPEnter   = 335
 	KeyV         = 86
 	KeyE         = 69
+	KeyF         = 70
 	Key1         = 49 // Key1+8 is 9
 	ModShift     = 1
 	ModControl   = 2

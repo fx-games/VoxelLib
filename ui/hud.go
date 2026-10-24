@@ -31,12 +31,33 @@ type HUDState struct {
 	XP        float64
 	Level     int
 	Crosshair bool
-	Mount     *MountBar
-	Boss      *BossBar
+	// OffHand is the off hand's item, drawn in its frame left of the
+	// hotbar when not empty.
+	OffHand ItemStack
+	// Attack is the crosshair attack indicator (actors.Charge.Indicator);
+	// nil: off.
+	Attack *AttackIndicator
+	Mount  *MountBar
+	Boss   *BossBar
 	// Debug are F3's lines, drawn top left (GuiIngame.renderGameOverlay:
 	// 2, 2+10*i, 0xE0E0E0 with shadow); nil: off.
 	Debug []string
 }
+
+// AttackIndicator is the attack strength under the crosshair: the full
+// sprite, or the background with Progress (0..16) pixels of progress.
+type AttackIndicator struct {
+	Progress int
+	Full     bool
+}
+
+// The sprites of the off-hand frame and the attack indicator.
+const (
+	OffHandFrameTex     = "textures/gui/sprites/hud/hotbar_offhand_left.png"
+	AttackFullTex       = "textures/gui/sprites/hud/crosshair_attack_indicator_full.png"
+	AttackBackgroundTex = "textures/gui/sprites/hud/crosshair_attack_indicator_background.png"
+	AttackProgressTex   = "textures/gui/sprites/hud/crosshair_attack_indicator_progress.png"
+)
 
 // MountBar is the ridden animal's health (half hearts). A horse
 // (JumpBar) shows its jump charge Jump (0..1) instead of the XP bar.
@@ -155,6 +176,15 @@ func (h *HUD) Draw(ctx *Context, partial float32) {
 		if st.Crosshair {
 			c.SetInvert(true)
 			DrawTexturedModalRect(c, icons, w/2-7, ht/2-7, 0, 0, 16, 16)
+			if a := st.Attack; a != nil {
+				x, y := w/2-8, ht/2-7+16
+				if a.Full {
+					DrawTexRect(c, ctx.Tex(AttackFullTex), x, y, 0, 0, 16, 16, 16, 16, 0xFFFFFFFF)
+				} else {
+					DrawTexRect(c, ctx.Tex(AttackBackgroundTex), x, y, 0, 0, 16, 4, 16, 4, 0xFFFFFFFF)
+					DrawTexRect(c, ctx.Tex(AttackProgressTex), x, y, 0, 0, a.Progress, 4, 16, 4, 0xFFFFFFFF)
+				}
+			}
 			c.SetInvert(false)
 		}
 		if b := st.Boss; b != nil {
@@ -223,6 +253,10 @@ func (h *HUD) drawHotbar(ctx *Context) {
 	t := ctx.Tex(widgetsTex)
 	DrawTexturedModalRect(c, t, w/2-91, ht-22, 0, 0, 182, 22)
 	DrawTexturedModalRect(c, t, w/2-91-1+h.State.Selected*20, ht-22-1, 0, 22, 24, 22)
+	if off := h.State.OffHand; !off.Empty() { // the left-handed frame (main arm right)
+		DrawTexRect(c, ctx.Tex(OffHandFrameTex), w/2-91-29, ht-23, 0, 0, 29, 24, 29, 24, 0xFFFFFFFF)
+		DrawItem(ctx, off, w/2-91-26, ht-16-3)
+	}
 	for i := 0; i < 9; i++ {
 		DrawItem(ctx, h.State.Hotbar[i], w/2-90+i*20+2, ht-16-3)
 	}

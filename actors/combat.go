@@ -3,6 +3,7 @@ package actors
 import (
 	"math"
 
+	"github.com/memmaker/voxellib/inventory"
 	"github.com/memmaker/voxellib/projectile"
 	"github.com/memmaker/voxellib/weapon"
 )
@@ -220,8 +221,14 @@ func (m *Manager) melee(a, t *Actor) {
 // along src's facing while src slows down. It reports whether the blow
 // counted.
 func (m *Manager) Attack(src, t *Actor, damage float64, knockback int) bool {
+	// EntityPlayer's blow; a mob's attackEntityAsMob has no sprint bonus
+	return m.attack(src, t, damage, knockback, src.Sprinting && src.Player)
+}
+
+// attack is Attack with the sprint bonus decided by the caller.
+func (m *Manager) attack(src, t *Actor, damage float64, knockback int, sprint bool) bool {
 	src.Swing = 0
-	if src.Sprinting && src.Player { // EntityPlayer's blow; a mob's attackEntityAsMob has no sprint bonus
+	if sprint {
 		knockback++
 	}
 	hurt := m.hurtAs(HurtMelee, t, src, damage, false)
@@ -296,6 +303,17 @@ func (m *Manager) Hurt(t, src *Actor, amount float64, unblockable bool) bool {
 	if amount == 0 {
 		return m.Blow(t, src)
 	}
+	// A raised blocker takes its part first (hurtServer's
+	// applyItemBlocking, before the invulnerability window); it is
+	// bypassed by what bypasses armour and by fire (bypasses_shield).
+	if !unblockable && !m.hurtKind.Is(HurtFire) && t.Use != nil {
+		if st := t.BlockingWith(); st != nil {
+			b := m.applyBlocking(t, src, amount)
+			if amount -= b; b > 0 && amount <= 0 {
+				return m.fullyBlocked(t, src, st, b)
+			}
+		}
+	}
 	fresh := true
 	if float64(t.hurtResist) > MaxHurtResist/2 {
 		if amount <= t.lastDamage {
@@ -363,6 +381,24 @@ func (m *Manager) Hurt(t, src *Actor, amount float64, unblockable bool) bool {
 		}
 	}
 	return true
+}
+
+// fullyBlocked is hurtServer with all of the damage blocked: inside the
+// window's second half nothing, else the window starts (no hurt flash:
+// no damage event), the revenge target is set and the blocker's sound
+// plays (onBlocked); no knockback. The hurt does not count.
+func (m *Manager) fullyBlocked(t, src *Actor, st *inventory.Stack, blocked float64) bool {
+	if float64(t.hurtResist) > MaxHurtResist/2 {
+		return false
+	}
+	t.lastDamage, t.hurtResist, t.age = 0, MaxHurtResist, 0
+	if src != nil && src != t {
+		t.revenge, t.revengeTicks = src, 100
+	}
+	if u := t.Use; u != nil {
+		u.blocked(m, t, st, blocked)
+	}
+	return false
 }
 
 // Blow is attackEntityFrom with no damage (an override that zeroes the

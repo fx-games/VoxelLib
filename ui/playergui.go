@@ -66,7 +66,13 @@ type PlayerGUI struct {
 	Item func(*inventory.Stack) ItemStack
 	// Keys open and close the screen (vanilla's inventory key, E).
 	Keys []int
-	// The screen's InventoryOptions (Equip is the player's).
+	// SwapKeys swap the held stack with the off hand while no screen is
+	// open (vanilla's swap-offhand key, F), for a player with an off hand;
+	// OnSwap runs after a swap (the game stops the item in use there).
+	SwapKeys []int
+	OnSwap   func()
+	// The screen's InventoryOptions (Equip is the player's, the off-hand
+	// slot shown when the player has one).
 	EquipAt                        [][2]int
 	NoEquip, NoPreview, NoCrafting bool
 	Model                          func(ctx *Context, x, y, mx, my int)
@@ -82,7 +88,7 @@ type PlayerGUI struct {
 // NewPlayerGUI wires p's container c to ctx: the screen manager running
 // empty closes the inventory.
 func NewPlayerGUI(ctx *Context, p *inventory.Player, c *inventory.Container, item func(*inventory.Stack) ItemStack) *PlayerGUI {
-	g := &PlayerGUI{Ctx: ctx, HUD: &HUD{}, Player: p, Container: c, Item: item, Keys: []int{KeyE}}
+	g := &PlayerGUI{Ctx: ctx, HUD: &HUD{}, Player: p, Container: c, Item: item, Keys: []int{KeyE}, SwapKeys: []int{KeyF}}
 	ctx.Screens.OnEmpty = g.Close
 	return g
 }
@@ -96,7 +102,8 @@ func (g *PlayerGUI) Open() {
 	}
 	g.open = true
 	lay := InventoryLayout(InventoryOptions{Equip: g.Player.EquipSlots(), EquipAt: g.EquipAt,
-		NoEquip: g.NoEquip, NoPreview: g.NoPreview, NoCrafting: g.NoCrafting, Model: g.Model})
+		NoEquip: g.NoEquip, NoPreview: g.NoPreview, NoCrafting: g.NoCrafting, Model: g.Model,
+		OffHand: g.Player.OffSlot() >= 0})
 	g.Ctx.Screens.Open(&ContainerScreen{Layout: lay, Model: NewContainerView(g.Container, g.Item, nil)})
 	if g.OnOpen != nil {
 		g.OnOpen()
@@ -137,6 +144,10 @@ func (g *PlayerGUI) Input(ev Event) bool {
 	switch {
 	case ev.Type == KeyPress && ev.Key >= Key1 && ev.Key <= Key1+8:
 		g.Player.Hold(ev.Key - Key1)
+	case ev.Type == KeyPress && !ev.Repeat && slices.Contains(g.SwapKeys, ev.Key) && g.Player.OffSlot() >= 0:
+		if g.Player.SwapHands() && g.OnSwap != nil {
+			g.OnSwap()
+		}
 	case ev.Type == MouseScroll && ev.DY != 0:
 		d := 1
 		if ev.DY > 0 {
@@ -180,6 +191,10 @@ func (g *PlayerGUI) Draw(fbW, fbH, ww, wh int, partial float32) {
 		st.Hotbar[i] = g.Item(g.Player.Main[i])
 	}
 	st.Selected = g.Player.Held
+	st.OffHand = ItemStack{}
+	if g.Player.OffSlot() >= 0 {
+		st.OffHand = g.Item(g.Player.Off)
+	}
 	g.HUD.Draw(g.Ctx, partial)
 	g.Ctx.Screens.Draw(g.In.X, g.In.Y, partial)
 	if f, ok := g.Ctx.Canvas.(interface {

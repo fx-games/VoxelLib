@@ -84,6 +84,10 @@ const (
 	PickupAll = 6 // double click
 )
 
+// SwapOffHand is Swap's button for the off hand (the swap key over a
+// slot: the reference's button 40).
+const SwapOffHand = 40
+
 // Outside is the slot id for a click outside the window (drops the cursor).
 const Outside = -999
 
@@ -322,8 +326,11 @@ func (c *Container) Click(slot, button, mode int) *Stack {
 		}
 		sl.Changed()
 
-	case mode == Swap && button >= 0 && button < 9:
+	case mode == Swap && (button >= 0 && button < 9 || button == SwapOffHand && p.OffSlot() >= 0) && slot >= 0:
 		sl := c.Slots[slot]
+		if button == SwapOffHand {
+			button = p.OffSlot()
+		}
 		hot := p.Get(button)
 		ok := hot == nil || sl.Inv == Inventory(p) && sl.Valid(hot)
 		empty := -1

@@ -92,7 +92,23 @@ type EquipSlot struct {
 // Equip is DefaultEquip.
 type PlayerSpec struct {
 	Equip []EquipSlot
+	// OffHand adds the off-hand slot (Inventory slot 40 with the default
+	// equipment): the last slot, after the equipment.
+	OffHand bool
+	// OffHandIcon is the off-hand slot's empty icon (resource location);
+	// "" is OffHandIcon.
+	OffHandIcon string
 }
+
+// OffHandIcon is the off-hand slot's default empty icon, the reference's
+// shield slot sprite.
+const OffHandIcon = "textures/gui/sprites/container/slot/shield.png"
+
+// The hands (InteractionHand).
+const (
+	MainHand = iota
+	OffHand
+)
 
 // DefaultEquip is the 1.7.10 armour inventory: boots, leggings,
 // chestplate, helmet (armorInventory 0..3), each taking one piece whose
@@ -119,6 +135,7 @@ func armourSlot(slot int, name string) EquipSlot {
 type Player struct {
 	Main     [36]*Stack
 	Equip    []*Stack
+	Off      *Stack // the off hand (Spec.OffHand)
 	Spec     PlayerSpec
 	Held     int    // hotbar index 0–8
 	Cursor   *Stack // stack carried by the mouse
@@ -126,6 +143,8 @@ type Player struct {
 	// Ender is the player's InventoryEnderChest, shared by every ender
 	// chest (nil until EnderChest makes it).
 	Ender *Grid
+	// Cool is the player's item cooldowns (a disabled shield's).
+	Cool Cooldowns
 
 	OnChange func(i int, old, new *Stack)
 	OnEquip  func(slot int, old, new *Stack)
@@ -162,6 +181,76 @@ func (p *Player) Hold(i int) {
 	}
 }
 
+// OffSlot is the off-hand slot's index as an Inventory (40 with the
+// default equipment), -1 without one.
+func (p *Player) OffSlot() int {
+	if !p.Spec.OffHand {
+		return -1
+	}
+	return 36 + len(p.EquipSlots())
+}
+
+// InHand is getItemInHand: the held hotbar stack or the off hand's.
+func (p *Player) InHand(hand int) *Stack {
+	if hand == OffHand {
+		return p.Off
+	}
+	return p.Current()
+}
+
+// SetInHand is setItemInHand.
+func (p *Player) SetInHand(hand int, s *Stack) {
+	if hand == OffHand {
+		if i := p.OffSlot(); i >= 0 {
+			p.Set(i, s)
+		}
+		return
+	}
+	p.Set(p.Held, s)
+}
+
+// SwapHands is SWAP_ITEM_WITH_OFFHAND: the held stack and the off hand's
+// change places (the caller stops the item in use). It reports whether
+// the player has an off hand.
+func (p *Player) SwapHands() bool {
+	i := p.OffSlot()
+	if i < 0 || p.Held < 0 || p.Held >= 9 {
+		return false
+	}
+	off, main := p.Off, p.Main[p.Held]
+	p.Set(i, main)
+	p.Set(p.Held, off)
+	return true
+}
+
+// UseHands is startUseItem's walk over the hands: try runs for the main
+// hand, then the off hand, until one reports a use. A hand whose item is
+// on cooldown is passed over (its use passes).
+func (p *Player) UseHands(try func(hand int, st *Stack) bool) bool {
+	for hand := MainHand; hand <= OffHand; hand++ {
+		if hand == OffHand && p.OffSlot() < 0 {
+			break
+		}
+		if st := p.InHand(hand); !p.Cool.On(st) && try(hand, st) {
+			return true
+		}
+	}
+	return false
+}
+
+// UseIn is UseHeld for the stack in a hand.
+func (p *Player) UseIn(hand int, st *Stack, n int, keep, always bool) {
+	if keep {
+		if always && st.Count <= 0 {
+			p.SetInHand(hand, nil)
+		}
+		return
+	}
+	if st.Count -= n; st.Count <= 0 {
+		p.SetInHand(hand, nil)
+	}
+}
+
 // UseHeld is the consumption every item use repeats: unless keep (a
 // creative player), n is taken from st, the held stack, and the hotbar
 // slot is cleared once st has run out. always makes that check even when
@@ -186,10 +275,19 @@ func (p *Player) EnderChest() *Grid {
 	return p.Ender
 }
 
-func (p *Player) Size() int  { return 36 + len(p.EquipSlots()) }
+func (p *Player) Size() int {
+	n := 36 + len(p.EquipSlots())
+	if p.Spec.OffHand {
+		n++
+	}
+	return n
+}
 func (p *Player) Limit() int { return 64 }
 func (p *Player) Changed()   {}
 func (p *Player) Get(i int) *Stack {
+	if i >= 36 && i == p.OffSlot() {
+		return p.Off
+	}
 	if i >= 36 {
 		return p.equip()[i-36]
 	}
@@ -197,9 +295,13 @@ func (p *Player) Get(i int) *Stack {
 }
 func (p *Player) Set(i int, s *Stack) {
 	old := p.Get(i)
-	if i >= 36 {
+	off := i >= 36 && i == p.OffSlot()
+	switch {
+	case off:
+		p.Off = s
+	case i >= 36:
 		p.Equip[i-36] = s
-	} else {
+	default:
 		p.Main[i] = s
 	}
 	if old == s {
@@ -208,7 +310,7 @@ func (p *Player) Set(i int, s *Stack) {
 	if p.OnChange != nil {
 		p.OnChange(i, old, s)
 	}
-	if i >= 36 && p.OnEquip != nil {
+	if i >= 36 && !off && p.OnEquip != nil {
 		p.OnEquip(i-36, old, s)
 	}
 }
@@ -236,13 +338,26 @@ func (p *Player) FirstEmpty() int {
 }
 
 func (p *Player) storeSlot(s *Stack) int {
+	// With an off hand, getSlotWithRemainingSpace: the held slot, then
+	// the off hand, then the main slots in order (1.7.10's order whenever
+	// the off hand takes nothing).
+	if p.Spec.OffHand && p.fits(p.Off, s) {
+		if p.Held >= 0 && p.Held < 9 && p.fits(p.Main[p.Held], s) {
+			return p.Held
+		}
+		return p.OffSlot()
+	}
 	for i, m := range p.Main {
-		if m != nil && m.Item == s.Item && m.Stackable() && m.Count < m.MaxStack() && m.Count < p.Limit() &&
-			(!m.Item.HasSubtypes || m.Damage == s.Damage) && TagsEqual(m, s) {
+		if p.fits(m, s) {
 			return i
 		}
 	}
 	return -1
+}
+
+func (p *Player) fits(m, s *Stack) bool {
+	return m != nil && m.Item == s.Item && m.Stackable() && m.Count < m.MaxStack() && m.Count < p.Limit() &&
+		(!m.Item.HasSubtypes || m.Damage == s.Damage) && TagsEqual(m, s)
 }
 
 func (p *Player) storePartial(s *Stack) int {
@@ -262,12 +377,12 @@ func (p *Player) storePartial(s *Stack) int {
 	if j < 0 {
 		return n
 	}
-	if p.Main[j] == nil {
+	if p.Get(j) == nil {
 		c := s.Copy()
 		c.Count = 0
 		p.Set(j, c)
 	}
-	m := p.Main[j]
+	m := p.Get(j)
 	k := min(n, m.MaxStack()-m.Count, p.Limit()-m.Count)
 	if k == 0 {
 		return n

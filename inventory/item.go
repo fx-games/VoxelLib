@@ -98,8 +98,19 @@ type Item struct {
 	Tool        *Tool
 	Armor       *Armor
 	Food        *Food
-	Attack      float32 // attack damage modifier (sword 4+material, tools base+material)
-	BurnTime    int     // furnace fuel ticks
+	// Blocks makes the item a blocker (a shield): used, it is raised.
+	Blocks *BlocksAttacks
+	// Weapon is the weapon component (axes disable blockers).
+	Weapon *Weapon
+	Attack float32 // attack damage modifier (sword 4+material, tools base+material)
+	// AttackSpeed is the item's attack speed modifier (sword -2.4, axes
+	// -3.2 .. -3.0): the attackSpeed attribute is 4 plus it
+	// (actors.Charge).
+	AttackSpeed float32
+	// Sword is the swords item tag: a full-strength blow on the ground
+	// sweeps (actors.Charge).
+	Sword    bool
+	BurnTime int // furnace fuel ticks
 	// Remainder is left in the crafting grid after crafting (bucket for milk).
 	Remainder *Item
 	// Hooks the game sets. OnUse returns true if it handled the right click.

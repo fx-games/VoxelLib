@@ -6,6 +6,7 @@ import (
 	"math/rand"
 
 	"github.com/memmaker/voxellib/character"
+	"github.com/memmaker/voxellib/inventory"
 	"github.com/memmaker/voxellib/projectile"
 	"github.com/memmaker/voxellib/voxel/nav"
 )
@@ -110,6 +111,9 @@ type Manager struct {
 	// invulnerability window, as a LivingHurtEvent handler; 0 or less
 	// drops the hurt.
 	Hurting func(t, src *Actor, amount float64) float64
+	// Weapon, if set, is an attacker's weapon (getWeaponItem): a blocked
+	// blow of one with Item.Weapon disables a player's raised blocker.
+	Weapon func(a *Actor) *inventory.Stack
 	// Effects are the status effect kinds, in the order they tick.
 	Effects []EffectRule
 
