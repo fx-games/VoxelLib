@@ -784,8 +784,9 @@ func setPipe(p *wgpu.RenderPassEncoder, pl *wgpu.RenderPipeline) {
 		if pl == dev.pipes.terrainTrans { // gbuffers_water writes depth (depthtex0 has it, depthtex1 not)
 			depth.DepthWriteEnabled = true
 		}
-		if pl == dev.pipes.blockDamage {
+		if pl == dev.pipes.blockDamage { // glPolygonOffset(-3, -3); Shaders.beginBlockDestroyProgress with tweakBlockDamage: glDepthMask(false)
 			depth.DepthBias, depth.DepthBiasSlopeScale = -3, -3
+			depth.DepthWriteEnabled = false
 		}
 		groups := []*wgpu.BindGroupLayout{dev.uniLayout, g1, pk.g2Layout}
 		if pl == dev.pipes.itemGlint || pl == dev.pipes.modelGlint { // group 3: the glint texture (bindGlint)
@@ -841,8 +842,8 @@ func (pk *packGPU) program(pl *wgpu.RenderPipeline) (string, []int, bool) {
 		return packBlockWGSL, []int{3, 4}, true
 	case ps.particleAlpha, ps.particleAdd:
 		return packParticleWGSL, []int{3, 4}, false
-	case ps.blockDamage:
-		return packDamageWGSL, []int{0, 1}, false
+	case ps.blockDamage: // tweakBlockDamage: drawBuffersColorAtt0
+		return packDamageWGSL, []int{0}, false
 	case ps.outline:
 		return packBasicWGSL, []int{0}, false
 	case ps.skyAlpha, ps.skyAdd, ps.skyOpaque:

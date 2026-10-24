@@ -2049,8 +2049,11 @@ fn fs(i: V) -> @location(0) vec4f { return textureSampleLevel(src, samp, i.uv, 0
 `
 
 // packDamageWGSL is the breaking overlay (blockWGSL's damage mode) drawn
-// with gbuffers_terrain, the program OptiFine uses for it (tweakBlockDamage
-// off: both draw buffers, blended like the colour). OptiFine's RenderBlocks
+// with gbuffers_terrain, the program OptiFine uses for it, as OptiFine's
+// tweakBlockDamage draws it: colour buffer only, no depth write. With the
+// option off (the instance's setting) the 2*src*dst blend also hits the
+// normal buffer, which clamps every face not seen head on to black cracks
+// under the pack's lighting. OptiFine's RenderBlocks
 // pushes the block's mc_Entity for renderBlockUsingTexture too, so the
 // cracks wave with the block and carry its normal.a; the colour is
 // glColor4f(1, 1, 1, 0.5), which the emissive classes replace by 1.
