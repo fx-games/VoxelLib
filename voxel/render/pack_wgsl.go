@@ -135,6 +135,40 @@ fn calcMove(pos: vec3f, f0: f32, f1: f32, f2: f32, f3: f32, f4: f32, f5: f32, am
 	let move2 = calcWave(pos + move1, 0.0348, 0.0400, 0.0400, f0, f1, f2, f3, f4, f5) * amp2;
 	return move1 + move2;
 }
+// terrainVertex is gbuffers_terrain.vsh's per-block part: the waving moves
+// and normal.a (material) by the vertex's class, and the colour the
+// emissive classes drop. pos is camera relative, istopv is
+// gl_MultiTexCoord0.t < mc_midTexCoord.t.
+struct TG { pos: vec3f, color: vec4f, na: f32 }
+fn terrainVertex(p: vec3f, m: u32, uv: vec2f, c: vec4f) -> TG {
+	var position = p;
+	var color = c;
+	var na = 0.02;
+	let worldpos = position + pu.camPos.xyz;
+	let istopv = uv.y < 0.5;
+	if (istopv) {
+		if (m == 1u) { position += calcMove(worldpos, 0.0041, 0.0070, 0.0044, 0.0038, 0.0063, 0.0000, vec3f(3.0, 1.6, 3.0), vec3f(0.0, 0.0, 0.0)); }
+		if (m == 2u) { position += calcMove(worldpos, 0.0041, 0.0070, 0.0044, 0.0038, 0.0240, 0.0000, vec3f(0.8, 0.0, 0.8), vec3f(0.4, 0.0, 0.4)); }
+		if (m == 6u) { position += calcMove(worldpos, 0.0105, 0.0096, 0.0087, 0.0063, 0.0097, 0.0156, vec3f(1.2, 0.4, 1.2), vec3f(0.8, 0.8, 0.8)); }
+	}
+	if (m == 3u) { position += calcMove(worldpos, 0.0040, 0.0064, 0.0043, 0.0035, 0.0037, 0.0041, vec3f(1.0, 0.2, 1.0), vec3f(0.5, 0.1, 0.5)); }
+	if (m == 4u) { position += calcMove(worldpos, 0.0040, 0.0064, 0.0043, 0.0035, 0.0037, 0.0041, vec3f(0.5, 1.0, 0.5), vec3f(0.25, 0.5, 0.25)); }
+	if (m == 7u) {
+		let fy = fract(worldpos.y + 0.001);
+		let wave = 0.05 * sin(2.0 * PI * (frameTimeCounter() * 0.2 + worldpos.x / 7.0 + worldpos.z / 13.0))
+			+ 0.05 * sin(2.0 * PI * (frameTimeCounter() * 0.15 + worldpos.x / 11.0 + worldpos.z / 5.0));
+		position.y += clamp(wave, -fy, 1.0 - fy) * 0.5;
+	}
+	if (m == 5u) {
+		let fy = fract(worldpos.y + 0.001);
+		let wave = 0.05 * sin(2.0 * PI * (frameTimeCounter() * 0.8 + worldpos.x / 2.5 + worldpos.z / 5.0))
+			+ 0.05 * sin(2.0 * PI * (frameTimeCounter() * 0.6 + worldpos.x / 6.0 + worldpos.z / 12.0));
+		position.y += clamp(wave, -fy, 1.0 - fy) * 1.05;
+	}
+	if (m == 6u || m == 7u || m == 13u) { na = 0.6; color = vec4f(1.0); }
+	if (m == 4u || m == 2u || m == 10u || m == 1u || m == 12u || m == 5u || m == 7u || m == 3u) { na = 0.7; }
+	return TG(position, color, na);
+}
 `
 
 // Material classes in terrain vertex word 3 bits 24..31
@@ -259,33 +293,10 @@ struct GV {
 fn vs(@location(0) d: vec4<u32>) -> GV {
 	let t = decodeTerrain(d);
 	var o: GV;
-	var na = 0.02;
-	let m = t.mat;
-	var position = t.pos;
-	let worldpos = position + pu.camPos.xyz;
-	let istopv = t.uv.y < 0.5; // gl_MultiTexCoord0.t < mc_midTexCoord.t
-	if (istopv) {
-		if (m == 1u) { position += calcMove(worldpos, 0.0041, 0.0070, 0.0044, 0.0038, 0.0063, 0.0000, vec3f(3.0, 1.6, 3.0), vec3f(0.0, 0.0, 0.0)); }
-		if (m == 2u) { position += calcMove(worldpos, 0.0041, 0.0070, 0.0044, 0.0038, 0.0240, 0.0000, vec3f(0.8, 0.0, 0.8), vec3f(0.4, 0.0, 0.4)); }
-		if (m == 6u) { position += calcMove(worldpos, 0.0105, 0.0096, 0.0087, 0.0063, 0.0097, 0.0156, vec3f(1.2, 0.4, 1.2), vec3f(0.8, 0.8, 0.8)); }
-	}
-	if (m == 3u) { position += calcMove(worldpos, 0.0040, 0.0064, 0.0043, 0.0035, 0.0037, 0.0041, vec3f(1.0, 0.2, 1.0), vec3f(0.5, 0.1, 0.5)); }
-	if (m == 4u) { position += calcMove(worldpos, 0.0040, 0.0064, 0.0043, 0.0035, 0.0037, 0.0041, vec3f(0.5, 1.0, 0.5), vec3f(0.25, 0.5, 0.25)); }
-	if (m == 7u) {
-		let fy = fract(worldpos.y + 0.001);
-		let wave = 0.05 * sin(2.0 * PI * (frameTimeCounter() * 0.2 + worldpos.x / 7.0 + worldpos.z / 13.0))
-			+ 0.05 * sin(2.0 * PI * (frameTimeCounter() * 0.15 + worldpos.x / 11.0 + worldpos.z / 5.0));
-		position.y += clamp(wave, -fy, 1.0 - fy) * 0.5;
-	}
-	if (m == 5u) {
-		let fy = fract(worldpos.y + 0.001);
-		let wave = 0.05 * sin(2.0 * PI * (frameTimeCounter() * 0.8 + worldpos.x / 2.5 + worldpos.z / 5.0))
-			+ 0.05 * sin(2.0 * PI * (frameTimeCounter() * 0.6 + worldpos.x / 6.0 + worldpos.z / 12.0));
-		position.y += clamp(wave, -fy, 1.0 - fy) * 1.05;
-	}
-	var color = vec4f(t.color, 1.0);
-	if (m == 6u || m == 7u || m == 13u) { na = 0.6; color = vec4f(1.0); }
-	if (m == 4u || m == 2u || m == 10u || m == 1u || m == 12u || m == 5u || m == 7u || m == 3u) { na = 0.7; }
+	let g = terrainVertex(t.pos, t.mat, t.uv, vec4f(t.color, 1.0));
+	let position = g.pos;
+	let color = g.color;
+	let na = g.na;
 	o.pos = jitter(u.viewProj * vec4f(position, 1.0));
 	o.uv = t.uv;
 	o.layer = t.layer;
@@ -2038,7 +2049,11 @@ fn fs(i: V) -> @location(0) vec4f { return textureSampleLevel(src, samp, i.uv, 0
 `
 
 // packDamageWGSL is the breaking overlay (blockWGSL's damage mode) drawn
-// with gbuffers_terrain, the program OptiFine uses for it.
+// with gbuffers_terrain, the program OptiFine uses for it (tweakBlockDamage
+// off: both draw buffers, blended like the colour). OptiFine's RenderBlocks
+// pushes the block's mc_Entity for renderBlockUsingTexture too, so the
+// cracks wave with the block and carry its normal.a; the colour is
+// glColor4f(1, 1, 1, 0.5), which the emissive classes replace by 1.
 var packDamageWGSL = `
 const damagePull = 0.002;
 struct U {
@@ -2056,12 +2071,15 @@ struct U {
 @group(1) @binding(2) var layerMap: texture_2d<u32>;
 @group(1) @binding(3) var lightmap: texture_2d<f32>;
 @group(1) @binding(4) var lightSamp: sampler;
-` + packCommonWGSL + packGroupWGSL + `
+` + packCommonWGSL + packGroupWGSL + packWaveWGSL + `
 struct VOut {
 	@builtin(position) pos: vec4f,
 	@location(0) uv: vec2f,
-	@location(1) normal: vec3f,
+	@location(1) normal: vec4f,
 	@location(2) lm: vec2f,
+	@location(3) alpha: f32,
+	@location(4) @interpolate(flat) flat: u32,
+	@location(5) vpos: vec3f,
 }
 fn faceNormal(n: u32) -> vec3f {
 	var normals = array<vec3f, 7>(vec3f(0.0, -1.0, 0.0), vec3f(0.0, 1.0, 0.0), vec3f(0.0, 0.0, -1.0),
@@ -2075,11 +2093,16 @@ fn vs(@location(0) d: vec4<u32>) -> VOut {
 	let fine = vec3f(f32((w1 >> 26u) & 3u), f32((w1 >> 28u) & 3u), f32(w1 >> 30u));
 	let local = (coarse * 4.0 + fine) * (1.0 / 128.0) - 8.0;
 	var o: VOut;
-	o.pos = jitter(u.mvp * vec4f((u.model * vec4f(local, 1.0)).xyz * (1.0 - damagePull), 1.0));
 	o.uv = vec2f(f32((w1 >> 12u) & 31u), f32((w1 >> 17u) & 31u));
 	if ((w1 & (1u << 25u)) != 0u) { o.uv = o.uv * (1.0 / 16.0); }
-	o.normal = m3(pu.mv) * m3(u.model) * faceNormal((w1 >> 22u) & 7u);
+	let g = terrainVertex((u.model * vec4f(local, 1.0)).xyz, w3 >> 24u, o.uv, vec4f(1.0, 1.0, 1.0, 0.5));
+	o.pos = jitter(u.mvp * vec4f(g.pos * (1.0 - damagePull), 1.0));
+	let n = (w1 >> 22u) & 7u;
+	o.normal = vec4f(m3(pu.mv) * m3(u.model) * faceNormal(n), g.na);
+	o.flat = select(0u, 1u, n >= 6u);
+	o.vpos = (pu.mv * vec4f(g.pos, 1.0)).xyz;
 	o.lm = (vec2f(f32((w3 >> 8u) & 255u), f32(w3 & 255u)) + 8.0) * (1.0 / 256.0);
+	o.alpha = g.color.a;
 	return o;
 }
 struct GOut {
@@ -2088,15 +2111,18 @@ struct GOut {
 }
 @fragment
 fn fs(i: VOut) -> GOut {
+	let dn = normalize(cross(dpdy(i.vpos), dpdx(i.vpos)));
 	var albedo = textureSample(tex, samp, i.uv, u32(u.fog.z));
-	albedo.a *= 0.5; // glColor4f(1, 1, 1, 0.5)
+	albedo.a *= i.alpha;
 	if (albedo.a <= 0.1) { discard; }
 	var c = vec4f(ycocg(albedo.rgb), albedo.a);
 	if (pattern(glFrag(i.pos))) { c.g = c.b; }
-	c.b = 0.02;
+	c.b = i.normal.a;
+	var n = i.normal.xyz;
+	if (i.flat == 1u) { n = dn; }
 	var o: GOut;
 	o.c0 = c;
-	o.c1 = vec4f(encodeNormal(normalize(i.normal)), i.lm);
+	o.c1 = vec4f(encodeNormal(normalize(n)), i.lm);
 	return o;
 }
 `
