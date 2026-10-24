@@ -772,19 +772,29 @@ func packResolve() {
 		p.SetScissorRect(gputypes.ScissorRect{X: 0, Y: h - qh, Width: qw, Height: qh})
 		return p
 	}
+	if gpuMarks { // the bench's pass times: the world part (gbuffers, shadow) and each composite
+		markPart = "pack world"
+	}
+	GPUMark("composite")
 	full(beginPass("composite", att(pk.b[3].mips[0], pk.b[4].mips[0]), nil), pk.comps[0], pk.comp[0])
 	mip(pk.mipB4, pk.b[4].mips[1])
+	GPUMark("composite1")
 	full(beginPass("composite1", att(pk.a[3].mips[0]), nil), pk.comps[1], pk.comp[1])
+	GPUMark("composite2")
 	full(beginPass("composite2", att(pk.b[7].mips[0]), nil), pk.comps[2], pk.comp[2])
 	mip(pk.mipB7a, pk.b[7].mips[1])
 	mip(pk.mipB7b, pk.b[7].mips[2])
+	GPUMark("composite3")
 	full(quarter(beginPass("composite3", att(pk.b[6].mips[0]), nil), 16), pk.comps[3], pk.comp[3])
+	GPUMark("composite4")
 	full(quarter(beginPass("composite4", att(pk.a[6].mips[0]), nil), 4), pk.comps[4], pk.comp[4])
+	GPUMark("final")
 	target := dev.target
 	if dev.capturing {
 		target = dev.capTex.view
 	}
 	full(beginPass("final", att(target), nil), pk.comps[5], pk.comp[5])
+	GPUMark("after pack")
 	dev.clearNext, dev.clearDepth = false, true
 }
 

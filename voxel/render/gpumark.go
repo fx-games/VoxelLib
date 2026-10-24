@@ -21,7 +21,8 @@ var (
 )
 
 // GPUMark times the GPU work recorded since the last mark (under that
-// mark's label) and starts the part named next. Not in shader-pack frames.
+// mark's label) and starts the part named next. Not inside the world part of
+// a shader-pack frame (packResolve times that part and its composites).
 func GPUMark(next string) {
 	if !gpuMarks || dev.enc == nil || dev.pk != nil {
 		return
