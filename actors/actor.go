@@ -149,6 +149,9 @@ type Melee struct {
 	// OnHit, when set, runs after each blow that hurt t (weapon effects:
 	// setting it alight, slowing it).
 	OnHit func(src, t *Actor)
+	// OnBlow, when set, runs after each blow, whether it hurt t or not
+	// (an attacker's own on-blow effect).
+	OnBlow func(src, t *Actor)
 	// Hold makes the chase strike no blows (an attack task that only
 	// closes in, the game acting on arrival).
 	Hold bool

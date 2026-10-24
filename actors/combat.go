@@ -168,6 +168,9 @@ func (m *Manager) melee(a, t *Actor) {
 		if m.Attack(a, t, dmg, a.Melee.Knockback) && a.Melee.OnHit != nil {
 			a.Melee.OnHit(a, t)
 		}
+		if a.Melee.OnBlow != nil {
+			a.Melee.OnBlow(a, t)
+		}
 	}
 }
 
