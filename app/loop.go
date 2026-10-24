@@ -150,7 +150,17 @@ func (a *App) loop() {
 			}
 		}
 		var present time.Duration // overlap: the main thread's EndFrame of the last frame
-		if overlap {
+		if overlap && !(acc >= TickDur && !atShot()) {
+			// No tick due: waking the tick thread for nothing costs up to
+			// a few ms when the workers hold every P.
+			if pending {
+				tp := time.Now()
+				a.endFrame(gpuWait && stopProfile != nil, &benchGPU)
+				pending = false
+				present = time.Since(tp)
+				swapD = present
+			}
+		} else if overlap {
 			a.Input.snapshot()
 			a.ticking = true
 			tickGo <- struct{}{}
