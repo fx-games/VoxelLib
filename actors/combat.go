@@ -289,6 +289,7 @@ func (m *Manager) Hurt(t, src *Actor, amount float64, unblockable bool) bool {
 	}
 	t.Health -= dealt
 	t.age = 0
+	t.cn.reset = 0 // CombatHandler.damage
 	if t.OnDamage != nil {
 		t.OnDamage(t, src, amount)
 	}

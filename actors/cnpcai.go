@@ -85,6 +85,10 @@ type cnpcState struct {
 	halted   bool    // the attack's reset cleared the path (kept to walk on)
 	home     Vec     // EntityAIMoveIndoors / EntityAIFindShade.shelterX/Y/Z
 	door     nav.Pos // EntityAIDoorInteract.entityPosX/Y/Z
+	// attacking is the isAttacking flag, reset counts CombatHandler's
+	// combatResetTimer.
+	attacking bool
+	reset     int
 	bust     int     // EntityAIBustDoor.breakingTime
 	crack    int     // its field_75358_j, the last crack stage sent
 }
@@ -176,6 +180,7 @@ func (m *Manager) cnpcTasks(a *Actor) bool {
 	if !st.inited {
 		st.init(a)
 	}
+	st.combat(a)
 	var start [cnTasks]bool
 	if st.tick%3 == 0 {
 		for i := range cnTasks {
@@ -224,6 +229,31 @@ func (m *Manager) cnpcTasks(a *Actor) bool {
 	}
 	return busy
 }
+
+// combat is CombatHandler.update (run before the tasks, as the previous
+// tick's onUpdate ran it after them): attacking from a target until 40
+// ticks after the last tick the target was valid (alive and within the
+// aggro range); killed, it stops.
+// ponytail: a creative player stays a valid target; the game's target
+// pick leaves creative players out.
+func (st *cnpcState) combat(a *Actor) {
+	if !a.Alive() {
+		st.attacking, st.reset = false, 0
+		return
+	}
+	t := a.Target
+	if t != nil && !st.attacking {
+		st.attacking, st.reset = true, 0
+	}
+	if t != nil && t.Alive() && a.inRange(t, a.AggroRange) {
+		st.reset = 0
+	} else if st.reset++; st.reset > 41 {
+		st.attacking, st.reset = false, 0
+	}
+}
+
+// CNPCAttacking is a CustomNPC's isAttacking (CombatHandler's flag).
+func (a *Actor) CNPCAttacking() bool { return a.cn.attacking }
 
 // cnpcFlip is EntityNPCInterface.attackEntityFrom's choice of target when
 // src hurts a: one not attacking takes src, one attacking (combat policy
