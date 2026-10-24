@@ -11,8 +11,15 @@ type Inventory interface {
 
 // Take removes up to n items from slot i of inv (IInventory.decrStackSize):
 // if the slot holds n or fewer, the slot's own stack is returned and the slot
-// emptied.
+// emptied. An inventory with its own Take(i, n) decides for itself.
 func Take(inv Inventory, i, n int) *Stack {
+	if t, ok := inv.(interface{ Take(i, n int) *Stack }); ok {
+		return t.Take(i, n)
+	}
+	return take(inv, i, n)
+}
+
+func take(inv Inventory, i, n int) *Stack {
 	s := inv.Get(i)
 	if s == nil {
 		return nil
