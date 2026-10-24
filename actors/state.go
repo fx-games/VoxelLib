@@ -95,7 +95,11 @@ func (m *Manager) Load(s Snapshot, make func(id, kind string) *Actor) {
 	}
 	for _, v := range riders {
 		if r, mt := m.byID[v.ID], m.byID[v.Riding]; r != nil && mt != nil {
-			m.Mount(r, mt)
+			if mt.Mount == nil && mt.Boat == nil {
+				m.Carry(r, mt)
+			} else {
+				m.Mount(r, mt)
+			}
 		}
 	}
 	if m.Factions != nil {

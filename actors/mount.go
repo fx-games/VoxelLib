@@ -74,6 +74,23 @@ func (m *Manager) Mount(rider, mount *Actor) bool {
 	return true
 }
 
+// Carry is Entity.mountEntity onto any entity: rider leaves what it
+// rode and sits on mount, which needs no Mount or Boat (then at
+// getMountedYOffset, 0.75 of its height). It fails on itself, a mount
+// already carrying someone or a dead one.
+func (m *Manager) Carry(rider, mount *Actor) bool {
+	if mount.Rider != nil || rider == mount || !mount.Alive() {
+		return false
+	}
+	if rider.Riding != nil {
+		rider.Riding.Rider = nil
+	}
+	rider.Riding, mount.Rider = mount, rider
+	m.seat(rider)
+	rider.Body.PrevX, rider.Body.PrevY, rider.Body.PrevZ = rider.Body.X, rider.Body.Y, rider.Body.Z
+	return true
+}
+
 // playerYOffset is how far the reference's player position sits above
 // its feet (yOffset); other bodies stand on their position.
 const playerYOffset = 1.62
@@ -147,6 +164,8 @@ func (m *Manager) seat(r *Actor) {
 	var ox, oy, oz float64
 	if mt.Boat != nil {
 		ox, oy, oz = boatSeat(r, mt)
+	} else if mt.Mount == nil {
+		oy = mb.Height * 0.75 // Entity.getMountedYOffset
 	} else if oy = mt.Mount.RideHeight; mt.Mount.Anim.PrevRear > 0 {
 		a := mt.Mount.Anim.PrevRear
 		ox, oy, oz = -math.Sin(mt.Yaw)*0.7*a, oy+0.15*a, math.Cos(mt.Yaw)*0.7*a
