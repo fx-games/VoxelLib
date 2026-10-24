@@ -55,6 +55,7 @@ var dev struct {
 	clearDepth bool // next pass clears depth
 
 	multiDraw bool // FeatureMultiDrawIndirect
+	rg11      bool // RG11B10Ufloat render targets (FeatureRG11B10UfloatRenderable)
 	draws     int  // draw commands this frame (an indirect multidraw counts once)
 	lastDraws int
 	debug     bool // VOXELLIB_WGPU_DEBUG: log validation errors per frame
@@ -108,6 +109,13 @@ func Init(win *glfw.Window, vsync bool) error {
 		feats |= gputypes.Features(gputypes.FeatureMultiDrawIndirect)
 		dev.multiDraw = true
 	}
+	// Metal renders and blends RG11B10Float on every GPU it runs on, but
+	// the wgpu Metal HAL doesn't report the feature, so it is asked for.
+	if dev.adapter.Features().Contains(gputypes.FeatureRG11B10UfloatRenderable) || dev.adapter.Info().Backend == gputypes.BackendMetal {
+		feats |= gputypes.Features(gputypes.FeatureRG11B10UfloatRenderable)
+		dev.rg11 = true
+		packUseRG11()
+	}
 	if dev.device, err = dev.adapter.RequestDevice(&wgpu.DeviceDescriptor{
 		Label:            "voxellib",
 		RequiredFeatures: feats,
@@ -118,7 +126,7 @@ func Init(win *glfw.Window, vsync bool) error {
 	dev.queue = dev.device.Queue()
 	if os.Getenv("VOXELLIB_WGPU_DEBUG") != "" {
 		info := dev.adapter.Info()
-		log.Printf("wgpu: %s (%v), multidraw %v ", info.Name, info.Backend, dev.multiDraw)
+		log.Printf("wgpu: %s (%v), multidraw %v, rg11b10 targets %v", info.Name, info.Backend, dev.multiDraw, dev.rg11)
 		dev.debug = true
 	}
 

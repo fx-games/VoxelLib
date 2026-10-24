@@ -21,12 +21,25 @@ import (
 
 // Gbuffer render targets: colortex0..7 (gcolor, gdepth, gnormal,
 // composite, gaux1..4) with the pack's formats. WebGPU can't render to
-// RGBA16 (unorm) or, on Metal, R11F_G11F_B10F, so those are RGBA16F:
-// more precision and range than the pack's, never less.
+// RGBA16 (unorm), so gdepth and gaux1 are RGBA16F, clamped to 0..1 on
+// output (packStore). R11F_G11F_B10F (composite, gaux2..4) is RG11B10Ufloat
+// where the device renders it (packUseRG11), else RGBA16F clamped likewise.
 var packFormats = [8]gputypes.TextureFormat{
 	gputypes.TextureFormatRGBA8Unorm, gputypes.TextureFormatRGBA16Float, gputypes.TextureFormatRGB10A2Unorm,
 	gputypes.TextureFormatRGBA16Float, gputypes.TextureFormatRGBA16Float, gputypes.TextureFormatRGBA16Float,
 	gputypes.TextureFormatRGBA16Float, gputypes.TextureFormatRGBA16Float,
+}
+
+// packR11 are the R11F_G11F_B10F buffers: colortex3, 5..7.
+var packR11 = []int{3, 5, 6, 7}
+
+// packUseRG11 gives the R11F_G11F_B10F buffers their own format; the
+// hardware's store then clamps as storeR11 does (no sign, 65024 maximum).
+func packUseRG11() {
+	for _, i := range packR11 {
+		packFormats[i] = gputypes.TextureFormatRG11B10Ufloat
+	}
+	packR11Clamp = false
 }
 
 // packMips: gaux1 (colortex4) and gaux4 (colortex7) are mipmapped
@@ -123,11 +136,11 @@ type packGPU struct {
 	cached                       bool // the cache holds shadowKey's terrain
 	withCasters                  bool // the frame's maps hold casters
 
-	modules                       map[string]*wgpu.ShaderModule
-	variants                      map[packVariant]*wgpu.RenderPipeline
-	casterPipes                   map[packVariant]*wgpu.RenderPipeline // hand = depth only
-	comps                         [6]*wgpu.RenderPipeline
-	mip, copy, shadowOp, shadowTr *wgpu.RenderPipeline
+	modules                             map[string]*wgpu.ShaderModule
+	variants                            map[packVariant]*wgpu.RenderPipeline
+	casterPipes                         map[packVariant]*wgpu.RenderPipeline // hand = depth only
+	comps                               [6]*wgpu.RenderPipeline
+	mip, mip7, copy, shadowOp, shadowTr *wgpu.RenderPipeline
 
 	// this frame
 	r           *Renderer
@@ -231,20 +244,22 @@ func newPackGPU(q PackQuality) *packGPU {
 		&wgpu.DepthStencilState{Format: gputypes.TextureFormatDepth32Float, DepthWriteEnabled: true, DepthCompare: gputypes.CompareFunctionAlways})
 
 	pk.mip = pk.pipeline("pack mip", packMipWGSL, []*wgpu.BindGroupLayout{pk.mipLayout}, nil, nil,
-		[]gputypes.ColorTargetState{{Format: gputypes.TextureFormatRGBA16Float, WriteMask: gputypes.ColorWriteMaskAll}}, nil)
+		[]gputypes.ColorTargetState{{Format: packFormats[4], WriteMask: gputypes.ColorWriteMaskAll}}, nil)
+	pk.mip7 = pk.pipeline("pack mip", packMipWGSL, []*wgpu.BindGroupLayout{pk.mipLayout}, nil, nil,
+		[]gputypes.ColorTargetState{{Format: packFormats[7], WriteMask: gputypes.ColorWriteMaskAll}}, nil)
 	pk.copy = pk.pipeline("pack depth copy", packDepthCopyWGSL, []*wgpu.BindGroupLayout{pk.copyLayout}, nil, nil,
 		[]gputypes.ColorTargetState{{Format: gputypes.TextureFormatR8Unorm, WriteMask: gputypes.ColorWriteMaskNone}},
 		&wgpu.DepthStencilState{Format: gputypes.TextureFormatDepth32Float, DepthWriteEnabled: true, DepthCompare: gputypes.CompareFunctionAlways})
-	f16 := gputypes.ColorTargetState{Format: gputypes.TextureFormatRGBA16Float, WriteMask: gputypes.ColorWriteMaskAll}
+	// The buffers each composite pass writes (packResolve); final the frame.
 	for i, src := range []string{packCompositeWGSL, packComposite1WGSL, packComposite2WGSL, packComposite3WGSL, packComposite4WGSL, packFinalWGSL} {
-		targets := []gputypes.ColorTargetState{f16}
-		switch i {
-		case 0:
-			targets = append(targets, f16)
-		case 5:
-			targets[0].Format = dev.format
+		var targets []gputypes.ColorTargetState
+		for _, t := range [][]int{{3, 4}, {3}, {7}, {6}, {6}, {}}[i] {
+			targets = append(targets, gputypes.ColorTargetState{Format: packFormats[t], WriteMask: gputypes.ColorWriteMaskAll})
 		}
-		if i > 0 && i < 5 {
+		if i == 5 {
+			targets = []gputypes.ColorTargetState{{Format: dev.format, WriteMask: gputypes.ColorWriteMaskAll}}
+		}
+		if i > 0 && i < 5 && packR11Clamp {
 			src = packStore(src, "storeR11") // packStore is idempotent: module's call finds fs_raw only
 		}
 		pk.comps[i] = pk.pipeline("pack composite", src, []*wgpu.BindGroupLayout{pk.compLayout}, nil, nil, targets, nil)
@@ -761,8 +776,8 @@ func packResolve() {
 		}
 		return c
 	}
-	mip := func(bg *wgpu.BindGroup, dst *wgpu.TextureView) {
-		full(beginPass("pack mip", att(dst), nil), pk.mip, bg)
+	mip := func(pl *wgpu.RenderPipeline, bg *wgpu.BindGroup, dst *wgpu.TextureView) {
+		full(beginPass("pack mip", att(dst), nil), pl, bg)
 	}
 	w, h := uint32(pk.w), uint32(pk.h)
 	// The bloom passes only fill what final reads: colortex6 at tc*0.25,
@@ -777,13 +792,13 @@ func packResolve() {
 	}
 	GPUMark("composite")
 	full(beginPass("composite", att(pk.b[3].mips[0], pk.b[4].mips[0]), nil), pk.comps[0], pk.comp[0])
-	mip(pk.mipB4, pk.b[4].mips[1])
+	mip(pk.mip, pk.mipB4, pk.b[4].mips[1])
 	GPUMark("composite1")
 	full(beginPass("composite1", att(pk.a[3].mips[0]), nil), pk.comps[1], pk.comp[1])
 	GPUMark("composite2")
 	full(beginPass("composite2", att(pk.b[7].mips[0]), nil), pk.comps[2], pk.comp[2])
-	mip(pk.mipB7a, pk.b[7].mips[1])
-	mip(pk.mipB7b, pk.b[7].mips[2])
+	mip(pk.mip7, pk.mipB7a, pk.b[7].mips[1])
+	mip(pk.mip7, pk.mipB7b, pk.b[7].mips[2])
 	GPUMark("composite3")
 	full(quarter(beginPass("composite3", att(pk.b[6].mips[0]), nil), 16), pk.comps[3], pk.comp[3])
 	GPUMark("composite4")

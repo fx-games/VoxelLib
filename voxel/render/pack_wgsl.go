@@ -1935,15 +1935,19 @@ fn fs(i: VOut) -> GOut {
 }
 `
 
-// The pack's buffer formats that WebGPU can't render to are emulated with
-// RGBA16Float (packFormats); what they would store is clamped on output:
-// R11F_G11F_B10F (composite, gaux2..4 = colortex3, 5..7) has no sign and a
-// 65024 maximum, RGBA16 (gdepth, gaux1 = colortex1, 4) is 0..1. No program
-// reads those buffers' alpha, so it passes through (it drives blending).
+// The pack's buffer formats that are emulated with RGBA16Float
+// (packFormats) clamp what they would store on output: RGBA16 (gdepth,
+// gaux1 = colortex1, 4) is 0..1, R11F_G11F_B10F (composite, gaux2..4 =
+// colortex3, 5..7; only without RG11B10 targets, packR11Clamp) has no sign
+// and a 65024 maximum. No program reads those buffers' alpha, so it passes
+// through (it drives blending).
 const packStoreWGSL = `
 fn storeR11(v: vec4f) -> vec4f { return vec4f(clamp(v.rgb, vec3f(0.0), vec3f(65024.0)), v.a); }
 fn storeU16(v: vec4f) -> vec4f { return clamp(v, vec4f(0.0), vec4f(1.0)); }
 `
+
+// packR11Clamp: the R11F_G11F_B10F buffers are emulated (no RG11B10).
+var packR11Clamp = true
 
 var packFsRe = regexp.MustCompile(`@fragment\s*\nfn fs\(([^)]*)\) -> ([^{]+)\{`)
 
@@ -1977,7 +1981,10 @@ func packStore(src, single string) string {
 		body = "var o = " + call + ";"
 		n := 0
 		for _, f := range regexp.MustCompile(`\b(c[0-9]):`).FindAllStringSubmatch(sm[1], -1) {
-			fn := map[string]string{"c1": "storeU16", "c4": "storeU16", "c3": "storeR11", "c5": "storeR11", "c6": "storeR11", "c7": "storeR11"}[f[1]]
+			fn := map[string]string{"c1": "storeU16", "c4": "storeU16"}[f[1]]
+			if packR11Clamp && strings.Contains("c3 c5 c6 c7", f[1]) {
+				fn = "storeR11"
+			}
 			if fn != "" {
 				body += " o." + f[1] + " = " + fn + "(o." + f[1] + ");"
 				n++

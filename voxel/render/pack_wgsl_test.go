@@ -79,3 +79,17 @@ func TestPackWGSL(t *testing.T) {
 		}
 	}
 }
+
+// TestPackStoreRG11: with RG11B10 targets the R11F_G11F_B10F buffers are
+// stored as written (the format clamps), RGBA16 ones still clamp to 0..1.
+func TestPackStoreRG11(t *testing.T) {
+	src := "struct GOut { @location(0) c1: vec4f, @location(1) c3: vec4f, }\n@fragment\nfn fs(i: VOut) -> GOut {\n\tvar o: GOut;\n\treturn o;\n}\n"
+	defer func(c bool) { packR11Clamp = c }(packR11Clamp)
+	for _, c := range []bool{true, false} {
+		packR11Clamp = c
+		out := packStore(src, "")
+		if !strings.Contains(out, "o.c1 = storeU16(o.c1)") || strings.Contains(out, "o.c3 = storeR11(o.c3)") != c {
+			t.Errorf("clamp %v:\n%s", c, out)
+		}
+	}
+}
