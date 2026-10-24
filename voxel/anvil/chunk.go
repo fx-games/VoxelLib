@@ -116,7 +116,7 @@ func DecodeChunkIDs(w *voxel.World, root Compound, ids LegacyIDs) (*voxel.Chunk,
 		ch.Biomes = b
 	}
 	ch.RecomputeHeights(reg.Table())
-	ch.Lit = trusted
+	ch.Lit.Store(trusted)
 	return ch, nil
 }
 
@@ -188,8 +188,8 @@ func EncodeChunk(w *voxel.World, ch *voxel.Chunk) Compound {
 			"Y":            int8(sy),
 			"block_states": bs,
 			"biomes":       Compound{"palette": List{Type: TagString, Items: []any{resloc.Default + ":plains"}}},
-			"SkyLight":     append([]byte(nil), s.Sky...),
-			"BlockLight":   append([]byte(nil), s.Block...),
+			"SkyLight":     voxel.CopyNibbles(s.Sky),
+			"BlockLight":   voxel.CopyNibbles(s.Block),
 		}
 		secs.Items = append(secs.Items, sc)
 	}
@@ -205,7 +205,7 @@ func EncodeChunk(w *voxel.World, ch *voxel.Chunk) Compound {
 		"sections":       secs,
 		"block_entities": List{Type: TagCompound},
 	}
-	if ch.Lit {
+	if ch.Lit.Load() {
 		root[litTag] = int8(1)
 	}
 	if len(ch.Biomes) == 256 {

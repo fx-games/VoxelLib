@@ -1,6 +1,9 @@
 package voxel
 
-import "sync/atomic"
+import (
+	"sync/atomic"
+	"unsafe"
+)
 
 // Section is a 16^3 cube of a chunk column.
 type Section struct {
@@ -41,13 +44,46 @@ func (s *Section) Recount() {
 	}
 }
 
+// Light nibbles are read and written a 32-bit word at a time with atomic
+// ops: a light pass writes them under the world's read lock while other
+// readers hold it too (TryLightChunk). Writers never overlap (lightMu, or
+// the write lock), so a set is a load and a store. The arrays come from
+// make (word aligned); the nibble's place in its word assumes a
+// little-endian machine.
+func lightWord(a []byte, i int) *uint32 { return (*uint32)(unsafe.Pointer(&a[i>>3<<2])) }
+
 func getNibble(a []byte, i int) uint8 {
-	return (a[i>>1] >> ((uint(i) & 1) << 2)) & 15
+	return uint8(atomic.LoadUint32(lightWord(a, i)) >> ((uint(i) & 7) << 2) & 15)
 }
 
 func setNibble(a []byte, i int, v uint8) {
-	sh := (uint(i) & 1) << 2
-	a[i>>1] = a[i>>1]&^(15<<sh) | (v&15)<<sh
+	p, sh := lightWord(a, i), (uint(i)&7)<<2
+	atomic.StoreUint32(p, atomic.LoadUint32(p)&^(15<<sh)|uint32(v&15)<<sh)
+}
+
+// Nibble is light nibble i of a section's Sky or Block array (0 for nil),
+// safe to call during a light pass.
+func Nibble(a []byte, i int) uint8 {
+	if a == nil {
+		return 0
+	}
+	return getNibble(a, i)
+}
+
+// clearNibbles zeroes a light array during a light pass.
+func clearNibbles(a []byte) {
+	for i := 0; i < len(a); i += 4 {
+		atomic.StoreUint32((*uint32)(unsafe.Pointer(&a[i])), 0)
+	}
+}
+
+// CopyNibbles copies a light array, safe during a light pass.
+func CopyNibbles(a []byte) []byte {
+	out := make([]byte, len(a))
+	for i := 0; i < len(a); i += 4 {
+		*(*uint32)(unsafe.Pointer(&out[i])) = atomic.LoadUint32((*uint32)(unsafe.Pointer(&a[i])))
+	}
+	return out
 }
 
 // Chunk is a 16 x height x 16 column.
@@ -57,8 +93,9 @@ type Chunk struct {
 	// Height is, per column (z<<4|x), one above the highest block that
 	// filters sky light; everything at or above it sees the sky directly.
 	Height [256]int32
-	// Lit is set once the light engine has seeded this chunk.
-	Lit bool
+	// Lit is set once the light engine has seeded this chunk (atomic: a
+	// light pass sets it under the read lock).
+	Lit atomic.Bool
 	// Modified marks the chunk for saving.
 	Modified bool
 	// Edited has bit i set when World.SetBlock changed Sections[i]: what a

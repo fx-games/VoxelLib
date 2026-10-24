@@ -63,10 +63,7 @@ func (s *Snapshot) Capture(w *voxel.World, p voxel.SectionPos) {
 				copy(s.States[base:base+16], buf[src:src+16])
 				for x := 0; x < 16; x++ {
 					i := src | x
-					sh := uint(i&1) << 2
-					sky := center.Sky[i>>1] >> sh & 15
-					bl := center.Block[i>>1] >> sh & 15
-					s.Light[base+x] = sky<<4 | bl
+					s.Light[base+x] = voxel.Nibble(center.Sky, i)<<4 | voxel.Nibble(center.Block, i)
 				}
 			}
 		}
@@ -94,9 +91,8 @@ func (s *Snapshot) Capture(w *voxel.World, p voxel.SectionPos) {
 					continue
 				}
 				li := voxel.SectionIndex(x, y, z)
-				sh := uint(li&1) << 2
 				s.States[i] = sec.Blocks.Get(li)
-				s.Light[i] = (sec.Sky[li>>1]>>sh&15)<<4 | sec.Block[li>>1]>>sh&15
+				s.Light[i] = voxel.Nibble(sec.Sky, li)<<4 | voxel.Nibble(sec.Block, li)
 			}
 		}
 	}

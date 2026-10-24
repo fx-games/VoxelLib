@@ -302,7 +302,7 @@ func (e *Engine) applyDelta(s *dimSrc, c *voxel.Chunk) {
 			c.Edited |= 1 << uint(i)
 		}
 	}
-	c.Lit = false
+	c.Lit.Store(false)
 	c.RecomputeHeights(e.World.Reg.Table())
 }
 

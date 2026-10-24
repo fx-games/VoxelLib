@@ -235,7 +235,7 @@ func (w *World) SetBlock(x, y, z int, id StateID) bool {
 		}
 	}
 
-	if c.Lit {
+	if c.Lit.Load() {
 		w.relight(x, y, z, t[old], t[id], t)
 	}
 	w.changedAround(c.Pos)
@@ -307,7 +307,7 @@ func (w *World) RenderableUnlocked(p ChunkPos) bool {
 	for dx := -1; dx <= 1; dx++ {
 		for dz := -1; dz <= 1; dz++ {
 			c := w.chunks[p.Add(dx, dz)]
-			if c == nil || !c.Lit {
+			if c == nil || !c.Lit.Load() {
 				return false
 			}
 		}

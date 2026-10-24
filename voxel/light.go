@@ -50,7 +50,7 @@ func (w *World) setLight(x, y, z int, sky bool, v uint8) {
 	} else {
 		setNibble(s.Block, i, v)
 	}
-	if c.Lit {
+	if c.Lit.Load() {
 		w.markLightDirty(x, y, z)
 	}
 }
@@ -209,7 +209,7 @@ func (w *World) TryLightChunk(p ChunkPos) bool {
 	if c == nil {
 		return false
 	}
-	if c.Lit {
+	if c.Lit.Load() {
 		return true
 	}
 	if !w.neighbours8Loaded(p) {
@@ -224,7 +224,7 @@ func (w *World) TryLightChunk(p ChunkPos) bool {
 func (w *World) MarkLit(p ChunkPos) {
 	w.mu.Lock()
 	if c := w.chunks[p]; c != nil {
-		c.Lit = true
+		c.Lit.Store(true)
 	}
 	w.mu.Unlock()
 }
@@ -237,8 +237,8 @@ func (w *World) lightChunk(c *Chunk) {
 	// Sky: everything at/above the column height sees the sky.
 	for i := range c.Sections {
 		s := c.Sections[i]
-		clear(s.Sky)
-		clear(s.Block)
+		clearNibbles(s.Sky)
+		clearNibbles(s.Block)
 	}
 	maxH := w.MinY
 	skyTop := top // NoSky: nothing to seed
@@ -289,7 +289,7 @@ func (w *World) lightChunk(c *Chunk) {
 	border := func(sky bool) {
 		for _, d := range [4][2]int{{1, 0}, {-1, 0}, {0, 1}, {0, -1}} {
 			n := w.chunks[c.Pos.Add(d[0], d[1])]
-			if n == nil || !n.Lit {
+			if n == nil || !n.Lit.Load() {
 				continue
 			}
 			for k := 0; k < 16; k++ {
@@ -337,7 +337,7 @@ func (w *World) lightChunk(c *Chunk) {
 	w.lightQ = q
 	w.propagate(false, t)
 
-	c.Lit = true
+	c.Lit.Store(true)
 	w.changedAround(c.Pos)
 	// Mark this column's and its neighbours' sections for meshing.
 	for dx := -1; dx <= 1; dx++ {

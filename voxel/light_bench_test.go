@@ -25,7 +25,7 @@ func BenchmarkLightChunk(b *testing.B) {
 		b.StopTimer()
 		w := voxel.NewWorld(reg, -64, 384)
 		for _, c := range chunks {
-			c.Lit = false
+			c.Lit.Store(false)
 			w.AddChunk(c)
 		}
 		b.StartTimer()

@@ -141,7 +141,7 @@ func TestVersion(t *testing.T) {
 		t.Fatal("versions not unique")
 	}
 	b = ver(-1, -2)
-	w.Chunk(ChunkPos{-1, -1}).Lit = false
+	w.Chunk(ChunkPos{-1, -1}).Lit.Store(false)
 	w.TryLightChunk(ChunkPos{-1, -1})
 	if ver(-1, -2) == b {
 		t.Fatal("light pass kept the neighbour's version")

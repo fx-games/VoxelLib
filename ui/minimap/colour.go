@@ -107,19 +107,12 @@ type surfPixel struct {
 }
 
 // nibble reads a 4-bit light value of a section.
-func nibble(a []byte, i int) uint8 {
-	if a == nil {
-		return 0
-	}
-	return a[i>>1] >> ((uint(i) & 1) << 2) & 15
-}
-
 func blockLight(c *voxel.Chunk, x, y, z int) uint8 {
 	s := c.Section(y)
 	if s == nil {
 		return 0
 	}
-	return nibble(s.Block, voxel.SectionIndex(x, y, z))
+	return voxel.Nibble(s.Block, voxel.SectionIndex(x, y, z))
 }
 
 func skyLight(c *voxel.Chunk, x, y, z int) uint8 {
@@ -127,7 +120,7 @@ func skyLight(c *voxel.Chunk, x, y, z int) uint8 {
 	if s == nil {
 		return 15
 	}
-	return nibble(s.Sky, voxel.SectionIndex(x, y, z))
+	return voxel.Nibble(s.Sky, voxel.SectionIndex(x, y, z))
 }
 
 func topY(c *voxel.Chunk) int { return c.MinY() + len(c.Sections)*16 - 1 }
