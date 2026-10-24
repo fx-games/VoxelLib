@@ -150,6 +150,9 @@ type section struct {
 	trans   *mesh.Mesh
 	sortPos [3]float64
 	quads   int
+	// cut: a solid-layer quad has a texture with texels the pack's 0.1
+	// alpha test discards, so pack frames keep the test on its solid layer
+	cut bool
 }
 
 // drawBatch is one multidraw: ranges counts[first:first+n] / bases[...] of a
@@ -158,6 +161,7 @@ type drawBatch struct {
 	reg      *region
 	layer    voxel.Layer
 	first, n int
+	cut      bool // pack frames: the solid sections have cut textures (section.cut)
 }
 
 // Renderer owns all GPU state for one world.
@@ -355,10 +359,24 @@ func (r *Renderer) Upload(m *mesh.Mesh) {
 	s.reg = reg
 	reg.sections[mesh.RegionIndex(m.Pos)] = s
 	reg.upload(s.off, m.Data)
+	s.cut = r.tex == nil || solidCuts(m, r.tex.cut)
 	if s.transN > 0 {
 		s.trans = m
 		r.sortSection(s, true)
 	}
+}
+
+// solidCuts: a solid-layer quad of m has a cut texture (or one not yet
+// known).
+func solidCuts(m *mesh.Mesh, cut []bool) bool {
+	for _, rg := range m.Ranges[voxel.LayerSolid] {
+		for v := rg.First; v < rg.First+rg.Count; v += 4 { // a quad's vertices share the texture
+			if t := int(m.Data[v*mesh.VertexWords+1] & 4095); t >= len(cut) || cut[t] {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // sortSection uploads the translucent quads sorted for the camera. fresh
@@ -592,48 +610,59 @@ func (r *Renderer) buildBatches() {
 	}()
 
 	r.counts, r.bases, r.batches = r.counts[:0], r.bases[:0], r.batches[:0]
-	flush := func(reg *region, layer voxel.Layer, first int) {
+	flush := func(reg *region, layer voxel.Layer, first int, cut bool) {
 		if n := len(r.counts) - first; n > 0 {
-			r.batches = append(r.batches, drawBatch{reg, layer, first, n})
+			r.batches = append(r.batches, drawBatch{reg, layer, first, n, cut})
 			st.DrawCalls++
 			st.DrawRanges += n
 		}
 	}
 	for layer := voxel.LayerSolid; layer < voxel.LayerTranslucent; layer++ {
 		for _, reg := range order {
-			first := len(r.counts)
-			for _, s := range reg.visible {
-				o := s.pos.Origin()
-				ox, oy, oz := float64(o.X)-r.camX, float64(o.Y)-r.camY, float64(o.Z)-r.camZ
-				// One span from the first to the last visible group: the
-				// culled groups between face away from the camera, so the
-				// back-face cull drops them and the pixels are the same, at
-				// far fewer draws.
-				lo, hi := -1, 0
-				for g := 0; g < mesh.GroupCount; g++ {
-					rg := s.ranges[layer][g]
-					if rg.Count == 0 || !groupVisible(g, ox, oy, oz) {
+			// In pack frames the solid layer goes in two batches, sections
+			// without and with cut textures.
+			split := layer == voxel.LayerSolid && r.Opt.Pack != nil
+			for _, cut := range []bool{false, true} {
+				if cut && !split {
+					break
+				}
+				first := len(r.counts)
+				for _, s := range reg.visible {
+					if split && s.cut != cut {
 						continue
 					}
-					if lo < 0 {
-						lo = rg.First
-					}
-					hi = rg.First + rg.Count
-				}
-				if lo >= 0 && hi-lo <= maxQuadsPerDraw*4 {
-					r.counts = append(r.counts, int32((hi-lo)/4*6))
-					r.bases = append(r.bases, int32(s.off+lo))
-				} else if lo >= 0 {
+					o := s.pos.Origin()
+					ox, oy, oz := float64(o.X)-r.camX, float64(o.Y)-r.camY, float64(o.Z)-r.camZ
+					// One span from the first to the last visible group: the
+					// culled groups between face away from the camera, so the
+					// back-face cull drops them and the pixels are the same, at
+					// far fewer draws.
+					lo, hi := -1, 0
 					for g := 0; g < mesh.GroupCount; g++ {
-						if rg := s.ranges[layer][g]; rg.Count > 0 && groupVisible(g, ox, oy, oz) {
-							r.counts = append(r.counts, int32(rg.Count/4*6))
-							r.bases = append(r.bases, int32(s.off+rg.First))
+						rg := s.ranges[layer][g]
+						if rg.Count == 0 || !groupVisible(g, ox, oy, oz) {
+							continue
+						}
+						if lo < 0 {
+							lo = rg.First
+						}
+						hi = rg.First + rg.Count
+					}
+					if lo >= 0 && hi-lo <= maxQuadsPerDraw*4 {
+						r.counts = append(r.counts, int32((hi-lo)/4*6))
+						r.bases = append(r.bases, int32(s.off+lo))
+					} else if lo >= 0 {
+						for g := 0; g < mesh.GroupCount; g++ {
+							if rg := s.ranges[layer][g]; rg.Count > 0 && groupVisible(g, ox, oy, oz) {
+								r.counts = append(r.counts, int32(rg.Count/4*6))
+								r.bases = append(r.bases, int32(s.off+rg.First))
+							}
 						}
 					}
 				}
+				r.mergeRanges(first)
+				flush(reg, layer, first, cut)
 			}
-			r.mergeRanges(first)
-			flush(reg, layer, first)
 		}
 	}
 
@@ -651,7 +680,7 @@ func (r *Renderer) buildBatches() {
 			resorts++
 		}
 		if s.reg != cur && cur != nil {
-			flush(cur, voxel.LayerTranslucent, first)
+			flush(cur, voxel.LayerTranslucent, first, false)
 			first = len(r.counts)
 		}
 		cur = s.reg
@@ -659,7 +688,7 @@ func (r *Renderer) buildBatches() {
 		r.bases = append(r.bases, int32(s.tOff))
 	}
 	if cur != nil {
-		flush(cur, voxel.LayerTranslucent, first)
+		flush(cur, voxel.LayerTranslucent, first, false)
 	}
 }
 

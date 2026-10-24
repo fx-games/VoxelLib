@@ -39,6 +39,7 @@ type textureArray struct {
 	size              int
 	levels            int // highest mip level
 	tintable          []bool
+	cut               []bool // per name: a frame has a texel the 0.1 alpha test discards
 	anims             []anim
 	mapPix            []uint16   // per name: current physical layer
 	base              []uint16   // per name: frame 0's physical layer
@@ -190,11 +191,15 @@ func (t *textureArray) place(names []string, imgs []image.Image) {
 	}
 	for i := 0; i < nNew; i++ {
 		t.base = append(t.base, uint16(first+i))
+		t.cut = append(t.cut, alphaCut(t.mips[first+i][0]))
 	}
 	t.mapPix = append(t.mapPix, t.base[len(t.mapPix):]...)
 	for k := range t.anims {
 		if a := &t.anims[k]; a.extra < 0 {
 			a.extra = first + nNew - 1 - a.extra
+			for f := range a.count - 1 {
+				t.cut[a.base] = t.cut[a.base] || alphaCut(t.mips[a.extra+f][0])
+			}
 		}
 	}
 	if len(t.mips) > t.capLayers || len(t.mapPix) > t.capMap {
@@ -215,6 +220,19 @@ func (t *textureArray) place(names []string, imgs []image.Image) {
 		t.uploadLayer(i, t.mips[i])
 	}
 	t.uploadMap()
+}
+
+// alphaCut: a texel of the RGBA image has alpha <= 0.1 (the 8-bit 25 or
+// less), which the pack's glAlphaFunc(GL_GREATER, 0.1) discards. The mips
+// average with alpha scaled up, so they hold no such texel when level 0
+// has none.
+func alphaCut(px []byte) bool {
+	for i := 3; i < len(px); i += 4 {
+		if px[i] <= 25 {
+			return true
+		}
+	}
+	return false
 }
 
 // maxLayerCode bounds physical layers: layerCode keeps 14 bits for them.

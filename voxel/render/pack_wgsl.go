@@ -889,6 +889,17 @@ fn fs(@builtin(position) pos: vec4f) -> @location(0) vec4f {
 
 // packShadowWGSL is shadow.vsh/fsh for terrain: the distorted shadow
 // clip position, the texture colour (water white) to shadowcolor0.
+// packTerrainSolidWGSL and packShadowSolidWGSL are gbuffers_terrain and
+// shadow without the alpha test, for the solid layer while none of its
+// textures has a texel the test discards (section.cut): the same
+// pixels, and the GPU keeps its early depth test.
+var (
+	packTerrainSolidWGSL = strings.Replace(packTerrainWGSL, packAlphaTest, "", 1)
+	packShadowSolidWGSL  = strings.Replace(packShadowWGSL, "if (color.a <= 0.1) { discard; }", "", 1)
+)
+
+const packAlphaTest = "if (albedo.a <= 0.1) { discard; } // glAlphaFunc(GL_GREATER, 0.1)"
+
 var packShadowWGSL = terrainHeaderWGSL + packCommonWGSL + packGroupWGSL + packTerrainDecodeWGSL + `
 struct SV {
 	@builtin(position) pos: vec4f,

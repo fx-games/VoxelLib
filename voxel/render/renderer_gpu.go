@@ -95,15 +95,15 @@ func (r *Renderer) drawBatches(p *wgpu.RenderPassEncoder, vp mgl32.Mat4, fog Fog
 	r.terrainBG()
 	cvp := clip(vp)
 	dt := r.Opt.DynamicTint
-	layer := voxel.LayerCount
+	layer, cut := voxel.LayerCount, false
 	for _, b := range batches {
-		if b.layer != layer {
-			layer = b.layer
+		if b.layer != layer || b.cut != cut {
+			layer, cut = b.layer, b.cut
 			if layer == voxel.LayerTranslucent {
 				GPUMark("terrain translucent")
 				p = curPass()
 				setPipe(p, dev.pipes.terrainTrans)
-			} else if layer == voxel.LayerSolid && dev.pk == nil {
+			} else if layer == voxel.LayerSolid && (dev.pk == nil || !b.cut) {
 				setPipe(p, dev.pipes.terrainSolid)
 			} else if layer == voxel.LayerSolid || layer == voxel.LayerCutout {
 				setPipe(p, dev.pipes.terrainOpaque)
@@ -111,16 +111,16 @@ func (r *Renderer) drawBatches(p *wgpu.RenderPassEncoder, vp mgl32.Mat4, fog Fog
 			p.SetBindGroup(1, g.texBG, nil)
 			p.SetIndexBuffer(g.ebo, gputypes.IndexFormatUint32, 0)
 		}
-		cut := float32(0)
+		alpha := float32(0)
 		switch layer {
 		case voxel.LayerCutout:
-			cut = 0.5
+			alpha = 0.5
 		case voxel.LayerTranslucent:
-			cut = 0.01
+			alpha = 0.01
 		}
 		o := r.regionOrigin(b.reg)
 		bindUniforms(p, g.u.reset().mat(cvp).f(o[0], o[1], o[2], 0).f(fogCol[0], fogCol[1], fogCol[2], 0).
-			f(r.Opt.Daylight, r.Opt.BlockBrightness, cut, 0).f(fog.Start, fog.End, 0, 0).f(dt[0], dt[1], dt[2], 0))
+			f(r.Opt.Daylight, r.Opt.BlockBrightness, alpha, 0).f(fog.Start, fog.End, 0, 0).f(dt[0], dt[1], dt[2], 0))
 		p.SetVertexBuffer(0, b.reg.gpu.vbo, 0)
 		r.multiDraw(p, b)
 	}

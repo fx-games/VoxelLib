@@ -21,7 +21,12 @@ func TestPackWGSL(t *testing.T) {
 		"particle":  packParticleWGSL,
 		"composite": packCompositeWGSL, "composite1": packComposite1WGSL, "composite2": packComposite2WGSL,
 		"composite3": packComposite3WGSL, "composite4": packComposite4WGSL, "final": packFinalWGSL,
-		"mip": packMipWGSL,
+		"mip": packMipWGSL, "terrainSolid": packTerrainSolidWGSL, "shadowSolid": packShadowSolidWGSL,
+	}
+	for _, c := range [][2]string{{packTerrainWGSL, packTerrainSolidWGSL}, {packShadowWGSL, packShadowSolidWGSL}} {
+		if strings.Count(c[1], "discard") != strings.Count(c[0], "discard")-1 {
+			t.Error("a solid program is not its pack program less the alpha test")
+		}
 	}
 	for _, hand := range []string{"false", "true"} {
 		progs["model/"+hand] = strings.Replace(packModelWGSL, "HAND_FLAG", hand, 1)

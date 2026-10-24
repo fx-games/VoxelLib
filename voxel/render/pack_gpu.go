@@ -1,6 +1,8 @@
 package render
 
 import (
+	"cmp"
+	"slices"
 	"time"
 	"unsafe"
 
@@ -135,12 +137,14 @@ type packGPU struct {
 	keyFrames                    int  // consecutive frames with shadowKey
 	cached                       bool // the cache holds shadowKey's terrain
 	withCasters                  bool // the frame's maps hold casters
+	order                        []shadowItem
 
 	modules                             map[string]*wgpu.ShaderModule
 	variants                            map[packVariant]*wgpu.RenderPipeline
 	casterPipes                         map[packVariant]*wgpu.RenderPipeline // hand = depth only
 	comps                               [6]*wgpu.RenderPipeline
 	mip, mip7, copy, shadowOp, shadowTr *wgpu.RenderPipeline
+	shadowSolid                         *wgpu.RenderPipeline // the solid layer without the alpha test
 
 	// this frame
 	r           *Renderer
@@ -271,6 +275,7 @@ func newPackGPU(q PackQuality) *packGPU {
 	sp := dev.pipes.specs[dev.pipes.terrainOpaque]
 	groups := []*wgpu.BindGroupLayout{dev.uniLayout, dev.pipes.terrainTex, pk.g2Layout}
 	pk.shadowOp = pk.pipeline("pack shadow", packShadowWGSL, groups, sp.buffers, nil, shadowTargets(nil), shadowDepth)
+	pk.shadowSolid = pk.pipeline("pack shadow solid", packShadowSolidWGSL, groups, sp.buffers, nil, shadowTargets(nil), shadowDepth)
 	pk.shadowTr = pk.pipeline("pack shadow translucent", packShadowWGSL, groups, sp.buffers, nil, shadowTargets(blendAlpha), shadowDepth)
 	return pk
 }
@@ -590,14 +595,19 @@ func (pk *packGPU) drawShadows(r *Renderer) {
 		p.SetBindGroup(1, bg, nil)
 		p.SetBindGroup(2, pk.g2Shadow, nil)
 		p.SetIndexBuffer(r.gpu.ebo, gputypes.IndexFormatUint32, 0)
+		if !trans {
+			pk.drawShadowsOpaque(r, p, fr)
+			endPassOf(p)
+			gpuMark("pack shadowtex1 copy")
+			pk.copyDepthTo(pk.copyShadow, pk.shadow1.view, pk.dummyShadow.view)
+			gpuMark("pack shadow translucent")
+			continue
+		}
 		for _, pages := range r.regions {
 			for _, reg := range pages {
 				first := len(r.counts)
 				for _, s := range reg.sections {
-					n, off := s.n, s.off
-					if trans {
-						n, off = s.transN, s.tOff
-					}
+					n, off := s.transN, s.tOff
 					if n == 0 || s.empty {
 						continue
 					}
@@ -617,16 +627,100 @@ func (pk *packGPU) drawShadows(r *Renderer) {
 				ro := r.regionOrigin(reg)
 				bindUniforms(p, pk.shadowU.reset().mat(mgl32.Ident4()).f(ro[0], ro[1], ro[2], 0).f(0, 0, 0, 0).f(0, 0, 0, 0).f(0, 0, 0, 0).f(0, 0, 0, 0))
 				p.SetVertexBuffer(0, reg.gpu.vbo, 0)
-				r.multiDraw(p, drawBatch{reg, voxel.LayerSolid, first, len(r.counts) - first})
+				r.multiDraw(p, drawBatch{reg, voxel.LayerSolid, first, len(r.counts) - first, false})
 			}
 		}
 		endPassOf(p)
-		if !trans {
-			gpuMark("pack shadowtex1 copy")
-			pk.copyDepthTo(pk.copyShadow, pk.shadow1.view, pk.dummyShadow.view)
-			gpuMark("pack shadow translucent")
+	}
+}
+
+// drawShadowsOpaque draws the opaque terrain in the shadow frustum nearest
+// the light first, so the depth test rejects what lies below before the
+// fragment shader runs; ties keep a fixed order. The solid layer goes
+// without the alpha test unless a texture of it needs the test.
+func (pk *packGPU) drawShadowsOpaque(r *Renderer, p *wgpu.RenderPassEncoder, fr frustum) {
+	mv := pk.u.ShadowMV
+	pk.order = pk.order[:0]
+	for _, pages := range r.regions {
+		for _, reg := range pages {
+			for _, s := range reg.sections {
+				if s.n == 0 || s.empty {
+					continue
+				}
+				o := s.pos.Origin()
+				x, y, z := float32(float64(o.X)-r.camX), float32(float64(o.Y)-r.camY), float32(float64(o.Z)-r.camZ)
+				if !fr.box(x, y, z, x+16, y+16, z+16) {
+					continue
+				}
+				// light-space z of the centre: larger is nearer the light
+				d := mv[2]*(x+8) + mv[6]*(y+8) + mv[10]*(z+8)
+				pk.order = append(pk.order, shadowItem{d, s})
+			}
 		}
 	}
+	slices.SortFunc(pk.order, func(a, b shadowItem) int {
+		if c := cmp.Compare(b.d, a.d); c != 0 {
+			return c
+		}
+		if c := cmp.Compare(a.s.pos.X, b.s.pos.X); c != 0 {
+			return c
+		}
+		if c := cmp.Compare(a.s.pos.Y, b.s.pos.Y); c != 0 {
+			return c
+		}
+		return cmp.Compare(a.s.pos.Z, b.s.pos.Z)
+	})
+	// Two parts: the solid layer (a prefix of the section's vertices) of
+	// sections without cut textures, then the rest with the alpha test.
+	solidN := func(s *section) int {
+		n := 0
+		if !s.cut {
+			for _, rg := range s.ranges[voxel.LayerSolid] {
+				n += rg.Count
+			}
+		}
+		return n
+	}
+	parts := []func(s *section) (int, int){
+		func(s *section) (int, int) { return 0, solidN(s) },
+		func(s *section) (int, int) { return solidN(s), s.n },
+	}
+	for i, part := range parts {
+		if i == 0 {
+			p.SetPipeline(pk.shadowSolid)
+		} else {
+			p.SetPipeline(pk.shadowOp)
+		}
+		var reg *region
+		first := len(r.counts)
+		flush := func() {
+			if reg == nil || len(r.counts) == first {
+				return
+			}
+			ro := r.regionOrigin(reg)
+			bindUniforms(p, pk.shadowU.reset().mat(mgl32.Ident4()).f(ro[0], ro[1], ro[2], 0).f(0, 0, 0, 0).f(0, 0, 0, 0).f(0, 0, 0, 0).f(0, 0, 0, 0))
+			p.SetVertexBuffer(0, reg.gpu.vbo, 0)
+			r.multiDraw(p, drawBatch{reg, voxel.LayerSolid, first, len(r.counts) - first, false})
+			first = len(r.counts)
+		}
+		for _, it := range pk.order {
+			if it.s.reg != reg {
+				flush()
+				reg = it.s.reg
+			}
+			a, b := part(it.s)
+			for q := a / 4; q < b/4; q += maxQuadsPerDraw {
+				r.counts = append(r.counts, int32(min(b/4-q, maxQuadsPerDraw)*6))
+				r.bases = append(r.bases, int32(it.s.off+q*4))
+			}
+		}
+		flush()
+	}
+}
+
+type shadowItem struct {
+	d float32
+	s *section
 }
 
 // setPipe sets pl, or in a pack frame the pack program that replaces it
@@ -707,6 +801,8 @@ func (pk *packGPU) program(pl *wgpu.RenderPipeline) (string, []int, bool) {
 	switch pl {
 	case ps.terrainOpaque:
 		return packTerrainWGSL, []int{0, 1}, false
+	case ps.terrainSolid:
+		return packTerrainSolidWGSL, []int{0, 1}, false
 	case ps.terrainTrans:
 		return packWaterWGSL, []int{2, 3, 4}, false
 	case ps.model, ps.modelAlpha, ps.modelAdd, ps.modelOver:
