@@ -25,6 +25,11 @@ type Manager struct {
 	Rand       *rand.Rand
 	Difficulty int // 0 peaceful .. 3 hard, as the reference (arrow damage)
 
+	// Loaded, if set, is World.checkChunksExist for the columns within r
+	// blocks of x, z: an actor without its 32-block area loaded is not
+	// updated (updateEntityWithOptionalForce), it neither thinks nor moves.
+	Loaded func(x, z, r int) bool
+
 	// OnDeath is called once when an actor's health reaches 0, with the
 	// actor that dealt the last blow (nil for falls and the like).
 	OnDeath func(dead, killer *Actor)
@@ -203,6 +208,10 @@ func (m *Manager) Tick() {
 	}
 	var gone []*Actor
 	for _, a := range m.Actors {
+		a.frozen = !a.Player && m.Loaded != nil && !m.Loaded(int(math.Floor(a.Body.X)), int(math.Floor(a.Body.Z)), 32)
+		if a.frozen {
+			continue
+		}
 		a.PrevYaw, a.PrevHeadYaw = a.Yaw, a.HeadYaw
 		a.Ticks++
 		if a.Boat != nil {
@@ -210,6 +219,9 @@ func (m *Manager) Tick() {
 		}
 		a.StateTicks++
 		a.age++
+		if a.PersistReq || m.playerWithin(a, 32) { // despawnEntity
+			a.age = 0
+		}
 		a.Swing++
 		if a.hurtResist > 0 {
 			a.hurtResist--
@@ -269,7 +281,7 @@ func (m *Manager) Tick() {
 		m.think(a)
 	}
 	for _, a := range m.Actors {
-		if a.Riding != nil || (a.Player && a.Riding == nil) {
+		if a.Riding != nil || (a.Player && a.Riding == nil) || a.frozen {
 			continue
 		}
 		if a.Boat != nil {
@@ -536,4 +548,15 @@ type DoorBuster interface {
 	Hit(a *Actor, x, y, z int)          // playAuxSFX 1010
 	Crack(a *Actor, x, y, z, stage int) // destroyBlockInWorldPartially (-1 clears)
 	Bust(a *Actor, x, y, z int)         // setBlock air, playAuxSFX 1012 and 2001
+}
+
+// playerWithin reports whether the player nearest a is closer than r
+// blocks (getClosestPlayerToEntity, a 3-D distance).
+func (m *Manager) playerWithin(a *Actor, r float64) bool {
+	for _, o := range m.Actors {
+		if o.Player && o.Pos().dist2(a.Pos()) < r*r {
+			return true
+		}
+	}
+	return false
 }

@@ -253,6 +253,7 @@ type Actor struct {
 	Player               bool // body driven by the game (input), not by a brain
 	Sprinting            bool // set by the game: a sprinting player (+1 knockback), a charging mount (speed ×1.3)
 	Persistent           bool // never despawns
+	PersistReq           bool // persistenceRequired (NBT, a name tag, a picked-up item): its age stays 0
 	Faction              string
 	Health, MaxHealth    float64
 	Armor                float64 // armour points 0..20
@@ -336,7 +337,8 @@ type Actor struct {
 	attacker               *Actor
 	attackerTicks          int
 	panic                  int
-	age                    int // ticks since spawn or last fight (despawn)
+	age                    int  // entityAge: ticks since a player was within 32 blocks or it was hurt
+	frozen                 bool // not updated this tick (Manager.Loaded)
 	nav                    navigator
 	jump                   jumpCharge
 	routeWait              int

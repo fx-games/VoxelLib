@@ -181,7 +181,8 @@ func (m *Manager) wander(a *Actor) {
 	b := &a.Brain
 	n := &a.nav
 	if n.has {
-		if m.moveTo(a, n.goal, b.speed()) || n.stuck >= 3 {
+		// continueExecuting is !noPath: the walk ends with its path
+		if !n.pending && (n.path == nil || n.i >= len(n.path)) || m.moveTo(a, n.goal, b.speed()) || n.stuck >= 3 {
 			m.stop(a)
 			n.stuck = 0
 		}
@@ -189,7 +190,9 @@ func (m *Manager) wander(a *Actor) {
 	}
 	m.stop(a)
 	m.idleLook(a, a.Yaw)
-	if m.Rand.Intn(120) != 0 { // EntityAIWander: a 1 in 120 chance a tick
+	// EntityAIWander.shouldExecute, asked on EntityAITasks' every third
+	// tick: not once 100 ticks from a player, else a 1 in 120 chance
+	if (a.Ticks-1)%3 != 0 || a.age >= 100 || m.Rand.Intn(120) != 0 {
 		return
 	}
 	r := b.Range
@@ -199,7 +202,7 @@ func (m *Manager) wander(a *Actor) {
 	ang, d := m.Rand.Float64()*2*math.Pi, m.Rand.Float64()*r
 	goal := Vec{b.Home.X + math.Cos(ang)*d, b.Home.Y + 3, b.Home.Z + math.Sin(ang)*d}
 	if p, ok := m.ground(m.graphFor(a), goal); ok {
-		m.plan(a, center(p))
+		m.planIn(a, center(p), float32(a.AggroRange)) // getPathSearchRange: followRange
 	}
 }
 

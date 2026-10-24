@@ -22,6 +22,8 @@ type Saved struct {
 	Speed     float64            `json:"speed,omitempty"`
 	Mount     *MountStats        `json:"mount,omitempty"`
 	Effects   map[string]*Effect `json:"effects,omitempty"`
+	// PersistReq is persistenceRequired (the NBT's PersistenceRequired).
+	PersistReq bool `json:"persistReq,omitempty"`
 }
 
 // Snapshot is the Manager's part of the save blob. Players are not saved
@@ -40,7 +42,7 @@ func (m *Manager) Save() Snapshot {
 		}
 		v := Saved{ID: a.ID, Kind: a.Kind, Category: a.Category, Name: a.Name, Title: a.Title,
 			ShowName: a.ShowName, Pos: a.Pos(), Yaw: a.Yaw, Health: a.Health, Faction: a.Faction,
-			Brain: a.Brain, Tags: a.Tags, MaxHealth: a.MaxHealth, Speed: a.Speed, Mount: a.Mount, Effects: a.Effects}
+			Brain: a.Brain, Tags: a.Tags, MaxHealth: a.MaxHealth, Speed: a.Speed, Mount: a.Mount, Effects: a.Effects, PersistReq: a.PersistReq}
 		if a.Riding != nil {
 			v.Riding = a.Riding.ID
 		}
@@ -80,7 +82,7 @@ func (m *Manager) Load(s Snapshot, make func(id, kind string) *Actor) {
 		if s, t := v.Mount, a.Mount; s != nil && t != nil { // keep the template's fixed fields
 			t.JumpStrength, t.Tame, t.Temper, t.Saddled, t.Owner, t.Eating = s.JumpStrength, s.Tame, s.Temper, s.Saddled, s.Owner, s.Eating
 		}
-		a.Health, a.Faction, a.Brain = v.Health, v.Faction, v.Brain
+		a.Health, a.Faction, a.Brain, a.PersistReq = v.Health, v.Faction, v.Brain, v.PersistReq
 		if v.Tags != nil {
 			a.Tags = v.Tags
 		}

@@ -30,8 +30,9 @@ type navigator struct {
 	detour int
 	detAng float64
 	tries  int
-	nodes  int  // the search's expansion cap
-	cut    bool // the path was cut short of the sun (shade): its end is the end
+	nodes  int     // the search's expansion cap
+	cut    bool    // the path was cut short of the sun (shade): its end is the end
+	rng    float32 // the search's range around its goal (PathFinder), 0: none
 }
 
 // Planning limits: A* reaches at most planRange blocks ahead (a far goal is
@@ -128,10 +129,14 @@ const (
 
 var detourAngles = [...]float64{0, 60, -60, 120, -120, 180}
 
-func (m *Manager) plan(a *Actor, goal Vec) {
+func (m *Manager) plan(a *Actor, goal Vec) { m.planIn(a, goal, 0) }
+
+// planIn is plan with the search kept within rng blocks of its goal (0:
+// no range).
+func (m *Manager) planIn(a *Actor, goal Vec, rng float32) {
 	c := a.carrier()
 	n := &a.nav
-	n.goal, n.has, n.age = goal, true, 0
+	n.goal, n.has, n.age, n.rng = goal, true, 0, rng
 	g := m.graphFor(c)
 	from := m.start(g, c.Pos())
 	leg, reach := goal, float64(planRange)
@@ -174,6 +179,7 @@ func (m *Manager) pump() {
 				continue
 			}
 			m.setGraph(&m.search, a.carrier())
+			m.search.Range = n.rng
 			if !m.search.Begin(n.from, n.to, n.nodes) {
 				m.finish(a, nil)
 				continue
