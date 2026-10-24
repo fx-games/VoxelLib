@@ -215,3 +215,13 @@ func (ir *ItemRenderer) DrawHandModel(item string, aspect float32, model mgl32.M
 	ir.draw(item, proj, model, sky, block)
 	ir.end()
 }
+
+// DrawInWorld draws one item posed by model relative to the camera (at the
+// origin, in world orientation) in the world pass: the world's projection,
+// fog and depth, no hand projection or depth clear, e.g. a weapon animated
+// as part of the player model.
+func (ir *ItemRenderer) DrawInWorld(item string, cam *Camera, model mgl32.Mat4, sky, block uint8) {
+	ir.begin(ir.r.CurrentFog())
+	ir.draw(item, cam.ViewProj(), model, sky, block)
+	ir.end()
+}

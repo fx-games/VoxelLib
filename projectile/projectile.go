@@ -82,7 +82,10 @@ type Arrow struct {
 	// Flown counts ticks since launch and never resets, e.g. to hide a
 	// fresh shot near the camera even if it stuck at once.
 	Flown int
-	gone  bool // removed from the world (arrows stuck in it go too)
+	// Gravity is the fall per tick² (Gravity, Minecraft's arrow, unless
+	// changed after Shoot, e.g. a thrown item's).
+	Gravity float64
+	gone    bool // removed from the world (arrows stuck in it go too)
 
 	// Offset in the target's frame: position relative to its feet, rotated
 	// by -yaw, and the arrow's yaw relative to the target's.
@@ -109,7 +112,7 @@ func (w *World) Shoot(x, y, z, yaw, pitch, speed float64) *Arrow {
 	dz := -math.Cos(yaw) * math.Cos(pitch)
 	a := &Arrow{X: x, Y: y, Z: z, PrevX: x, PrevY: y, PrevZ: z,
 		VX: dx * speed, VY: dy * speed, VZ: dz * speed,
-		Yaw: yaw, Pitch: pitch, PrevYaw: yaw, PrevPitch: pitch, Part: -1}
+		Yaw: yaw, Pitch: pitch, PrevYaw: yaw, PrevPitch: pitch, Part: -1, Gravity: Gravity}
 	w.Arrows = append(w.Arrows, a)
 	return a
 }
@@ -186,7 +189,7 @@ func (w *World) fly(a *Arrow, s collide.Solids) {
 		a.X, a.Y, a.Z = nx, ny, nz
 	}
 	a.VX *= Drag
-	a.VY = a.VY*Drag - Gravity
+	a.VY = a.VY*Drag - a.Gravity
 	a.VZ *= Drag
 	a.orient()
 }

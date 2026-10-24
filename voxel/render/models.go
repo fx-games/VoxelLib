@@ -317,3 +317,15 @@ func toNRGBARect(img image.Image) *image.NRGBA {
 	draw.Draw(out, out.Bounds(), img, b.Min, draw.Src)
 	return out
 }
+
+// DrawInWorld draws one model placed by model relative to the camera (at
+// the origin, world orientation) in the world pass, with the world's fog
+// and depth, e.g. first-person arms rendered as part of the player model.
+func (mr *ModelRenderer) DrawInWorld(handle int, cam *Camera, model mgl32.Mat4, sky, block uint8) {
+	if handle < 0 || handle >= len(mr.models) || mr.models[handle] == nil {
+		return
+	}
+	mr.begin(modelLight{cam.ViewProj(), mr.r.CurrentFog(), mr.r.Opt.Daylight, mr.r.Opt.BlockBrightness})
+	mr.drawModel(mr.models[handle], model, nil, drawParams{sky: sky, block: block})
+	mr.end()
+}
