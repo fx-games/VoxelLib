@@ -170,3 +170,29 @@ func TestPrecipitationHeightCache(t *testing.T) {
 		t.Fatalf("after SetRaw at the top: %d, want 320", h)
 	}
 }
+
+// TestSetEmission: an emission override lights its cell and the light
+// spreads; 0 or a block change there takes it away.
+func TestSetEmission(t *testing.T) {
+	w, stone := flatWorld(t)
+	for y := 63; y >= 59; y-- {
+		w.SetBlock(3, y, 3, Air)
+	}
+	w.SetBlock(3, 63, 3, stone) // a dark shaft
+	w.SetEmission(3, 60, 3, 7)
+	if _, b := w.Light(3, 60, 3); b != 7 {
+		t.Fatal("emitting", b)
+	}
+	if _, b := w.Light(3, 59, 3); b != 6 {
+		t.Fatal("spread", b)
+	}
+	w.SetEmission(3, 60, 3, 0)
+	if _, b := w.Light(3, 59, 3); b != 0 {
+		t.Fatal("off", b)
+	}
+	w.SetEmission(3, 60, 3, 7)
+	w.SetBlock(3, 60, 3, w.Reg.Default("glass"))
+	if _, b := w.Light(3, 59, 3); b != 0 {
+		t.Fatal("block changed", b)
+	}
+}

@@ -150,7 +150,7 @@ func (w *World) unpropagate(sky bool, t []StateInfo) {
 				w.setLight(nx, ny, nz, sky, 0)
 				q = append(q, lightNode{int32(nx), int32(ny), int32(nz), nl})
 				if !sky {
-					if e := t[w.stateAt(nx, ny, nz)].Emission; e > 0 {
+					if e := w.emission(nx, ny, nz, w.stateAt(nx, ny, nz), t); e > 0 {
 						w.setLight(nx, ny, nz, false, e)
 						w.lightQ = append(w.lightQ, lightNode{int32(nx), int32(ny), int32(nz), e})
 					}
@@ -171,9 +171,13 @@ func (w *World) relight(x, y, z int, oldInfo, newInfo StateInfo, t []StateInfo) 
 		w.removeQ = append(w.removeQ[:0], lightNode{int32(x), int32(y), int32(z), lvl})
 		w.lightQ = w.lightQ[:0]
 		w.unpropagate(sky, t)
-		if !sky && newInfo.Emission > 0 {
-			w.setLight(x, y, z, false, newInfo.Emission)
-			w.lightQ = append(w.lightQ, lightNode{int32(x), int32(y), int32(z), newInfo.Emission})
+		e := newInfo.Emission
+		if l, ok := w.emit[BlockPos{x, y, z}]; ok {
+			e = l
+		}
+		if !sky && e > 0 {
+			w.setLight(x, y, z, false, e)
+			w.lightQ = append(w.lightQ, lightNode{int32(x), int32(y), int32(z), e})
 		}
 		if newInfo.Opacity < 15 {
 			if sky && y == w.MaxY()-1 && newInfo.Opacity == 0 && !w.NoSky.Load() {
@@ -325,9 +329,9 @@ func (w *World) lightChunk(c *Chunk) {
 		}
 		s.Blocks.Unpack(&buf)
 		for i, id := range buf {
-			if e := t[id].Emission; e > 0 {
-				x, y, z := i&15, i>>8, (i>>4)&15
-				wy := w.MinY + si*16 + y
+			x, y, z := i&15, i>>8, (i>>4)&15
+			wy := w.MinY + si*16 + y
+			if e := w.emission(bx+x, wy, bz+z, id, t); e > 0 {
 				setNibble(s.Block, i, e)
 				q = append(q, lightNode{int32(bx + x), int32(wy), int32(bz + z), e})
 			}

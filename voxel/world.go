@@ -27,7 +27,8 @@ type World struct {
 	removeQ []lightNode
 	cache   *Chunk
 
-	dyn atomic.Pointer[DynField] // dynamic lights (dynlight.go)
+	dyn  atomic.Pointer[DynField] // dynamic lights (dynlight.go)
+	emit map[BlockPos]uint8       // block light emission overrides (SetEmission)
 	// NoSky makes the sky light 0 everywhere (a dimension without a sky:
 	// the reference's hasNoSky). Set it before chunks are lit.
 	NoSky atomic.Bool
@@ -235,11 +236,50 @@ func (w *World) SetBlock(x, y, z int, id StateID) bool {
 		}
 	}
 
+	delete(w.emit, BlockPos{x, y, z}) // the tile entity behind it goes with the block
 	if c.Lit.Load() {
 		w.relight(x, y, z, t[old], t[id], t)
 	}
 	w.changedAround(c.Pos)
 	return true
+}
+
+// SetEmission makes the block at x, y, z emit block light l instead of its
+// state's (Block.getLightValue(world, x, y, z) reading its tile entity;
+// 0 ends the override) and relights there. A block change drops it.
+func (w *World) SetEmission(x, y, z int, l uint8) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	p := BlockPos{x, y, z}
+	if o, ok := w.emit[p]; ok && o == l || !ok && l == 0 {
+		return
+	}
+	if l == 0 {
+		delete(w.emit, p)
+	} else {
+		if w.emit == nil {
+			w.emit = map[BlockPos]uint8{}
+		}
+		w.emit[p] = l
+	}
+	c := w.chunkAt(x, z)
+	if c == nil || !c.Lit.Load() || y < w.MinY || y >= w.MaxY() {
+		return
+	}
+	t := w.Reg.Table()
+	info := t[c.Get(x&15, y, z&15)]
+	w.relight(x, y, z, info, info, t)
+	w.changedAround(c.Pos)
+}
+
+// emission is the block light the block id at x, y, z emits.
+func (w *World) emission(x, y, z int, id StateID, t []StateInfo) uint8 {
+	if len(w.emit) > 0 {
+		if l, ok := w.emit[BlockPos{x, y, z}]; ok {
+			return l
+		}
+	}
+	return t[id].Emission
 }
 
 // changedAround bumps the Version of p's column and its 8 neighbours: light
