@@ -81,6 +81,10 @@ type ModelInstance struct {
 	// AlphaCutoff discards texels with alpha at or below it (glAlphaFunc
 	// GL_GREATER); 0 means 0.5. Reference entities use 0.1.
 	AlphaCutoff float32
+	// Glint draws the enchantment glint over the model (glint.go) at
+	// GlintTicks, the entity's ticksExisted plus the partial tick.
+	Glint      bool
+	GlintTicks float32
 }
 
 // drawParams is the per-draw state of an instance.
@@ -93,10 +97,12 @@ type drawParams struct {
 	cutoff         float32
 	texture        int
 	boost          float32
+	glint          bool
+	glintTicks     float32
 }
 
 func (in *ModelInstance) params() drawParams {
-	return drawParams{in.Sky, in.Block, in.Fade, in.Color, in.Overlay, in.Emissive, in.Blend, in.AlphaCutoff, in.Texture, in.BlockBoost}
+	return drawParams{in.Sky, in.Block, in.Fade, in.Color, in.Overlay, in.Emissive, in.Blend, in.AlphaCutoff, in.Texture, in.BlockBoost, in.Glint, in.GlintTicks}
 }
 
 // modelLight is the lightmap colour of an instance's light.

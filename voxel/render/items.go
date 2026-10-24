@@ -19,6 +19,7 @@ type ItemRenderer struct {
 	ranges  [][2]int32 // first, count per item
 	texels  []int      // the larger sprite side per item (In2D)
 	noDepth bool       // the item being drawn writes no depth (ItemPose.NoDepth)
+	glint   bool       // the item being drawn glints (ItemPose.Glint)
 }
 
 // ItemInstance is one item to draw in the world.
@@ -28,6 +29,7 @@ type ItemInstance struct {
 	Yaw        float64 // spin around Y, radians
 	Scale      float32 // edge length in blocks (reference drops: 0.5)
 	Sky, Block uint8   // light levels 0..15 at the item
+	Glint      bool    // the enchantment glint (glint.go)
 }
 
 // NewItemRenderer extrudes every sprite and uploads them. names[i] is the
@@ -89,8 +91,10 @@ func (ir *ItemRenderer) DrawWorld(cam *Camera, items []ItemInstance) {
 		model := mgl32.Translate3D(float32(it.X-cam.X), float32(it.Y-cam.Y), float32(it.Z-cam.Z)).
 			Mul4(mgl32.HomogRotate3DY(float32(-it.Yaw))).
 			Mul4(mgl32.Scale3D(s, s, s))
+		ir.glint = it.Glint
 		ir.draw(it.Item, vp, model, it.Sky, it.Block)
 	}
+	ir.glint = false
 	ir.end()
 }
 
@@ -105,6 +109,7 @@ type ItemPose struct {
 	// NoDepth blends the item and writes no depth (glDepthMask(false), e.g.
 	// a sneaking ranger's equipment).
 	NoDepth bool
+	Glint   bool // the enchantment glint (glint.go)
 }
 
 // DrawPosed draws items at arbitrary transforms. Call after Renderer.Render
@@ -117,10 +122,10 @@ func (ir *ItemRenderer) DrawPosed(cam *Camera, items []ItemPose) {
 	ir.begin(ir.r.CurrentFog())
 	for _, it := range items {
 		model := mgl32.Translate3D(float32(it.X-cam.X), float32(it.Y-cam.Y), float32(it.Z-cam.Z)).Mul4(it.M)
-		ir.noDepth = it.NoDepth
+		ir.noDepth, ir.glint = it.NoDepth, it.Glint
 		ir.draw(it.Item, vp, model, it.Sky, it.Block)
 	}
-	ir.noDepth = false
+	ir.noDepth, ir.glint = false, false
 	ir.end()
 }
 
@@ -206,13 +211,21 @@ var Equipped2D = mgl32.Translate3D(0, -0.3, 0).
 // model maps the item's unit slab (see ItemPose) into view space (x right,
 // y up, looking down -z), e.g. the reference's first-person transform chain.
 func (ir *ItemRenderer) DrawHandModel(item string, aspect float32, model mgl32.Mat4, sky, block uint8) {
-	if _, ok := ir.index[item]; !ok {
+	ir.DrawHandItem(aspect, ItemPose{Item: item, M: model, Sky: sky, Block: block})
+}
+
+// DrawHandItem is DrawHandModel for it.Item with it.M as the model and
+// its light and Glint (X, Y, Z and NoDepth are ignored).
+func (ir *ItemRenderer) DrawHandItem(aspect float32, it ItemPose) {
+	if _, ok := ir.index[it.Item]; !ok {
 		return
 	}
 	clearHandDepth()
 	proj := mgl32.Perspective(mgl32.DegToRad(70), aspect, 0.05, 10)
 	ir.begin(Fog{Color: mgl32.Vec3{}, Start: 1e6, End: 2e6}) // no fog on the hand
-	ir.draw(item, proj, model, sky, block)
+	ir.glint = it.Glint
+	ir.draw(it.Item, proj, it.M, it.Sky, it.Block)
+	ir.glint = false
 	ir.end()
 }
 

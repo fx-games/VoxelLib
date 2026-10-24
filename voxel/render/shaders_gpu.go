@@ -178,6 +178,40 @@ fn fs(i: VOut) -> @location(0) vec4f {
 }
 `
 
+// modelGlintWGSL is modelWGSL's glint pass (glint.go): overlay gives way
+// to the two glintAffine rows over the model's texture coordinates, the
+// model's texture keeps only its alpha test (the reference's depth equal),
+// lighting off, the lightmap and fog on.
+var modelGlintWGSL = beforeFS(mustReplace(modelWGSL,
+	"	overlay: vec4f,  // rgb mixed over the lit result by a (hurt flash)\n", "	gu: vec4f,\n	gv: vec4f,\n",
+	"@group(1) @binding(1) var samp: sampler;\n", "@group(1) @binding(1) var samp: sampler;\n"+
+		"@group(2) @binding(0) var glint: texture_2d<f32>;\n@group(2) @binding(1) var gsamp: sampler;\n",
+	"	@location(2) dist: f32,\n", "	@location(2) dist: f32,\n	@location(3) guv: vec2f,\n",
+	"	o.uv = uv;\n", "	o.uv = uv;\n	o.guv = vec2f(dot(u.gu.xyz, vec3f(uv, 1.0)), dot(u.gv.xyz, vec3f(uv, 1.0)));\n")) + `@fragment
+fn fs(i: VOut) -> @location(0) vec4f {
+	let c = textureSample(tex, samp, i.uv);
+	let g = textureSample(glint, gsamp, i.guv);
+	if (c.a <= u.fog.z) { discard; }
+	let col = g.rgb * u.color.rgb * u.light.rgb;
+	return vec4f(mix(col, u.fogColor.rgb, fogFactor(i.dist, u.fog)), 1.0);
+}
+`
+
+// beforeFS is a shader's source up to its fragment stage.
+func beforeFS(s string) string { return s[:strings.Index(s, "@fragment")] }
+
+// mustReplace replaces each old, new pair once in s, panicking when an
+// old is not there exactly once.
+func mustReplace(s string, pairs ...string) string {
+	for i := 0; i < len(pairs); i += 2 {
+		if strings.Count(s, pairs[i]) != 1 {
+			panic("mustReplace: " + pairs[i])
+		}
+		s = strings.Replace(s, pairs[i], pairs[i+1], 1)
+	}
+	return s
+}
+
 const itemWGSL = `
 struct U {
 	mvp: mat4x4f,
@@ -213,6 +247,53 @@ fn fs(i: VOut) -> @location(0) vec4f {
 	let c = textureSample(tex, samp, i.uv, i32(u.fogColor.a));
 	if (c.a < 0.5) { discard; }
 	let col = c.rgb * i.shade * u.light.rgb;
+	return vec4f(mix(col, u.fogColor.rgb, fogFactor(i.dist, u.fog)), 1.0);
+}
+`
+
+// itemGlintWGSL is the glint pass over an item (glint.go): the sprite's
+// alpha test keeps it on the item's own pixels (the reference's depth
+// equal), lighting off, the lightmap and fog on.
+const itemGlintWGSL = `
+struct U {
+	mvp: mat4x4f,
+	model: mat4x4f,
+	light: vec4f,    // lightmap colour
+	fogColor: vec4f, // rgb, layer
+	fog: vec4f,
+	color: vec4f,    // GlintColor
+	gu: vec4f,       // glintAffine rows over (0.5 - x, 0.5 - y, 1)
+	gv: vec4f,
+}
+@group(0) @binding(0) var<uniform> u: U;
+@group(1) @binding(0) var tex: texture_2d_array<f32>;
+@group(1) @binding(1) var samp: sampler;
+@group(2) @binding(0) var glint: texture_2d<f32>;
+@group(2) @binding(1) var gsamp: sampler;
+struct VOut {
+	@builtin(position) pos: vec4f,
+	@location(0) uv: vec2f,
+	@location(1) guv: vec2f,
+	@location(2) dist: f32,
+}
+` + wgslLight + `
+@vertex
+fn vs(@location(0) pos: vec3f, @location(1) uv: vec2f, @location(2) normal: vec3f) -> VOut {
+	let wp = u.model * vec4f(pos, 1.0);
+	var o: VOut;
+	o.pos = u.mvp * vec4f(pos, 1.0);
+	o.uv = uv;
+	let b = vec3f(0.5 - pos.x, 0.5 - pos.y, 1.0);
+	o.guv = vec2f(dot(u.gu.xyz, b), dot(u.gv.xyz, b));
+	o.dist = length(wp.xz);
+	return o;
+}
+@fragment
+fn fs(i: VOut) -> @location(0) vec4f {
+	let c = textureSample(tex, samp, i.uv, i32(u.fogColor.a));
+	let g = textureSample(glint, gsamp, i.guv);
+	if (c.a < 0.5) { discard; }
+	let col = g.rgb * u.color.rgb * u.light.rgb;
 	return vec4f(mix(col, u.fogColor.rgb, fogFactor(i.dist, u.fog)), 1.0);
 }
 `
@@ -354,6 +435,7 @@ type pipelines struct {
 	skyAlpha, skyAdd, skyOpaque *wgpu.RenderPipeline
 	outline, crosshair          *wgpu.RenderPipeline
 	model, item, itemNoDepth    *wgpu.RenderPipeline
+	itemGlint, modelGlint       *wgpu.RenderPipeline // group 2: the glint texture
 	modelAlpha, modelAdd        *wgpu.RenderPipeline
 	modelOver                   *wgpu.RenderPipeline
 	particleAlpha, particleAdd  *wgpu.RenderPipeline
@@ -470,6 +552,8 @@ func (ps *pipelines) init() error {
 		{&ps.modelOver, pipeSpec{"model over", modelWGSL, ps.tex2D, modelBuf, tri, none, blendAlpha, false, false, false}},
 		{&ps.item, pipeSpec{"item", itemWGSL, ps.texArray, itemBuf, tri, none, nil, true, true, false}},
 		{&ps.itemNoDepth, pipeSpec{"item no depth", itemWGSL, ps.texArray, itemBuf, tri, none, blendAlpha, true, false, false}},
+		{&ps.itemGlint, pipeSpec{"item glint", itemGlintWGSL, ps.texArray, itemBuf, tri, none, blendGlint, true, false, false}},
+		{&ps.modelGlint, pipeSpec{"model glint", modelGlintWGSL, ps.tex2D, modelBuf, tri, none, blendGlint, true, false, false}},
 		{&ps.particleAlpha, pipeSpec{"particles", particleWGSL, ps.tex2D, particleBuf, tri, none, blendAlpha, true, false, false}},
 		{&ps.particleAdd, pipeSpec{"particles additive", particleWGSL, ps.tex2D, particleBuf, tri, none, blendAdd, true, false, false}},
 		{&ps.overlay, pipeSpec{"overlay", overlayWGSL, ps.tex2D, nil, gputypes.PrimitiveTopologyTriangleStrip, none, blendAlpha, false, false, false}},
@@ -495,6 +579,9 @@ func (ps *pipelines) init() error {
 		}
 		if sp.blit {
 			groups = []*wgpu.BindGroupLayout{ps.tex2D}
+		}
+		if s.dst == &ps.itemGlint || s.dst == &ps.modelGlint {
+			groups = append(groups, ps.tex2D)
 		}
 		pl, err := dev.device.CreatePipelineLayout(&wgpu.PipelineLayoutDescriptor{Label: sp.label, BindGroupLayouts: groups})
 		if err != nil {

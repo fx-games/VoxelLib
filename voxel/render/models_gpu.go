@@ -142,4 +142,40 @@ func (mr *ModelRenderer) drawModel(g *gpuModel, model mgl32.Mat4, skin []mgl32.M
 		p.DrawIndexed(gputypes.DrawIndexedArgs{IndexCount: uint32(pt.count), InstanceCount: 1, FirstIndex: uint32(pt.first)})
 		packCast(group, g.vbo, g.ebo, uint32(pt.first), uint32(pt.count), model, g.radius)
 	}
+	if d.glint && glintOn() {
+		mr.drawGlint(p, g, model, skin, d, lc, cutoff)
+	}
+}
+
+// drawGlint is RendererLivingEntity's armour glint over the model just
+// drawn: two layers of modelGlint at d.glintTicks.
+func (mr *ModelRenderer) drawGlint(p *wgpu.RenderPassEncoder, g *gpuModel, model mgl32.Mat4, skin []mgl32.Mat4, d drawParams, lc [3]float32, cutoff float32) {
+	l := &mr.gpu.light
+	setPipe(p, dev.pipes.modelGlint)
+	p.SetBindGroup(2, glintTex.bg, nil)
+	for k := range 2 {
+		a := modelGlint(d.glintTicks, k)
+		u := mr.gpu.u.reset().mat(l.vp).mat(model).f(lc[0], lc[1], lc[2], 0).
+			f(l.fog.Color[0], l.fog.Color[1], l.fog.Color[2], 0).f(l.fog.Start, l.fog.End, cutoff, 0).
+			f(GlintColor[0], GlintColor[1], GlintColor[2], 1).f(a[0], a[1], a[2], 0).f(a[3], a[4], a[5], 0)
+		for _, b := range bones(skin, g.bones) {
+			u.mat(b)
+		}
+		bindUniforms(p, u)
+		p.SetVertexBuffer(0, g.vbo, 0)
+		p.SetIndexBuffer(g.ebo, gputypes.IndexFormatUint32, 0)
+		for _, pt := range g.parts {
+			t := 0
+			if pt.tex >= 0 && pt.tex < len(g.textures) {
+				t = pt.tex
+			}
+			group := g.groups[t]
+			if d.texture > 0 && d.texture <= len(mr.skins) {
+				group = mr.skins[d.texture-1].group
+			}
+			p.SetBindGroup(1, group, nil)
+			dev.draws++
+			p.DrawIndexed(gputypes.DrawIndexedArgs{IndexCount: uint32(pt.count), InstanceCount: 1, FirstIndex: uint32(pt.first)})
+		}
+	}
 }
