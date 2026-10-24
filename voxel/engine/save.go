@@ -457,3 +457,45 @@ func (e *Engine) closeStores() {
 		}
 	}
 }
+
+// ReadChunk makes chunk p of dimension dim as loading it would (the map's
+// chunk, else the dimension's generator, with the slot's edits laid over),
+// without the OnMapChunk hook and without adding it to the world: a read
+// of a dimension the player is not in.
+func (e *Engine) ReadChunk(dim int, p voxel.ChunkPos) (*voxel.Chunk, error) {
+	m := e.cfg.Map
+	if m == nil {
+		return nil, errors.New("engine: dimensions need a Map")
+	}
+	d := m.Dimension(dim)
+	if d == nil {
+		return nil, fmt.Errorf("engine: map has no dimension %d", dim)
+	}
+	e.unsavedMu.Lock()
+	s := e.dims[dim]
+	if s == nil {
+		s = &dimSrc{id: dim, noSky: e.cfg.Skyless[dim]}
+		if e.cfg.SaveDir != "" {
+			s.store = anvil.OpenStore(slotDim(e.cfg.SaveDir, dim), !e.cfg.ReadOnly)
+		}
+		e.dims[dim] = s
+	}
+	e.unsavedMu.Unlock()
+	e.switchMu.Lock()
+	if s.gen == nil {
+		s.gen = mapGenerator(m, d)
+	}
+	gen := s.gen
+	e.switchMu.Unlock()
+	c, _, err := m.ReadChunk(e.World, dim, p)
+	if err != nil {
+		c = e.World.NewChunk(p)
+		if gen != nil {
+			gen.Generate(e.World, c)
+		}
+	}
+	if s.store != nil {
+		e.applyDelta(s, c)
+	}
+	return c, nil
+}

@@ -302,6 +302,9 @@ func TestDimensions(t *testing.T) {
 	if c := e.produce(voxel.ChunkPos{X: 1}); c.Get(4, 1, 3) != lamp || c.Get(5, 5, 3) == lamp {
 		t.Fatal("dimension 0's edit lost or mixed up")
 	}
+	if c, err := e.ReadChunk(7, voxel.ChunkPos{X: 1}); err != nil || c.Get(5, 5, 3) != lamp || c.Get(4, 1, 3) == lamp || e.Dimension() != 0 {
+		t.Fatal("ReadChunk of dimension 7 misses its edit", err)
+	}
 	if _, err := e.useDim(7, under); err != nil {
 		t.Fatal(err)
 	}
