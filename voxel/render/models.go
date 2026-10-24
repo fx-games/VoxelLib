@@ -327,8 +327,9 @@ func (mr *ModelRenderer) DrawHandSkinned(handle int, aspect float32, view mgl32.
 }
 
 // DrawHandInstance draws in.Model like DrawHand, with the instance's
-// texture, colour, blend, cutoff and emissive settings (its position and
-// pose fields are ignored: view places it), e.g. the first-person fire.
+// skin, texture, colour, blend, cutoff and emissive settings (its
+// position and pose fields are ignored: view places it), e.g. the
+// first-person fire.
 func (mr *ModelRenderer) DrawHandInstance(aspect float32, view mgl32.Mat4, in ModelInstance) {
 	if in.Model < 0 || in.Model >= len(mr.models) {
 		return
@@ -336,7 +337,7 @@ func (mr *ModelRenderer) DrawHandInstance(aspect float32, view mgl32.Mat4, in Mo
 	clearHandDepth()
 	proj := mgl32.Perspective(mgl32.DegToRad(70), aspect, 0.05, 10)
 	mr.begin(modelLight{proj, Fog{Start: 1e6, End: 2e6}, mr.r.Opt.Daylight, mr.r.Opt.BlockBrightness})
-	mr.drawModel(mr.models[in.Model], view, nil, in.params())
+	mr.drawModel(mr.models[in.Model], view, in.Skin, in.params())
 	mr.end()
 }
 
