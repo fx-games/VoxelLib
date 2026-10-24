@@ -184,6 +184,13 @@ func (r *Renderer) DrawBoxOutline(cam *Camera, b collide.AABB) {
 	r.drawLines(dev.pipes.outline, 0, 24, clip(boxOutlineMVP(cam, b)), mgl32.Vec4{0, 0, 0, 0.6})
 }
 
+// DrawOrientedOutline draws the wireframe of the unit cube [0,1]³ placed
+// by m about x, y, z (blocks), e.g. a turned hit box.
+func (r *Renderer) DrawOrientedOutline(cam *Camera, x, y, z float64, m mgl32.Mat4, col mgl32.Vec4) {
+	mvp := cam.ViewProj().Mul4(mgl32.Translate3D(float32(x-cam.X), float32(y-cam.Y), float32(z-cam.Z))).Mul4(m)
+	r.drawLines(dev.pipes.outline, 0, 24, clip(mvp), col)
+}
+
 // DrawCrosshair draws a screen-centre cross; aspect = width/height.
 func (r *Renderer) DrawCrosshair(aspect float32) {
 	r.drawLines(dev.pipes.crosshair, 24, 4, crosshairMVP(aspect), mgl32.Vec4{1, 1, 1, 1})
