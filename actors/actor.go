@@ -314,6 +314,10 @@ type Actor struct {
 	// Move, if set, moves the actor each tick instead of the living
 	// physics (a non-living entity with its own onUpdate motion).
 	Move func(a *Actor)
+	// BeforeMove, if set, runs each tick before the living physics with
+	// the tick's input (a moveEntityWithHeading override adding its own
+	// moveFlying first).
+	BeforeMove func(a *Actor, in character.Input)
 	// OnDamage, if set, is a damageEntity override: it runs once the
 	// health is lowered, before OnHurt and the death check, with the
 	// amount before armour; it may raise Health again to cheat death.

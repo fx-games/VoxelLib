@@ -306,6 +306,9 @@ func (m *Manager) Tick() {
 			}
 		}
 		in.Yaw = a.Yaw
+		if a.BeforeMove != nil {
+			a.BeforeMove(a, in)
+		}
 		m.moveBody(a, in)
 		if s := a.Mount; s != nil && a.Alive() && !a.Controlled() && s.Steer != nil && s.Steer.running {
 			// onLivingUpdate's own step after the task's, with no input
