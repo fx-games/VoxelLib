@@ -177,6 +177,9 @@ type Ranged struct {
 	// MeleeRange overrides the attack mode's melee distance (0: 4 plus
 	// the width squared, longer when riding).
 	MeleeRange float64
+	// MeleeBurning makes the melee distance unlimited while the target
+	// burns (a getMeleeRange override returning Double.MAX_VALUE).
+	MeleeBurning bool
 	// CustomNPC DataStats/DataAI: FireRate and BurstCount, RangeAndMelee
 	// (0 ranged only, 1 melee within DistanceToMelee, 2 both),
 	// FireIndirect (0 never, 1 beyond half the range, 2 when unseen),

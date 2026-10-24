@@ -141,3 +141,24 @@ func TestArrowAttackSight(t *testing.T) {
 		t.Fatal("never fired in sight")
 	}
 }
+
+// TestMeleeBurning: with MeleeBurning a LOTR NPC 10 blocks from its
+// target picks melee while the target burns, ranged once it is out.
+func TestMeleeBurning(t *testing.T) {
+	m := NewManager(flat(40), nil, nil, 3)
+	a := New("thrower", "thrower", 0.5, 1, 0.5)
+	a.Ranged, a.AggroRange = &Ranged{AI: RangedLOTR, MinInterval: 20, MaxInterval: 30, MaxRange: 16, MeleeBurning: true}, 40
+	tg := New("man", "man", 10.5, 1, 0.5)
+	m.Add(a)
+	m.Add(tg)
+	m.Launch = func(*Actor, *Actor, float64) {}
+	m.Sees = func(*Actor, *Actor) bool { return true }
+	tg.SetFire(5)
+	if m.lotrFight(a, tg); a.rs.mode != modeMelee {
+		t.Fatalf("burning target: mode %v", a.rs.mode)
+	}
+	tg.Extinguish()
+	if m.lotrFight(a, tg); a.rs.mode != modeRanged {
+		t.Fatalf("target out: mode %v", a.rs.mode)
+	}
+}

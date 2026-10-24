@@ -121,6 +121,9 @@ func (m *Manager) lotrFight(a, t *Actor) {
 	if r.MeleeRange > 0 {
 		mr = r.MeleeRange
 	}
+	if r.MeleeBurning && t.OnFire() {
+		mr = math.MaxFloat64 // squared it is +Inf, as in Java
+	}
 	d2 := a.Pos().dist2(t.Pos())
 	far := a.AggroRange * 0.95
 	if d2 >= mr*mr {
