@@ -92,3 +92,16 @@ func TestAdd(t *testing.T) {
 		t.Fatalf("add to red: %v", o[:4])
 	}
 }
+
+// TestBounds: the pixel range Draw covers.
+func TestBounds(t *testing.T) {
+	m := &model.Model{Meshes: []model.Mesh{square(0)}}
+	view := mgl32.Translate3D(2, -3, 0).Mul4(mgl32.Scale3D(4, 5, 1))
+	x0, y0, x1, y1, ok := Bounds(m, []mgl32.Mat4{mgl32.Ident4()}, view)
+	if !ok || x0 != 2 || y0 != -3 || x1 != 6 || y1 != 2 {
+		t.Fatalf("%v %v %v %v %v", x0, y0, x1, y1, ok)
+	}
+	if _, _, _, _, ok := Bounds(&model.Model{}, nil, view); ok {
+		t.Fatal("empty model has bounds")
+	}
+}

@@ -103,6 +103,27 @@ func (t *Target) Draw(m *model.Model, skin []mgl32.Mat4, view mgl32.Mat4, tex *i
 	}
 }
 
+// Bounds is the x, y range in target pixels that Draw(m, skin, view)
+// covers: its skinned vertices under view (ok false if m has none).
+func Bounds(m *model.Model, skin []mgl32.Mat4, view mgl32.Mat4) (x0, y0, x1, y1 float32, ok bool) {
+	for _, mesh := range m.Meshes {
+		for _, v := range mesh.Verts {
+			var e mgl32.Vec4
+			for k, w := range v.Weights {
+				if w != 0 {
+					e = e.Add(skin[v.Joints[k]].Mul4x1(v.Pos.Vec4(1)).Mul(w))
+				}
+			}
+			p := view.Mul4x1(e)
+			if !ok {
+				x0, y0, x1, y1, ok = p[0], p[1], p[0], p[1], true
+			}
+			x0, y0, x1, y1 = min(x0, p[0]), min(y0, p[1]), max(x1, p[0]), max(y1, p[1])
+		}
+	}
+	return
+}
+
 // lit is the fixed-function vertex colour for normal n.
 func lit(n mgl32.Vec3, c [4]float32, l Lighting) [3]float32 {
 	if l.Off {
