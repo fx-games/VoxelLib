@@ -401,6 +401,10 @@ func (a *Actor) SetRevenge(src *Actor) { a.revenge, a.revengeTicks = src, 100 }
 // or after a hurt by a source AttackerClears accepts.
 func (a *Actor) Attacker() *Actor { return a.attacker }
 
+// RecentlyHit is recentlyHit: 100 after a hurt by a player (or a source
+// AttackerClears accepts), counting down each tick.
+func (a *Actor) RecentlyHit() int { return a.attackerTicks }
+
 // HurtResist is hurtResistantTime: MaxHurtResist after a hit, counting
 // down each tick.
 func (a *Actor) HurtResist() int { return a.hurtResist }
