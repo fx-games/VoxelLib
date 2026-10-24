@@ -43,3 +43,30 @@ func TestKnockOwn(t *testing.T) {
 		t.Fatalf("push 0 moved it: %v,%v", b.Body.VX, b.Body.VY)
 	}
 }
+
+// TestMeleeRangeOverride: Range² plus the target's width, never below the
+// default reach; a sprinting mob's blow gets no sprint knockback.
+func TestMeleeRangeOverride(t *testing.T) {
+	a, b := New("a", "x", 0, 1, 0), New("b", "x", 0, 1, 0)
+	def := MeleeReach2(a, b)
+	a.Melee.Range = 3
+	if got := MeleeReach2(a, b); got != 9+b.Body.Width {
+		t.Errorf("range 3: %v", got)
+	}
+	a.Melee.Range = 0.1
+	if got := MeleeReach2(a, b); got != def {
+		t.Errorf("range 0.1: %v, want the default %v", got, def)
+	}
+	m := NewManager(flat(20), nil, nil, 1)
+	src, v := New("src", "x", 0.5, 1, 0.5), New("v", "x", 0.5, 1, 1.5)
+	for _, o := range []*Actor{src, v} {
+		o.Health, o.MaxHealth = 20, 20
+		m.Add(o)
+	}
+	src.Sprinting = true
+	vz := v.Body.VZ
+	m.Attack(src, v, 1, 0)
+	if d := v.Body.VZ - (vz/2 + 0.4); d*d > 1e-12 {
+		t.Errorf("a sprinting mob's blow pushed extra: vz %v", v.Body.VZ)
+	}
+}

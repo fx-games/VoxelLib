@@ -137,7 +137,11 @@ func MeleeReach2(a, t *Actor) float64 {
 		return a.Melee.Reach * a.Melee.Reach
 	}
 	w := a.carrier().Body.Width * 2
-	return w*w + t.Body.Width
+	r2 := w*w + t.Body.Width
+	if r := a.Melee.Range; r > 0 {
+		r2 = max(r2, r*r+t.Body.Width)
+	}
+	return r2
 }
 
 func (m *Manager) face(a, t *Actor) {
@@ -181,7 +185,7 @@ func (m *Manager) melee(a, t *Actor) {
 // counted.
 func (m *Manager) Attack(src, t *Actor, damage float64, knockback int) bool {
 	src.Swing = 0
-	if src.Sprinting {
+	if src.Sprinting && src.Player { // EntityPlayer's blow; a mob's attackEntityAsMob has no sprint bonus
 		knockback++
 	}
 	hurt := m.hurtAs(HurtMelee, t, src, damage, false)

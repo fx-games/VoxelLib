@@ -139,6 +139,9 @@ type Melee struct {
 	// Reach in blocks from feet to the target's feet; 0 uses 1.7.10's
 	// sqrt((2*width)^2 + target width).
 	Reach float64
+	// Range, when above 0, makes the squared reach Range² plus the
+	// target's width, at least the default's.
+	Range float64
 	// Knockback is the weapon's knockback level (enchantment).
 	Knockback int
 	// Speed is the AI speed factor while chasing (0 = 1).
