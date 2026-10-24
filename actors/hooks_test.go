@@ -43,13 +43,14 @@ func TestHurtHooks(t *testing.T) {
 	}
 
 	// A fall of more than 3 hurts unless OnLand clears it.
-	landed := 0.0
+	landed, fell := 0.0, 0.0
+	m.FellOn = func(_ *Actor, f float64) { fell = f }
 	a.OnLand = func(_ *Actor, f float64) float64 { landed = f; return 0 }
 	a.hurtResist = 0
 	for range 100 {
 		m.Tick()
 	}
-	if landed <= 3 || a.Health != 40 {
+	if landed <= 3 || fell != landed || a.Health != 40 {
 		t.Fatalf("land: fall %v health %v", landed, a.Health)
 	}
 

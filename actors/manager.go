@@ -67,6 +67,9 @@ type Manager struct {
 	// OnExtinguish is called when water or rain puts a burning actor out
 	// (random.fizz 0.7, 1.6 + (r - r) * 0.4).
 	OnExtinguish func(a *Actor)
+	// FellOn, if set, is called when an actor lands with a fall distance
+	// (the block's onFallenUpon), before OnLand and the fall damage.
+	FellOn func(a *Actor, fall float64)
 	// ArrowDamage, if set, tells who shot an arrow the Manager did not
 	// fire (the player's bow) and its base damage and launch speed.
 	ArrowDamage func(*projectile.Arrow) (from *Actor, damage, speed float64)
@@ -316,6 +319,9 @@ func (m *Manager) moveBody(a *Actor, in character.Input) {
 	if b.InWater || b.InLava || f != nil {
 		a.fall = 0
 	} else if b.OnGround {
+		if m.FellOn != nil && a.fall > 0 {
+			m.FellOn(a, a.fall)
+		}
 		if a.OnLand != nil && a.fall > 0 {
 			a.fall = a.OnLand(a, a.fall)
 		}
