@@ -2,6 +2,7 @@ package ui
 
 import (
 	"math"
+	"strings"
 )
 
 // HUDState is what the in-game overlay shows; the game fills it each tick.
@@ -65,7 +66,7 @@ type HUD struct {
 	// ChatWidth is the chat width in GUI px (320); ChatLines how many
 	// lines show while the chat is closed (10).
 	ChatWidth, ChatLines int
-	chatOpen             bool
+	sent                 []string // GuiNewChat.sentMessages
 
 	ticks                   int
 	rand                    javaRandom
@@ -449,11 +450,12 @@ func (h *HUD) drawTitle(ctx *Context, partial float32) {
 // all of them while the chat is open.
 func (h *HUD) drawChat(ctx *Context) {
 	c, f := ctx.Canvas, ctx.Font
+	open := chatOpen(ctx)
 	maxLines := h.ChatLines
 	if maxLines == 0 {
 		maxLines = 10
 	}
-	if h.chatOpen {
+	if open {
 		maxLines = 20
 	}
 	w := h.chatWidth()
@@ -465,21 +467,21 @@ func (h *HUD) drawChat(ctx *Context) {
 		}
 	}
 	h.chatScroll = min(max(h.chatScroll, 0), max(len(lines)-maxLines, 0))
-	if !h.chatOpen {
+	if !open {
 		h.chatScroll = 0
 	}
 	baseX, baseY := 2, ctx.H-48+20
 	for j := 0; j+h.chatScroll < len(lines) && j < maxLines; j++ {
 		l := lines[j+h.chatScroll]
 		age := h.ticks - l.tick
-		if age >= 200 && !h.chatOpen {
+		if age >= 200 && !open {
 			continue
 		}
 		d := (1 - float64(age)/200) * 10
 		d = math.Min(math.Max(d, 0), 1)
 		d *= d
 		a := int(255 * d)
-		if h.chatOpen {
+		if open {
 			a = 255
 		}
 		if a <= 3 {
@@ -491,14 +493,32 @@ func (h *HUD) drawChat(ctx *Context) {
 	}
 }
 
-// ChatScreen is GuiChat: a text line at the bottom; Enter sends.
+// chatOpen is GuiNewChat.getChatOpen: the top screen is a ChatScreen (or
+// embeds one).
+func chatOpen(ctx *Context) bool {
+	if ctx.Screens == nil {
+		return false
+	}
+	_, ok := ctx.Screens.Top().(interface{ chatScreen() })
+	return ok
+}
+
+// ChatScreen is GuiChat: a text line at the bottom; Enter sends the
+// trimmed text (when not empty, adding it to the sent messages) and
+// closes, or with Stay (GuiSleepMP) clears the line and resets the chat
+// scroll. Up and down walk the sent messages (getSentHistory).
 type ChatScreen struct {
 	Base
 	HUD    *HUD
 	OnSend func(text string)
 	Prefix string // initial text ("/" for commands)
+	Stay   bool
 	field  *TextField
+	cursor int    // sentHistoryCursor
+	buffer string // historyBuffer
 }
+
+func (s *ChatScreen) chatScreen() {}
 
 func (s *ChatScreen) Init(ctx *Context) {
 	s.Widgets = nil
@@ -508,16 +528,50 @@ func (s *ChatScreen) Init(ctx *Context) {
 	}
 	s.field = &TextField{X: 4, Y: ctx.H - 12, W: ctx.W - 4, H: 12, MaxLen: 100, NoBorder: true, Focused: true}
 	s.field.SetText(old)
+	if s.HUD != nil {
+		s.cursor = len(s.HUD.sent)
+	}
 	s.field.OnEnter = func(t string) {
-		if t != "" && s.OnSend != nil {
-			s.OnSend(t)
+		if t = strings.TrimFunc(t, func(r rune) bool { return r <= ' ' }); t != "" { // String.trim
+			if s.HUD != nil && (len(s.HUD.sent) == 0 || s.HUD.sent[len(s.HUD.sent)-1] != t) {
+				s.HUD.sent = append(s.HUD.sent, t) // addToSentMessages
+			}
+			if s.OnSend != nil {
+				s.OnSend(t)
+			}
 		}
-		ctx.Screens.Back()
+		if !s.Stay {
+			ctx.Screens.Back()
+			return
+		}
+		s.field.SetText("")
+		if s.HUD != nil {
+			s.HUD.chatScroll = 0 // resetScroll
+		}
 	}
 	s.Add(s.field)
-	if s.HUD != nil {
-		s.HUD.chatOpen = true
+}
+
+// history is getSentHistory(dir).
+func (s *ChatScreen) history(dir int) {
+	if s.HUD == nil {
+		return
 	}
+	n := len(s.HUD.sent)
+	i := min(max(s.cursor+dir, 0), n)
+	if i == s.cursor {
+		return
+	}
+	if i == n {
+		s.cursor = n
+		s.field.SetText(s.buffer)
+		return
+	}
+	if s.cursor == n {
+		s.buffer = s.field.Text
+	}
+	s.field.SetText(s.HUD.sent[i])
+	s.cursor = i
 }
 
 func (s *ChatScreen) Draw(ctx *Context, mx, my int, partial float32) {
@@ -528,8 +582,14 @@ func (s *ChatScreen) Draw(ctx *Context, mx, my int, partial float32) {
 func (s *ChatScreen) Input(ctx *Context, ev Event) bool {
 	switch {
 	case ev.Type == KeyPress && ev.Key == KeyEscape && s.HUD != nil:
-		s.HUD.chatOpen = false
 		return false
+	case ev.Type == KeyPress && (ev.Key == KeyUp || ev.Key == KeyDown):
+		if ev.Key == KeyUp {
+			s.history(-1)
+		} else {
+			s.history(1)
+		}
+		return true
 	case ev.Type == MouseScroll && s.HUD != nil:
 		if ev.DY > 0 {
 			s.HUD.chatScroll++
@@ -537,9 +597,6 @@ func (s *ChatScreen) Input(ctx *Context, ev Event) bool {
 			s.HUD.chatScroll--
 		}
 		return true
-	}
-	if ev.Type == KeyPress && (ev.Key == KeyEnter || ev.Key == KeyKPEnter) && s.HUD != nil {
-		s.HUD.chatOpen = false
 	}
 	return s.Base.Input(ctx, ev)
 }
