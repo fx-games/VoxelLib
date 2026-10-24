@@ -186,6 +186,10 @@ func (a *App) loop() {
 		t2 := time.Now()
 
 		fw, fh := a.Win.GetFramebufferSize()
+		render.SetWorldSize(0, 0)
+		if a.PointSize {
+			render.SetWorldSize(a.Win.GetSize())
+		}
 		shot := dbg.Shot != "" && a.Tick >= dbg.ShotAt
 		if a.shotReq || shot {
 			render.CaptureNextFrame()
@@ -232,6 +236,7 @@ func (a *App) loop() {
 			a.Hooks.Draw(alpha)
 		}
 		a.Eng.Renderer.DrawWeather(&a.Cam) // Options.Weather, after particles as in 1.7
+		render.EndWorld()                  // the crosshair is the HUD's (GuiIngame)
 		if !a.ScreenOpen() {
 			a.Eng.Renderer.DrawCrosshair(float32(a.Cam.Aspect))
 		}

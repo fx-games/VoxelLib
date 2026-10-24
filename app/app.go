@@ -188,6 +188,10 @@ type App struct {
 	// ShowDebug is F3's debug screen (GameSettings.showDebugInfo); the
 	// game fills ui.HUDState.Debug while it is on.
 	ShowDebug bool
+	// PointSize renders the world at the window's point size (framebuffer
+	// over content scale), as a non-HiDPI window does, upscaled to the
+	// framebuffer; HUD and screens stay at framebuffer resolution.
+	PointSize bool
 
 	quit, restart bool
 	shotReq       bool

@@ -68,6 +68,16 @@ var dev struct {
 	capW, capH         int
 	capBG              *wgpu.BindGroup
 
+	// The world (everything before EndWorld) renders at ww x wh; below the
+	// framebuffer size it goes to its own target, upscaled by EndWorld.
+	ww, wh     int
+	inWorld    bool
+	world      texture2D
+	worldDepth texture2D
+	worldBG    *wgpu.BindGroup
+	worldTW    int // the world targets' size
+	worldTH    int
+
 	uniforms, vertices, indirect stream
 
 	uniLayout  *wgpu.BindGroupLayout // group 0: dynamic uniform block
@@ -227,6 +237,88 @@ func configure(w, h int) error {
 	return nil
 }
 
+// worldW, worldH is the size SetWorldSize asked for (0: the framebuffer).
+var worldW, worldH int
+
+// SetWorldSize makes the frames' world (the 3D scene, plain or shader
+// pack, up to EndWorld) render at w x h and upscale bilinearly to the
+// framebuffer; HUD and screens stay at framebuffer resolution. 0 x 0, or
+// a size not below the framebuffer's, renders the world at full size.
+func SetWorldSize(w, h int) { worldW, worldH = w, h }
+
+// worldSize is the world's resolution in a w x h frame, and whether that
+// is below it (a target of its own).
+func worldSize(w, h int) (int, int, bool) {
+	if worldW > 0 && worldH > 0 && worldW <= w && worldH <= h && (worldW < w || worldH < h) {
+		return worldW, worldH, true
+	}
+	return w, h, false
+}
+
+// WorldSize is the current frame's world resolution.
+func WorldSize() (int, int) { return dev.ww, dev.wh }
+
+// worldTargets (re)creates the scaled world's colour and depth targets.
+func worldTargets(w, h int) {
+	if dev.worldBG != nil {
+		if dev.worldTW == w && dev.worldTH == h {
+			return
+		}
+		dev.worldBG.Release()
+		dev.world.release()
+		dev.worldDepth.release()
+	}
+	dev.world = newTargetTexture(w, h)
+	dev.worldBG = bindGroup("world", dev.pipes.tex2D,
+		wgpu.BindGroupEntry{Binding: 0, TextureView: dev.world.view},
+		wgpu.BindGroupEntry{Binding: 1, Sampler: dev.linearClp})
+	t, err := dev.device.CreateTexture(&wgpu.TextureDescriptor{
+		Label: "world depth", Size: wgpu.Extent3D{Width: uint32(w), Height: uint32(h), DepthOrArrayLayers: 1},
+		MipLevelCount: 1, SampleCount: 1, Dimension: gputypes.TextureDimension2D,
+		Format: gputypes.TextureFormatDepth32Float, Usage: gputypes.TextureUsageRenderAttachment,
+	})
+	if err != nil {
+		panic(err)
+	}
+	v, err := dev.device.CreateTextureView(t, nil)
+	if err != nil {
+		panic(err)
+	}
+	dev.worldDepth = texture2D{t, v}
+	dev.worldTW, dev.worldTH = w, h
+}
+
+// EndWorld ends the frame's world: a scaled world is upscaled (bilinear,
+// as the window server magnifies a non-HiDPI backing store) to the
+// framebuffer, and later draws (HUD, screens) start on a cleared depth.
+func EndWorld() {
+	if !dev.inWorld || dev.enc == nil {
+		return
+	}
+	packResolve()
+	if dev.clearNext || dev.clearDepth {
+		curPass()
+	}
+	endPass()
+	dev.inWorld = false
+	target := dev.target
+	if dev.capturing {
+		target = dev.capTex.view
+	}
+	p, err := dev.enc.BeginRenderPass(&wgpu.RenderPassDescriptor{Label: "world upscale",
+		ColorAttachments: []wgpu.RenderPassColorAttachment{{View: target, LoadOp: gputypes.LoadOpClear, StoreOp: gputypes.StoreOpStore}}})
+	if err != nil {
+		panic(err)
+	}
+	p.SetPipeline(dev.pipes.blit)
+	p.SetBindGroup(0, dev.worldBG, nil)
+	p.Draw(gputypes.DrawArgs{VertexCount: 3, InstanceCount: 1})
+	dev.draws++
+	dev.pass = p
+	endPass()
+	dev.clearNext, dev.clearDepth = false, true
+}
+
 // BeginFrame acquires the next swap chain image; the first pass clears it
 // to the given colour.
 func BeginFrame(w, h int, r, g, b float32) {
@@ -249,6 +341,9 @@ func BeginFrame(w, h int, r, g, b float32) {
 			dev.capBG = textureGroup(dev.capTex)
 			dev.capW, dev.capH = w, h
 		}
+	}
+	if dev.ww, dev.wh, dev.inWorld = worldSize(w, h); dev.inWorld {
+		worldTargets(dev.ww, dev.wh)
 	}
 	dev.lastDraws, dev.draws = dev.draws, 0
 	var err error
@@ -276,11 +371,15 @@ func curPass() *wgpu.RenderPassEncoder {
 	if dev.capturing {
 		target = dev.capTex.view
 	}
+	depthView := dev.depthView
+	if dev.inWorld {
+		target, depthView = dev.world.view, dev.worldDepth.view
+	}
 	color := wgpu.RenderPassColorAttachment{View: target, LoadOp: gputypes.LoadOpLoad, StoreOp: gputypes.StoreOpStore}
 	if dev.clearNext {
 		color.LoadOp, color.ClearValue = gputypes.LoadOpClear, dev.clearColor
 	}
-	depth := &wgpu.RenderPassDepthStencilAttachment{View: dev.depthView, DepthLoadOp: gputypes.LoadOpLoad, DepthStoreOp: gputypes.StoreOpStore}
+	depth := &wgpu.RenderPassDepthStencilAttachment{View: depthView, DepthLoadOp: gputypes.LoadOpLoad, DepthStoreOp: gputypes.StoreOpStore}
 	if dev.clearDepth {
 		depth.DepthLoadOp, depth.DepthClearValue = gputypes.LoadOpClear, 1
 	}
@@ -318,6 +417,7 @@ func submit(final bool) {
 	if dev.enc == nil {
 		return
 	}
+	EndWorld()
 	packResolve()
 	if dev.clearNext || dev.clearDepth {
 		curPass() // nothing drawn since a clear was requested: still clear
@@ -429,6 +529,7 @@ func ReadFrame(w, h int) *image.NRGBA {
 	if !dev.capturing || dev.enc == nil {
 		return img
 	}
+	EndWorld()
 	packResolve()
 	if dev.clearNext {
 		curPass()

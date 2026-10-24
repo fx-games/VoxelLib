@@ -109,10 +109,10 @@ type packGPU struct {
 	u    packUniforms
 	ubuf *wgpu.Buffer
 
-	a, b                       [8]packTarget // ping-pong sides; the gbuffers write a
+	a, b                       [8]packTarget           // ping-pong sides; the gbuffers write a
 	blockEnt                   [2]*wgpu.RenderPipeline // gbuffers_block: blended, opaque
-	depth                      [3]packTarget // depthtex0 (attachment), depthtex1 (no translucent), depthtex2 (no hand)
-	shadow, shadow1, shadowCol packTarget    // shadowtex0, shadowtex1 (opaque only), shadowcolor0
+	depth                      [3]packTarget           // depthtex0 (attachment), depthtex1 (no translucent), depthtex2 (no hand)
+	shadow, shadow1, shadowCol packTarget              // shadowtex0, shadowtex1 (opaque only), shadowcolor0
 	// R8 attachments the depth copies render into with no writes: gogpu
 	// rejects a fragment stage without a colour target.
 	dummy, dummyShadow packTarget
@@ -503,7 +503,7 @@ func (r *Renderer) packFrame(cam *Camera) {
 		pack = newPackGPU(q)
 	}
 	pk := pack
-	pk.resize(dev.w, dev.h)
+	pk.resize(dev.ww, dev.wh)
 	endPass()
 	now := time.Now()
 	dt := int64(0)
@@ -520,7 +520,7 @@ func (r *Renderer) packFrame(cam *Camera) {
 		view = cam.Bob.Mul4(view)
 	}
 	proj := mgl32.Perspective(float32(cam.FOV), float32(cam.Aspect), float32(cam.Near), float32(cam.Far))
-	pk.u = pk.st.update(&f, [3]float64{cam.X, cam.Y, cam.Z}, view, proj, dev.w, dev.h, dt)
+	pk.u = pk.st.update(&f, [3]float64{cam.X, cam.Y, cam.Z}, view, proj, dev.ww, dev.wh, dt)
 	_, fogCol := r.skyColors()
 	pk.u.FogColor = fogCol.Vec4(1)
 	writeBuffer(pk.ubuf, 0, unsafe.Slice((*byte)(unsafe.Pointer(&pk.u)), unsafe.Sizeof(pk.u)))
@@ -988,7 +988,9 @@ func packResolve() {
 	full(quarter(beginPass("composite4", att(pk.a[6].mips[0]), nil), 4), pk.comps[4], pk.comp[4])
 	GPUMark("final")
 	target := dev.target
-	if dev.capturing {
+	if dev.inWorld {
+		target = dev.world.view
+	} else if dev.capturing {
 		target = dev.capTex.view
 	}
 	full(beginPass("final", att(target), nil), pk.comps[5], pk.comp[5])
