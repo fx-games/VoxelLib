@@ -305,3 +305,28 @@ func TestShooterBoxAndDiscard(t *testing.T) {
 		t.Errorf("want the arrow to leave the box it started in, hit the victim and be discarded: hit=%v left=%d", hit, len(w.Arrows))
 	}
 }
+
+func TestStoneBouncesAndRests(t *testing.T) {
+	var w World
+	w.Keep = true
+	a := w.Shoot(0, 3, 0, 0, -0.5, 1) // down at the floor y<0
+	a.Bounce = 0.5
+	rose, low := false, 0.0
+	for i := 0; i < 400 && !a.Stuck; i++ {
+		w.Tick(ground, nil)
+		rose = rose || a.VY > 0
+		low = math.Min(low, a.Y)
+	}
+	if !rose || low < 0 {
+		t.Errorf("stone should bounce up off the floor and never sink in: rose=%v lowest y=%.3f", rose, low)
+	}
+	if !a.Stuck || a.Y < 0 || a.Y > 0.1 || a.Z >= 0 {
+		t.Errorf("stone should rest on the floor past where it landed, got stuck=%v y=%.3f z=%.2f", a.Stuck, a.Y, a.Z)
+	}
+	for i := 0; i < Life+10; i++ {
+		w.Tick(ground, nil)
+	}
+	if len(w.Arrows) != 1 {
+		t.Error("a kept projectile despawned")
+	}
+}

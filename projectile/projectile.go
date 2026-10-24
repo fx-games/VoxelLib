@@ -1,7 +1,9 @@
 // Package projectile flies arrows the way the reference does: a launch speed,
 // gravity and air drag give a ballistic arc; an arrow that hits a block
 // sticks in it, and one that hits a target sticks in the target and rides
-// along with it. Stuck arrows despawn after a while.
+// along with it. Stuck arrows despawn after a while unless the World keeps
+// them. A bouncing projectile (Arrow.Bounce) rebounds instead and comes to
+// rest on the floor.
 //
 // It knows nothing about worlds, models or rendering: terrain is a
 // collide.Solids and targets are anything with a box. Tick at 20 Hz.
@@ -34,6 +36,10 @@ const (
 	// style and stick in it.
 	Length = 0.75
 	Radius = 0.06
+	// friction is the speed a bouncing projectile keeps along the surface
+	// it hits; rest is the speed below which one stops on a floor.
+	friction = 0.8
+	rest     = 0.08
 )
 
 // Target is something arrows can hit and stick in, such as a mob.
@@ -85,7 +91,11 @@ type Arrow struct {
 	// Gravity is the fall per tick² (Gravity, Minecraft's arrow, unless
 	// changed after Shoot, e.g. a thrown item's).
 	Gravity float64
-	gone    bool // removed from the world (arrows stuck in it go too)
+	// Bounce, if set, makes the projectile rebound instead of sticking (a
+	// stone): the fraction of its speed kept along the hit surface's
+	// normal. Once slow it comes to rest on a floor, Stuck there.
+	Bounce float64
+	gone   bool // removed from the world (arrows stuck in it go too)
 
 	// Offset in the target's frame: position relative to its feet, rotated
 	// by -yaw, and the arrow's yaw relative to the target's.
@@ -100,8 +110,10 @@ type World struct {
 	Arrows  []*Arrow
 	grid    grid
 	scratch []Target
-	// Hit, if set, is called once when an arrow sticks in a target.
+	// Hit, if set, is called when an arrow sticks in or bounces off a target.
 	Hit func(a *Arrow, t Target)
+	// Keep keeps stuck arrows forever instead of despawning them after Life.
+	Keep bool
 }
 
 // Shoot launches an arrow from x,y,z along yaw/pitch at speed (blocks per
@@ -147,7 +159,7 @@ func (w *World) Tick(s collide.Solids, targets []Target) {
 		case !a.Stuck:
 			w.fly(a, s)
 		}
-		if !a.gone && !(a.Stuck && a.Age > Life) && a.Y > -1000 {
+		if !a.gone && !(a.Stuck && !w.Keep && a.Age > Life) && a.Y > -1000 {
 			live = append(live, a)
 		} else {
 			a.gone = true
@@ -168,6 +180,14 @@ func (w *World) fly(a *Arrow, s collide.Solids) {
 	for i := 0; i < n; i++ {
 		nx, ny, nz := a.X+sx, a.Y+sy, a.Z+sz
 		if t, x, y, z, part := firstHit(w.grid.near(a.X, a.Y, a.Z, nx, ny, nz), a.X, a.Y, a.Z, nx, ny, nz); t != nil {
+			if a.Bounce > 0 { // rebounds from where it is, short of the target
+				a.VX, a.VY, a.VZ, a.Part = -a.VX*a.Bounce, -a.VY*a.Bounce, -a.VZ*a.Bounce, part
+				if w.Hit != nil {
+					w.Hit(a, t)
+				}
+				sx, sy, sz = a.VX/float64(n), a.VY/float64(n), a.VZ/float64(n)
+				continue
+			}
 			if _, exact := t.(Shape); exact {
 				x, y, z = x+ux*Penetration, y+uy*Penetration, z+uz*Penetration
 			}
@@ -179,8 +199,27 @@ func (w *World) fly(a *Arrow, s collide.Solids) {
 			return
 		}
 		if s.Solid(int(math.Floor(nx)), int(math.Floor(ny)), int(math.Floor(nz))) {
+			f, axis := surface(a.X, a.Y, a.Z, sx, sy, sz)
+			if a.Bounce > 0 { // rebound at the face, rubbing along it
+				a.X, a.Y, a.Z = a.X+sx*f, a.Y+sy*f, a.Z+sz*f
+				at := []*float64{&a.X, &a.Y, &a.Z}
+				*at[axis] = math.Round(*at[axis]) // exactly on the face: a hair inside would be solid
+				for i, v := range []*float64{&a.VX, &a.VY, &a.VZ} {
+					if i == axis {
+						*v *= -a.Bounce
+					} else {
+						*v *= friction
+					}
+				}
+				if axis == 1 && sy < 0 && math.Sqrt(a.VX*a.VX+a.VY*a.VY+a.VZ*a.VZ) < rest {
+					a.Stuck, a.Age = true, 0 // at rest on the floor
+					a.VX, a.VY, a.VZ = 0, 0, 0
+					return
+				}
+				sx, sy, sz = a.VX/float64(n), a.VY/float64(n), a.VZ/float64(n)
+				continue
+			}
 			// Sink the tip in past the face.
-			f := surface(a.X, a.Y, a.Z, sx, sy, sz)
 			a.X, a.Y, a.Z = a.X+sx*f+ux*Penetration, a.Y+sy*f+uy*Penetration, a.Z+sz*f+uz*Penetration
 			a.Stuck, a.Age = true, 0
 			a.VX, a.VY, a.VZ = 0, 0, 0
@@ -205,10 +244,10 @@ func (a *Arrow) orient() {
 
 // surface returns the fraction (0..1) of the step from x,y,z along d at
 // which the point first crosses a block boundary on any axis: the face of
-// the block it is entering.
-func surface(x, y, z, dx, dy, dz float64) float64 {
-	f := 1.0
-	for _, c := range [3][2]float64{{x, dx}, {y, dy}, {z, dz}} {
+// the block it is entering, and that face's axis (0 x, 1 y, 2 z).
+func surface(x, y, z, dx, dy, dz float64) (f float64, axis int) {
+	f = 1.0
+	for i, c := range [3][2]float64{{x, dx}, {y, dy}, {z, dz}} {
 		p, v := c[0], c[1]
 		if v == 0 {
 			continue
@@ -223,10 +262,10 @@ func surface(x, y, z, dx, dy, dz float64) float64 {
 			}
 		}
 		if t := (edge - p) / v; t >= 0 && t < f {
-			f = t
+			f, axis = t, i
 		}
 	}
-	return f
+	return f, axis
 }
 
 // firstHit finds, among the broad phase's candidates, the target the
