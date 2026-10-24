@@ -138,6 +138,7 @@ type packGPU struct {
 	cached                       bool // the cache holds shadowKey's terrain
 	withCasters                  bool // the frame's maps hold casters
 	order                        []shadowItem
+	hull                         [][2]float32 // casterHull of this frame
 
 	modules                             map[string]*wgpu.ShaderModule
 	variants                            map[packVariant]*wgpu.RenderPipeline
@@ -534,7 +535,7 @@ func (r *Renderer) packFrame(cam *Camera) {
 // and shadowcolor0: opaque, then (after the copy to shadowtex1) the
 // translucent layer, water white (shadow.fsh).
 func (pk *packGPU) shadowPass(r *Renderer) {
-	key := packShadowKey{pk.u.ShadowMV, [3]float64{r.camX, r.camY, r.camZ}, r, r.terrainGen, r.tex, r.tex.gen}
+	key := packShadowKey{pk.u.ShadowMV, pk.u.ModelView, pk.u.Proj, [3]float64{r.camX, r.camY, r.camZ}, r, r.terrainGen, r.tex, r.tex.gen}
 	if key != pk.shadowKey {
 		pk.shadowKey, pk.keyFrames, pk.cached = key, 0, false
 	}
@@ -559,6 +560,7 @@ func (pk *packGPU) shadowPass(r *Renderer) {
 // packShadowKey is what the terrain shadow maps depend on.
 type packShadowKey struct {
 	mv         mgl32.Mat4
+	view, proj mgl32.Mat4 // the camera: casterHull
 	cam        [3]float64
 	r          *Renderer
 	terrainGen uint64
@@ -580,6 +582,7 @@ func (pk *packGPU) copySetTo(bg *wgpu.BindGroup, depth, color *wgpu.TextureView)
 // drawShadows draws the terrain into the shadow maps.
 func (pk *packGPU) drawShadows(r *Renderer) {
 	fr := makeFrustum(pk.u.ShadowProj.Mul4(pk.u.ShadowMV))
+	pk.hull = casterHull(&pk.u)
 	bg := r.terrainBG()
 	for _, trans := range []bool{false, true} {
 		color := []wgpu.RenderPassColorAttachment{{View: pk.shadowCol.view, LoadOp: gputypes.LoadOpLoad, StoreOp: gputypes.StoreOpStore}}
@@ -613,7 +616,7 @@ func (pk *packGPU) drawShadows(r *Renderer) {
 					}
 					o := s.pos.Origin()
 					x, y, z := float32(float64(o.X)-r.camX), float32(float64(o.Y)-r.camY), float32(float64(o.Z)-r.camZ)
-					if !fr.box(x, y, z, x+16, y+16, z+16) {
+					if !fr.box(x, y, z, x+16, y+16, z+16) || !pk.casts(x, y, z) {
 						continue
 					}
 					for q := 0; q < n/4; q += maxQuadsPerDraw {
@@ -649,7 +652,7 @@ func (pk *packGPU) drawShadowsOpaque(r *Renderer, p *wgpu.RenderPassEncoder, fr 
 				}
 				o := s.pos.Origin()
 				x, y, z := float32(float64(o.X)-r.camX), float32(float64(o.Y)-r.camY), float32(float64(o.Z)-r.camZ)
-				if !fr.box(x, y, z, x+16, y+16, z+16) {
+				if !fr.box(x, y, z, x+16, y+16, z+16) || !pk.casts(x, y, z) {
 					continue
 				}
 				// light-space z of the centre: larger is nearer the light
