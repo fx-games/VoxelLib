@@ -370,6 +370,10 @@ func (a *Actor) SetRevenge(src *Actor) { a.revenge, a.revengeTicks = src, 100 }
 // or after a hurt by a source AttackerClears accepts.
 func (a *Actor) Attacker() *Actor { return a.attacker }
 
+// HurtResist is hurtResistantTime: MaxHurtResist after a hit, counting
+// down each tick.
+func (a *Actor) HurtResist() int { return a.hurtResist }
+
 // hurtBy is attackEntityFrom's attacker bookkeeping (recentlyHit).
 func (m *Manager) hurtBy(t, src *Actor) {
 	if src.Player {
