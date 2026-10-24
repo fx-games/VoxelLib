@@ -52,3 +52,21 @@ func TestUnpushed(t *testing.T) {
 		t.Fatalf("kind %v after %v pathing %v", k, m.HurtKind(), a.Pathing())
 	}
 }
+
+// TestPushedFlier: a Pushed flier pushes and is pushed like a walker;
+// other fliers neither.
+func TestPushedFlier(t *testing.T) {
+	m := NewManager(flat(10), nil, nil, 1)
+	mk := func(id string, x float64, fly *Flight) *Actor {
+		a := New(id, id, x, 1, 0.5)
+		a.Body.Width, a.Body.Height, a.Health, a.Fly = 0.6, 1.8, 20, fly
+		m.Add(a)
+		return a
+	}
+	a, fish := mk("a", 0.5, nil), mk("fish", 1, &Flight{Pushed: true})
+	b, bird := mk("b", 5.5, nil), mk("bird", 6, &Flight{})
+	m.push()
+	if a.Body.VX >= 0 || fish.Body.VX <= 0 || b.Body.VX != 0 || bird.Body.VX != 0 {
+		t.Fatalf("walker %v, pushed flier %v; walker %v, flier %v", a.Body.VX, fish.Body.VX, b.Body.VX, bird.Body.VX)
+	}
+}

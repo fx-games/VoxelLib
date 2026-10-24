@@ -443,7 +443,7 @@ func (m *Manager) push() {
 		grid[c] = l[:0]
 	}
 	for i, a := range m.Actors {
-		if a.Fly == nil && (a.Boat == nil || !a.Boat.broken) {
+		if (a.Fly == nil || a.Fly.Pushed) && (a.Boat == nil || !a.Boat.broken) {
 			c := cell{int(math.Floor(a.Body.X / 2)), int(math.Floor(a.Body.Z / 2))}
 			grid[c] = append(grid[c], entry{a, i})
 		}

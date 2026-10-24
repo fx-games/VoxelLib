@@ -20,6 +20,7 @@ type Flight struct {
 	Hover   float64 // vertical speed factor after each move while not Still
 	Still   bool    // sitting: all motion cleared after each move
 	AimY    float64 // the height in the target block flown to (0: its centre, 0.5)
+	Pushed  bool    // canBePushed: it pushes and is pushed like a walker (else neither)
 	Think   func(a *Actor)
 }
 
