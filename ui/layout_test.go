@@ -93,3 +93,10 @@ func TestHUDTitleFade(t *testing.T) {
 		t.Errorf("title still shown after 100 ticks: %d", h.tLeft)
 	}
 }
+
+func TestArmourSlotIcons(t *testing.T) {
+	m := InventoryLayout().SlotIcons
+	if len(m) != 4 || m[5] != "textures/items/empty_armor_slot_helmet.png" || m[8] != "textures/items/empty_armor_slot_boots.png" {
+		t.Fatal(m)
+	}
+}

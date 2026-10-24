@@ -63,12 +63,15 @@ type Progress struct {
 // ContainerLayout places a container GUI: the sheet, its size, the
 // background parts, titles, slot positions (item top-left) and progress.
 type ContainerLayout struct {
-	Texture  string
-	W, H     int
-	Parts    []TexPart // empty: the whole W x H at 0,0
-	Labels   []Label
-	Slots    [][2]int
-	Progress []Progress
+	Texture string
+	W, H    int
+	Parts   []TexPart // empty: the whole W x H at 0,0
+	Labels  []Label
+	Slots   [][2]int
+	// SlotIcons is Slot.getBackgroundIconIndex: a 16x16 texture drawn in
+	// slot i while it is empty.
+	SlotIcons map[int]string
+	Progress  []Progress
 	// Extra draws over the background (the player model); left, top is
 	// the GUI's corner.
 	Extra func(ctx *Context, left, top, mx, my int)
@@ -105,7 +108,17 @@ func InventoryLayout() ContainerLayout {
 		s = append(s, [2]int{8, 8 + i*18})
 	}
 	return ContainerLayout{Texture: "textures/gui/container/inventory.png", W: 176, H: 166,
-		Labels: []Label{{Text: "container.crafting", X: 86, Y: 16}}, Slots: playerSlots(s, 84)}
+		Labels: []Label{{Text: "container.crafting", X: 86, Y: 16}}, Slots: playerSlots(s, 84), SlotIcons: ArmourSlotIcons(5)}
+}
+
+// ArmourSlotIcons maps slots first..first+3 (head to feet) to the empty
+// armour slot icons (ItemArmor.func_94602_b's EMPTY_SLOT_NAMES).
+func ArmourSlotIcons(first int) map[int]string {
+	m := map[int]string{}
+	for i, n := range []string{"helmet", "chestplate", "leggings", "boots"} {
+		m[first+i] = "textures/items/empty_armor_slot_" + n + ".png"
+	}
+	return m
 }
 
 // ChestLayout is GuiChest with rows of 9 (1..6): slots 0..rows*9-1 the
@@ -228,6 +241,9 @@ func (s *ContainerScreen) Draw(ctx *Context, mx, my int, partial float32) {
 		if s.inDrag(i) && !s.Model.Cursor().Empty() && st.Empty() {
 			st = s.Model.Cursor() // preview of the spread
 			st.Count, st.CountText = 0, ""
+		}
+		if ic, ok := l.SlotIcons[i]; ok && st.Empty() {
+			DrawTexScaled(c, ctx.Tex(ic), float32(x), float32(y), 16, 16, 0, 0, 16, 16, 16, 16, 0xFFFFFFFF)
 		}
 		DrawItem(ctx, st, x, y)
 		if i == hover {
