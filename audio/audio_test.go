@@ -66,6 +66,9 @@ func TestAttenuation(t *testing.T) {
 	if v := m.newVoice(At(0, 0, 0, 0.5, 1), "block", 1, 1); v.rng != 16 {
 		t.Errorf("range for volume 0.5: %v", v.rng)
 	}
+	if v := m.newVoice(Params{Volume: 0.9, Pitch: 1, Range: 7}, "block", 1, 1); v.rng != 7 {
+		t.Errorf("range 7: %v", v.rng)
+	}
 	if v := m.newVoice(At(0, 0, 0, 1, 3), "block", 1, 1); v.pitch != 2 {
 		t.Errorf("pitch clamp: %v", v.pitch)
 	}

@@ -234,6 +234,7 @@ func (m *Mixer) volume(c string) float32 {
 type Params struct {
 	X, Y, Z       float64
 	Volume, Pitch float32 // Volume > 1 extends the range (16 blocks × Volume) but plays no louder
+	Range         float32 // the range before Volume extends it; 0 is 16 blocks
 	Global        bool    // not positioned: centred, no attenuation (UI, music)
 	NoAttenuation bool    // positioned (panned) but as loud at any distance (AttenuationType.NONE)
 	Loop          bool    // repeat until stopped (buffered sounds only)
@@ -256,14 +257,18 @@ func (m *Mixer) Play(s *Sound, p Params) *Voice {
 }
 
 // newVoice applies 1.7.10's SoundManager.playSound: pitch = clamp(p×entry, 0.5, 2),
-// range = 16 × max(1, p.Volume).
+// range = 16 (or p.Range) × max(1, p.Volume).
 func (m *Mixer) newVoice(p Params, cat string, entryVol, entryPitch float64) *Voice {
 	v := &Voice{m: m, fresh: true, cat: cat, loop: p.Loop, positional: !p.Global,
 		x: p.X, y: p.Y, z: p.Z,
 		vol:   float32(float64(p.Volume) * entryVol),
 		pitch: float32(math.Min(2, math.Max(0.5, float64(p.Pitch)*entryPitch)))}
 	if !p.Global && !p.NoAttenuation {
-		v.rng = 16 * math.Max(1, float64(p.Volume))
+		r := float64(p.Range)
+		if r <= 0 {
+			r = 16
+		}
+		v.rng = r * math.Max(1, float64(p.Volume))
 	}
 	return v
 }
