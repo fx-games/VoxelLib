@@ -435,11 +435,11 @@ func collidePair(a, b *Actor) {
 	d = float64(float32(math.Sqrt(d)))
 	k := math.Min(1, 1/d)
 	dx, dz = dx/d*k*0.05000000074505806, dz/d*k*0.05000000074505806
-	if a.Riding == nil {
+	if a.Riding == nil && !a.Unpushed {
 		a.Body.VX -= dx
 		a.Body.VZ -= dz
 	}
-	if b.Riding == nil {
+	if b.Riding == nil && !b.Unpushed {
 		b.Body.VX += dx
 		b.Body.VZ += dz
 	}

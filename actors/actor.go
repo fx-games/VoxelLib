@@ -234,6 +234,7 @@ type Actor struct {
 	Speed                float64 // movementSpeed attribute (player 0.1, zombie 0.23)
 	CanSwim, OpensDoors  bool
 	FleeWhenHurt         bool // panics when hit (animals)
+	Unpushed             bool // collisions push others but leave its own motion (the game sets it)
 	FireImmune           bool // isImmuneToFire
 	FireResist           int  // fireResistance: 1 (0 means 1), player 20
 	// Potion effects the game keeps up to date: Resistance is the
@@ -323,6 +324,9 @@ func (a *Actor) Revenge() *Actor {
 func (a *Actor) SetRevenge(src *Actor) { a.revenge, a.revengeTicks = src, 100 }
 
 // Pos returns the feet position.
+// Pathing is !PathNavigate.noPath: it is walking a path.
+func (a *Actor) Pathing() bool { return a.nav.has }
+
 func (a *Actor) Pos() Vec { return Vec{a.Body.X, a.Body.Y, a.Body.Z} }
 
 // Box implements projectile.Target.

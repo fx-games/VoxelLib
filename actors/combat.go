@@ -204,6 +204,10 @@ func (m *Manager) HurtAs(k HurtKind, t, src *Actor, amount float64, unblockable 
 	return m.hurtAs(k, t, src, amount, unblockable)
 }
 
+// HurtKind is the kind of the hurt in progress (HurtOther outside one),
+// for a Ward or OnDamage hook.
+func (m *Manager) HurtKind() HurtKind { return m.hurtKind }
+
 func (m *Manager) hurtAs(k HurtKind, t, src *Actor, amount float64, unblockable bool) bool {
 	m.hurtKind = k
 	defer func() { m.hurtKind = HurtOther }()

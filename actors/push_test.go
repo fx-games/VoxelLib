@@ -30,3 +30,25 @@ func TestPush(t *testing.T) {
 			a.Body.VX, b.Body.VX, c.Body.VX, d.Body.VX, e.Body.VX, f.Body.VX, one)
 	}
 }
+
+// TestUnpushed: an Unpushed actor pushes the other but keeps its motion;
+// Pathing follows the path; HurtKind is the kind inside a Ward only.
+func TestUnpushed(t *testing.T) {
+	m := NewManager(flat(10), nil, nil, 1)
+	a, b := New("a", "a", 0.5, 1, 0.5), New("b", "b", 1, 1, 0.5)
+	for _, x := range []*Actor{a, b} {
+		x.Body.Width, x.Body.Height, x.Health = 0.6, 1.8, 20
+		m.Add(x)
+	}
+	a.Unpushed = true
+	m.push()
+	if a.Body.VX != 0 || b.Body.VX <= 0 {
+		t.Fatalf("unpushed %v, pushed %v", a.Body.VX, b.Body.VX)
+	}
+	var k HurtKind = -1
+	a.Ward = func(_, _ *Actor, f float64) float64 { k = m.HurtKind(); return f }
+	m.HurtAs(HurtFire, a, nil, 1, false)
+	if k != HurtFire || m.HurtKind() != HurtOther || a.Pathing() {
+		t.Fatalf("kind %v after %v pathing %v", k, m.HurtKind(), a.Pathing())
+	}
+}
