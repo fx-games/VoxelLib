@@ -396,6 +396,15 @@ func (m *Manager) push() {
 						if f.i <= e.i || a.Riding == b || b.Riding == a || !box.Intersects(b.Body.Box()) {
 							continue
 						}
+						if pa, pb := vehiclePush(a), vehiclePush(b); pa != nil || pb != nil {
+							if pa != nil {
+								pa(a, b)
+							}
+							if pb != nil {
+								pb(b, a)
+							}
+							continue
+						}
 						for range loops(a, b) + loops(b, a) {
 							collidePair(a, b)
 						}
@@ -404,6 +413,14 @@ func (m *Manager) push() {
 			}
 		}
 	}
+}
+
+// vehiclePush is a vehicle's own Push, or nil.
+func vehiclePush(a *Actor) func(a, o *Actor) {
+	if a.Boat != nil {
+		return a.Boat.Push
+	}
+	return nil
 }
 
 // collidePair is applyEntityCollision: below 0.01 apart (the larger axis)

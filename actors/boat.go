@@ -30,6 +30,13 @@ type Boat struct {
 	// OnBreak as the boat breaks (the Manager removes it after the tick).
 	OnHit   func(a *Actor)
 	OnBreak func(a *Actor, how BoatBreak)
+	// Move, when set, replaces the floating physics after the hit timers
+	// (a rail cart's onUpdate); it reports whether the vehicle broke.
+	// Push, when set, is the vehicle's applyEntityCollision with an actor
+	// whose box touches its own grown 0.2 sideways: it replaces the even
+	// push (two such vehicles run both).
+	Move func(a *Actor) bool
+	Push func(a, o *Actor)
 
 	Damage float64 // damageTaken: +10 per hit point, -1 a tick, breaks over 40
 	Hit    int     // timeSinceHit: 10 on a hit, the renderer's wobble
@@ -100,6 +107,9 @@ func (m *Manager) boatTick(a *Actor) bool {
 	}
 	if bt.Damage > 0 {
 		bt.Damage--
+	}
+	if bt.Move != nil {
+		return bt.Move(a)
 	}
 	// handleWaterMovement: the current pushes, water resets the fall
 	in, wx, wy, wz := character.WaterPush(m.body(), b.Box())
@@ -268,6 +278,26 @@ func (m *Manager) breakBoat(a *Actor, how BoatBreak) bool {
 	}
 	m.wrecks = append(m.wrecks, a)
 	return true
+}
+
+// MoveBody is Entity.moveEntity for a vehicle's body: it moves by v
+// against the block boxes it collides with, without stepping, and stops
+// the blocked axes.
+func (m *Manager) MoveBody(a *Actor, vx, vy, vz float64) {
+	b := a.Body
+	mx, my, mz := collide.Move(m.body(), b.Box(), vx, vy, vz)
+	b.X, b.Y, b.Z = b.X+mx, b.Y+my, b.Z+mz
+	b.OnGround = vy < 0 && my != vy
+	b.HorizontalCollision = mx != vx || mz != vz
+	if mx != vx {
+		b.VX = 0
+	}
+	if my != vy {
+		b.VY = 0
+	}
+	if mz != vz {
+		b.VZ = 0
+	}
 }
 
 // Broken reports whether the boat broke (it leaves at the end of the tick).
