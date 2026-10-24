@@ -44,7 +44,7 @@ func ShadowQuads(out []SkyVertex, cam *Camera, s Shadow, ground ShadowGround) []
 				if a < 0 {
 					continue
 				}
-				// ponytail: unit block bounds (renderAsNormalBlock cubes); per-block bounds if a full-cube block with others shows up
+				// unit block bounds (renderAsNormalBlock cubes, as the reference's); per-block bounds if a full-cube block with others shows up
 				x0, x1 := math.Max(float64(x), s.X-s.Size), math.Min(float64(x+1), s.X+s.Size)
 				z0, z1 := math.Max(float64(z), s.Z-s.Size), math.Min(float64(z+1), s.Z+s.Size)
 				if x0 >= x1 || z0 >= z1 {
