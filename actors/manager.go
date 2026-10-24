@@ -350,6 +350,12 @@ func (m *Manager) moveBody(a *Actor, in character.Input) {
 	default:
 		a.set(Idle)
 	}
+	if len(a.Looks) > 0 && a.Brain.LookAt == "" && a.Fly == nil && !a.lt.ran && a.State != Idle {
+		m.lookTasks(a, a.lt.busy, true) // moving: WatchClosest keeps the head
+		if !a.lt.busy {
+			return
+		}
+	}
 	if a.State != Idle {
 		a.HeadYaw = turn(a.HeadYaw, a.Yaw, turnRate)
 	}

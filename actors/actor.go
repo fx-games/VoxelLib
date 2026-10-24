@@ -227,8 +227,11 @@ type Actor struct {
 	Name, Title string // name tag lines (i18n keys or plain text: the game decides)
 	ShowName    bool
 
-	Body                 *character.Character
-	Yaw, Pitch, HeadYaw  float64 // radians, as character.Input
+	Body                *character.Character
+	Yaw, Pitch, HeadYaw float64 // radians, as character.Input
+	// Looks are the mob's look tasks (looktasks.go); empty: the default
+	// idle look.
+	Looks                []LookTask
 	PrevYaw, PrevHeadYaw float64
 	Player               bool // body driven by the game (input), not by a brain
 	Sprinting            bool // set by the game: a sprinting player (+1 knockback), a charging mount (speed ×1.3)
@@ -271,8 +274,11 @@ type Actor struct {
 	// Away, when set, is an avoid task above fighting (EntityAIAvoidEntity):
 	// the actor walks there at the speed factor AwaySpeed and Away clears
 	// on arrival (the game may clear or move it sooner).
-	Away                *Vec
-	AwaySpeed           float64
+	Away      *Vec
+	AwaySpeed float64
+	// AvoidSun is EntityAIRestrictSun: by day its paths end before the
+	// open sky (shade), as a CustomNPC's FindShelter 1.
+	AvoidSun            bool
 	Tags                map[string]string // game data, saved
 	State               State
 	StateTicks          int
@@ -312,6 +318,7 @@ type Actor struct {
 	jump                   jumpCharge
 	routeWait              int
 	look                   lookState
+	lt                     lookRun
 }
 
 // New returns an actor with a humanoid body and 1.7.10 defaults (20 health,

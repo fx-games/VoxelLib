@@ -307,11 +307,11 @@ func (m *Manager) moveTo(a *Actor, goal Vec, mul float64) bool {
 	return false
 }
 
-// shade is PathNavigate.removeSunnyPath for a CustomNPC kept from the sun
-// (FindShelter 1's EntityAIRestrictSun, by day): one standing out of the
+// shade is PathNavigate.removeSunnyPath for an actor kept from the sun
+// (AvoidSun, or a CustomNPC's FindShelter 1: EntityAIRestrictSun, by day): one standing out of the
 // open sky has its path end two cells before the first cell under it.
 func (m *Manager) shade(a *Actor, p []nav.Pos) ([]nav.Pos, bool) {
-	if a.CNPC == nil || a.CNPC.FindShelter != 1 || m.Sky == nil || !m.Sky.Daytime() {
+	if !a.AvoidSun && (a.CNPC == nil || a.CNPC.FindShelter != 1) || m.Sky == nil || !m.Sky.Daytime() {
 		return p, false
 	}
 	b := a.carrier().Body

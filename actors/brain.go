@@ -83,6 +83,7 @@ func (b *Brain) speed() float64 {
 // think runs the actor's behaviour for one tick: combat first, then the
 // mode. It only sets the carrier's input; bodies move in Manager.Tick.
 func (m *Manager) think(a *Actor) {
+	a.lt.ran, a.lt.busy = false, false
 	if f := a.Fly; f != nil {
 		a.nav.in = character.Input{}
 		if f.Think != nil {
@@ -104,6 +105,7 @@ func (m *Manager) think(a *Actor) {
 		return
 	}
 	if m.fight(a) {
+		a.lt.busy = true
 		return
 	}
 	b := &a.Brain
@@ -140,6 +142,11 @@ func away(p, threat Vec, dist float64) Vec {
 // idleLook turns the head toward the actor named in LookAt, else the
 // nearest player within 8 blocks (EntityAIWatchClosest), else to face.
 func (m *Manager) idleLook(a *Actor, face float64) {
+	if len(a.Looks) > 0 && a.Brain.LookAt == "" {
+		a.lt.ran = true
+		m.lookTasks(a, false, false)
+		return
+	}
 	if a.Brain.Look != LookPlayer && a.Brain.LookAt == "" {
 		m.cnpcLook(a)
 		return

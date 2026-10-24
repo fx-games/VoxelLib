@@ -214,6 +214,10 @@ func TestCNPCShelter(t *testing.T) {
 	if !cut || len(p) != 1 {
 		t.Fatalf("cut %v %v", cut, p)
 	}
+	a.CNPC, a.AvoidSun = nil, true // EntityAIRestrictSun of a mob
+	if p, cut = m.shade(a, []nav.Pos{{X: 6, Y: 1}, {X: 5, Y: 1}, {X: 4, Y: 1}, {X: 3, Y: 1}}); !cut || len(p) != 1 {
+		t.Fatalf("AvoidSun cut %v %v", cut, p)
+	}
 }
 
 type fakeDoors struct {

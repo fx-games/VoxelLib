@@ -71,7 +71,13 @@ func (m *Manager) cnpcLook(a *Actor) {
 	} else {
 		a.HeadYaw = turn(a.HeadYaw, a.Yaw, 10*math.Pi/180)
 	}
-	// EntityBodyHelper, standing still
+	m.bodyHelper(a)
+}
+
+// bodyHelper is EntityBodyHelper standing still: the body within 75 of
+// the head, closing in after the head has kept still 10 ticks.
+func (m *Manager) bodyHelper(a *Actor) {
+	l := &a.look
 	f := 75.0
 	if math.Abs(math.Remainder(a.HeadYaw-l.lastHead, 2*math.Pi)) > 15*math.Pi/180 {
 		l.still, l.lastHead = 0, a.HeadYaw
