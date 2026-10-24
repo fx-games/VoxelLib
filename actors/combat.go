@@ -28,6 +28,15 @@ func (m *Manager) fight(a *Actor) bool {
 			a.Target = nil
 		}
 	}
+	if t := a.Target; t != nil && t == a.picked && a.TargetSight {
+		if t.Pos().dist2(a.Pos()) > a.AggroRange*a.AggroRange {
+			a.Target = nil
+		} else if m.sees(a, t) {
+			a.unseen = 0
+		} else if a.unseen++; a.unseen > 60 {
+			a.Target = nil
+		}
+	}
 	b := &a.Brain
 	if b.Mode == Guard && b.Range > 0 && a.Pos().hdist(b.Home) > b.Range {
 		a.Target = nil // leashed: back home first
@@ -81,6 +90,7 @@ func hash(s string) int {
 // pickTarget: the one who hurt us, else (for a defending follower) whoever
 // threatens the leader or the company, else the nearest hostile in range.
 func (m *Manager) pickTarget(a *Actor) *Actor {
+	a.picked, a.unseen = nil, 0
 	if r := a.revenge; r != nil && r.Alive() && a.revengeTicks > 0 && m.Factions.Sees(a, r) != Friendly {
 		return r
 	}
@@ -108,7 +118,8 @@ func (m *Manager) pickTarget(a *Actor) *Actor {
 			}
 		}
 	}
-	return m.nearestHostile(a, a.AggroRange)
+	a.picked = m.nearestHostile(a, a.AggroRange)
+	return a.picked
 }
 
 func (m *Manager) nearestHostile(a *Actor, r float64) *Actor {
@@ -123,7 +134,8 @@ func (m *Manager) nearestHostile(a *Actor, r float64) *Actor {
 			continue
 		}
 		hostile := m.Factions.Sees(a, o) == Hostile
-		if (hostile || m.AlsoTargets != nil) && (m.CanTarget == nil || m.CanTarget(a, o)) && (hostile || m.AlsoTargets(a, o)) {
+		if (hostile || m.AlsoTargets != nil) && (m.CanTarget == nil || m.CanTarget(a, o)) && (hostile || m.AlsoTargets(a, o)) &&
+			(!a.TargetSight || m.sees(a, o)) {
 			best, bd = o, d
 		}
 	}

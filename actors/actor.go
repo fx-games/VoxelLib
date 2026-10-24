@@ -277,6 +277,10 @@ type Actor struct {
 	Unpushed             bool    // collisions push others but leave its own motion (the game sets it)
 	FireImmune           bool    // isImmuneToFire
 	FireResist           int     // fireResistance: 1 (0 means 1), player 20
+	// TargetSight is the nearest-hostile target task's shouldCheckSight:
+	// it picks only a target it sees, and EntityAITarget.continueExecuting
+	// drops that one beyond AggroRange or unseen for over 60 ticks.
+	TargetSight bool
 	// KnockOwn makes knockBack an override with the push KnockPush
 	// (vanilla 0.4): no KnockbackResist roll, a lift of 0.2+KnockPush/2,
 	// nothing at all when KnockPush <= 0; a blow's push (addVelocity) is
@@ -364,6 +368,8 @@ type Actor struct {
 	fall                   float64
 	attackCool, rangedCool int
 	seeTime                int
+	picked                 *Actor // the nearest-hostile pick (its target task runs while it is the target)
+	unseen                 int    // EntityAITarget.targetUnseenTicks
 	rs                     rangedState
 	cn                     cnpcState
 	revenge                *Actor
