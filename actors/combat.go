@@ -311,9 +311,6 @@ func (m *Manager) Hurt(t, src *Actor, amount float64, unblockable bool) bool {
 	if src != nil && src != t {
 		t.revenge, t.revengeTicks = src, 100
 		m.hurtBy(t, src)
-		if t.FleeWhenHurt {
-			t.panic = 60
-		}
 		if fresh {
 			m.knockBack(t, src.Pos().X-t.Pos().X, src.Pos().Z-t.Pos().Z)
 		}
@@ -344,9 +341,6 @@ func (m *Manager) Blow(t, src *Actor) bool {
 	if src != nil && src != t {
 		t.revenge, t.revengeTicks = src, 100
 		m.hurtBy(t, src)
-		if t.FleeWhenHurt {
-			t.panic = 60
-		}
 		m.knockBack(t, src.Pos().X-t.Pos().X, src.Pos().Z-t.Pos().Z)
 	}
 	if t.OnHurt != nil {

@@ -92,3 +92,36 @@ func TestPotionDefence(t *testing.T) {
 		t.Fatal("fire resistance", a.OnFire(), a.Health)
 	}
 }
+
+// TestBurningPanic: EntityAIPanic runs while burning with no revenge
+// target: a path to a random cell within 5 at PanicSpeed; a calm animal
+// stands.
+func TestBurningPanic(t *testing.T) {
+	m := NewManager(flat(40), nil, nil, 1)
+	a := New("cow", "cow", 0.5, 1, 0.5)
+	a.FleeWhenHurt, a.PanicSpeed, a.Speed = true, 2, 0.2
+	a.Brain.Mode = Stand
+	a.Brain.Home = a.Pos()
+	m.Add(a)
+	for range 10 {
+		m.Tick()
+	}
+	if a.panicking || a.Pos().hdist(Vec{0.5, 1, 0.5}) > 0.1 {
+		t.Fatal("calm cow moved")
+	}
+	a.SetFire(8)
+	moved := false
+	for range 30 {
+		from := a.Pos()
+		m.Tick()
+		if a.panicking && !moved {
+			if g := a.nav.goal; math.Abs(g.X-from.X) > 5.5 || math.Abs(g.Z-from.Z) > 5.5 {
+				t.Fatal("goal beyond 5", g, from)
+			}
+		}
+		moved = moved || a.panicking && a.Pos().hdist(Vec{0.5, 1, 0.5}) > 0.5
+	}
+	if !moved {
+		t.Fatal("burning cow did not panic")
+	}
+}

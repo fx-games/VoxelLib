@@ -91,12 +91,8 @@ func (m *Manager) think(a *Actor) {
 		}
 		return
 	}
-	if a.panic > 0 {
-		a.panic--
-		if src := a.revenge; src != nil {
-			m.moveTo(a, away(a.Pos(), src.Pos(), 6), 1.25)
-			return
-		}
+	if m.panic(a) {
+		return
 	}
 	if a.Away != nil {
 		if m.moveTo(a, *a.Away, a.AwaySpeed) {
@@ -130,6 +126,55 @@ func (m *Manager) think(a *Actor) {
 		m.stop(a)
 		m.idleLook(a, a.Yaw)
 	}
+}
+
+// panic is EntityAIPanic: with a revenge target (getAITarget) or
+// burning, asked on EntityAITasks' every third tick, a path to
+// findRandomTarget(5, 4) at PanicSpeed, run until the path ends.
+func (m *Manager) panic(a *Actor) bool {
+	n := &a.nav
+	speed := a.PanicSpeed
+	if speed == 0 {
+		speed = 1.25
+	}
+	if a.panicking {
+		if !n.pending && (n.path == nil || n.i >= len(n.path)) || m.moveTo(a, n.goal, speed) || n.stuck >= 3 {
+			m.stop(a)
+			n.stuck, a.panicking = 0, false
+		} else {
+			return true
+		}
+	}
+	if !a.FleeWhenHurt || a.revenge == nil && !a.OnFire() || (a.Ticks-1)%3 != 0 {
+		return false
+	}
+	p := m.findRandomTarget(a, 5, 4)
+	a.panicking = true
+	m.planIn(a, p, 0) // tryMoveToXYZ
+	m.moveTo(a, p, speed)
+	return true
+}
+
+// findRandomTarget is RandomPositionGenerator.findRandomTarget for a
+// walker with no home: of 10 random cells within xz and y, the one of the
+// highest path weight (the first on ties; never none).
+func (m *Manager) findRandomTarget(a *Actor, xz, y int) Vec {
+	best := float32(-99999)
+	var p Vec
+	bx, by, bz := ifloor(a.Body.X), ifloor(a.Body.Y), ifloor(a.Body.Z)
+	for range 10 {
+		j := m.Rand.Intn(2*xz) - xz + bx
+		k := m.Rand.Intn(2*y) - y + by
+		l := m.Rand.Intn(2*xz) - xz + bz
+		var w float32
+		if m.PathWeight != nil {
+			w = m.PathWeight(a, j, k, l)
+		}
+		if w > best {
+			best, p = w, Vec{float64(j) + 0.5, float64(k), float64(l) + 0.5}
+		}
+	}
+	return p
 }
 
 // away is a spot dist blocks from p, directly away from threat.

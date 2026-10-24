@@ -34,14 +34,14 @@ func (m *Manager) Boost(mt *Actor) bool {
 
 // steering is the task's shouldExecute, with startExecuting and
 // resetTask's zero speed on the edges. A panic (EntityAIPanic, priority
-// 1, sharing mutex bit 1) takes over while the mount has a revenge target.
-// ponytail: not while burning, which the engine's panic does not flee.
+// 1, sharing mutex bit 1) takes over while the mount has a revenge target
+// or burns.
 func (m *Manager) steering(mt *Actor) bool {
 	s := mt.Mount.Steer
 	if s == nil {
 		return false
 	}
-	panics := mt.FleeWhenHurt && mt.Revenge() != nil
+	panics := mt.FleeWhenHurt && (mt.Revenge() != nil || mt.OnFire())
 	run := mt.Alive() && !panics && mt.Rider != nil && mt.Rider.Player && (s.boosted || s.Lure != nil && s.Lure(mt))
 	if run != s.running {
 		s.running, s.speed = run, 0

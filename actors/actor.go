@@ -267,11 +267,12 @@ type Actor struct {
 	KnockDiv             float64 // a knockBack override dividing the motion after it (0: none)
 	Speed                float64 // movementSpeed attribute (player 0.1, zombie 0.23)
 	CanSwim, OpensDoors  bool
-	AvoidsWater          bool // PathNavigate.setAvoidsWater: paths keep out of water
-	FleeWhenHurt         bool // panics when hit (animals)
-	Unpushed             bool // collisions push others but leave its own motion (the game sets it)
-	FireImmune           bool // isImmuneToFire
-	FireResist           int  // fireResistance: 1 (0 means 1), player 20
+	AvoidsWater          bool    // PathNavigate.setAvoidsWater: paths keep out of water
+	FleeWhenHurt         bool    // EntityAIPanic: panics with a revenge target or burning (animals)
+	PanicSpeed           float64 // EntityAIPanic's speed (0: 1.25)
+	Unpushed             bool    // collisions push others but leave its own motion (the game sets it)
+	FireImmune           bool    // isImmuneToFire
+	FireResist           int     // fireResistance: 1 (0 means 1), player 20
 	// KnockOwn makes knockBack an override with the push KnockPush
 	// (vanilla 0.4): no KnockbackResist roll, a lift of 0.2+KnockPush/2,
 	// nothing at all when KnockPush <= 0; a blow's push (addVelocity) is
@@ -365,7 +366,7 @@ type Actor struct {
 	revengeTicks           int
 	attacker               *Actor
 	attackerTicks          int
-	panic                  int
+	panicking              bool // EntityAIPanic is running
 	age                    int  // entityAge: ticks since a player was within 32 blocks or it was hurt
 	frozen                 bool // not updated this tick (Manager.Loaded)
 	nav                    navigator
