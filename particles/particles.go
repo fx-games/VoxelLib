@@ -78,6 +78,30 @@ type System struct {
 	P   []Particle
 	Max int // cap on live particles (0 = 4000); the oldest go first
 	rng *rand.Rand
+
+	// FX are the tick-exact EntityFX particles (fx.go), drawn from Rand
+	// (nil: seeded on first use).
+	FX   []FX
+	Rand *rand.Rand
+	// Solid is a full block the FX collide with (nil: none); Wet a liquid
+	// or solid block and its metadata (EntityDropParticleFX, EntityRainFX);
+	// Water a water block (EntityBubbleFX).
+	Solid func(x, y, z int) bool
+	Wet   func(x, y, z int) (ok bool, meta int)
+	Water func(x, y, z int) bool
+	// Icon is a block or item icon's rectangle on SheetIcons ("item:<key>"
+	// or "block:<state key>", a key without a namespace being the
+	// respack's default one) and its render colour (getRenderColor; 1 for
+	// items); ok false: nothing to draw.
+	Icon func(name string) (uv [4]float32, rgb [3]float32, ok bool)
+	// Cam is the eye for particles spawned from inside particles.
+	Cam [3]float64
+	// Maker builds a game's named particles (Make's fallback); Kinds are
+	// its kinds (KindGame on).
+	Maker func(name string, x, y, z, vx, vy, vz float64) (FX, bool)
+	Kinds map[Kind]KindDef
+	// spawned is World.spawnParticle from inside a particle (lava's smoke).
+	spawned []FX
 }
 
 func (s *System) r() float64 {

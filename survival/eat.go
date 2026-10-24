@@ -2,9 +2,11 @@ package survival
 
 import (
 	"math"
+	"strconv"
 
 	"github.com/memmaker/voxellib/actors"
 	"github.com/memmaker/voxellib/inventory"
+	"github.com/memmaker/voxellib/particles"
 )
 
 // Rand is the random source eating draws from (math/rand/v2's *Rand).
@@ -29,8 +31,11 @@ type Eating struct {
 	User  any // Ctx.User of the item's OnEat
 	// Sound plays an event at the player.
 	Sound func(event string, vol, pitch float64)
-	// Crumb spawns one crumb of st (the reference's "iconcrack" item
-	// particle, EntityBreakingFX) at a position with a velocity.
+	// Particles gets the crumbs: each an EntityBreakingFX of a piece of
+	// the item's icon (particles.System.Crumb).
+	Particles *particles.System
+	// Crumb replaces that: one crumb of st at a position with a velocity
+	// (blocks a tick).
 	Crumb func(st *inventory.Stack, x, y, z, vx, vy, vz float64)
 	// Mouth is where the crumbs come from: the eye and its look (yaw and
 	// pitch in the reference's degrees).
@@ -112,8 +117,23 @@ func (e *Eating) Feedback(st *inventory.Stack, n int) {
 		e.Sound(DrinkSound(e.Rand))
 	case "eat":
 		x, y, z, yaw, pitch := e.Mouth()
-		Crumbs(e.Rand, n, x, y, z, yaw, pitch, func(px, py, pz, vx, vy, vz float64) { e.Crumb(st, px, py, pz, vx, vy, vz) })
+		Crumbs(e.Rand, n, x, y, z, yaw, pitch, func(px, py, pz, vx, vy, vz float64) { e.crumb(st, px, py, pz, vx, vy, vz) })
 		e.Sound(EatSound(e.Rand))
+	}
+}
+
+// crumb is Crumb, else a Particles crumb of the item's icon "key#meta"
+// (meta 0 unless the item has subtypes).
+func (e *Eating) crumb(st *inventory.Stack, x, y, z, vx, vy, vz float64) {
+	switch {
+	case e.Crumb != nil:
+		e.Crumb(st, x, y, z, vx, vy, vz)
+	case e.Particles != nil:
+		meta := 0
+		if st.Item.HasSubtypes {
+			meta = st.Damage
+		}
+		e.Particles.Crumb(st.Item.Key+"#"+strconv.Itoa(meta), x, y, z, vx, vy, vz)
 	}
 }
 

@@ -7,6 +7,7 @@ import (
 
 	"github.com/memmaker/voxellib/actors"
 	"github.com/memmaker/voxellib/inventory"
+	"github.com/memmaker/voxellib/particles"
 )
 
 // tinyGame is all a game wires once: the player's use, body, inventory
@@ -42,9 +43,10 @@ func (g *tinyGame) eatHeld(t *testing.T) {
 
 // TestEatingDeclared: an item declared as food is eaten with nothing else
 // set up: not when full, then 32 ticks with crumbs and the eat sound every
-// 4 of the last 25 (6 beats of 5, then 16 at the end), the burp, the food added, the
-// effect by its chance and the bowl left; a drink has its sound and no
-// crumbs; switching away cancels.
+// 4 of the last 25 (6 beats of 5, then 16 at the end), the burp, the food
+// added, the effects by their chance, damage and order and the bowl left;
+// with no Crumb hook the crumbs are the lib's icon particles; a drink has
+// its sound and no crumbs; switching away cancels.
 func TestEatingDeclared(t *testing.T) {
 	bowl := &inventory.Item{Key: "bowl"}
 	stew := &inventory.Item{Key: "stew", Food: &inventory.Food{Hunger: 6, Saturation: 0.6, Leaves: bowl,
@@ -67,6 +69,32 @@ func TestEatingDeclared(t *testing.T) {
 		!slices.Contains(g.sounds, "effect always") || slices.Contains(g.sounds, "effect never") || slices.Contains(g.sounds, "effect meta1") ||
 		g.eat.Body.Food.Level != 16 || g.eat.Inv.Main[0].Item != bowl || g.use.Using != nil {
 		t.Fatalf("eat: %d sounds, %d crumbs, %v, level %d, held %v", n, g.crumbs, g.sounds, g.eat.Body.Food.Level, g.eat.Inv.Main[0])
+	}
+
+	// No Crumb hook: the crumbs are the lib's particles, a quarter of the
+	// item's icon each, with EntityBreakingFX's gravity and half size.
+	g = newTinyGame()
+	g.eat.Crumb = nil
+	var asked []string
+	g.eat.Particles = &particles.System{Icon: func(name string) ([4]float32, [3]float32, bool) {
+		asked = append(asked, name)
+		return [4]float32{0, 0, 0.5, 0.5}, [3]float32{1, 1, 1}, true
+	}}
+	g.eat.Body.Food.Level = 10
+	g.eat.Inv.Main[0] = inventory.New(stew, 1)
+	g.eatHeld(t)
+	ps := g.eat.Particles
+	if len(ps.FX) != 6*5+16 || asked[0] != "item:stew#0" {
+		t.Fatalf("default crumbs: %d live, %d asked (%v)", len(ps.FX), len(asked), asked[:1])
+	}
+	if p := ps.FX[0]; p.Kind != particles.KindIcon || p.Layer != 2 || p.Scale < 0.5 || p.Scale > 1 || p.MaxAge < 4 || p.MaxAge > 40 {
+		t.Fatalf("crumb %+v", p)
+	}
+	my := ps.FX[0].MY
+	ps.TickFX()
+	if sp := ps.Particle(&ps.FX[0], 0, func(x, y, z float64) [3]float32 { return [3]float32{1, 1, 1} }, nil); sp.Sheet != particles.SheetIcons ||
+		sp.UV[2]-sp.UV[0] != 0.125 || ps.FX[0].MY != (my-0.04)*0.9800000190734863 {
+		t.Fatalf("crumb sprite %+v, motion %v from %v", sp, ps.FX[0].MY, my)
 	}
 
 	milk := &inventory.Item{Key: "milk", Food: &inventory.Food{Drink: true, AlwaysEdible: true}}
