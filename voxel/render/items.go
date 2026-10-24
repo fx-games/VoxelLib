@@ -13,11 +13,12 @@ import (
 // items lying in the world and the item held in first person. All sprites
 // share one texture array and one vertex buffer; each item is a range.
 type ItemRenderer struct {
-	r      *Renderer
-	gpu    gpuItemRenderer
-	index  map[string]int
-	ranges [][2]int32 // first, count per item
-	texels []int      // the larger sprite side per item (In2D)
+	r       *Renderer
+	gpu     gpuItemRenderer
+	index   map[string]int
+	ranges  [][2]int32 // first, count per item
+	texels  []int      // the larger sprite side per item (In2D)
+	noDepth bool       // the item being drawn writes no depth (ItemPose.NoDepth)
 }
 
 // ItemInstance is one item to draw in the world.
@@ -101,6 +102,9 @@ type ItemPose struct {
 	X, Y, Z    float64
 	M          mgl32.Mat4
 	Sky, Block uint8
+	// NoDepth blends the item and writes no depth (glDepthMask(false), e.g.
+	// a sneaking ranger's equipment).
+	NoDepth bool
 }
 
 // DrawPosed draws items at arbitrary transforms. Call after Renderer.Render
@@ -113,8 +117,10 @@ func (ir *ItemRenderer) DrawPosed(cam *Camera, items []ItemPose) {
 	ir.begin(ir.r.CurrentFog())
 	for _, it := range items {
 		model := mgl32.Translate3D(float32(it.X-cam.X), float32(it.Y-cam.Y), float32(it.Z-cam.Z)).Mul4(it.M)
+		ir.noDepth = it.NoDepth
 		ir.draw(it.Item, vp, model, it.Sky, it.Block)
 	}
+	ir.noDepth = false
 	ir.end()
 }
 

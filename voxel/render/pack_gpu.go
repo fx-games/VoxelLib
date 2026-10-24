@@ -692,7 +692,7 @@ func (pk *packGPU) program(pl *wgpu.RenderPipeline) (string, []int, bool) {
 		return packWaterWGSL, []int{2, 3, 4}, false
 	case ps.model, ps.modelAlpha, ps.modelAdd, ps.modelOver:
 		return packModelWGSL, []int{3, 4}, true
-	case ps.item:
+	case ps.item, ps.itemNoDepth:
 		return packItemWGSL, []int{3, 4}, true
 	case ps.blockItem:
 		return packBlockWGSL, []int{3, 4}, true
@@ -819,7 +819,7 @@ func packCast(g1 *wgpu.BindGroup, vbo, ebo *wgpu.Buffer, first, count uint32, mo
 		return
 	}
 	switch pk.lastPl {
-	case dev.pipes.model, dev.pipes.modelAlpha, dev.pipes.item, dev.pipes.blockItem:
+	case dev.pipes.model, dev.pipes.modelAlpha, dev.pipes.item, dev.pipes.itemNoDepth, dev.pipes.blockItem:
 	default: // additive overlays (eyes) cast nothing
 		return
 	}
@@ -889,7 +889,7 @@ func (pk *packGPU) casterPipe(pl *wgpu.RenderPipeline, depthOnly bool) *wgpu.Ren
 	sp := dev.pipes.specs[pl]
 	kind := "model"
 	switch pl {
-	case dev.pipes.item:
+	case dev.pipes.item, dev.pipes.itemNoDepth:
 		kind = "item"
 	case dev.pipes.blockItem:
 		kind = "block"
