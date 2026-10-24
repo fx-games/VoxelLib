@@ -3,6 +3,8 @@ package actors
 import (
 	"math"
 	"testing"
+
+	"github.com/memmaker/voxellib/voxel/nav"
 )
 
 // TestSteer: EntityAIControlledByPlayer turns 5 degrees a tick toward the
@@ -89,5 +91,33 @@ func TestSteerSteps(t *testing.T) {
 	m.Tick()
 	if s := pig.Mount.Steer; s.running || s.speed != 0 {
 		t.Fatal("panic did not stop the steering")
+	}
+}
+
+type stairWorld struct {
+	*testWorld
+	stair nav.Pos
+}
+
+func (w stairWorld) StairOrSlab(x, y, z int) bool { return w.stair == nav.Pos{X: x, Y: y, Z: z} }
+func (w stairWorld) Air(x, y, z int) bool         { return !w.Solid(x, y, z) }
+
+// TestSteerStairJump: a steered mount facing a one-block step jumps,
+// but not standing in the air above a slab or stairs (func_151498_a).
+func TestSteerStairJump(t *testing.T) {
+	for _, stairs := range []bool{false, true} {
+		m, p, pig, _ := horseWorld(t, MountStats{RideHeight: 0.675, Tame: true, Steer: &Steer{Max: 0.3,
+			Lure: func(*Actor) bool { return true }}})
+		w := m.W.(*testWorld)
+		w.solid[nav.Pos{X: 1, Y: 1, Z: 0}] = true
+		if stairs {
+			m.W = stairWorld{w, nav.Pos{X: 0, Y: 0, Z: 0}}
+		}
+		pig.Yaw, p.Yaw = math.Pi/2, math.Pi/2
+		pig.Body.X, pig.Body.Y, pig.Body.Z = 0.5, 1, 0.5
+		m.steerInput(pig)
+		if pig.Mount.Steer.jump == stairs {
+			t.Fatal("stairs", stairs, "jump", pig.Mount.Steer.jump)
+		}
 	}
 }

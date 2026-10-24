@@ -57,7 +57,7 @@ func (m *Manager) steering(mt *Actor) bool {
 // goes to the second step, onLivingUpdate's with no input.
 // The AI speed is the movementSpeed attribute (landMovementFactor as a
 // wander leaves it); the body scales it by the ground's slipperiness.
-// ponytail: the stair/slab exception of the jump test is left out.
+// No jump from stairs or a slab, or from the air above one (StepBlocks).
 func (m *Manager) steerInput(mt *Actor) character.Input {
 	s, r, b := mt.Mount.Steer, mt.Rider, mt.Body
 	d := math.Max(-5*math.Pi/180, math.Min(5*math.Pi/180, math.Remainder(r.Yaw-mt.Yaw, 2*math.Pi)*0.5))
@@ -94,7 +94,7 @@ func (m *Manager) steerInput(mt *Actor) character.Input {
 	l, i1 := ifloor(b.X+dx), ifloor(b.Z+dz)
 	w, h := int(b.Width+1), int(b.Height+r.Body.Height+1)
 	jump := false
-	if (i != l || k != i1) && !m.cellsClear(l, j, i1, w, h) && m.cellsClear(i, j+1, k, w, h) && m.cellsClear(l, j+1, i1, w, h) {
+	if (i != l || k != i1) && m.stepJumps(i, j, k) && !m.cellsClear(l, j, i1, w, h) && m.cellsClear(i, j+1, k, w, h) && m.cellsClear(l, j+1, i1, w, h) {
 		jump = true // getJumpHelper().setJumping()
 	}
 	if s.speed >= s.Max*0.5 && m.Rand.Float32() < 0.006 && !s.boosted && s.Wear != nil {
@@ -103,6 +103,21 @@ func (m *Manager) steerInput(mt *Actor) character.Input {
 	b.MoveSpeed = ai * 0.16277136 / (0.546 * 0.546 * 0.546) // the body applies the ground's own f3
 	s.jump = jump
 	return character.Input{Forward: f1, Yaw: mt.Yaw}
+}
+
+// StepBlocks is an optional World method for the steered jump test:
+// StairOrSlab is func_151498_a (render type 10, BlockStairs, or a
+// BlockSlab), Air the cell's Material.air.
+type StepBlocks interface {
+	StairOrSlab(x, y, z int) bool
+	Air(x, y, z int) bool
+}
+
+// stepJumps is updateTask's flag: the feet cell is no stair or slab, and
+// it is not air above one.
+func (m *Manager) stepJumps(x, y, z int) bool {
+	sb, ok := m.W.(StepBlocks)
+	return !ok || !sb.StairOrSlab(x, y, z) && (!sb.Air(x, y, z) || !sb.StairOrSlab(x, y-1, z))
 }
 
 // cellsClear is PathFinder.func_82565_a's open (1) for a w*h*w point at
