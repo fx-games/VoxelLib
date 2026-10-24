@@ -269,6 +269,12 @@ type Actor struct {
 	Unpushed             bool // collisions push others but leave its own motion (the game sets it)
 	FireImmune           bool // isImmuneToFire
 	FireResist           int  // fireResistance: 1 (0 means 1), player 20
+	// KnockOwn makes knockBack an override with the push KnockPush
+	// (vanilla 0.4): no KnockbackResist roll, a lift of 0.2+KnockPush/2,
+	// nothing at all when KnockPush <= 0; a blow's push (addVelocity) is
+	// scaled by KnockPush while a player is its Attacker.
+	KnockOwn  bool
+	KnockPush float64
 	// CNPC, if set, runs a CustomNPC's combat tasks in place of the
 	// fight (see CNPCAI).
 	CNPC *CNPCAI

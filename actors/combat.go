@@ -189,10 +189,13 @@ func (m *Manager) Attack(src, t *Actor, damage float64, knockback int) bool {
 		return false
 	}
 	if knockback > 0 {
-		k := float64(knockback) * 0.5
+		k, up := float64(knockback)*0.5, 0.1
+		if t.KnockOwn && t.Attacker() != nil {
+			k, up = k*t.KnockPush, up*t.KnockPush
+		}
 		tb := t.carrier().Body
 		tb.VX += math.Sin(src.Yaw) * k // along the attacker's facing
-		tb.VY += 0.1
+		tb.VY += up
 		tb.VZ += -math.Cos(src.Yaw) * k
 		src.Body.VX *= 0.6
 		src.Body.VZ *= 0.6
@@ -349,13 +352,19 @@ func (m *Manager) knockBack(t *Actor, dx, dz float64) {
 	for dx*dx+dz*dz < 1e-4 {
 		dx, dz = (m.Rand.Float64()-m.Rand.Float64())*0.01, (m.Rand.Float64()-m.Rand.Float64())*0.01
 	}
-	if m.Rand.Float64() < t.KnockbackResist {
-		return
-	}
 	b := t.carrier().Body
 	f := math.Hypot(dx, dz)
-	const k = 0.4
-	b.VX, b.VY, b.VZ = b.VX/2-dx/f*k, b.VY/2+k, b.VZ/2-dz/f*k
+	k, lift := 0.4, 0.4
+	if t.KnockOwn {
+		if t.KnockPush <= 0 {
+			return
+		}
+		k = t.KnockPush
+		lift = 0.2 + k/2
+	} else if m.Rand.Float64() < t.KnockbackResist {
+		return
+	}
+	b.VX, b.VY, b.VZ = b.VX/2-dx/f*k, b.VY/2+lift, b.VZ/2-dz/f*k
 	if b.VY > 0.4 {
 		b.VY = 0.4
 	}
