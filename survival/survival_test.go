@@ -377,3 +377,19 @@ func TestXP(t *testing.T) {
 		t.Fatal("drop/split")
 	}
 }
+
+// TestAnvilHelmet: DamageSource.anvil wears the helmet slot (not the
+// boots) by amount·4 + rand·amount·2 and does 0.75 of it.
+func TestAnvilHelmet(t *testing.T) {
+	var a [4]*inventory.Stack
+	a[inventory.Helmet] = inventory.New(armorItem(inventory.Helmet, 2, 165), 1)
+	a[inventory.Boots] = inventory.New(armorItem(inventory.Boots, 2, 195), 1)
+	b := NewPlayer(&a)
+	b.Hurt(Anvil(), 10, Normal)
+	if h := a[inventory.Helmet].Damage; h < 40 || h > 61 || a[inventory.Boots].Damage > 1 {
+		t.Fatalf("helmet %d boots %d", h, a[inventory.Boots].Damage)
+	}
+	if d := b.Health - (20 - 7.5*21/25); d > 1e-4 || d < -1e-4 {
+		t.Fatalf("health %v", b.Health)
+	}
+}

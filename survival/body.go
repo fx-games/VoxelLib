@@ -143,9 +143,9 @@ func (b *Body) Hurt(d *Damage, amount float32, diff ...Difficulty) bool {
 	if d.Fire && b.FireResistance {
 		return false
 	}
-	if (d.Type == "anvil" || d.Type == "fallingBlock") && b.Armor != nil && b.Armor[3] != nil {
-		if b.wear(3, int(amount*4+b.f32()*amount*2)) {
-			b.Armor[3] = nil
+	if (d.Type == "anvil" || d.Type == "fallingBlock") && b.Armor != nil && b.Armor[inventory.Helmet] != nil {
+		if b.wear(inventory.Helmet, int(amount*4+b.f32()*amount*2)) {
+			b.Armor[inventory.Helmet] = nil
 		}
 		amount *= 0.75
 	}
