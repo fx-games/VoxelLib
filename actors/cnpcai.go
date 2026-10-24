@@ -1,6 +1,10 @@
 package actors
 
-import "math"
+import (
+	"math"
+
+	"github.com/memmaker/voxellib/character"
+)
 
 // CNPCAI is a CustomNPC's DataAI combat response, the attack tasks
 // EntityNPCInterface.setResponse adds: CanSprint EntityAISprintToTarget;
@@ -66,6 +70,7 @@ type cnpcState struct {
 	delay    int     // ambush and stalk delay
 	wait     int     // stalk tick
 	override bool    // stalk overRide
+	halted   bool    // the attack's reset cleared the path (kept to walk on)
 }
 
 func (a *Actor) cnpcProj() bool { return a.Ranged != nil && a.Ranged.AI == RangedCNPC }
@@ -184,14 +189,22 @@ func (m *Manager) cnpcTasks(a *Actor) bool {
 			busy = true
 		}
 	}
-	if !st.on[cnAttack] || a.cnpcMutex(cnAttack) == 4 {
-		m.walk(a) // PathNavigate.onUpdateNavigation
+	if !st.on[cnAttack] || a.cnpcMutex(cnAttack) == 4 { // PathNavigate.onUpdateNavigation
+		if a.rs.goalSet {
+			m.walk(a)
+		} else {
+			c := a.carrier()
+			c.nav.in = character.Input{Yaw: c.Yaw, Jump: c.Body.InWater && c.CanSwim}
+		}
 	}
 	return busy
 }
 
-// pathing is !PathNavigate.noPath.
-func (a *Actor) pathing() bool { return a.rs.goalSet || a.nav.has }
+// pathing is !PathNavigate.noPath. The attack's reset (clearPathEntity)
+// only halts the walker: the path it keeps is walked on when the attack
+// starts again, as the reference's path is found at once in its
+// shouldExecute (a search here takes ticks).
+func (a *Actor) pathing() bool { return a.rs.goalSet || a.nav.has && !a.cn.halted }
 
 // inRange is EntityNPCInterface.isInRange: a box of range around a.
 func (a *Actor) inRange(t *Actor, r float64) bool {
@@ -316,6 +329,7 @@ func (m *Manager) cnpcStart(a *Actor, i int) {
 		b.VY = float64(float32(0.4))
 		return
 	case cnAttack:
+		st.halted = false
 		return
 	}
 	switch a.cnpcResp() {
@@ -341,8 +355,7 @@ func (m *Manager) cnpcReset(a *Actor, i int) {
 	case cnLeap:
 		return
 	case cnAttack: // EntityAIAttackTarget / EntityAIRangedAttack.resetTask
-		a.Target = nil
-		m.clearPath(a)
+		a.Target, a.rs.goalSet, st.halted = nil, false, true
 		m.rangedReset(a)
 		return
 	}
