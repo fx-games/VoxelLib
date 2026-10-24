@@ -125,3 +125,32 @@ func TestBurningPanic(t *testing.T) {
 		t.Fatal("burning cow did not panic")
 	}
 }
+
+// TestPanicEnds: EntityAIPanic asks getAITarget, which lapses 100 ticks
+// after the hurt: the cow panics while it lasts and then calms down.
+func TestPanicEnds(t *testing.T) {
+	m := NewManager(flat(40), nil, nil, 1)
+	a := New("cow", "cow", 0.5, 1, 0.5)
+	p := New("p", "player", 3.5, 1, 0.5)
+	a.FleeWhenHurt, a.Speed = true, 0.2
+	a.Brain.Mode = Stand
+	a.Brain.Home = a.Pos()
+	m.Add(a)
+	a.SetRevenge(p)
+	started := false
+	for range 100 {
+		m.Tick()
+		started = started || a.panicking
+	}
+	if !started {
+		t.Fatal("hurt cow did not panic")
+	}
+	for range 40 { // a running panic walks its path to the end
+		m.Tick()
+	}
+	for range 60 {
+		if m.Tick(); a.panicking {
+			t.Fatal("panicking with the revenge target lapsed")
+		}
+	}
+}

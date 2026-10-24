@@ -160,7 +160,7 @@ func (m *Manager) panic(a *Actor) bool {
 			return true
 		}
 	}
-	if !a.FleeWhenHurt || a.revenge == nil && !a.OnFire() || (a.Ticks-1)%3 != 0 {
+	if !a.FleeWhenHurt || a.Revenge() == nil && !a.OnFire() || (a.Ticks-1)%3 != 0 {
 		return false
 	}
 	p, ok := m.findRandomTarget(a, 5, 4)
