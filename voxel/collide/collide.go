@@ -9,7 +9,10 @@
 // sliding and step-up, for games that resolve collision by time of impact.
 package collide
 
-import "math"
+import (
+	"math"
+	"sync"
+)
 
 // Solids reports whether the unit block at integer coordinates blocks
 // movement. Implementations usually treat unloaded terrain as solid so
@@ -178,10 +181,18 @@ func ClipZ(boxes []AABB, box AABB, d float64) float64 {
 // Move moves box by (dx,dy,dz) against the grid and returns the allowed
 // movement. Compare with the request to know which axes collided.
 func Move(s Solids, box AABB, dx, dy, dz float64) (float64, float64, float64) {
-	boxes := Colliders(s, box.Expand(dx, dy, dz), nil)
+	bp := movePool.Get().(*[]AABB)
+	boxes := Colliders(s, box.Expand(dx, dy, dz), (*bp)[:0])
 	dy = ClipY(boxes, box, dy)
 	box = box.Offset(0, dy, 0)
 	dx = ClipX(boxes, box, dx)
 	box = box.Offset(dx, 0, 0)
-	return dx, dy, ClipZ(boxes, box, dz)
+	dz = ClipZ(boxes, box, dz)
+	*bp = boxes[:0]
+	movePool.Put(bp)
+	return dx, dy, dz
 }
+
+// movePool holds Move's box buffers: every body moves every tick, and
+// growing a fresh slice each time was most of Move's cost.
+var movePool = sync.Pool{New: func() any { return new([]AABB) }}
