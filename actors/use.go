@@ -78,6 +78,7 @@ type Blow struct {
 	Bonus     float64 // the enchantments against the target (getEnchantmentModifierLiving)
 	Knockback int     // the knockback level (sprinting adds one in Attack)
 	Fire      int     // the fire aspect level
+	Crit      bool    // a falling blow (Critical): Damage ×1.5
 	// Allow is the game's veto, asked once the blow is worth striking
 	// (nil allows).
 	Allow func() bool
@@ -86,8 +87,17 @@ type Blow struct {
 	Landed func()
 }
 
+// Critical is attackTargetEntityWithCurrentItem's falling blow: p has
+// fallen (fall, its fallDistance, above 0) and is not on the ground, on a
+// ladder, in water or riding, and not blind. Sprinting does not matter.
+func Critical(p *Actor, fall float32, blind bool) bool {
+	c := p.Body
+	return fall > 0 && !c.OnGround && !c.OnLadder && !c.InWater && !blind && p.Riding == nil
+}
+
 // Strike lands b on t from p: nothing when neither damage nor bonus is
-// above 0 or Allow says no; fire sets t alight for the blow itself (so a
+// above 0 or Allow says no; a Crit blow's damage (before the bonus) is
+// ×1.5; fire sets t alight for the blow itself (so a
 // kill burns) and puts it out again when the blow fails, and after Landed
 // sets fire*4 seconds. It reports whether the blow hurt.
 func (m *Manager) Strike(p, t *Actor, b Blow) bool {
@@ -101,7 +111,11 @@ func (m *Manager) Strike(p, t *Actor, b Blow) bool {
 	if lit {
 		t.SetFire(1)
 	}
-	if !m.Attack(p, t, float64(float32(b.Damage)+float32(b.Bonus)), b.Knockback) {
+	d := float32(b.Damage)
+	if b.Crit && d > 0 {
+		d *= 1.5
+	}
+	if !m.Attack(p, t, float64(d+float32(b.Bonus)), b.Knockback) {
 		if lit {
 			t.Extinguish()
 		}

@@ -38,3 +38,47 @@ func TestStrikeSkips(t *testing.T) {
 		t.Fatal("a zero blow asks the veto or strikes")
 	}
 }
+
+// TestCritical: every condition of the falling blow, and its ×1.5 on the
+// damage before the enchantment bonus.
+func TestCritical(t *testing.T) {
+	p := New("p", "player", 0.5, 1, 0.5)
+	p.Body.OnGround = false
+	if !Critical(p, 1, false) {
+		t.Fatal("a falling player does not crit")
+	}
+	for name, f := range map[string]func(){
+		"no fall":  func() {},
+		"ground":   func() { p.Body.OnGround = true },
+		"ladder":   func() { p.Body.OnLadder = true },
+		"water":    func() { p.Body.InWater = true },
+		"riding":   func() { p.Riding = &Actor{} },
+		"blind":    func() {},
+		"sprints!": func() { p.Body.Sprinting = true },
+	} {
+		p.Body.OnGround, p.Body.OnLadder, p.Body.InWater, p.Riding, p.Body.Sprinting = false, false, false, nil, false
+		f()
+		fall, blind := float32(1), name == "blind"
+		if name == "no fall" {
+			fall = 0
+		}
+		if got, want := Critical(p, fall, blind), name == "sprints!"; got != want {
+			t.Errorf("%s: crit %v", name, got)
+		}
+	}
+	for _, c := range []struct {
+		crit       bool
+		dmg, bonus float64
+		want       float32
+	}{{false, 4, 1, 5}, {true, 4, 1, 7}, {true, 0, 2, 2}} {
+		m := NewManager(flat(20), nil, nil, 1)
+		a, tg := New("a", "player", 0.5, 1, 0.5), New("t", "cow", 2, 1, 0.5)
+		tg.Health = 100
+		m.Add(a)
+		m.Add(tg)
+		m.Strike(a, tg, Blow{Damage: c.dmg, Bonus: c.bonus, Crit: c.crit})
+		if got := float32(100 - tg.Health); got != c.want {
+			t.Errorf("%+v: dealt %v", c, got)
+		}
+	}
+}
