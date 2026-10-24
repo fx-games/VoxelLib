@@ -139,9 +139,14 @@ func (m *Manager) boatTick(a *Actor) bool {
 	}
 	if r := a.Rider; r != nil {
 		// moveForward/moveStrafing: the input times 0.98 (onLivingUpdate)
-		fwd, yaw := r.RideInput.Forward*0.98, r.Yaw
+		fwd, strafe, yaw := r.RideInput.Forward*0.98, r.RideInput.Strafe*0.98, r.Yaw
+		if !r.Player {
+			// an AI rider's moveForward is its AI speed while its navigation
+			// walks (EntityMoveHelper.setMoveForward(getAIMoveSpeed)), times 0.98
+			fwd, strafe = r.nav.in.Forward*math.Sqrt(r.Body.MoveSpeed*0.98)*0.98, 0
+		}
 		if bt.Strafe {
-			yaw += r.RideInput.Strafe * 0.98 * math.Pi / 2 // + -moveStrafing*90°, strafe right = -moveStrafing
+			yaw += strafe * math.Pi / 2 // + -moveStrafing*90°, strafe right = -moveStrafing
 		} else if fwd <= 0 {
 			fwd = 0
 		} else {

@@ -317,6 +317,16 @@ type Actor struct {
 	HurtTime, DeathTime int // HurtTime counts 10 → 0 after a hit (red flash)
 	Target              *Actor
 	Riding, Rider       *Actor
+	// Passenger rides without steering: its mount keeps its own mind and
+	// its own moves are undone each tick (1.7.10 World.updateEntity: an
+	// entity riding a living one runs updateRidden, its AI moving only
+	// itself before updateRiderPosition seats it again). A boat still takes
+	// its moveForward (EntityBoat.onUpdate).
+	Passenger bool
+	// SeatHeight, when set, is the body height while riding
+	// (EntityNPCInterface.updateHitbox on mountEntity); standHeight keeps
+	// the other.
+	SeatHeight, standHeight float64
 	RideInput           RideInput // the rider's steering, set each tick for a player rider
 	OnHurt              func(a, src *Actor, amount float64)
 	// Ward, if set, is an attackEntityFrom override: it gets each hurt
@@ -439,7 +449,7 @@ func (a *Actor) NameTag(v Vec) (name, title string, at Vec, ok bool) {
 
 // carrier is the body that moves for the actor: its mount while riding.
 func (a *Actor) carrier() *Actor {
-	if a.Riding != nil {
+	if a.Riding != nil && !a.Passenger {
 		return a.Riding
 	}
 	return a

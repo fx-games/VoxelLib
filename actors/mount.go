@@ -64,6 +64,7 @@ func (m *Manager) Mount(rider, mount *Actor) bool {
 		return false
 	}
 	rider.Riding, mount.Rider = mount, rider
+	rider.sit()
 	if mount.Mount != nil {
 		m.stop(mount)
 		mount.Mount.Eating, mount.Mount.rearing = false, false // EntityHorse.func_110237_h
@@ -86,6 +87,7 @@ func (m *Manager) Carry(rider, mount *Actor) bool {
 		rider.Riding.Rider = nil
 	}
 	rider.Riding, mount.Rider = mount, rider
+	rider.sit()
 	m.seat(rider)
 	rider.Body.PrevX, rider.Body.PrevY, rider.Body.PrevZ = rider.Body.X, rider.Body.Y, rider.Body.Z
 	return true
@@ -95,18 +97,25 @@ func (m *Manager) Carry(rider, mount *Actor) bool {
 // its feet (yOffset); other bodies stand on their position.
 const playerYOffset = 1.62
 
-// Dismount sets the rider down as EntityLivingBase.dismountEntity: one
-// block up, on the first neighbour cell (dx -1..1, dz -1..0) where its
-// raised box is free and the block at its position's height has a solid
-// top; else on the last such cell with a solid top or water one lower;
-// else on top of the mount.
+// Dismount sets a player rider down as EntityLivingBase.dismountEntity:
+// one block up, on the first neighbour cell (dx -1..1, dz -1..0) where
+// its raised box is free and the block at its position's height has a
+// solid top; else on the last such cell with a solid top or water one
+// lower; else on top of the mount. Any other rider lands on top of the
+// mount (Entity.mountEntity(null): mount x, z and its box's minY plus
+// its height).
 func (m *Manager) Dismount(rider *Actor) {
 	mount := rider.Riding
 	if mount == nil {
 		return
 	}
 	rider.Riding, mount.Rider = nil, nil
+	rider.stand()
 	mb, rb := mount.Body, rider.Body
+	if !rider.Player {
+		rider.place(mb.X, mb.Y+mb.Height, mb.Z)
+		return
+	}
 	yo := 0.0
 	if rider.Player {
 		yo = playerYOffset
@@ -135,6 +144,19 @@ func (m *Manager) Dismount(rider *Actor) {
 		}
 	}
 	rider.place(x, y, z)
+}
+
+// sit and stand swap a rider's body height for its SeatHeight and back.
+func (a *Actor) sit() {
+	if a.SeatHeight > 0 && a.standHeight == 0 {
+		a.standHeight, a.Body.Height = a.Body.Height, a.SeatHeight
+	}
+}
+
+func (a *Actor) stand() {
+	if a.standHeight > 0 {
+		a.Body.Height, a.standHeight = a.standHeight, 0
+	}
 }
 
 func (a *Actor) place(x, y, z float64) {

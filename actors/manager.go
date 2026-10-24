@@ -263,8 +263,8 @@ func (m *Manager) Tick() {
 		if a.Mount != nil {
 			m.mountTick(a)
 		}
-		if r := a.Rider; r != nil {
-			// an NPC rider steers; a player steers a saddled mount, an
+		if r := a.Rider; r != nil && !r.Passenger {
+			// an NPC rider steers (a passenger leaves its mount its mind); a player steers a saddled mount, an
 			// untamed one bucks, any other carries the player on its own
 			if !r.Player || a.Controlled() {
 				continue
