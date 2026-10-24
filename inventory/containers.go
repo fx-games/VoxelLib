@@ -65,7 +65,9 @@ func (cr *Crafting) add(c *Container) {
 	cr.Update()
 }
 
-func addPlayerSlots(c *Container, p *Player) {
+// AddPlayerSlots adds the player's 27 main slots (9-35), then the 9
+// hotbar slots (0-8), as every container adds them after its own.
+func AddPlayerSlots(c *Container, p *Player) {
 	for i := 9; i < 36; i++ {
 		c.Add(&Slot{Inv: p, Index: i})
 	}
@@ -85,7 +87,7 @@ func NewPlayerContainer(p *Player, match Matcher) (*Container, *Crafting) {
 			return s != nil && s.Item.Armor != nil && s.Item.Armor.Slot == i
 		}})
 	}
-	addPlayerSlots(c, p)
+	AddPlayerSlots(c, p)
 	c.Transfer = func(c *Container, i int) *Stack {
 		return transferWith(c, i, func(s *Stack) bool {
 			switch {
@@ -113,7 +115,7 @@ func NewWorkbench(p *Player, match Matcher) (*Container, *Crafting) {
 	c := &Container{Player: p}
 	cr := &Crafting{Grid: NewGrid(3, 3), Result: NewGrid(1, 1), Match: match}
 	cr.add(c)
-	addPlayerSlots(c, p)
+	AddPlayerSlots(c, p)
 	c.Transfer = func(c *Container, i int) *Stack {
 		return transferWith(c, i, func(s *Stack) bool {
 			switch {
@@ -139,7 +141,7 @@ func NewChestContainer(p *Player, chest Inventory) *Container {
 	for i := range n {
 		c.Add(&Slot{Inv: chest, Index: i})
 	}
-	addPlayerSlots(c, p)
+	AddPlayerSlots(c, p)
 	c.Transfer = func(c *Container, i int) *Stack {
 		return transferWith(c, i, func(s *Stack) bool {
 			if i < n {
@@ -167,7 +169,7 @@ func NewFurnaceContainer(p *Player, furnace Inventory, r FurnaceRules) *Containe
 	c.Add(&Slot{Inv: furnace, Index: 0})
 	c.Add(&Slot{Inv: furnace, Index: 1})
 	c.Add(&Slot{Inv: furnace, Index: 2, Output: true, OnTake: r.Taken})
-	addPlayerSlots(c, p)
+	AddPlayerSlots(c, p)
 	c.Transfer = func(c *Container, i int) *Stack {
 		return transferWith(c, i, func(s *Stack) bool {
 			switch {
@@ -206,7 +208,7 @@ func NewLaneFurnaceContainer(p *Player, furnace Inventory, in0, out0, lanes int,
 		}
 		c.Add(sl)
 	}
-	addPlayerSlots(c, p)
+	AddPlayerSlots(c, p)
 	c.Transfer = func(c *Container, i int) *Stack {
 		return transferWith(c, i, func(s *Stack) bool {
 			switch {
@@ -244,7 +246,7 @@ func NewHorseContainer(p *Player, inv Inventory, chest bool, saddle, armour func
 		}
 		n = 17
 	}
-	addPlayerSlots(c, p)
+	AddPlayerSlots(c, p)
 	c.Transfer = func(c *Container, i int) *Stack {
 		return transferWith(c, i, func(s *Stack) bool {
 			switch {

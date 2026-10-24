@@ -86,6 +86,17 @@ type Player struct {
 	Held     int    // hotbar index 0–8
 	Cursor   *Stack // stack carried by the mouse
 	Creative bool
+	// Ender is the player's InventoryEnderChest, shared by every ender
+	// chest (nil until EnderChest makes it).
+	Ender *Grid
+}
+
+// EnderChest is the player's 27-slot ender inventory, made on first use.
+func (p *Player) EnderChest() *Grid {
+	if p.Ender == nil {
+		p.Ender = NewChest(3)
+	}
+	return p.Ender
 }
 
 func (p *Player) Size() int  { return 40 }

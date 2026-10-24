@@ -83,14 +83,20 @@ type ContainerLayout struct {
 	NoBackground bool
 }
 
-func playerSlots(slots [][2]int, y int) [][2]int {
+// playerSlots places the player's slots at the usual x 8, the hotbar 58
+// below the main rows at y.
+func playerSlots(slots [][2]int, y int) [][2]int { return PlayerSlots(slots, 8, y, y+58) }
+
+// PlayerSlots appends the positions of inventory.AddPlayerSlots' 27 main
+// slots (rows from x, y) and 9 hotbar slots (at x, hy).
+func PlayerSlots(slots [][2]int, x, y, hy int) [][2]int {
 	for r := 0; r < 3; r++ {
 		for c := 0; c < 9; c++ {
-			slots = append(slots, [2]int{8 + c*18, y + r*18})
+			slots = append(slots, [2]int{x + c*18, y + r*18})
 		}
 	}
 	for c := 0; c < 9; c++ {
-		slots = append(slots, [2]int{8 + c*18, y + 58})
+		slots = append(slots, [2]int{x + c*18, hy})
 	}
 	return slots
 }

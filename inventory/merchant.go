@@ -191,7 +191,7 @@ func NewMerchantContainer(p *Player, m *Merchant, use func(*Recipe)) *Container 
 			m.Set(1, b)
 		}
 	}})
-	addPlayerSlots(c, p)
+	AddPlayerSlots(c, p)
 	c.Transfer = func(c *Container, i int) *Stack {
 		return TransferWith(c, i, func(s *Stack) bool {
 			switch {

@@ -456,6 +456,32 @@ func TransferWith(c *Container, i int, route func(s *Stack) bool) *Stack {
 	return transferWith(c, i, route, true)
 }
 
+// Transfer is transferStackInSlot for a container whose shift-click only
+// merges: route merges slot i's stack, the slot is emptied or marked
+// changed, and the stack as it was is returned when anything moved (nil
+// otherwise). Unlike TransferWith it neither counts output nor runs
+// onPickupFromSlot.
+func Transfer(c *Container, i int, route func(s *Stack) bool) *Stack {
+	sl := c.Slots[i]
+	s := sl.Stack()
+	if s == nil {
+		return nil
+	}
+	before := s.Copy()
+	if !route(s) {
+		return nil
+	}
+	if s.Count == 0 {
+		sl.Put(nil)
+	} else {
+		sl.Changed()
+	}
+	if s.Count == before.Count {
+		return nil
+	}
+	return before
+}
+
 // transferWith is the common body of the vanilla transferStackInSlot
 // implementations: route decides the merge, output slots get onSlotChange.
 func transferWith(c *Container, i int, route func(s *Stack) bool, checkSame bool) *Stack {

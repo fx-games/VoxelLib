@@ -6,7 +6,8 @@
 // "sword_03"); how they look is the renderer's business (see
 // render.ItemRenderer and items/extrude). Physics follow the reference's
 // ItemEntity: gravity 0.04/tick, 0.98 air drag, ground friction 0.6.
-// The package depends only on voxel/collide.
+// Stack drops (stacks.go) carry inventory stacks: block spills, thrown
+// and death drops, and pickup into a player inventory.
 package items
 
 import (
