@@ -1,5 +1,10 @@
 package village
 
+import (
+	"math"
+	"slices"
+)
+
 // Homing is the villager's and the golem's village check in
 // updateAITick: every 70+rand(50) ticks the village within 32 of the
 // feet's block (a villager first queues its position for the door
@@ -60,30 +65,25 @@ func (g *Golem) HoldRose(on bool) {
 	}
 }
 
-// LookStart is EntityAILookAtVillager.shouldExecute and startExecuting:
-// by day, one tick in 8000, a villager found within 6, 2, 6 is offered a
-// rose for 400 ticks.
-func (g *Golem) LookStart(day bool, intn func(int) int, nearest func() string) bool {
+// LookShould is EntityAILookAtVillager.shouldExecute: by day, one tick
+// in 8000, a villager found (within 6, 2, 6).
+func (g *Golem) LookShould(day bool, intn func(int) int, nearest func() string) bool {
 	if !day || intn(8000) != 0 {
 		return false
 	}
-	if g.Looking = nearest(); g.Looking == "" {
-		return false
-	}
-	g.look = 400
-	g.HoldRose(true)
-	return true
+	g.Looking = nearest()
+	return g.Looking != ""
 }
 
-// LookUpdate is updateTask and continueExecuting; false: resetTask ran.
-func (g *Golem) LookUpdate() bool {
-	if g.look <= 0 {
-		g.LookReset()
-		return false
-	}
-	g.look--
-	return true
+// LookStart is startExecuting: the rose held out for 400 ticks.
+func (g *Golem) LookStart() {
+	g.look = 400
+	g.HoldRose(true)
 }
+
+// LookUpdate is updateTask's count; LookOn is continueExecuting.
+func (g *Golem) LookUpdate()  { g.look-- }
+func (g *Golem) LookOn() bool { return g.look > 0 }
 
 // LookReset is resetTask.
 func (g *Golem) LookReset() { g.HoldRose(false); g.Looking, g.look = "", 0 }
@@ -103,3 +103,30 @@ func (v *Village) DefendTarget(from Vec, intn func(int) int, suitable func(id st
 	}
 	return "", false
 }
+
+// Patrol is EntityAIMoveThroughVillage's door list: the doors walked to
+// lately, at most 16 kept.
+type Patrol struct{ seen []Pos }
+
+// Trim is func_75414_f, first in every shouldExecute: one dropped past 15.
+func (p *Patrol) Trim() {
+	if len(p.seen) > 15 {
+		p.seen = p.seen[1:]
+	}
+}
+
+// Next is func_75412_a: the nearest door of the village not walked to
+// lately (nil for none).
+func (p *Patrol) Next(v *Village, x, y, z int) *Door {
+	var best *Door
+	i := math.MaxInt32
+	for _, d := range v.Doors {
+		if j := d.Dist2(x, y, z); j < i && !slices.Contains(p.seen, Pos{d.X, d.Y, d.Z}) {
+			best, i = d, j
+		}
+	}
+	return best
+}
+
+// Reached is resetTask's note of a door walked to.
+func (p *Patrol) Reached(d *Door) { p.seen = append(p.seen, Pos{d.X, d.Y, d.Z}) }
