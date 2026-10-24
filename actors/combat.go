@@ -49,7 +49,7 @@ func (m *Manager) fight(a *Actor) bool {
 		}
 	}
 	if a.Target == nil && (m.ticks+hash(a.ID))%10 == 0 {
-		a.Target = m.pickTarget(a)
+		a.Target = m.target(a, m.pickTarget(a))
 	}
 	if a.CNPC != nil {
 		return m.cnpcTasks(a)

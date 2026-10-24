@@ -51,6 +51,10 @@ type Manager struct {
 	// may pick t as its nearest hostile (to fight, or to flee from in
 	// Flee mode); revenge is not asked.
 	CanTarget func(a, t *Actor) bool
+	// TargetSet, if set, hears each target the manager gives an actor
+	// (the set-attack-target event, revenge too); false drops it at once,
+	// before the actor acts on it.
+	TargetSet func(a, t *Actor) bool
 	// AlsoTargets, if set, lets a pick t as its nearest hostile though it
 	// does not see t as hostile (a target task's own rule, asked last,
 	// after CanTarget: it may roll a chance).
@@ -578,4 +582,12 @@ func (m *Manager) playerWithin(a *Actor, r float64) bool {
 		}
 	}
 	return false
+}
+
+// target is t as a's new target, after TargetSet.
+func (m *Manager) target(a, t *Actor) *Actor {
+	if t != nil && m.TargetSet != nil && !m.TargetSet(a, t) {
+		return nil
+	}
+	return t
 }

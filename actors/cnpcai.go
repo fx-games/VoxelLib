@@ -263,7 +263,7 @@ func (a *Actor) CNPCAttacking() bool { return a.cn.attacking }
 // map NPC has Flip.
 func (m *Manager) cnpcFlip(a, src *Actor) {
 	if a.Target == nil || a.Pos().dist2(a.Target.Pos()) > a.Pos().dist2(src.Pos()) {
-		a.Target = src
+		a.Target = m.target(a, src)
 	}
 }
 
@@ -456,7 +456,7 @@ func (m *Manager) cnpcReset(a *Actor, i int) {
 	case respAmbush:
 		m.clearPath(a)
 		if a.Target == nil && st.t != nil {
-			a.Target = st.t
+			a.Target = m.target(a, st.t)
 		}
 		if st.t.Pos().dist2(a.Pos()) < c.Radius*c.Radius {
 			st.delay = 60
@@ -464,7 +464,7 @@ func (m *Manager) cnpcReset(a *Actor, i int) {
 	case respStalk:
 		m.clearPath(a)
 		if a.Target == nil && st.t != nil {
-			a.Target = st.t
+			a.Target = m.target(a, st.t)
 		}
 		a.rs.override = false
 	}
