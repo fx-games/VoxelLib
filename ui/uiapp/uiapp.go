@@ -217,6 +217,8 @@ func (c *canvas) SetScissor(r image.Rectangle) {
 
 func (c *canvas) SetInvert(on bool) { c.batch.Invert(on) }
 
+func (c *canvas) SetOrReverse(on bool) { c.batch.OrReverse(on) }
+
 func (c *canvas) NewTarget(w, h int) ui.Texture { return render.NewGUITarget(w, h) }
 
 func (c *canvas) SetTarget(t ui.Texture, clear uint32) {

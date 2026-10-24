@@ -38,6 +38,8 @@ type Canvas interface {
 	SetScissor(r image.Rectangle)
 	// SetInvert switches to colour-inverting blend (crosshair) or back.
 	SetInvert(on bool)
+	// SetOrReverse switches to the logic op OR_REVERSE (src | ^dst) or back.
+	SetOrReverse(on bool)
 }
 
 // Targets is a Canvas that draws into offscreen pictures (the reference's

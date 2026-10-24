@@ -77,6 +77,8 @@ type guiSeg struct {
 	tex     *GUITexture
 	scissor [4]int // GUI px x, y, w, h; w <= 0: none
 	invert  bool
+	max     bool        // max(src, dst): the second half of orRev
+	orRev   bool        // OrReverse
 	linear  bool        // sample tex bilinearly
 	target  *GUITexture // nil: the frame
 	clear   bool        // clear the target to clearC first
@@ -93,6 +95,18 @@ func (b *GUIBatch) Quad(t *GUITexture, x0, y0, x1, y1, u0, v0, u1, v1, skew floa
 		t = whiteTexture()
 	}
 	b.withTex(t)
+	if b.cur.orRev { // src | ^dst: ^dst, then max(src, ^dst), exact for 0 or 1 channels
+		n := b.cur
+		n.invert, n.max = true, false
+		b.state(n)
+		b.quad(x0, y0, x1, y1, u0, v0, u1, v1, skew, 0xFFFFFFFF, 0xFFFFFFFF)
+		n.invert, n.max = false, true
+		b.state(n)
+	}
+	b.quad(x0, y0, x1, y1, u0, v0, u1, v1, skew, top, bottom)
+}
+
+func (b *GUIBatch) quad(x0, y0, x1, y1, u0, v0, u1, v1, skew float32, top, bottom uint32) {
 	ct, cb := argbToRGBA(top), argbToRGBA(bottom)
 	b.verts = append(b.verts,
 		x0+skew, y0, u0, v0, ct, x0-skew, y1, u0, v1, cb, x1+skew, y0, u1, v0, ct,
@@ -111,6 +125,17 @@ func (b *GUIBatch) Scissor(x, y, w, h int) {
 func (b *GUIBatch) Invert(on bool) {
 	n := b.cur
 	n.invert = on
+	b.state(n)
+}
+
+// OrReverse switches to the logic op OR_REVERSE (src | ^dst, the
+// reference's glLogicOp(GL_OR_REVERSE) text selection) or back to alpha
+// blending. ponytail: drawn as an inversion and then a max blend, exact
+// only where the source's channels are 0 or 1; a logic-op emulation reading
+// the frame if another colour needs it.
+func (b *GUIBatch) OrReverse(on bool) {
+	n := b.cur
+	n.orRev, n.invert, n.max = on, false, false
 	b.state(n)
 }
 
@@ -172,7 +197,7 @@ func (b *GUIBatch) Flush(fbW, fbH int, scale float32) {
 	}
 	segs, verts := b.segs, b.verts
 	b.segs, b.verts = b.segs[:0], b.verts[:0]
-	b.cur = guiSeg{scissor: b.cur.scissor, invert: b.cur.invert, linear: b.cur.linear, target: b.cur.target}
+	b.cur = guiSeg{scissor: b.cur.scissor, invert: b.cur.invert, max: b.cur.max, orRev: b.cur.orRev, linear: b.cur.linear, target: b.cur.target}
 	packResolve()
 	p := curPass()
 	if p == nil || len(segs) == 0 || fbW == 0 || fbH == 0 {
@@ -201,7 +226,9 @@ func (b *GUIBatch) Flush(fbW, fbH int, scale float32) {
 			inv = -1
 		}
 		v := b2i(s.invert)
-		if target != nil && !s.invert {
+		if s.max {
+			v = 3
+		} else if target != nil && !s.invert {
 			v = 2
 		}
 		if v != inv {
@@ -265,7 +292,7 @@ fn fs(i: VOut) -> @location(0) vec4f {
 `
 
 var guiState struct {
-	pipes  [3]*wgpu.RenderPipeline // alpha, invert, alpha into a target
+	pipes  [4]*wgpu.RenderPipeline // alpha, invert, alpha into a target, max
 	linear *wgpu.Sampler
 	white  *GUITexture
 }
@@ -279,7 +306,7 @@ func whiteTexture() *GUITexture {
 	return guiState.white
 }
 
-func guiPipelines() [3]*wgpu.RenderPipeline {
+func guiPipelines() [4]*wgpu.RenderPipeline {
 	if guiState.pipes[0] != nil {
 		return guiState.pipes
 	}
@@ -302,7 +329,8 @@ func guiPipelines() [3]*wgpu.RenderPipeline {
 		{Format: gputypes.VertexFormatUnorm8x4, Offset: 16, ShaderLocation: 2}}}}
 	target := &gputypes.BlendState{Color: blendAlpha.Color,
 		Alpha: gputypes.BlendComponent{SrcFactor: gputypes.BlendFactorOne, DstFactor: gputypes.BlendFactorOneMinusSrcAlpha, Operation: gputypes.BlendOperationAdd}}
-	for i, blend := range []*gputypes.BlendState{blendAlpha, invert, target} {
+	maxBlend := gputypes.BlendComponent{SrcFactor: gputypes.BlendFactorOne, DstFactor: gputypes.BlendFactorOne, Operation: gputypes.BlendOperationMax}
+	for i, blend := range []*gputypes.BlendState{blendAlpha, invert, target, {Color: maxBlend, Alpha: maxBlend}} {
 		if guiState.pipes[i], err = dev.device.CreateRenderPipeline(&wgpu.RenderPipelineDescriptor{
 			Label:     "gui",
 			Layout:    pl,

@@ -14,6 +14,7 @@ type SoftCanvas struct {
 	Scale  float32
 	clip   image.Rectangle
 	invert bool
+	orRev  bool
 }
 
 type softTex struct{ img *image.NRGBA }
@@ -50,6 +51,8 @@ func (s *SoftCanvas) SetScissor(r image.Rectangle) {
 }
 
 func (s *SoftCanvas) SetInvert(on bool) { s.invert = on }
+
+func (s *SoftCanvas) SetOrReverse(on bool) { s.orRev = on }
 
 func (s *SoftCanvas) Quad(q Quad) {
 	sc := s.Scale
@@ -93,6 +96,10 @@ func (s *SoftCanvas) Quad(q Quad) {
 			}
 			d := s.Img.Pix[py*s.Img.Stride+px*4:]
 			dr, dg, db, da := float32(d[0])/255, float32(d[1])/255, float32(d[2])/255, float32(d[3])/255
+			if s.orRev {
+				d[0], d[1], d[2], d[3] = u8(r)|^d[0], u8(g)|^d[1], u8(b)|^d[2], u8(a)|^d[3]
+				continue
+			}
 			if s.invert {
 				d[0], d[1], d[2] = u8(r*(1-dr)+dr*(1-r)), u8(g*(1-dg)+dg*(1-g)), u8(b*(1-db)+db*(1-b))
 				continue
