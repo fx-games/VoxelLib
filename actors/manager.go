@@ -117,7 +117,8 @@ type Manager struct {
 	search          nav.Graph
 	searching       *Actor
 	queue           []*Actor
-	budget          int // expansions left this tick
+	budget          int      // expansions left this tick
+	players         []*Actor // this tick's players (playerWithin)
 	doorFn, waterFn func(x, y, z int) bool
 	costFn          func(nav.Pos) int
 	half            float64 // half the width of the walker the graph is set for
@@ -195,7 +196,11 @@ func (m *Manager) Tick() {
 	m.ticks++
 	clear(m.occupied)
 	leaders := map[string]bool{}
+	m.players = m.players[:0]
 	for _, a := range m.Actors {
+		if a.Player {
+			m.players = append(m.players, a)
+		}
 		if a.Body.VX*a.Body.VX+a.Body.VZ*a.Body.VZ < 1e-4 {
 			m.occupied[a.cell()] = true
 		}
@@ -567,8 +572,8 @@ type DoorBuster interface {
 // playerWithin reports whether the player nearest a is closer than r
 // blocks (getClosestPlayerToEntity, a 3-D distance).
 func (m *Manager) playerWithin(a *Actor, r float64) bool {
-	for _, o := range m.Actors {
-		if o.Player && o.Pos().dist2(a.Pos()) < r*r {
+	for _, o := range m.players {
+		if o.Pos().dist2(a.Pos()) < r*r {
 			return true
 		}
 	}
