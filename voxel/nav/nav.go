@@ -49,9 +49,15 @@ type Graph struct {
 	// returns the closest point), unless that cell is the start.
 	Closest bool
 
-	nodes map[Pos]*node
-	gen   uint32
-	open  nodeHeap
+	// A search's nodes: slab chunks reused from search to search (used
+	// of them taken), found by the cache window's index or, outside it,
+	// by far. An index entry is current when it names a taken node of
+	// that cell, so nothing needs clearing.
+	slab [][]node
+	used int
+	idx  []int32
+	far  map[Pos]*node
+	open nodeHeap
 
 	// cells caches solid/water answers for the cells around one search
 	// (W, Door and Water are callbacks into the game and cost far more
@@ -98,7 +104,6 @@ type node struct {
 	pos    Pos
 	g, f   int
 	parent *node
-	gen    uint32
 	closed bool
 	idx    int // heap index, -1 if not in heap
 }
@@ -329,15 +334,32 @@ func h(a, b Pos) int {
 	return 14*mn + 10*(mx-mn) + 10*abs(a.Y-b.Y)
 }
 
+const slabChunk = 1024
+
 func (g *Graph) get(p Pos) *node {
-	n := g.nodes[p]
-	if n == nil {
-		n = &node{pos: p}
-		g.nodes[p] = n
+	x, y, z := p.X-g.cx, p.Y-g.cy, p.Z-g.cz
+	w := -1
+	if uint(x) < cacheW && uint(z) < cacheW && uint(y) < cacheH {
+		w = (y*cacheW+z)*cacheW + x
+		if i := int(g.idx[w]); i < g.used {
+			if n := &g.slab[i/slabChunk][i%slabChunk]; n.pos == p {
+				return n
+			}
+		}
+	} else if n := g.far[p]; n != nil {
+		return n
 	}
-	if n.gen != g.gen {
-		*n = node{pos: p, gen: g.gen, g: 1 << 30, idx: -1}
+	if g.used == len(g.slab)*slabChunk {
+		g.slab = append(g.slab, make([]node, slabChunk))
 	}
+	n := &g.slab[g.used/slabChunk][g.used%slabChunk]
+	*n = node{pos: p, g: 1 << 30, idx: -1}
+	if w >= 0 {
+		g.idx[w] = int32(g.used)
+	} else {
+		g.far[p] = n
+	}
+	g.used++
 	return n
 }
 
@@ -375,12 +397,13 @@ func (g *Graph) Begin(from, to Pos, maxNodes int) bool {
 	}
 	g.cx, g.cy, g.cz = (from.X+to.X)/2-cacheR, (from.Y+to.Y)/2-cacheH/2, (from.Z+to.Z)/2-cacheR
 	g.caching = true
-	if g.nodes == nil {
-		g.nodes = map[Pos]*node{}
+	if g.idx == nil {
+		g.idx, g.far = make([]int32, cacheW*cacheW*cacheH), map[Pos]*node{}
 	}
-	g.gen++
-	if len(g.nodes) > 200000 { // bound memory of the reuse cache
-		g.nodes = map[Pos]*node{}
+	g.used = 0
+	clear(g.far)
+	if len(g.slab) > 64 { // bound memory after a huge search
+		g.slab = g.slab[:64]
 	}
 	g.to, g.maxNodes, g.expanded = to, maxNodes, 0
 	s := g.get(from)

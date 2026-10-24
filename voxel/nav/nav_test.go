@@ -370,3 +370,27 @@ func TestLinks(t *testing.T) {
 		t.Fatal("no way back down")
 	}
 }
+
+// TestReuse: a graph's later searches (in and beyond its node window)
+// find what a fresh graph finds.
+func TestReuse(t *testing.T) {
+	m := grid{}
+	for x := -10; x < 130; x++ {
+		for z := 0; z < 10; z++ {
+			m[Pos{x, 0, z}] = x%7 != 3 || z == 5 // gaps with one bridge
+		}
+	}
+	g := &Graph{W: m}
+	for i, c := range [][2]Pos{{{0, 1, 0}, {9, 1, 9}}, {{9, 1, 9}, {0, 1, 2}}, {{-5, 1, 0}, {125, 1, 8}}, {{0, 1, 0}, {9, 1, 9}}} {
+		got, ok := g.Path(c[0], c[1], 0)
+		want, wok := (&Graph{W: m}).Path(c[0], c[1], 0)
+		if ok != wok || len(got) != len(want) {
+			t.Fatalf("search %d: %v %v, fresh %v %v", i, ok, got, wok, want)
+		}
+		for j := range got {
+			if got[j] != want[j] {
+				t.Fatalf("search %d step %d: %v, fresh %v", i, j, got[j], want[j])
+			}
+		}
+	}
+}
