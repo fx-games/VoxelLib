@@ -827,7 +827,7 @@ func (pk *packGPU) program(pl *wgpu.RenderPipeline) (string, []int, bool) {
 		return packDamageWGSL, []int{0, 1}, false
 	case ps.outline:
 		return packBasicWGSL, []int{0}, false
-	case ps.skyAlpha, ps.skyAdd:
+	case ps.skyAlpha, ps.skyAdd, ps.skyOpaque:
 		return packWeatherWGSL, []int{5}, false
 	}
 	return "", nil, false

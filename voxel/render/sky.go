@@ -8,13 +8,16 @@ import (
 
 // SkyDraw is one camera-centred sky draw (sky planes, sun, moon, clouds,
 // rain): coloured or textured geometry drawn with depth test and no depth
-// writes, in Options.Sky or Options.SkyAfter order.
+// writes (unless Opaque), in Options.Sky or Options.SkyAfter order.
 type SkyDraw struct {
 	// Texture names a texture of Options.SkyTextures; "" draws untextured.
 	// UVs repeat.
 	Texture string
 	// Additive blends (SRC_ALPHA, ONE); else alpha blending.
 	Additive bool
+	// Opaque draws without blending and writes depth (AlphaTest still
+	// discards), e.g. a beam's core drawn with blending off.
+	Opaque bool
 	// Fog, when set, mixes toward its colour by eye distance (linear).
 	Fog *Fog
 	// AlphaTest discards fragments with alpha at or below it (when > 0).

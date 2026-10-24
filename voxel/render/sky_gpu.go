@@ -66,7 +66,9 @@ func (r *Renderer) drawSky(cam *Camera, draws []SkyDraw) {
 			fc = d.Fog.Color
 			fog[0], fog[1], fog[2] = d.Fog.Start, d.Fog.End, 1
 		}
-		if d.Additive {
+		if d.Opaque {
+			setPipe(p, dev.pipes.skyOpaque)
+		} else if d.Additive {
 			setPipe(p, dev.pipes.skyAdd)
 		} else {
 			setPipe(p, dev.pipes.skyAlpha)

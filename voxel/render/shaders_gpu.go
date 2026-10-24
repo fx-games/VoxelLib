@@ -351,7 +351,7 @@ type pipelines struct {
 	terrainOpaque, terrainTrans *wgpu.RenderPipeline
 	terrainSolid                *wgpu.RenderPipeline // the solid layer outside shader-pack frames
 	sky                         *wgpu.RenderPipeline
-	skyAlpha, skyAdd            *wgpu.RenderPipeline
+	skyAlpha, skyAdd, skyOpaque *wgpu.RenderPipeline
 	outline, crosshair          *wgpu.RenderPipeline
 	model, item, itemNoDepth    *wgpu.RenderPipeline
 	modelAlpha, modelAdd        *wgpu.RenderPipeline
@@ -461,6 +461,7 @@ func (ps *pipelines) init() error {
 		{&ps.sky, pipeSpec{"sky", skyWGSL, nil, nil, tri, back, nil, true, false, false}},
 		{&ps.skyAlpha, pipeSpec{"sky list", skyListWGSL, ps.tex2D, skyBuf, tri, none, blendAlpha, true, false, false}},
 		{&ps.skyAdd, pipeSpec{"sky list additive", skyListWGSL, ps.tex2D, skyBuf, tri, none, blendSrcAlphaOne, true, false, false}},
+		{&ps.skyOpaque, pipeSpec{"sky list opaque", skyListWGSL, ps.tex2D, skyBuf, tri, none, nil, true, true, false}},
 		{&ps.outline, pipeSpec{"outline", lineWGSL, nil, lineBuf, lines, none, blendAlpha, true, true, false}},
 		{&ps.crosshair, pipeSpec{"crosshair", lineWGSL, nil, lineBuf, lines, none, blendInvert, false, false, false}},
 		{&ps.model, pipeSpec{"model", modelWGSL, ps.tex2D, modelBuf, tri, none, nil, true, true, false}},
