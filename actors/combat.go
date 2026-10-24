@@ -51,8 +51,8 @@ func (m *Manager) fight(a *Actor) bool {
 		return false
 	}
 	a.age = 0
-	if r := a.Ranged; r != nil && r.AI == RangedLOTR {
-		m.lotrFight(a, t)
+	if r := a.Ranged; r != nil && r.AI == RangedModal {
+		m.modalFight(a, t)
 		return true
 	}
 	if r := a.Ranged; r != nil && r.AI == RangedCNPC {

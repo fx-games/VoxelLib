@@ -88,7 +88,7 @@ type Arrow struct {
 	// Flown counts ticks since launch and never resets, e.g. to hide a
 	// fresh shot near the camera even if it stuck at once.
 	Flown int
-	// Gravity is the fall per tick² (Gravity, Minecraft's arrow, unless
+	// Gravity is the fall per tick² (Gravity, the reference arrow's, unless
 	// changed after Shoot, e.g. a thrown item's).
 	Gravity float64
 	// Bounce, if set, makes the projectile rebound instead of sticking (a

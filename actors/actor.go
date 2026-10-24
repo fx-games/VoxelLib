@@ -170,13 +170,13 @@ type Ranged struct {
 	Inaccuracy   float64 // (skeleton 14 - 4*difficulty)
 	MeleeInRange float64 // switch to melee closer than this (0 = never)
 
-	// AI picks the task: RangedSkeleton (the fields above), RangedLOTR
+	// AI picks the task: RangedSkeleton (the fields above), RangedModal
 	// (MinInterval, MaxInterval, MaxRange, MoveSpeed, Switch) or
 	// RangedCNPC (MinInterval/MaxInterval as minDelay/maxDelay, MaxRange
 	// as MaxFiringRange, and the fields below).
 	AI int
-	// MoveSpeed is LOTREntityAIRangedAttack's path speed factor toward a
-	// target out of range; Switch marks a LOTR class with both a melee
+	// MoveSpeed is a mod's ranged attack task's path speed factor toward a
+	// target out of range; Switch marks a class with both a melee
 	// and a ranged task that its attack mode swaps.
 	MoveSpeed float64
 	Switch    bool
@@ -208,7 +208,7 @@ type MountStats struct {
 	// damage ceil(d*0.5-3) dealt to the rider too (EntityHorse.fall).
 	Horse bool `json:"-"`
 	// SwimUp: a player-ridden mount sinking in water with nothing below
-	// rises 0.05 at a 55% chance a tick (LOTREntityHorse.onLivingUpdate).
+	// rises 0.05 at a 55% chance a tick (a mod's horse onLivingUpdate).
 	SwimUp    bool   `json:"-"`
 	MaxTemper int    `json:"-"` // 100 for tameable mounts; 0 never tames by riding
 	Tame      bool   `json:"tame,omitempty"`

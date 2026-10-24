@@ -51,3 +51,12 @@ func TestZoomBlock(t *testing.T) {
 		t.Error("block")
 	}
 }
+
+func TestAttackDamage(t *testing.T) {
+	if d := AttackDamage(6, 0, 0); d != 7 {
+		t.Fatal(d)
+	}
+	if d := AttackDamage(6, 1, 1); d != float64(float32(6.5*2.3)) {
+		t.Fatal(d)
+	}
+}

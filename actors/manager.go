@@ -41,7 +41,7 @@ type Manager struct {
 	OnFire func(a, t *Actor)
 	// Launch, if set, launches the projectile of a's ranged attack at t
 	// (attackEntityWithRangedAttack) instead of an Arrows arrow; f is the
-	// task's power argument (LOTR and skeleton: the draw, 0.1..1; CNPC:
+	// task's power argument (modal and skeleton: the draw, 0.1..1; CNPC:
 	// 1 for an indirect, arcing shot, else 0). OnFire is not called then.
 	Launch func(a, t *Actor, f float64)
 	// Sees, if set, is EntitySenses.canSee (the eye-to-eye block ray);

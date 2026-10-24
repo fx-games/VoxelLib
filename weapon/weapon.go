@@ -102,3 +102,17 @@ func Blocked(d float32) float32 {
 	}
 	return (1 + d) * 0.5
 }
+
+// AttackDamage is a player's attackDamage attribute: base 1 plus the held
+// item's modifier and weakness (-0.5 per level, operation 0), times
+// strength (1 + 1.3 per level, operation 2), as a float.
+func AttackDamage(item float64, weakness, strength int) float64 {
+	d := 1 + item
+	if weakness > 0 {
+		d += float64(-0.5 * float32(weakness))
+	}
+	if strength > 0 {
+		d *= 1 + 1.3*float64(strength)
+	}
+	return float64(float32(d))
+}

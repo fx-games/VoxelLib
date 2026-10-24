@@ -35,12 +35,12 @@ func rangedPair(t *testing.T, r *Ranged, tx float64, sees bool) (*Manager, *Acto
 	return m, a, tg, &ticks, &fs
 }
 
-// TestLOTRRangedTiming: LOTREntityAIRangedAttack with min 30, max 50,
+// TestModalRangedTiming: the modal ranged task with min 30, max 50,
 // range 16 against a target 10 blocks away: the timer starts at -1, is
 // set to floor(10/16*20+30) = 42 on the first tick and fires every 42
 // ticks with power 10/16; unseen targets are not shot.
-func TestLOTRRangedTiming(t *testing.T) {
-	r := &Ranged{AI: RangedLOTR, MinInterval: 30, MaxInterval: 50, MaxRange: 16, MoveSpeed: 1.25}
+func TestModalRangedTiming(t *testing.T) {
+	r := &Ranged{AI: RangedModal, MinInterval: 30, MaxInterval: 50, MaxRange: 16, MoveSpeed: 1.25}
 	_, _, _, ticks, fs := rangedPair(t, r, 10.5, true)
 	want := []int{43, 85, 127, 169, 211, 253, 295}
 	if len(*ticks) != len(want) {
@@ -119,7 +119,7 @@ func TestCNPCRangedBurst(t *testing.T) {
 // away with the default melee distance (4 + width²) but closes in for
 // melee when getMeleeRange is overridden to 12.
 func TestMeleeRange(t *testing.T) {
-	r := &Ranged{AI: RangedLOTR, MinInterval: 20, MaxInterval: 30, MaxRange: 24, MoveSpeed: 1.2, Switch: true}
+	r := &Ranged{AI: RangedModal, MinInterval: 20, MaxInterval: 30, MaxRange: 24, MoveSpeed: 1.2, Switch: true}
 	if _, _, _, ticks, _ := rangedPair(t, r, 10.5, true); len(*ticks) == 0 {
 		t.Fatal("no shots at 10 with the default melee range")
 	}
@@ -142,23 +142,23 @@ func TestArrowAttackSight(t *testing.T) {
 	}
 }
 
-// TestMeleeBurning: with MeleeBurning a LOTR NPC 10 blocks from its
+// TestMeleeBurning: with MeleeBurning a modal NPC 10 blocks from its
 // target picks melee while the target burns, ranged once it is out.
 func TestMeleeBurning(t *testing.T) {
 	m := NewManager(flat(40), nil, nil, 3)
 	a := New("thrower", "thrower", 0.5, 1, 0.5)
-	a.Ranged, a.AggroRange = &Ranged{AI: RangedLOTR, MinInterval: 20, MaxInterval: 30, MaxRange: 16, MeleeBurning: true}, 40
+	a.Ranged, a.AggroRange = &Ranged{AI: RangedModal, MinInterval: 20, MaxInterval: 30, MaxRange: 16, MeleeBurning: true}, 40
 	tg := New("man", "man", 10.5, 1, 0.5)
 	m.Add(a)
 	m.Add(tg)
 	m.Launch = func(*Actor, *Actor, float64) {}
 	m.Sees = func(*Actor, *Actor) bool { return true }
 	tg.SetFire(5)
-	if m.lotrFight(a, tg); a.rs.mode != modeMelee {
+	if m.modalFight(a, tg); a.rs.mode != modeMelee {
 		t.Fatalf("burning target: mode %v", a.rs.mode)
 	}
 	tg.Extinguish()
-	if m.lotrFight(a, tg); a.rs.mode != modeRanged {
+	if m.modalFight(a, tg); a.rs.mode != modeRanged {
 		t.Fatalf("target out: mode %v", a.rs.mode)
 	}
 }

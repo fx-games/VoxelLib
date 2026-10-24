@@ -5,11 +5,11 @@ import "math"
 // Ranged AI kinds (Ranged.AI).
 const (
 	RangedSkeleton = iota // 1.7.10 EntityAIArrowAttack (the default)
-	RangedLOTR            // LOTR LOTREntityAIRangedAttack with LOTREntityNPC's attack modes
+	RangedModal           // a mod's ranged attack task with its NPCs' attack modes
 	RangedCNPC            // CustomNPC EntityAIRangedAttack with EntityAIAttackTarget
 )
 
-// LOTR attack modes (LOTREntityNPC.AttackMode).
+// Attack modes of RangedModal (a mod NPC's AttackMode).
 const (
 	modeIdle = iota
 	modeMelee
@@ -24,7 +24,7 @@ func (a *Actor) RangedMode() bool { return a.rs.mode == modeRanged }
 type rangedState struct {
 	on        bool // the task is executing (resetTask runs when it stops)
 	burst     int  // CNPC field_70846_g: shots of the current burst
-	mode      int  // LOTR currentAttackMode
+	mode      int  // RangedModal currentAttackMode
 	goal      Vec  // the navigator's path end (PathNavigate keeps walking it)
 	goalMul   float64
 	goalSet   bool
@@ -35,7 +35,7 @@ type rangedState struct {
 	inited    bool // the task's constructor ran (its timer's first value)
 }
 
-// rangedInit gives the timer the task constructor's value: LOTR -1, CNPC
+// rangedInit gives the timer the task constructor's value: modal -1, CNPC
 // minDelay/2.
 func (a *Actor) rangedInit() {
 	if a.rs.inited {
@@ -79,13 +79,13 @@ func (m *Manager) clearPath(a *Actor) {
 }
 
 // rangedIdle is the tick of an actor without a target: the running ranged
-// task stops (resetTask) and LOTR NPCs go back to the idle mode.
+// task stops (resetTask) and modal NPCs go back to the idle mode.
 func (m *Manager) rangedIdle(a *Actor) {
 	r := a.Ranged
 	if r == nil {
 		return
 	}
-	if r.AI == RangedLOTR {
+	if r.AI == RangedModal {
 		a.rs.mode = modeIdle
 	}
 	m.rangedReset(a)
@@ -98,7 +98,7 @@ func (m *Manager) rangedReset(a *Actor) {
 	}
 	a.rs.on = false
 	switch r.AI {
-	case RangedLOTR: // LOTREntityAIRangedAttack.resetTask
+	case RangedModal: // the modal task's resetTask
 		a.seeTime, a.rangedCool = 0, -1
 	case RangedCNPC: // EntityAIRangedAttack.resetTask: also drops the target
 		a.Target = nil
@@ -107,11 +107,11 @@ func (m *Manager) rangedReset(a *Actor) {
 	}
 }
 
-// lotrFight is a LOTR NPC's fight: LOTREntityNPC.onLivingUpdate picks the
+// modalFight is a modal NPC's fight: the NPC's onLivingUpdate picks the
 // attack mode (melee closer than getMeleeRange, ranged within 0.95 of the
 // follow range, else as before), and a class with both tasks swaps them
 // with the mode (onAttackModeChange); an archer has the ranged task only.
-func (m *Manager) lotrFight(a, t *Actor) {
+func (m *Manager) modalFight(a, t *Actor) {
 	r := a.Ranged
 	w := a.Body.Width
 	mr := 4 + w*w
@@ -144,11 +144,11 @@ func (m *Manager) lotrFight(a, t *Actor) {
 			return
 		}
 	}
-	m.lotrRanged(a, t)
+	m.modalRanged(a, t)
 }
 
-// lotrRanged is LOTREntityAIRangedAttack.updateTask.
-func (m *Manager) lotrRanged(a, t *Actor) {
+// modalRanged is the modal ranged attack task's updateTask.
+func (m *Manager) modalRanged(a, t *Actor) {
 	r := a.Ranged
 	a.rangedInit()
 	a.rs.on = true
@@ -191,7 +191,7 @@ func (m *Manager) lotrRanged(a, t *Actor) {
 	}
 }
 
-// awayFrom is LOTREntityAIRangedAttack.findPositionAwayFrom: up to 24
+// awayFrom is the modal task's findPositionAwayFrom: up to 24
 // random cells around a whose squared distance to t lies in (min², max²).
 func (m *Manager) awayFrom(a, t *Actor, lo, hi int) (Vec, bool) {
 	b := a.Body.Box()
