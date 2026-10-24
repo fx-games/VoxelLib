@@ -56,3 +56,24 @@ func TestBiped(t *testing.T) {
 		t.Fatalf("player at rows %d..%d (%v)", top, b, ok)
 	}
 }
+
+// TestArmor expects the chest piece to be the body and arms of
+// ModelBiped(1).
+func TestArmor(t *testing.T) {
+	g := biped(armorInflate[Chest])
+	g.Render = armorParts[Chest]
+	m, err := cuboid.Build(g, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	seen := map[uint16]bool{}
+	for _, v := range m.Meshes[0].Verts {
+		seen[v.Joints[0]] = true
+	}
+	if len(seen) != 3 || !seen[2] || !seen[3] || !seen[4] {
+		t.Fatalf("chest on parts %v", seen)
+	}
+	if g.Parts[2].Boxes[0].Inflate != 1 || g.Parts[1].Boxes[0].Inflate != 1.5 {
+		t.Fatal("not ModelBiped(1)")
+	}
+}
