@@ -96,6 +96,10 @@ type Manager struct {
 	// (getEnchantmentModifierDamage's result) before the cap of 20, as a
 	// hook on its return would.
 	ProtectionAdjust func(t, src *Actor, how HurtKind, i int) int
+	// Hurting, if set, changes a counted hurt's amount after the
+	// invulnerability window, as a LivingHurtEvent handler; 0 or less
+	// drops the hurt.
+	Hurting func(t, src *Actor, amount float64) float64
 	// Effects are the status effect kinds, in the order they tick.
 	Effects []EffectRule
 

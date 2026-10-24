@@ -27,3 +27,20 @@ func TestProtection(t *testing.T) {
 		t.Fatalf("other: health %v, want 80.4", tg.Health)
 	}
 }
+
+// TestHurting: the LivingHurtEvent hook halves a counted hurt; the window
+// still compares the unchanged amount.
+func TestHurting(t *testing.T) {
+	m := NewManager(flat(10), nil, nil, 1)
+	m.Hurting = func(_, _ *Actor, n float64) float64 { return n / 2 }
+	src := New("src", "x", 0.5, 1, 0.5)
+	tg := New("t", "y", 1.5, 1, 0.5)
+	tg.Health, tg.MaxHealth = 100, 100
+	m.Add(src)
+	m.Add(tg)
+	m.Hurt(tg, src, 10, true)
+	m.Hurt(tg, src, 12, true)
+	if tg.Health != 94 {
+		t.Fatalf("health %v, want 94", tg.Health)
+	}
+}

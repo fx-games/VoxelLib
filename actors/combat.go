@@ -274,6 +274,11 @@ func (m *Manager) Hurt(t, src *Actor, amount float64, unblockable bool) bool {
 	if t.CNPC != nil && src != nil && src != t && m.Factions.Sees(t, src) != Friendly {
 		m.cnpcFlip(t, src)
 	}
+	if m.Hurting != nil {
+		if amount = m.Hurting(t, src, amount); amount <= 0 {
+			return true
+		}
+	}
 	if t.Blocking && !unblockable {
 		amount = float64(weapon.Blocked(float32(amount)))
 	}
