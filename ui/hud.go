@@ -76,6 +76,7 @@ type HUD struct {
 	lastName                string
 	action                  string
 	actionT                 int
+	actionTint              func(left float32) uint32
 	title, sub              string
 	tIn, tStay, tOut, tLeft int
 }
@@ -125,8 +126,11 @@ func (h *HUD) Message(text string) {
 }
 
 // ActionBar shows text above the hotbar for three seconds (the record
-// overlay).
-func (h *HUD) ActionBar(text string) { h.action, h.actionT = text, 60 }
+// overlay). tint, if not nil, gives its RGB by the ticks it has left
+// (minus the partial tick); white otherwise.
+func (h *HUD) ActionBar(text string, tint func(left float32) uint32) {
+	h.action, h.actionT, h.actionTint = text, 60, tint
+}
 
 // Title shows a big title and a subtitle in the middle, fading in, staying
 // and fading out over the given ticks (the 1.8 reference's /title; 10, 70, 20).
@@ -191,9 +195,14 @@ func (h *HUD) Draw(ctx *Context, partial float32) {
 			}
 		}
 		if h.actionT > 0 {
-			a := int((float32(h.actionT) - partial) * 255 / 20)
+			left := float32(h.actionT) - partial
+			a := int(left * 255 / 20)
 			if a = min(a, 255); a > 8 {
-				f.DrawScaled(c, h.action, float32(w/2), float32(ht-68), 1, float32(-f.Width(h.action)/2), -4, 0xFFFFFF|uint32(a)<<24, false)
+				col := uint32(0xFFFFFF)
+				if h.actionTint != nil {
+					col = h.actionTint(left) & 0xFFFFFF
+				}
+				f.DrawScaled(c, h.action, float32(w/2), float32(ht-68), 1, float32(-f.Width(h.action)/2), -4, col|uint32(a)<<24, false)
 			}
 		}
 		h.drawTitle(ctx, partial)
