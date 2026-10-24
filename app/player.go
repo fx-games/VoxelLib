@@ -27,6 +27,16 @@ type Terrain struct {
 	// falls through to (the reference's fences, walls and gates: render
 	// types 11, 32 and 21).
 	StepBelow func(x, y, z int) bool
+	// Slip, when set, is a block's slipperiness: character.Slipper.
+	Slip func(x, y, z int) float64
+}
+
+// Slipperiness is Slip, 0.6 without one.
+func (t *Terrain) Slipperiness(x, y, z int) float64 {
+	if t.Slip == nil {
+		return 0.6
+	}
+	return t.Slip(x, y, z)
 }
 
 // Climbable is Climb, false without one.

@@ -43,3 +43,51 @@ func TestSteer(t *testing.T) {
 		t.Fatal("reset", s.speed)
 	}
 }
+
+type iceWorld struct{ *testWorld }
+
+func (iceWorld) Slipperiness(x, y, z int) float64 { return 0.98 }
+
+// TestSteerSteps: a steered tick is the task's move then a second with no
+// input: from rest, a*f2*f2 with the ground's f2 (0.6*0.91, ice
+// 0.98*0.91) and a scaled by 0.16277136/f2^3; a panic (a revenge target)
+// stops the steering.
+func TestSteerSteps(t *testing.T) {
+	run := func(ice bool) (*Manager, *Actor) {
+		m, _, pig, _ := horseWorld(t, MountStats{RideHeight: 0.675, Tame: true, Steer: &Steer{Max: 0.3,
+			Lure: func(*Actor) bool { return true }}})
+		if ice {
+			m.W = iceWorld{m.W.(*testWorld)}
+		}
+		pig.Speed = 0.25
+		return m, pig
+	}
+	for _, ice := range []bool{false, true} {
+		m, pig := run(ice)
+		lure := false
+		pig.Mount.Steer.Lure = func(*Actor) bool { return lure }
+		for range 5 { // land
+			m.Tick()
+		}
+		pig.Body.VX, pig.Body.VZ, lure = 0, 0, true
+		m.Tick()
+		f2, k := 0.546, 1.0
+		if ice {
+			f := float32(0.98) * 0.91
+			f2, k = float64(f), float64(0.16277136/(f*f*f))/(0.16277136/(0.546*0.546*0.546))
+		}
+		a := 0.003 * 0.98 * pig.Body.MoveSpeed * k
+		if v := math.Hypot(pig.Body.VX, pig.Body.VZ); !pig.Body.OnGround || math.Abs(v-a*f2*f2) > 1e-9 {
+			t.Fatalf("ice %v: v %v want %v", ice, v, a*f2*f2)
+		}
+	}
+
+	m, pig := run(false)
+	m.Tick()
+	pig.FleeWhenHurt = true
+	pig.SetRevenge(New("wolf", "wolf", 3, 1, 3))
+	m.Tick()
+	if s := pig.Mount.Steer; s.running || s.speed != 0 {
+		t.Fatal("panic did not stop the steering")
+	}
+}

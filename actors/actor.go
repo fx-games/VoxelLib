@@ -73,6 +73,14 @@ func (w bodyWorld) Climbable(x, y, z int) bool {
 	return ok && c.Climbable(x, y, z)
 }
 
+// Slipperiness passes the World's character.Slipper on (0.6 without).
+func (w bodyWorld) Slipperiness(x, y, z int) float64 {
+	if s, ok := w.World.(character.Slipper); ok {
+		return s.Slipperiness(x, y, z)
+	}
+	return 0.6
+}
+
 // Boxes passes the World's collide.Boxer on (an embedded interface
 // promotes only World's own methods).
 func (w bodyWorld) Boxes(area collide.AABB, out []collide.AABB) []collide.AABB {

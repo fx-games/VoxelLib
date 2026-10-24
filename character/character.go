@@ -38,6 +38,26 @@ type World interface {
 // (ladders, vines). Worlds without it have none.
 type Climber interface{ Climbable(x, y, z int) bool }
 
+// Slipper is a World whose blocks have a slipperiness (Block.slipperiness:
+// 0.6, ice 0.98); without one every ground is 0.6.
+type Slipper interface{ Slipperiness(x, y, z int) float64 }
+
+// groundSlip is moveEntityWithHeading's ground f2 (the slipperiness of
+// the block under the feet times 0.91) and the acceleration factor
+// 0.16277136/f2^3 over the default ground's; 0 when it is the default.
+func (c *Character) groundSlip(w World) (f2, k float64) {
+	s, ok := w.(Slipper)
+	if !ok {
+		return 0, 0
+	}
+	sl := float32(s.Slipperiness(int(math.Floor(c.X)), int(math.Floor(c.Y))-1, int(math.Floor(c.Z))))
+	if math.Abs(float64(sl)-0.6) < 1e-6 {
+		return 0, 0
+	}
+	f := sl * 0.91
+	return float64(f), float64(0.16277136/(f*f*f)) / (0.16277136 / (groundDrag * groundDrag * groundDrag))
+}
+
 // MoveModel selects how the character accelerates on foot.
 type MoveModel uint8
 
@@ -301,6 +321,11 @@ func (c *Character) Tick(w World, in Input) {
 				if sprint {
 					a *= sprintAccel / walkAccel
 				}
+			}
+			// ponytail: the drag's f2 is the block under the feet before
+			// the move, as for the default ground, not after it
+			if f2, k := c.groundSlip(w); f2 > 0 {
+				a, drag = a*k, f2
 			}
 		}
 		accel(a)

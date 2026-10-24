@@ -18,6 +18,7 @@ type Steer struct {
 	speed          float64
 	boosted        bool
 	boostT, boostN int
+	jump           bool // the jump helper's, done in the second step
 }
 
 // Boost is the lure's right click (func_82633_h then func_82632_g):
@@ -32,15 +33,16 @@ func (m *Manager) Boost(mt *Actor) bool {
 }
 
 // steering is the task's shouldExecute, with startExecuting and
-// resetTask's zero speed on the edges.
-// ponytail: it skips the mount's whole think, so a panic (priority 1)
-// does not interrupt it; add task arbitration if that shows.
+// resetTask's zero speed on the edges. A panic (EntityAIPanic, priority
+// 1, sharing mutex bit 1) takes over while the mount has a revenge target.
+// ponytail: not while burning, which the engine's panic does not flee.
 func (m *Manager) steering(mt *Actor) bool {
 	s := mt.Mount.Steer
 	if s == nil {
 		return false
 	}
-	run := mt.Alive() && mt.Rider != nil && mt.Rider.Player && (s.boosted || s.Lure != nil && s.Lure(mt))
+	panics := mt.FleeWhenHurt && mt.Revenge() != nil
+	run := mt.Alive() && !panics && mt.Rider != nil && mt.Rider.Player && (s.boosted || s.Lure != nil && s.Lure(mt))
 	if run != s.running {
 		s.running, s.speed = run, 0
 		if !run {
@@ -51,12 +53,11 @@ func (m *Manager) steering(mt *Actor) bool {
 }
 
 // steerInput is updateTask: the turn, the speed, the boost's sine, the
-// jump at a one-block step and moveEntityWithHeading(0, f1).
-// ponytail: the reference moves a ridden pig twice a tick (the task, then
-// onLivingUpdate's zero-input step); one step reaches the same top speed.
+// jump at a one-block step and moveEntityWithHeading(0, f1); the jump
+// goes to the second step, onLivingUpdate's with no input.
 // The AI speed is the movementSpeed attribute (landMovementFactor as a
-// wander leaves it) and the slipperiness the default 0.6; the stair/slab
-// exception of the jump test is left out.
+// wander leaves it); the body scales it by the ground's slipperiness.
+// ponytail: the stair/slab exception of the jump test is left out.
 func (m *Manager) steerInput(mt *Actor) character.Input {
 	s, r, b := mt.Mount.Steer, mt.Rider, mt.Body
 	d := math.Max(-5*math.Pi/180, math.Min(5*math.Pi/180, math.Remainder(r.Yaw-mt.Yaw, 2*math.Pi)*0.5))
@@ -75,6 +76,9 @@ func (m *Manager) steerInput(mt *Actor) character.Input {
 	f2 := 0.91
 	if b.OnGround {
 		f2 = 0.6 * 0.91
+		if sl, ok := m.body().(character.Slipper); ok {
+			f2 = sl.Slipperiness(ifloor(b.X), ifloor(b.Y)-1, ifloor(b.Z)) * 0.91
+		}
 	}
 	f3 := 0.16277136 / (f2 * f2 * f2)
 	ai := mt.moveSpeed()
@@ -96,8 +100,9 @@ func (m *Manager) steerInput(mt *Actor) character.Input {
 	if s.speed >= s.Max*0.5 && m.Rand.Float32() < 0.006 && !s.boosted && s.Wear != nil {
 		s.Wear(mt, r)
 	}
-	b.MoveSpeed = ai * f3
-	return character.Input{Forward: f1, Yaw: mt.Yaw, Jump: jump && b.OnGround}
+	b.MoveSpeed = ai * 0.16277136 / (0.546 * 0.546 * 0.546) // the body applies the ground's own f3
+	s.jump = jump
+	return character.Input{Forward: f1, Yaw: mt.Yaw}
 }
 
 // cellsClear is PathFinder.func_82565_a's open (1) for a w*h*w point at
