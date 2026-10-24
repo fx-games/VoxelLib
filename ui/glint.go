@@ -43,6 +43,14 @@ type glintCopy struct {
 	ms  int64
 }
 
+// glints is ctx's glint state, made for a Context not from NewContext.
+func (ctx *Context) glints() *glintState {
+	if ctx.glint == nil {
+		ctx.glint = &glintState{}
+	}
+	return ctx.glint
+}
+
 // ItemOf is what a slot shows for s with icon: its count, and the glint
 // when s.Glints(). nil or an empty stack shows nothing.
 func ItemOf(s *inventory.Stack, icon *Sprite) ItemStack {
@@ -68,7 +76,7 @@ func (s ItemStack) Sprite(ctx *Context) *Sprite {
 
 // SetGlintTexture sets the slot glint's texture in place of GlintTexture.
 func (ctx *Context) SetGlintTexture(img image.Image) {
-	g := &ctx.glint
+	g := ctx.glints()
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	g.tex, g.tried = img, true
@@ -77,7 +85,7 @@ func (ctx *Context) SetGlintTexture(img image.Image) {
 // GlintTexture is the slot glint's texture: SetGlintTexture's, else
 // GlintTexture from Assets (loaded once); nil without one.
 func (ctx *Context) GlintTexture() image.Image {
-	g := &ctx.glint
+	g := ctx.glints()
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	return ctx.glintTexture()
@@ -85,7 +93,7 @@ func (ctx *Context) GlintTexture() image.Image {
 
 // glintTexture is GlintTexture with ctx.glint.mu held.
 func (ctx *Context) glintTexture() image.Image {
-	g := &ctx.glint
+	g := ctx.glints()
 	if !g.tried {
 		g.tried = true
 		if ctx.Assets != nil {
@@ -106,7 +114,7 @@ func (ctx *Context) glintTexture() image.Image {
 // No passes: sp never glints (a 3D block icon). A sprite without passes
 // glints its SetTexture image, or not at all.
 func (ctx *Context) SetGlintPasses(sp *Sprite, passes []*image.NRGBA, first bool) {
-	g := &ctx.glint
+	g := ctx.glints()
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	if g.srcs == nil {
@@ -118,7 +126,7 @@ func (ctx *Context) SetGlintPasses(sp *Sprite, passes []*image.NRGBA, first bool
 // glinted is sp with the glint at the system time; sp itself without a
 // glint texture or passes.
 func (ctx *Context) glinted(sp *Sprite) *Sprite {
-	g := &ctx.glint
+	g := ctx.glints()
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	if ctx.glintTexture() == nil {

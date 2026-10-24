@@ -27,7 +27,7 @@ func TestStackGlint(t *testing.T) {
 		glint.Pix[i] = 255
 	}
 	fs := fstest.MapFS{
-		ui.FontASCII: {Data: enc(image.NewNRGBA(image.Rect(0, 0, 128, 128)))},
+		ui.FontASCII:                  {Data: enc(image.NewNRGBA(image.Rect(0, 0, 128, 128)))},
 		ui.AssetPath(ui.GlintTexture): {Data: enc(glint)},
 	}
 	ctx, err := ui.NewContext(ui.NewSoftCanvas(32, 32, 1), fs, nil)

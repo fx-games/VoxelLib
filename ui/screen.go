@@ -128,13 +128,13 @@ type Context struct {
 	SetClipboard func(string)
 
 	textures map[string]Texture
-	glint    glintState // the slot glint (glint.go)
+	glint    *glintState // the slot glint (glint.go), shared by copies
 }
 
 // NewContext loads the font from assets and makes a context with a screen
 // manager.
 func NewContext(c Canvas, assets fs.FS, lang *i18n.Catalog) (*Context, error) {
-	ctx := &Context{Canvas: c, Assets: assets, Lang: lang, textures: map[string]Texture{}, W: 320, H: 240, Scale: 1}
+	ctx := &Context{Canvas: c, Assets: assets, Lang: lang, textures: map[string]Texture{}, glint: &glintState{}, W: 320, H: 240, Scale: 1}
 	f, err := LoadFont(assets, c.NewTexture)
 	if err != nil {
 		return nil, err
@@ -187,7 +187,7 @@ func (ctx *Context) Tex(loc string) Texture {
 func (ctx *Context) SetTexture(loc string, img image.Image) Texture {
 	old := ctx.textures[loc]
 	t := ctx.setTexture(loc, img)
-	g := &ctx.glint
+	g := ctx.glints()
 	g.mu.Lock()
 	if g.images == nil {
 		g.images = map[Texture]image.Image{}
