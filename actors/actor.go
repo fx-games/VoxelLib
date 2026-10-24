@@ -93,7 +93,8 @@ func (w bodyWorld) Boxes(area collide.AABB, out []collide.AABB) []collide.AABB {
 // body is the world bodies move in.
 func (m *Manager) body() character.World {
 	if b, ok := m.W.(BodySolids); ok {
-		return bodyWorld{m.W, b}
+		m.bodyW = bodyWorld{m.W, b} // in the Manager: a value in the interface would allocate every call
+		return &m.bodyW
 	}
 	return m.W
 }

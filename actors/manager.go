@@ -105,6 +105,8 @@ type Manager struct {
 	doorFn, waterFn func(x, y, z int) bool
 	costFn          func(nav.Pos) int
 	half            float64 // half the width of the walker the graph is set for
+
+	bodyW bodyWorld // body's
 }
 
 // NewManager returns a Manager. If arrows is not nil, the Manager installs
