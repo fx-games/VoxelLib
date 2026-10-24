@@ -679,20 +679,29 @@ func (pk *packGPU) drawShadowsOpaque(r *Renderer, p *wgpu.RenderPassEncoder, fr 
 		}
 		return 0 // mergeRanges orders a region's ranges
 	})
-	// Two parts: the solid layer (a prefix of the section's vertices) of
-	// sections without cut textures, then the rest with the alpha test.
-	solidN := func(s *section) int {
-		n := 0
-		if !s.cut {
-			for _, rg := range s.ranges[voxel.LayerSolid] {
-				n += rg.Count
+	// Two parts: the solid layer's quads without a cut texture (the start
+	// of each solid group, splitCuts), then the rest with the alpha test.
+	parts := []func(s *section, add func(a, b int)){
+		func(s *section, add func(a, b int)) {
+			for g, rg := range s.ranges[voxel.LayerSolid] {
+				add(rg.First, rg.First+s.solidNC[g])
 			}
-		}
-		return n
+		},
+		func(s *section, add func(a, b int)) {
+			end := 0
+			for g, rg := range s.ranges[voxel.LayerSolid] {
+				add(rg.First+s.solidNC[g], rg.First+rg.Count)
+				end = max(end, rg.First+rg.Count)
+			}
+			add(end, s.n)
+		},
 	}
-	parts := []func(s *section) (int, int){
-		func(s *section) (int, int) { return 0, solidN(s) },
-		func(s *section) (int, int) { return solidN(s), s.n },
+	off := 0
+	add := func(a, b int) {
+		for q := a / 4; q < b/4; q += maxQuadsPerDraw {
+			r.counts = append(r.counts, int32(min(b/4-q, maxQuadsPerDraw)*6))
+			r.bases = append(r.bases, int32(off+q*4))
+		}
 	}
 	for i, part := range parts {
 		if i == 0 {
@@ -718,11 +727,8 @@ func (pk *packGPU) drawShadowsOpaque(r *Renderer, p *wgpu.RenderPassEncoder, fr 
 				flush()
 				reg = it.s.reg
 			}
-			a, b := part(it.s)
-			for q := a / 4; q < b/4; q += maxQuadsPerDraw {
-				r.counts = append(r.counts, int32(min(b/4-q, maxQuadsPerDraw)*6))
-				r.bases = append(r.bases, int32(it.s.off+q*4))
-			}
+			off = it.s.off
+			part(it.s, add)
 		}
 		flush()
 	}

@@ -153,6 +153,9 @@ type section struct {
 	// cut: a solid-layer quad has a texture with texels the pack's 0.1
 	// alpha test discards, so pack frames keep the test on its solid layer
 	cut bool
+	// solidNC[g]: the vertices at the start of solid group g whose quads
+	// have no cut texture (splitCuts)
+	solidNC [mesh.GroupCount]int
 }
 
 // drawBatch is one multidraw: ranges counts[first:first+n] / bases[...] of a
@@ -358,25 +361,38 @@ func (r *Renderer) Upload(m *mesh.Mesh) {
 	}
 	s.reg = reg
 	reg.sections[mesh.RegionIndex(m.Pos)] = s
+	s.solidNC = [mesh.GroupCount]int{}
+	s.cut = r.tex == nil || splitCuts(m, r.tex.cut, &s.solidNC)
 	reg.upload(s.off, m.Data)
-	s.cut = r.tex == nil || solidCuts(m, r.tex.cut)
 	if s.transN > 0 {
 		s.trans = m
 		r.sortSection(s, true)
 	}
 }
 
-// solidCuts: a solid-layer quad of m has a cut texture (or one not yet
-// known).
-func solidCuts(m *mesh.Mesh, cut []bool) bool {
-	for _, rg := range m.Ranges[voxel.LayerSolid] {
-		for v := rg.First; v < rg.First+rg.Count; v += 4 { // a quad's vertices share the texture
-			if t := int(m.Data[v*mesh.VertexWords+1] & 4095); t >= len(cut) || cut[t] {
-				return true
+// splitCuts orders each solid group of m: the quads without a cut
+// texture first (nc[g] vertices), then those with one (or one not yet
+// known), each part in mesh order. It reports whether there are any of
+// the latter.
+func splitCuts(m *mesh.Mesh, cut []bool, nc *[mesh.GroupCount]int) bool {
+	const qw = 4 * mesh.VertexWords // a quad's vertices share the texture
+	cuts := false
+	var tail []uint32
+	for g, rg := range m.Ranges[voxel.LayerSolid] {
+		w, tail := rg.First*mesh.VertexWords, tail[:0]
+		for v := rg.First; v < rg.First+rg.Count; v += 4 {
+			q := m.Data[v*mesh.VertexWords : v*mesh.VertexWords+qw]
+			if t := int(q[1] & 4095); t >= len(cut) || cut[t] {
+				tail = append(tail, q...)
+			} else {
+				w += copy(m.Data[w:], q)
 			}
 		}
+		nc[g] = w/mesh.VertexWords - rg.First
+		copy(m.Data[w:], tail)
+		cuts = cuts || len(tail) > 0
 	}
-	return false
+	return cuts
 }
 
 // sortSection uploads the translucent quads sorted for the camera. fresh
