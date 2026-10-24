@@ -5,6 +5,7 @@ import (
 	"image/color"
 	"io/fs"
 	"log"
+	"runtime"
 
 	"github.com/memmaker/voxellib/i18n"
 	"github.com/memmaker/voxellib/resloc"
@@ -52,9 +53,30 @@ const (
 	KeyHome      = 268
 	KeyEnd       = 269
 	KeyKPEnter   = 335
+	KeyV         = 86
 	ModShift     = 1
 	ModControl   = 2
+	ModSuper     = 8 // Cmd on macOS
 )
+
+// IsPaste is GuiScreen's paste combo: V with Ctrl held (Cmd on macOS,
+// isCtrlKeyDown).
+func IsPaste(ev Event) bool {
+	mod := ModControl
+	if runtime.GOOS == "darwin" {
+		mod = ModSuper
+	}
+	return ev.Type == KeyPress && ev.Key == KeyV && ev.Mods&mod != 0
+}
+
+// ClipboardText is GuiScreen.getClipboardString: the platform clipboard's
+// text, "" without one.
+func (ctx *Context) ClipboardText() string {
+	if ctx.Clipboard == nil {
+		return ""
+	}
+	return ctx.Clipboard()
+}
 
 // Screen is one GUI screen (GuiScreen): Init lays it out for ctx.W x ctx.H
 // (on open, on return to it and on resize), Update runs at 20 Hz, Draw
@@ -89,6 +111,8 @@ type Context struct {
 	Sound func(name string)
 	// Screens is the screen stack.
 	Screens *Manager
+	// Clipboard reads the platform clipboard's text; nil: none.
+	Clipboard func() string
 
 	textures map[string]Texture
 }

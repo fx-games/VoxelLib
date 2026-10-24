@@ -192,10 +192,12 @@ func isEnter(ev Event) bool {
 
 func isBackspace(ev Event) bool { return ev.Type == KeyPress && ev.Key == KeyBackspace }
 
-// typeInBook is keyTypedInBook. ponytail: Ctrl+V (paste) is left out, the
-// UI has no clipboard.
+// typeInBook is keyTypedInBook; a paste goes in whole if it fits
+// (func_146459_b).
 func (b *BookScreen) typeInBook(ctx *Context, ev Event) {
 	switch {
+	case IsPaste(ev):
+		b.insert(ctx, ctx.ClipboardText())
 	case isBackspace(ev):
 		if rs := []rune(b.pageText()); len(rs) > 0 {
 			b.setPage(string(rs[:len(rs)-1]))

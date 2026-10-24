@@ -47,6 +47,9 @@ func New(a *app.App, assets fs.FS, lang *i18n.Catalog) (*UI, error) {
 	}
 	u.Ctx = ctx
 	ctx.InWorld = true
+	if a.Win != nil {
+		ctx.Clipboard = a.Win.GetClipboardString // the native clipboard (GLFW)
+	}
 	ctx.Screens.OnEmpty = func() {
 		if u.open {
 			u.open = false

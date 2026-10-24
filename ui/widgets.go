@@ -272,6 +272,24 @@ func (t *TextField) edit(rs []rune) {
 	}
 }
 
+// write is writeText (no selection): the allowed characters of s at the
+// cursor, as many as the max length leaves room for.
+func (t *TextField) write(rs []rune, s string) {
+	var in []rune
+	for _, c := range s { // ChatAllowedCharacters.filerAllowedCharacters
+		if c != '§' && c >= 32 && c != 127 {
+			in = append(in, c)
+		}
+	}
+	in = in[:min(len(in), max(t.maxLen()-len(rs), 0))]
+	if len(in) == 0 {
+		return
+	}
+	rs = append(rs[:t.cursor:t.cursor], append(in, rs[t.cursor:]...)...)
+	t.cursor += len(in)
+	t.edit(rs)
+}
+
 func (t *TextField) Input(ctx *Context, ev Event) bool {
 	switch ev.Type {
 	case MousePress:
@@ -304,6 +322,12 @@ func (t *TextField) Input(ctx *Context, ev Event) bool {
 			return false
 		}
 		rs := []rune(t.Text)
+		if IsPaste(ev) {
+			if !t.Disabled {
+				t.write(rs, ctx.ClipboardText())
+			}
+			return true
+		}
 		switch ev.Key {
 		case KeyBackspace:
 			if t.cursor > 0 && !t.Disabled {
