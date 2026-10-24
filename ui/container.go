@@ -422,7 +422,7 @@ func DrawTooltip(ctx *Context, lines []string, mx, my int) {
 	}
 }
 
-// HorseLayout is GuiScreenHorseInventory (LOTRGuiNPCMountInventory with
+// HorseLayout is GuiScreenHorseInventory (or a mod's NPC mount GUI with
 // armourSlot always): slots as NewHorseContainer; chest draws the 5x3
 // chest background, armourSlot the armour slot's (a hidden armour slot
 // sits off the GUI). Extra may draw the mount at (left+51, top+60).

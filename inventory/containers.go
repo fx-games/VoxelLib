@@ -229,7 +229,7 @@ func NewLaneFurnaceContainer(p *Player, furnace Inventory, in0, out0, lanes int,
 	return c
 }
 
-// NewHorseContainer is ContainerHorseInventory (LOTR's mount containers):
+// NewHorseContainer is ContainerHorseInventory (and mods' mount containers):
 // 0 saddle, 1 armour, then with chest 15 chest slots (inventory indices
 // 2..16), then 27 main and 9 hotbar. saddle and armour decide what the
 // two gear slots take; armour nil (a mount that wears none) takes nothing.

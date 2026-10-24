@@ -91,6 +91,22 @@ type Player struct {
 	Ender *Grid
 }
 
+// UseHeld is the consumption every item use repeats: unless keep (a
+// creative player), n is taken from st, the held stack, and the hotbar
+// slot is cleared once st has run out. always makes that check even when
+// keep left st as it was (clearing a stack already at 0).
+func (p *Player) UseHeld(st *Stack, n int, keep, always bool) {
+	if keep {
+		if always && st.Count <= 0 {
+			p.Main[p.Held] = nil
+		}
+		return
+	}
+	if st.Count -= n; st.Count <= 0 {
+		p.Main[p.Held] = nil
+	}
+}
+
 // EnderChest is the player's 27-slot ender inventory, made on first use.
 func (p *Player) EnderChest() *Grid {
 	if p.Ender == nil {

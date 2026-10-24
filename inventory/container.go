@@ -113,7 +113,7 @@ type Container struct {
 	// OnClose runs after the cursor was dropped on Close.
 	OnClose func(c *Container)
 	// Deny, if set, is a slotClick override: a click it denies does nothing
-	// and returns nil (LOTRContainerPouch locks the open pouch's slot).
+	// and returns nil (a bag container locks the open bag's hotbar slot).
 	Deny func(slot, button, mode int) bool
 
 	dragKind, dragStage int

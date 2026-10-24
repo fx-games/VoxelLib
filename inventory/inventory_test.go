@@ -309,3 +309,25 @@ func TestHorseContainer(t *testing.T) {
 		t.Fatal("chestless, armourless mount")
 	}
 }
+
+func TestUseHeld(t *testing.T) {
+	p := &Player{Held: 2}
+	st := New(stone, 2)
+	p.Main[2] = st
+	p.UseHeld(st, 1, true, true)
+	if st.Count != 2 || p.Main[2] != st {
+		t.Fatal("keep took")
+	}
+	p.UseHeld(st, 1, false, false)
+	p.UseHeld(st, 1, false, false)
+	if st.Count != 0 || p.Main[2] != nil {
+		t.Fatal("run-out stack stayed")
+	}
+	p.Main[2] = st // a stack at 0: only always clears it under keep
+	if p.UseHeld(st, 1, true, false); p.Main[2] != st {
+		t.Fatal("keep without always cleared")
+	}
+	if p.UseHeld(st, 1, true, true); p.Main[2] != nil {
+		t.Fatal("always did not clear")
+	}
+}
