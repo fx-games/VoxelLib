@@ -85,12 +85,13 @@ type cnpcState struct {
 	halted   bool    // the attack's reset cleared the path (kept to walk on)
 	home     Vec     // EntityAIMoveIndoors / EntityAIFindShade.shelterX/Y/Z
 	door     nav.Pos // EntityAIDoorInteract.entityPosX/Y/Z
+	bust     int     // EntityAIBustDoor.breakingTime
+	crack    int     // its field_75358_j, the last crack stage sent
+
 	// attacking is the isAttacking flag, reset counts CombatHandler's
 	// combatResetTimer.
 	attacking bool
 	reset     int
-	bust     int     // EntityAIBustDoor.breakingTime
-	crack    int     // its field_75358_j, the last crack stage sent
 }
 
 // init is the tasks' state as made (field_75358_j starts at -1).
