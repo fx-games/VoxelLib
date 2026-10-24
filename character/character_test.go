@@ -288,3 +288,25 @@ func TestCharacterBumpsIntoBodies(t *testing.T) {
 		t.Fatalf("an open door held the character at z %.3f", c.Z)
 	}
 }
+
+// TestInWeb: in a web every tick the walk is the acceleration (0.1 by
+// the 0.98 input scale) times 0.25, since the velocity is cleared each
+// move; a fall slows to ×0.05.
+func TestInWeb(t *testing.T) {
+	c := New(0.5, 0, 0.5)
+	run(c, grid{}, Input{}, 5)
+	for i := 0; i < 20; i++ {
+		c.InWeb = true
+		c.Tick(grid{}, Input{Forward: 1})
+	}
+	if s := speed(c); math.Abs(s-0.098*0.25) > 1e-9 || c.InWeb {
+		t.Fatalf("web walk %.6f b/tick, want %.6f", s, 0.098*0.25)
+	}
+	c = New(0.5, 10, 0.5)
+	c.VY = -1
+	c.InWeb = true
+	c.Tick(grid{}, Input{})
+	if dy := c.Y - c.PrevY; math.Abs(dy+0.05000000074505806) > 1e-12 || c.VY != -gravity*airDrag {
+		t.Fatalf("web fall dy %v vy %v", dy, c.VY)
+	}
+}

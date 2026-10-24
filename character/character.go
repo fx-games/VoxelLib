@@ -94,6 +94,11 @@ type Character struct {
 	Sprinting           bool   // sprinting this tick (Input.Sprint walking forward, no item in use)
 	OnLadder            bool   // in a Climber block this tick
 
+	// InWeb is set by the world when the body touches a web-like block
+	// (Entity.setInWeb): the next move goes ×0.25 sideways and ×0.05
+	// vertically, and the velocity is cleared.
+	InWeb bool
+
 	jumpHeld bool // Quake model: jump key was down last tick
 }
 
@@ -334,6 +339,11 @@ func (c *Character) move(w World, in Input) {
 		c.X, c.Y, c.Z = c.X+dx, c.Y+dy, c.Z+dz
 		c.OnGround, c.HorizontalCollision = false, false
 		return
+	}
+	if c.InWeb { // Entity.moveEntity's isInWeb
+		c.InWeb = false
+		dx, dy, dz = dx*0.25, dy*0.05000000074505806, dz*0.25
+		c.VX, c.VY, c.VZ = 0, 0, 0
 	}
 	box := c.Box()
 	// Sneaking on the ground never walks off an edge (Player.maybeBackOffFromEdge).
