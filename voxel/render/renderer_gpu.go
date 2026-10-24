@@ -103,6 +103,8 @@ func (r *Renderer) drawBatches(p *wgpu.RenderPassEncoder, vp mgl32.Mat4, fog Fog
 				GPUMark("terrain translucent")
 				p = curPass()
 				setPipe(p, dev.pipes.terrainTrans)
+			} else if layer == voxel.LayerSolid && dev.pk == nil {
+				setPipe(p, dev.pipes.terrainSolid)
 			} else if layer == voxel.LayerSolid || layer == voxel.LayerCutout {
 				setPipe(p, dev.pipes.terrainOpaque)
 			}

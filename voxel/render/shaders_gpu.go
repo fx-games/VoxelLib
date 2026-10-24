@@ -2,6 +2,7 @@ package render
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/gogpu/gputypes"
 	"github.com/gogpu/wgpu"
@@ -79,6 +80,12 @@ fn fs(i: VOut) -> @location(0) vec4f {
 	return vec4f(mix(col, u.fogColor.rgb, fogFactor(i.dist, u.fog)), c.a);
 }
 `
+
+// terrainSolidWGSL is terrainWGSL without the alpha test, for the solid
+// layer (cut 0 never discards): a fragment shader without discard keeps
+// the GPU's early depth test. Apple's compiler then rounds ~15 % of the
+// pixels 1/255 apart; the cutout layer keeps terrainWGSL.
+var terrainSolidWGSL = strings.Replace(terrainWGSL, "\tif (c.a < u.params.z) { discard; }\n", "", 1)
 
 const skyWGSL = `
 struct U {
@@ -342,6 +349,7 @@ type pipelines struct {
 	terrainTex, tex2D, texArray *wgpu.BindGroupLayout // group 1 layouts
 
 	terrainOpaque, terrainTrans *wgpu.RenderPipeline
+	terrainSolid                *wgpu.RenderPipeline // the solid layer outside shader-pack frames
 	sky                         *wgpu.RenderPipeline
 	skyAlpha, skyAdd            *wgpu.RenderPipeline
 	outline, crosshair          *wgpu.RenderPipeline
@@ -448,6 +456,7 @@ func (ps *pipelines) init() error {
 		spec pipeSpec
 	}{
 		{&ps.terrainOpaque, pipeSpec{"terrain", terrainWGSL, ps.terrainTex, terrainBuf, tri, back, nil, true, true, false}},
+		{&ps.terrainSolid, pipeSpec{"terrain solid", terrainSolidWGSL, ps.terrainTex, terrainBuf, tri, back, nil, true, true, false}},
 		{&ps.terrainTrans, pipeSpec{"terrain translucent", terrainWGSL, ps.terrainTex, terrainBuf, tri, back, blendAlpha, true, false, false}},
 		{&ps.sky, pipeSpec{"sky", skyWGSL, nil, nil, tri, back, nil, true, false, false}},
 		{&ps.skyAlpha, pipeSpec{"sky list", skyListWGSL, ps.tex2D, skyBuf, tri, none, blendAlpha, true, false, false}},
