@@ -4,6 +4,7 @@ import (
 	"math"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/memmaker/voxellib/resloc"
 	"github.com/memmaker/voxellib/voxel/collide"
@@ -729,15 +730,18 @@ func (info *StateInfo) hasTag(id uint16) bool {
 // Boxes implements collide.Boxer for ShapeBoxes blocks overlapping area
 // (fences collide 1.5 blocks tall, as in the reference game).
 func (w *World) Boxes(area collide.AABB, out []collide.AABB) []collide.AABB {
-	var buf []Box // the part boxes, reused across the blocks
+	var bp *[]Box // the part boxes, reused across the blocks and calls
 	area.Grow(0, 0.5, 0).Blocks(func(x, y, z int) {
 		info := w.Reg.Info(w.Block(x, y, z))
 		boxes := info.Collision
 		if len(info.Parts) > 0 {
-			buf = info.appendPartBoxes(buf, func(d [3]int) *StateInfo {
+			if bp == nil {
+				bp = partBoxes.Get().(*[]Box)
+			}
+			buf := info.appendPartBoxes(*bp, func(d [3]int) *StateInfo {
 				return w.Reg.Info(w.Block(x+d[0], y+d[1], z+d[2]))
 			}, [3]int{x, y, z}, true)
-			boxes = buf
+			*bp, boxes = buf, buf
 		} else if boxes == nil {
 			if info.Shape != ShapeBoxes || !collidable(info.Name) {
 				return
@@ -764,8 +768,13 @@ func (w *World) Boxes(area collide.AABB, out []collide.AABB) []collide.AABB {
 			}
 		}
 	})
+	if bp != nil {
+		partBoxes.Put(bp)
+	}
 	return out
 }
+
+var partBoxes = sync.Pool{New: func() any { return new([]Box) }}
 
 // axisAligned is the bounding box of a rotated element.
 func axisAligned(b Box) Box {
