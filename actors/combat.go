@@ -329,6 +329,9 @@ func (m *Manager) knockBack(t *Actor, dx, dz float64) {
 	if b.VY > 0.4 {
 		b.VY = 0.4
 	}
+	if d := t.KnockDiv; d > 0 {
+		b.VX, b.VY, b.VZ = b.VX/d, b.VY/d, b.VZ/d
+	}
 }
 
 // shoot is EntityAIArrowAttack.

@@ -230,6 +230,7 @@ type Actor struct {
 	Health, MaxHealth    float64
 	Armor                float64 // armour points 0..20
 	KnockbackResist      float64 // 0..1
+	KnockDiv             float64 // a knockBack override dividing the motion after it (0: none)
 	Speed                float64 // movementSpeed attribute (player 0.1, zombie 0.23)
 	CanSwim, OpensDoors  bool
 	FleeWhenHurt         bool // panics when hit (animals)
