@@ -46,6 +46,10 @@ type Manager struct {
 	// may pick t as its nearest hostile (to fight, or to flee from in
 	// Flee mode); revenge is not asked.
 	CanTarget func(a, t *Actor) bool
+	// AlsoTargets, if set, lets a pick t as its nearest hostile though it
+	// does not see t as hostile (a target task's own rule, asked last,
+	// after CanTarget: it may roll a chance).
+	AlsoTargets func(a, t *Actor) bool
 	// Keeps, if set, keeps an attack target the game set although a does
 	// not see it as hostile (a target task's own pick: a wolf's sheep, a
 	// skirmish); a dead or out-of-range target still goes.
