@@ -69,3 +69,9 @@ func Scatter(rnd func() float64, n int, x, y, z, spread float64, emit func(x, y,
 		emit(px, py, pz)
 	}
 }
+
+// Blood is a wound's spray from the point of impact: dark red drops
+// thrown out and up, falling under gravity, lying where they land and
+// fading; lit like the terrain, no glow.
+var Blood = Props{Count: 16, Spread: 0.04, Vel: [3]float64{0, 1.5, 0}, VelVar: 1.8, Gravity: 14, Drag: 0.2, Life: 1.2, LifeVar: 0.4,
+	Size0: 0.07, Size1: 0.06, SizeVar: 0.03, Col0: [4]float32{0.55, 0.03, 0.03, 1}, Col1: [4]float32{0.3, 0.01, 0.01, 0}}
