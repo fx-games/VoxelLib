@@ -254,7 +254,10 @@ type Actor struct {
 	// LookHeld: a game-run task sharing the look mutex bit, of a higher
 	// priority than all of Looks, is running; the look tasks stop and do
 	// not start.
-	LookHeld             bool
+	LookHeld bool
+	// LookPos is a game-run task's setLookPosition(x, y, z, 10, 40) for
+	// the next look update, which clears it; it wins over a look task's.
+	LookPos              *Vec
 	PrevYaw, PrevHeadYaw float64
 	Player               bool // body driven by the game (input), not by a brain
 	Sprinting            bool // set by the game: a sprinting player (+1 knockback), a charging mount (speed ×1.3)

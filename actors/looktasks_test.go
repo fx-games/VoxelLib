@@ -129,3 +129,29 @@ func TestLookHeld(t *testing.T) {
 		t.Fatal("not watching after release")
 	}
 }
+
+// TestLookPos: a task's setLookPosition turns the head by 10 a tick and
+// the pitch by at most 40 toward the cell, over the watch task.
+func TestLookPos(t *testing.T) {
+	m := NewManager(flat(16), nil, nil, 1)
+	h := New("h", "npc", 0.5, 1, 0.5)
+	h.Brain = Brain{Mode: Stand, Home: h.Pos(), Face: 0}
+	h.Looks = []LookTask{{Priority: 8, Kind: LookWatch, Dist: 8, Chance: 1}}
+	m.Add(h)
+	m.Tick()
+	h.HeadYaw, h.Yaw = 0, 0
+	goal := Vec{4.5, 1, 0.5}
+	want := yawTo(Vec{h.Body.X, h.Body.Y + h.Body.EyeHeight, h.Body.Z}, goal)
+	h.LookPos = &goal
+	m.Tick()
+	if h.LookPos != nil || math.Abs(math.Abs(h.HeadYaw)-10*math.Pi/180) > 1e-9 || h.Pitch >= 0 {
+		t.Fatal("first tick", h.HeadYaw, h.Pitch, h.LookPos)
+	}
+	for range 20 {
+		h.LookPos = &goal
+		m.Tick()
+	}
+	if math.Abs(math.Remainder(h.HeadYaw-want, 2*math.Pi)) > 1e-9 {
+		t.Fatal("head", h.HeadYaw, want)
+	}
+}

@@ -146,6 +146,10 @@ func (m *Manager) lookRun(a *Actor, busy, gate, moving bool) {
 			l.time--
 		}
 	}
+	if v := a.LookPos; v != nil {
+		look, x, y, z = true, v.X, v.Y, v.Z
+		a.LookPos = nil
+	}
 	// EntityLookHelper.onUpdateLook: the pitch from 0 by at most 40, the
 	// head by 10; not looking, the head back to the body by 10.
 	a.Pitch = 0
