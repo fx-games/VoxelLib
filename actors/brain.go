@@ -14,8 +14,9 @@ const (
 	Wander             // stroll around Home within Range
 	Follow             // keep up with Leader in formation
 	Route              // walk the waypoints
-	Guard              // Stand, but fight hostiles within Range of Home and return
+	Guard              // Stand (kept so saved brains load)
 	Flee               // keep away from hostiles
+	Stroll             // EntityAIWander: findRandomTarget(10, 7) around itself, inside the home area
 )
 
 // RoutePattern is what happens at a route's end.
@@ -31,11 +32,16 @@ const (
 type Brain struct {
 	Mode  Mode    `json:"mode"`
 	Home  Vec     `json:"home"`
-	Range float64 `json:"range,omitempty"` // wander radius, guard leash
+	Range float64 `json:"range,omitempty"` // wander radius
 	Face  float64 `json:"face"`            // yaw while standing at Home or a route's end
 	Look  Look    `json:"look,omitempty"`  // idle looking; 0 = watch the nearest player
 	// SpeedMul is the AI speed factor (the reference tryMoveTo speed; 0 = 1).
 	SpeedMul float64 `json:"speedMul,omitempty"`
+	// Homed and HomeRange are EntityCreature's home area (setHomeArea:
+	// the block of Home, maximumHomeDistance) that findRandomTarget keeps
+	// to; HomeRange is used only when Homed (hasHome).
+	Homed     bool    `json:"homed,omitempty"`
+	HomeRange float32 `json:"homeRange,omitempty"`
 
 	// Follow: Leader is an actor ID. Offset is the formation slot in the
 	// leader's frame (X to its right, Z behind it). The follower stops
@@ -107,12 +113,13 @@ func (m *Manager) think(a *Actor) {
 	b := &a.Brain
 	switch b.Mode {
 	case Stand, Guard:
-		if a.Pos().hdist(b.Home) > 1 && !m.moveTo(a, b.Home, b.speed()) {
+		// a custom NPC walks back only by its return task (ReturnToStart)
+		if a.CNPC == nil && a.Pos().hdist(b.Home) > 1 && !m.moveTo(a, b.Home, b.speed()) {
 			return
 		}
 		m.stop(a)
 		m.idleLook(a, b.Face)
-	case Wander:
+	case Wander, Stroll:
 		m.wander(a)
 	case Follow:
 		m.follow(a)
@@ -148,33 +155,62 @@ func (m *Manager) panic(a *Actor) bool {
 	if !a.FleeWhenHurt || a.revenge == nil && !a.OnFire() || (a.Ticks-1)%3 != 0 {
 		return false
 	}
-	p := m.findRandomTarget(a, 5, 4)
+	p, ok := m.findRandomTarget(a, 5, 4)
+	if !ok {
+		return false
+	}
 	a.panicking = true
 	m.planIn(a, p, 0) // tryMoveToXYZ
 	m.moveTo(a, p, speed)
 	return true
 }
 
-// findRandomTarget is RandomPositionGenerator.findRandomTarget for a
-// walker with no home: of 10 random cells within xz and y, the one of the
-// highest path weight (the first on ties; never none).
-func (m *Manager) findRandomTarget(a *Actor, xz, y int) Vec {
+// findRandomTarget is RandomPositionGenerator.findRandomTarget: of 10
+// random cells within xz and y, the one of the highest path weight (the
+// first on ties). A homed walker whose block is within the home range
+// plus xz (with 4 to spare) takes only cells inside the home area; none
+// found, it reports false.
+func (m *Manager) findRandomTarget(a *Actor, xz, y int) (Vec, bool) {
 	best := float32(-99999)
 	var p Vec
+	found := false
+	b := &a.Brain
 	bx, by, bz := ifloor(a.Body.X), ifloor(a.Body.Y), ifloor(a.Body.Z)
+	restrict := false
+	if b.Homed {
+		d := float64(b.homeDist2(bx, by, bz) + 4)
+		r := float64(b.HomeRange + float32(xz))
+		restrict = d < r*r
+	}
 	for range 10 {
 		j := m.Rand.Intn(2*xz) - xz + bx
 		k := m.Rand.Intn(2*y) - y + by
 		l := m.Rand.Intn(2*xz) - xz + bz
+		if restrict && !b.InHome(j, k, l) {
+			continue
+		}
 		var w float32
 		if m.PathWeight != nil {
 			w = m.PathWeight(a, j, k, l)
 		}
 		if w > best {
-			best, p = w, Vec{float64(j) + 0.5, float64(k), float64(l) + 0.5}
+			best, p, found = w, Vec{float64(j) + 0.5, float64(k), float64(l) + 0.5}, true
 		}
 	}
-	return p
+	return p, found
+}
+
+// homeDist2 is ChunkCoordinates.getDistanceSquared from the home block.
+func (b *Brain) homeDist2(x, y, z int) float32 {
+	dx := float32(ifloor(b.Home.X) - x)
+	dy := float32(ifloor(b.Home.Y) - y)
+	dz := float32(ifloor(b.Home.Z) - z)
+	return dx*dx + dy*dy + dz*dz
+}
+
+// InHome is EntityCreature.isWithinHomeDistance: true without a home.
+func (b *Brain) InHome(x, y, z int) bool {
+	return !b.Homed || b.homeDist2(x, y, z) < b.HomeRange*b.HomeRange
 }
 
 // away is a spot dist blocks from p, directly away from threat.
@@ -238,6 +274,12 @@ func (m *Manager) wander(a *Actor) {
 	// EntityAIWander.shouldExecute, asked on EntityAITasks' every third
 	// tick: not once 100 ticks from a player, else a 1 in 120 chance
 	if (a.Ticks-1)%3 != 0 || a.age >= 100 || m.Rand.Intn(120) != 0 {
+		return
+	}
+	if b.Mode == Stroll {
+		if p, ok := m.findRandomTarget(a, 10, 7); ok {
+			m.planIn(a, p, float32(a.AggroRange))
+		}
 		return
 	}
 	r := b.Range

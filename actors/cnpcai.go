@@ -35,6 +35,9 @@ type CNPCAI struct {
 	// FindShelter: 0 indoors at night and in the rain, 1 into the shade by
 	// day (and RestrictSun), 2 never.
 	FindShelter int
+	// Return is ReturnToStart: EntityAIReturn walks it back to Brain.Home
+	// (MovingType Standing: Stand, Wandering: Wander within Range, Route).
+	Return bool
 }
 
 // EnumNavType ordinals.
@@ -53,6 +56,7 @@ const (
 	cnLeap
 	cnResp
 	cnAttack
+	cnReturn
 	cnTasks
 )
 
@@ -87,6 +91,12 @@ type cnpcState struct {
 	door     nav.Pos // EntityAIDoorInteract.entityPosX/Y/Z
 	bust     int     // EntityAIBustDoor.breakingTime
 	crack    int     // its field_75358_j, the last crack stage sent
+
+	// EntityAIReturn: totalTicks, stuckTicks, stuckCount, wasAttacked,
+	// preAttackPos.
+	rTotal, rStuckTicks, rStuck int
+	rWas                        bool
+	rPre                        Vec
 
 	// attacking is the isAttacking flag, reset counts CombatHandler's
 	// combatResetTimer.
@@ -137,6 +147,8 @@ func (a *Actor) cnpcHas(i int) bool {
 		return c.OnAttack == 0 && c.Leap == 1
 	case cnResp:
 		return a.cnpcResp() != respNone
+	case cnReturn:
+		return c.Return
 	}
 	return c.OnAttack == 0
 }
@@ -146,7 +158,7 @@ func (a *Actor) cnpcMutex(i int) int {
 	switch i {
 	case cnDoor:
 		return 0
-	case cnShelter, cnSprint:
+	case cnShelter, cnSprint, cnReturn:
 		return 1
 	case cnLeap:
 		return 5
@@ -313,6 +325,8 @@ func (m *Manager) cnpcShould(a *Actor, i int) bool {
 		return m.Rand.Intn(5) == 0
 	case cnAttack:
 		return t != nil && t.Alive()
+	case cnReturn:
+		return m.returnShould(a)
 	}
 	switch a.cnpcResp() {
 	case respPanic:
@@ -376,6 +390,8 @@ func (m *Manager) cnpcCont(a *Actor, i int) bool {
 			return false
 		}
 		return a.cnpcProj() || a.Pos().dist2(t.Pos()) <= a.AggroRange*a.AggroRange
+	case cnReturn:
+		return a.Alive() && !st.attacking && !a.homeNear() && st.rTotal <= 600
 	}
 	switch a.cnpcResp() {
 	case respPanic:
@@ -417,6 +433,10 @@ func (m *Manager) cnpcStart(a *Actor, i int) {
 	case cnAttack:
 		st.halted = false
 		return
+	case cnReturn:
+		st.rStuckTicks, st.rTotal, st.rStuck = 0, 0, 0
+		m.returnNav(a, false)
+		return
 	}
 	switch a.cnpcResp() {
 	case respPanic, respDodgeShoot, respZigZag:
@@ -448,6 +468,10 @@ func (m *Manager) cnpcReset(a *Actor, i int) {
 	case cnAttack: // EntityAIAttackTarget / EntityAIRangedAttack.resetTask
 		a.Target, a.rs.goalSet, st.halted = nil, false, true
 		m.rangedReset(a)
+		return
+	case cnReturn:
+		st.rWas = false
+		m.clearPath(a)
 		return
 	}
 	switch a.cnpcResp() {
@@ -498,6 +522,9 @@ func (m *Manager) cnpcUpdate(a *Actor, i int) {
 				m.melee(a, t)
 			}
 		}
+		return
+	case cnReturn:
+		m.returnUpdate(a)
 		return
 	}
 	switch a.cnpcResp() {
@@ -832,4 +859,129 @@ func (m *Manager) lookingAway(a, t *Actor) bool {
 		return true // Vec3.normalize of a zero vector is zero
 	}
 	return (lx*vx+ly*vy+lz*vz)/n < 0.6
+}
+
+// returnShould is EntityAIReturn.shouldExecute: not while its start is
+// open to the sky or dark (FindShelter 0, at night or in the rain) or
+// under the sky by day (1); attacking, it notes where the fight began
+// (preAttackPos) and waits; a route walker within 32 of its point stays;
+// then with no path or after a fight, or a wanderer beyond its range, or
+// a stander off its place.
+// ponytail: no owner, interaction or follower checks (the engine has no
+// hired or talking custom NPC state). Very near its place, it skips the
+// start that the reference ends at once, clearing only wasAttacked.
+func (m *Manager) returnShould(a *Actor) bool {
+	st, b := &a.cn, &a.Brain
+	if !a.Alive() {
+		return false
+	}
+	if w := m.Sky; w != nil {
+		x, y, z := int(b.Home.X), int(b.Home.Y), int(b.Home.Z) // (int)getStartXPos
+		switch a.CNPC.FindShelter {
+		case 0:
+			if (!w.Daytime() || w.Raining()) && (w.SeesSky(x, y, z) || w.FullLight(x, y, z) <= 8) {
+				return false
+			}
+		case 1:
+			if w.Daytime() && w.SeesSky(x, y, z) {
+				return false
+			}
+		}
+	}
+	if st.attacking {
+		if !st.rWas {
+			st.rWas, st.rPre = true, a.Pos()
+		}
+		return false
+	}
+	if b.Mode == Route && len(b.Points) > 0 && a.Pos().dist2(b.Points[b.Next%len(b.Points)]) < 32*32 {
+		return false
+	}
+	if a.homeNear() {
+		st.rWas = false
+		return false
+	}
+	if !a.pathing() || st.rWas {
+		return true
+	}
+	switch b.Mode {
+	case Wander:
+		return a.Pos().dist2(b.Home) > b.Range*b.Range
+	case Stand, Guard:
+		return true
+	}
+	return false
+}
+
+// homeNear is EntityNPCInterface.isVeryNearAssignedPlace.
+// ponytail: the navigator's arrival radius (0.4 across) stands for the
+// reference's 0.2 box, which a walker reaches only by the teleport.
+func (a *Actor) homeNear() bool { return a.Pos().hdist(a.Brain.Home) < 0.4 }
+
+// returnUpdate is EntityAIReturn.updateTask: with no path, every 10
+// ticks a new one, toward the end by a random spot on odd tries.
+// The reference teleports to the end after 600 ticks, or after five
+// tries or a fight that took it too far; the custom NPC walks instead:
+// the task ends there and starts again (NPCs never teleport here).
+func (m *Manager) returnUpdate(a *Actor) {
+	st := &a.cn
+	if st.rTotal++; st.rTotal > 600 {
+		m.clearPath(a)
+		return
+	}
+	if st.rStuckTicks > 0 {
+		st.rStuckTicks--
+	} else if !a.pathing() {
+		st.rStuck++
+		st.rStuckTicks = 10
+		if (st.rTotal <= 30 || !st.rWas || !m.returnTooFar(a)) && st.rStuck <= 5 {
+			m.returnNav(a, st.rStuck%2 == 1)
+		} else {
+			st.rTotal = 601 // continueExecuting fails: start over
+		}
+	} else {
+		st.rStuck = 0
+	}
+}
+
+// returnEnd is the place walked to: the start, or after a fight where it
+// began.
+func (a *Actor) returnEnd() Vec {
+	if a.cn.rWas {
+		return a.cn.rPre
+	}
+	return a.Brain.Home
+}
+
+// returnTooFar is EntityAIReturn.isTooFar: beyond twice the aggro range
+// (plus the walking range of a wanderer) from the end.
+func (m *Manager) returnTooFar(a *Actor) bool {
+	d := int(a.AggroRange) * 2
+	if a.Brain.Mode == Wander {
+		d += int(a.Brain.Range)
+	}
+	return a.Pos().dist2(a.returnEnd()) > float64(d*d)
+}
+
+// returnNav is EntityAIReturn.navigate: a path to the end, or beyond the
+// nav range of 32 (or toward) to a random spot toward it, half the way
+// (16 beyond 32).
+// ponytail: the reference paths only beyond 1.1 and teleports the rest;
+// here the walker walks the last bit too.
+func (m *Manager) returnNav(a *Actor, towards bool) {
+	p := a.returnEnd()
+	r := math.Sqrt(a.Pos().dist2(p))
+	if r > 32 || towards {
+		d := int(r) / 2
+		if r > 32 {
+			d = 16
+		}
+		if d > 2 {
+			if q, ok := m.randomTarget(a, d, min(d/2, 7), &Vec{p.X - a.Body.X, p.Y - a.Body.Y, p.Z - a.Body.Z}); ok {
+				p = q
+			}
+		}
+	}
+	m.clearPath(a)
+	m.setPath(a, p, 1)
 }

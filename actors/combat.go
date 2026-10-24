@@ -38,10 +38,6 @@ func (m *Manager) fight(a *Actor) bool {
 		}
 	}
 	b := &a.Brain
-	if b.Mode == Guard && b.Range > 0 && a.Pos().hdist(b.Home) > b.Range {
-		a.Target = nil // leashed: back home first
-		return false
-	}
 	if b.Mode == Follow {
 		if l := m.byID[b.Leader]; l != nil && l.Pos().dist2(a.Pos()) > 32*32 {
 			a.Target = nil // never wander off from the leader
