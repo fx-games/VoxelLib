@@ -120,15 +120,19 @@ func (e *Eating) Feedback(st *inventory.Stack, n int) {
 // Burp is onEaten's burp at the player.
 func (e *Eating) Burp() { e.Sound(BurpSound(e.Rand)) }
 
-// FoodEffect is ItemFood.onFoodEaten: the food's potion effect, by its
-// chance.
+// FoodEffect is ItemFood.onFoodEaten: the food's effects for st's
+// damage in order, each with a chance rolled for it.
 func (e *Eating) FoodEffect(st *inventory.Stack) {
 	if st.Item.Food == nil {
 		return
 	}
-	fe := st.Item.Food.Effect
-	if fe != nil && e.Rand.Float32() < fe.Chance && e.Effect != nil {
-		e.Effect(fe.Potion, fe.Seconds*20, fe.Amp)
+	for _, fe := range st.Item.Food.Effects {
+		if fe.Meta >= 0 && fe.Meta != st.Damage || fe.Chance > 0 && e.Rand.Float32() >= fe.Chance {
+			continue
+		}
+		if e.Effect != nil {
+			e.Effect(fe.Potion, fe.Ticks, fe.Amp)
+		}
 	}
 }
 

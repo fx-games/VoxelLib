@@ -48,7 +48,8 @@ func (g *tinyGame) eatHeld(t *testing.T) {
 func TestEatingDeclared(t *testing.T) {
 	bowl := &inventory.Item{Key: "bowl"}
 	stew := &inventory.Item{Key: "stew", Food: &inventory.Food{Hunger: 6, Saturation: 0.6, Leaves: bowl,
-		Effect: &inventory.FoodEffect{Potion: "poison", Seconds: 3, Chance: 1}}}
+		Effects: []inventory.FoodEffect{{Potion: "poison", Ticks: 60, Chance: 1, Meta: -1}, {Potion: "always", Meta: -1},
+			{Potion: "never", Chance: 1e-9, Meta: -1}, {Potion: "meta1", Meta: 1}}}}
 	g := newTinyGame()
 	g.eat.Inv.Main[0] = inventory.New(stew, 1)
 	if g.eat.Start(g.eat.Inv.Current()) {
@@ -63,6 +64,7 @@ func TestEatingDeclared(t *testing.T) {
 		}
 	}
 	if n != 7 || g.crumbs != 6*5+16 || !slices.Contains(g.sounds, "random.burp") || !slices.Contains(g.sounds, "effect poison") ||
+		!slices.Contains(g.sounds, "effect always") || slices.Contains(g.sounds, "effect never") || slices.Contains(g.sounds, "effect meta1") ||
 		g.eat.Body.Food.Level != 16 || g.eat.Inv.Main[0].Item != bowl || g.use.Using != nil {
 		t.Fatalf("eat: %d sounds, %d crumbs, %v, level %d, held %v", n, g.crumbs, g.sounds, g.eat.Body.Food.Level, g.eat.Inv.Main[0])
 	}

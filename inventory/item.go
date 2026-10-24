@@ -61,19 +61,22 @@ type Food struct {
 	AlwaysEdible bool
 	UseTicks     int  // 0 means 32
 	Drink        bool // EnumAction.drink: the drink sound, no crumbs
-	// Effect is setPotionEffect's: given by chance once eaten.
-	Effect *FoodEffect
+	// Effects are given in order once eaten (setPotionEffect's one, and
+	// those an onFoodEaten adds).
+	Effects []FoodEffect
 	// Leaves is the item left in the hand once eaten (ItemSoup's bowl);
 	// nil: none.
 	Leaves *Item
 }
 
-// FoodEffect is ItemFood's potion effect: Potion for Seconds at Amp, with
-// probability Chance.
+// FoodEffect is a potion effect a food gives: Potion for Ticks at Amp.
+// Chance > 0 rolls for it (setPotionEffect's probability); 0 gives it
+// without a roll. Meta >= 0 limits it to stacks of that damage; -1: any.
 type FoodEffect struct {
-	Potion       string
-	Seconds, Amp int
-	Chance       float32
+	Potion     string
+	Ticks, Amp int
+	Chance     float32
+	Meta       int
 }
 
 // Ctx is passed to an item's hooks. User and Target are the game's entities.
