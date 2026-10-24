@@ -305,6 +305,9 @@ func (m *Manager) moveBody(a *Actor, in character.Input) {
 		collide.Fits(m.body(), collide.Box(b.X, b.Y-1, b.Z, b.Width, b.Height+1)) && m.Rand.Float64() < 0.55 {
 		b.VY += 0.05
 	}
+	if b.OnLadder { // moveEntityWithHeading zeroes fallDistance before the move
+		a.fall = 0
+	}
 	if b.InWater || b.InLava || f != nil {
 		a.fall = 0
 	} else if b.OnGround {

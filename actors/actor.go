@@ -66,6 +66,13 @@ func (b bodyWorld) LiquidMeta(x, y, z int) int {
 
 func (w bodyWorld) Solid(x, y, z int) bool { return w.b.BodySolid(x, y, z) }
 
+// Climbable passes the World's character.Climber on (bodies climb what the
+// World marks: EntityLivingBase.isOnLadder).
+func (w bodyWorld) Climbable(x, y, z int) bool {
+	c, ok := w.World.(character.Climber)
+	return ok && c.Climbable(x, y, z)
+}
+
 // Boxes passes the World's collide.Boxer on (an embedded interface
 // promotes only World's own methods).
 func (w bodyWorld) Boxes(area collide.AABB, out []collide.AABB) []collide.AABB {
