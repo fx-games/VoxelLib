@@ -1,0 +1,655 @@
+package actors
+
+import "math"
+
+// CNPCAI is a CustomNPC's DataAI combat response, the attack tasks
+// EntityNPCInterface.setResponse adds: CanSprint EntityAISprintToTarget;
+// OnAttack 0 fights (LeapType 1 EntityAILeapAtTarget(0.4), the
+// TacticalVariant's task, then EntityAIAttackTarget and with a projectile
+// EntityAIRangedAttack), 1 panics (EntityAIPanic(1.2)), 2 retreats
+// (EntityAIAvoidTarget), 3 does nothing. They run as EntityAITasks runs
+// them: a task starts on every third tick if no running task of the same
+// or a higher priority shares a mutex bit with it, and stops a running
+// one of a lower priority that does.
+// ponytail: no Surround (EntityAIOrbitTarget) or LeapType 2
+// (EntityAIPounceTarget); distances are from the feet (a player's posY is
+// its eyes); the paths the tasks set are not asked to end at their goal.
+type CNPCAI struct {
+	OnAttack  int
+	Tactic    int     // TacticalVariant, EnumNavType ordinal
+	Radius    float64 // TacticalRadius
+	CanSprint bool
+	Leap      int // LeapType
+	DirectLOS bool
+}
+
+// EnumNavType ordinals.
+const (
+	navDodge   = 1
+	navHitNRun = 3
+	navAmbush  = 4
+	navStalk   = 5
+)
+
+// The tasks in priority order (taskCount order in setResponse).
+const (
+	cnSprint = iota
+	cnLeap
+	cnResp
+	cnAttack
+	cnTasks
+)
+
+// The response task kinds.
+const (
+	respNone = iota
+	respPanic
+	respAvoid
+	respDodgeShoot
+	respZigZag
+	respAmbush
+	respStalk
+)
+
+// cnpcState is the tasks' state: which run, EntityAITasks.tickCount, and
+// the response task's fields.
+type cnpcState struct {
+	on       [cnTasks]bool
+	tick     int
+	inited   bool
+	t        *Actor  // targetEntity / closestLivingEntity
+	leap     *Actor  // EntityAILeapAtTarget.leapTarget
+	goal     Vec     // the position the task walks to
+	health   float64 // EntityAIAvoidTarget.health
+	shelter  Vec     // EntityAIAmbushTarget.shelterX/Y/Z
+	move     *Vec    // EntityAIStalkTarget.movePosition
+	delay    int     // ambush and stalk delay
+	wait     int     // stalk tick
+	override bool    // stalk overRide
+}
+
+func (a *Actor) cnpcProj() bool { return a.Ranged != nil && a.Ranged.AI == RangedCNPC }
+
+func (a *Actor) cnpcResp() int {
+	c := a.CNPC
+	switch c.OnAttack {
+	case 1:
+		return respPanic
+	case 2:
+		return respAvoid
+	case 0:
+		switch c.Tactic {
+		case navDodge:
+			if a.cnpcProj() && a.Ranged.UseRangeMelee != 2 {
+				return respDodgeShoot
+			}
+			return respZigZag
+		case navHitNRun:
+			return respAvoid
+		case navAmbush:
+			return respAmbush
+		case navStalk:
+			return respStalk
+		}
+	}
+	return respNone
+}
+
+func (a *Actor) cnpcHas(i int) bool {
+	c := a.CNPC
+	switch i {
+	case cnSprint:
+		return c.CanSprint
+	case cnLeap:
+		return c.OnAttack == 0 && c.Leap == 1
+	case cnResp:
+		return a.cnpcResp() != respNone
+	}
+	return c.OnAttack == 0
+}
+
+// cnpcMutex is each task's setMutexBits (PASSIVE 1, LOOK 2, PATHING 4).
+func (a *Actor) cnpcMutex(i int) int {
+	switch i {
+	case cnSprint:
+		return 1
+	case cnLeap:
+		return 5
+	case cnResp:
+		switch a.cnpcResp() {
+		case respPanic, respDodgeShoot:
+			return 1
+		}
+		return 3
+	}
+	if a.CNPC.Tactic == navNone || a.rs.override && a.cnpcProj() && a.Ranged.UseRangeMelee == 0 {
+		return 4 // navOverride
+	}
+	return 3
+}
+
+// cnpcCanUse is EntityAITasks.canUse (every task is interruptible).
+func (a *Actor) cnpcCanUse(i int) bool {
+	for j := range cnTasks {
+		if j != i && j <= i && a.cn.on[j] && a.cnpcMutex(i)&a.cnpcMutex(j) != 0 {
+			return false
+		}
+	}
+	return true
+}
+
+// cnpcTasks runs the tasks for one tick (EntityAITasks.onUpdateTasks) and
+// then the navigator; it reports whether any task runs (the movement task
+// waits then).
+func (m *Manager) cnpcTasks(a *Actor) bool {
+	st := &a.cn
+	if !st.inited {
+		st.inited, st.health = true, a.Health
+	}
+	var start [cnTasks]bool
+	if st.tick%3 == 0 {
+		for i := range cnTasks {
+			if !a.cnpcHas(i) {
+				continue
+			}
+			if st.on[i] {
+				if a.cnpcCanUse(i) && m.cnpcCont(a, i) {
+					continue
+				}
+				m.cnpcReset(a, i)
+				st.on[i] = false
+			}
+			if a.cnpcCanUse(i) && m.cnpcShould(a, i) {
+				st.on[i], start[i] = true, true
+			}
+		}
+	} else {
+		for i := range cnTasks {
+			if st.on[i] && !m.cnpcCont(a, i) {
+				m.cnpcReset(a, i)
+				st.on[i] = false
+			}
+		}
+	}
+	st.tick++
+	for i := range cnTasks {
+		if start[i] {
+			m.cnpcStart(a, i)
+		}
+	}
+	busy := false
+	for i := range cnTasks {
+		if st.on[i] {
+			m.cnpcUpdate(a, i)
+			busy = true
+		}
+	}
+	if !st.on[cnAttack] || a.cnpcMutex(cnAttack) == 4 {
+		m.walk(a) // PathNavigate.onUpdateNavigation
+	}
+	return busy
+}
+
+// pathing is !PathNavigate.noPath.
+func (a *Actor) pathing() bool { return a.rs.goalSet || a.nav.has }
+
+// inRange is EntityNPCInterface.isInRange: a box of range around a.
+func (a *Actor) inRange(t *Actor, r float64) bool {
+	return math.Abs(a.Body.Y-t.Body.Y) <= r && math.Abs(a.Body.X-t.Body.X) <= r && math.Abs(a.Body.Z-t.Body.Z) <= r
+}
+
+// moving is motionX and motionZ both not 0 (onLivingUpdate zeroes a
+// motion below 0.005).
+func (a *Actor) moving() bool { return math.Abs(a.Body.VX) >= 0.005 && math.Abs(a.Body.VZ) >= 0.005 }
+
+func (m *Manager) cnpcShould(a *Actor, i int) bool {
+	st, c, t := &a.cn, a.CNPC, a.Target
+	switch i {
+	case cnSprint:
+		if t == nil || !a.pathing() || !a.Body.OnGround {
+			return false
+		}
+		switch c.OnAttack {
+		case 0:
+			return !a.inRange(t, 8)
+		case 2:
+			return a.inRange(t, 7)
+		}
+		return false
+	case cnLeap:
+		if t == nil {
+			return false
+		}
+		if d := a.Pos().dist2(t.Pos()); d < 4 || d > 16 || !a.Body.OnGround {
+			return false
+		}
+		st.leap = t
+		return m.Rand.Intn(5) == 0
+	case cnAttack:
+		return t != nil && t.Alive()
+	}
+	switch a.cnpcResp() {
+	case respPanic:
+		if t == nil && !a.OnFire() {
+			return false
+		}
+		p, ok := m.randomTarget(a, 5, 4, nil)
+		st.goal = p
+		return ok
+	case respAvoid:
+		return m.avoidShould(a)
+	case respDodgeShoot:
+		if t == nil || !t.Alive() || !a.cnpcProj() || !a.rs.fired {
+			return false
+		}
+		p, ok := m.randomTarget(a, 4, 1, nil)
+		st.goal = p
+		return ok
+	case respZigZag:
+		return m.zigZagShould(a)
+	case respAmbush:
+		if t == nil {
+			return false
+		}
+		if t.Pos().dist2(a.Pos()) < c.Radius*c.Radius || !m.sees(a, t) {
+			return false
+		}
+		if st.delay > 0 {
+			st.delay--
+			return false
+		}
+		p, ok := m.hidingSpot(a, t)
+		if !ok {
+			return false
+		}
+		st.shelter, st.t = p, t
+		return true
+	case respStalk:
+		return m.stalkShould(a)
+	}
+	return false
+}
+
+func (m *Manager) cnpcCont(a *Actor, i int) bool {
+	st, c := &a.cn, a.CNPC
+	switch i {
+	case cnSprint:
+		return a.Alive() && a.Body.OnGround && a.HurtTime <= 0 && a.moving()
+	case cnLeap:
+		return !a.Body.OnGround
+	case cnAttack:
+		t := a.Target
+		if t == nil || !t.Alive() {
+			return false
+		}
+		return a.cnpcProj() || a.Pos().dist2(t.Pos()) <= a.AggroRange*a.AggroRange
+	}
+	switch a.cnpcResp() {
+	case respPanic:
+		return a.Target != nil && a.rs.goalSet
+	case respAvoid, respDodgeShoot:
+		return a.rs.goalSet
+	case respZigZag:
+		return a.rs.goalSet && st.t.Alive() && st.t.Pos().dist2(a.Pos()) > c.Radius*c.Radius
+	case respAmbush:
+		hide := st.t.Pos().dist2(a.Pos()) > c.Radius*c.Radius
+		seen := m.sees(a, st.t)
+		return a.rs.goalSet && hide || !seen && (hide || c.DirectLOS)
+	case respStalk:
+		return m.stalkShould(a) // EntityAIBase.continueExecuting
+	}
+	return false
+}
+
+func (m *Manager) cnpcStart(a *Actor, i int) {
+	st := &a.cn
+	switch i {
+	case cnSprint:
+		a.Sprinting = true
+		return
+	case cnLeap:
+		t, b := st.leap, a.Body
+		dx, dz := t.Body.X-b.X, t.Body.Z-b.Z
+		f := float64(float32(math.Sqrt(dx*dx + dz*dz)))
+		b.VX += dx/f*0.5*0.800000011920929 + b.VX*0.20000000298023224
+		b.VZ += dz/f*0.5*0.800000011920929 + b.VZ*0.20000000298023224
+		b.VY = float64(float32(0.4))
+		return
+	case cnAttack:
+		return
+	}
+	switch a.cnpcResp() {
+	case respPanic, respDodgeShoot, respZigZag:
+		m.setPath(a, st.goal, 1.2)
+	case respAvoid:
+		m.setPath(a, st.goal, 1)
+	case respAmbush:
+		m.setPath(a, st.shelter, 1.2)
+	case respStalk:
+		if a.cnpcProj() {
+			a.rs.override = true
+		}
+	}
+}
+
+func (m *Manager) cnpcReset(a *Actor, i int) {
+	st, c := &a.cn, a.CNPC
+	switch i {
+	case cnSprint:
+		a.Sprinting = false
+		return
+	case cnLeap:
+		return
+	case cnAttack: // EntityAIAttackTarget / EntityAIRangedAttack.resetTask
+		a.Target = nil
+		m.clearPath(a)
+		m.rangedReset(a)
+		return
+	}
+	switch a.cnpcResp() {
+	case respAvoid:
+		st.t, a.Target = nil, nil
+	case respAmbush:
+		m.clearPath(a)
+		if a.Target == nil && st.t != nil {
+			a.Target = st.t
+		}
+		if st.t.Pos().dist2(a.Pos()) < c.Radius*c.Radius {
+			st.delay = 60
+		}
+	case respStalk:
+		m.clearPath(a)
+		if a.Target == nil && st.t != nil {
+			a.Target = st.t
+		}
+		a.rs.override = false
+	}
+}
+
+func (m *Manager) cnpcUpdate(a *Actor, i int) {
+	st, c := &a.cn, a.CNPC
+	switch i {
+	case cnSprint, cnLeap:
+		return
+	case cnAttack:
+		if t := a.Target; t != nil {
+			if a.cnpcProj() {
+				m.cnpcFight(a, t)
+			} else {
+				m.melee(a, t)
+			}
+		}
+		return
+	}
+	switch a.cnpcResp() {
+	case respAvoid:
+		d2 := a.Pos().dist2(st.t.Pos())
+		a.rs.goalMul = 1
+		if d2 < 49 {
+			a.rs.goalMul = 1.2
+		}
+		if c.Tactic == navHitNRun {
+			if d := float64(float32(math.Sqrt(d2))); d > a.AggroRange || d < c.Radius {
+				st.health = a.Health
+			}
+		}
+	case respDodgeShoot:
+		if a.Target != nil {
+			m.face(a, a.Target)
+		}
+	case respZigZag, respAmbush:
+		m.face(a, st.t)
+	case respStalk:
+		m.stalkUpdate(a)
+	}
+}
+
+// avoidShould is EntityAIAvoidTarget.shouldExecute: the nearest player
+// within the aggro range if the target is a player, else the first of the
+// target's kind within it (3 up and down); a spot 16 away from it, not
+// nearer to it; HitNRun only once hurt since the last time it was far or
+// near (melee) or once a burst was shot.
+func (m *Manager) avoidShould(a *Actor) bool {
+	st, c, t := &a.cn, a.CNPC, a.Target
+	if t == nil {
+		return false
+	}
+	r := a.AggroRange
+	var o *Actor
+	if t.Player {
+		bd := r * r
+		for _, p := range m.Actors {
+			if d := p.Pos().dist2(a.Pos()); p.Player && p != a && d < bd {
+				o, bd = p, d
+			}
+		}
+	} else {
+		box := a.Box().Grow(r, 3, r)
+		for _, p := range m.Actors {
+			if p.Kind == t.Kind && p.Box().Intersects(box) {
+				o = p
+				break
+			}
+		}
+	}
+	if o == nil || !m.sees(a, o) && c.DirectLOS {
+		return false
+	}
+	p, ok := m.randomTarget(a, 16, 7, &Vec{a.Body.X - o.Body.X, a.Body.Y - o.Body.Y, a.Body.Z - o.Body.Z})
+	var hold bool
+	if !a.cnpcProj() || a.Ranged.UseRangeMelee == 2 {
+		hold = st.health == a.Health
+	} else {
+		hold = c.OnAttack == 0 && !a.rs.fired
+	}
+	if !ok || o.Pos().dist2(p) < o.Pos().dist2(a.Pos()) || c.Tactic == navHitNRun && hold {
+		return false
+	}
+	st.t, st.goal = o, p
+	return true
+}
+
+// zigZagShould is EntityAIZigZagTarget.shouldExecute: a target beyond the
+// radius with a path at least that long; a random spot toward the path's
+// point at half the radius that is nearer the target than that point.
+func (m *Manager) zigZagShould(a *Actor) bool {
+	st, c, t := &a.cn, a.CNPC, a.Target
+	if t == nil || t.Pos().dist2(a.Pos()) < c.Radius*c.Radius {
+		return false
+	}
+	g := m.graphFor(a)
+	path, ok := g.Path(m.start(g, a.Pos()), m.start(g, t.Pos()), maxNodes)
+	if !ok || float64(len(path)) < c.Radius {
+		return false
+	}
+	pp := path[int(math.Floor(c.Radius/2))]
+	pv := Vec{float64(pp.X), float64(pp.Y), float64(pp.Z)}
+	p, ok := m.randomTarget(a, int(c.Radius), 3, &Vec{pv.X - a.Body.X, pv.Y - a.Body.Y, pv.Z - a.Body.Z})
+	if !ok || t.Pos().dist2(p) >= t.Pos().dist2(pv) {
+		return false
+	}
+	st.t, st.goal = t, p
+	return true
+}
+
+// randomTarget is RandomPositionGeneratorAlt.findRandomTargetBlock: of 10
+// random cells within xz and y (on dir's side), the one of the highest
+// path weight.
+func (m *Manager) randomTarget(a *Actor, xz, y int, dir *Vec) (Vec, bool) {
+	xz, y = max(xz, 1), max(y, 1)
+	best := float32(-99999)
+	var p Vec
+	found := false
+	for range 10 {
+		j := m.Rand.Intn(2*xz) - xz
+		k := m.Rand.Intn(2*y) - y
+		l := m.Rand.Intn(2*xz) - xz
+		if dir != nil && float64(j)*dir.X+float64(l)*dir.Z < 0 {
+			continue
+		}
+		rnd := math.Floor
+		if m.Rand.Intn(2) == 0 {
+			rnd = math.Ceil
+		}
+		x, yy, z := j+int(rnd(a.Body.X)), k+int(rnd(a.Body.Y)), l+int(rnd(a.Body.Z))
+		var w float32
+		if m.PathWeight != nil {
+			w = m.PathWeight(a, x, yy, z)
+		}
+		if w > best {
+			best, p, found = w, Vec{float64(x), float64(yy), float64(z)}, true
+		}
+	}
+	return p, found
+}
+
+// cover reports a spot on an opaque cube under two cells that are not
+// that a ray from t's eyes to a's eyes there meets a block on.
+func (m *Manager) cover(a, t *Actor, j, k, l float64) bool {
+	x, y, z := int(j), int(k), int(l)
+	if m.Opaque == nil || m.RayHits == nil || !m.Opaque(x, y, z) || m.Opaque(x, y+1, z) || m.Opaque(x, y+2, z) {
+		return false
+	}
+	return m.RayHits(Vec{t.Body.X, t.Body.Y + t.Body.EyeHeight, t.Body.Z}, Vec{j, k + a.Body.EyeHeight, l})
+}
+
+// hidingSpot is EntityAIAmbushTarget.findHidingSpot: in the nearest ring
+// up to 8 with one, the last spot in cover of the target (one sharing no
+// coordinate with the shelter before); none waits 60.
+func (m *Manager) hidingSpot(a, t *Actor) (Vec, bool) {
+	st := &a.cn
+	minY := a.Box().MinY
+	for i := 1; i <= 8; i++ {
+		var p Vec
+		found := false
+		for y := -2; y <= 2; y++ {
+			for x := -i; x <= i; x++ {
+				for z := -i; z <= i; z++ {
+					j := math.Floor(a.Body.X+float64(x)) + 0.5
+					k := math.Floor(minY + float64(y))
+					l := math.Floor(a.Body.Z+float64(z)) + 0.5
+					if m.cover(a, t, j, k, l) && st.shelter.X != j && st.shelter.Y != k && st.shelter.Z != l {
+						p, found = Vec{j, k, l}, true
+					}
+				}
+			}
+		}
+		if found {
+			return p, true
+		}
+	}
+	st.delay = 60
+	return Vec{}, false
+}
+
+func (m *Manager) stalkShould(a *Actor) bool {
+	st, c, t := &a.cn, a.CNPC, a.Target
+	if t == nil {
+		return false
+	}
+	if st.wait > 0 {
+		st.wait--
+		return false
+	}
+	st.t = t
+	return t.Pos().dist2(a.Pos()) > c.Radius*c.Radius
+}
+
+// stalkUpdate is EntityAIStalkTarget.updateTask: with the navigator idle
+// or overridden, it creeps to the covered spot nearest the target while
+// the target looks away, else hides in the nearest cover when seen; seen
+// while looked at, it moves on (every 60 ticks at most).
+func (m *Manager) stalkUpdate(a *Actor) {
+	st, t := &a.cn, a.cn.t
+	m.face(a, t)
+	if !a.rs.goalSet || st.override {
+		if m.lookingAway(a, t) {
+			if p, ok := m.secluded(a, t, true); ok {
+				st.move = &p
+				m.setPath(a, p, 1)
+				st.override = false
+			} else {
+				st.wait = 100
+			}
+		} else if m.sees(a, t) {
+			if p, ok := m.secluded(a, t, false); ok {
+				st.move = &p
+				m.setPath(a, p, 1.33)
+				st.override = false
+			} else {
+				st.wait = 100
+			}
+		}
+	}
+	if st.delay > 0 {
+		st.delay--
+	}
+	if !m.lookingAway(a, t) && m.sees(a, t) && st.delay == 0 {
+		st.override, st.delay = true, 60
+	}
+}
+
+// secluded is stalkTarget (nearest: radius 8 down to 1) or hideFromTarget
+// (1 up to 8): the first radius with a findSecludedXYZ spot.
+func (m *Manager) secluded(a, t *Actor, nearest bool) (Vec, bool) {
+	for n := 1; n <= 8; n++ {
+		r := n
+		if nearest {
+			r = 9 - n
+		}
+		if p, ok := m.secludedXYZ(a, t, r, nearest); ok {
+			return p, true
+		}
+	}
+	return Vec{}, false
+}
+
+// secludedXYZ is findSecludedXYZ: the last spot in cover of t within r
+// (nearest: each no farther from t than the one before) that is not the
+// last move's.
+func (m *Manager) secludedXYZ(a, t *Actor, r int, nearest bool) (Vec, bool) {
+	st := &a.cn
+	dist := t.Pos().dist2(a.Pos())
+	var u Vec
+	if st.move != nil {
+		u = *st.move
+	}
+	var p Vec
+	found := false
+	minY := a.Box().MinY
+	for y := -2; y <= 2; y++ {
+		for x := -r; x <= r; x++ {
+			for z := -r; z <= r; z++ {
+				j := math.Floor(a.Body.X+float64(x)) + 0.5
+				k := math.Floor(minY + float64(y))
+				l := math.Floor(a.Body.Z+float64(z)) + 0.5
+				if !m.cover(a, t, j, k, l) {
+					continue
+				}
+				q := Vec{j, k, l}
+				if (!nearest || t.Pos().dist2(q) <= dist) && q != u {
+					p, found = q, true
+					if nearest {
+						dist = t.Pos().dist2(q)
+					}
+				}
+			}
+		}
+	}
+	return p, found
+}
+
+// lookingAway: the angle between t's look and the way to a's middle has a
+// cosine under 0.6.
+func (m *Manager) lookingAway(a, t *Actor) bool {
+	cp := math.Cos(t.Pitch)
+	lx, ly, lz := math.Sin(t.Yaw)*cp, math.Sin(t.Pitch), -math.Cos(t.Yaw)*cp
+	vx := a.Body.X - t.Body.X
+	vy := a.Box().MinY + a.Body.Height/2 - (t.Body.Y + t.Body.EyeHeight)
+	vz := a.Body.Z - t.Body.Z
+	n := math.Sqrt(vx*vx + vy*vy + vz*vz)
+	if n < 1e-4 {
+		return true // Vec3.normalize of a zero vector is zero
+	}
+	return (lx*vx+ly*vy+lz*vz)/n < 0.6
+}

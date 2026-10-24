@@ -237,6 +237,9 @@ type Actor struct {
 	Unpushed             bool // collisions push others but leave its own motion (the game sets it)
 	FireImmune           bool // isImmuneToFire
 	FireResist           int  // fireResistance: 1 (0 means 1), player 20
+	// CNPC, if set, runs a CustomNPC's combat tasks in place of the
+	// fight (see CNPCAI).
+	CNPC *CNPCAI
 	// Potion effects the game keeps up to date: Resistance is the
 	// resistance amplifier+1 (0 none), FireProof fireResistance.
 	Resistance int
@@ -292,6 +295,7 @@ type Actor struct {
 	attackCool, rangedCool int
 	seeTime                int
 	rs                     rangedState
+	cn                     cnpcState
 	revenge                *Actor
 	revengeTicks           int
 	panic                  int

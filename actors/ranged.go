@@ -30,6 +30,8 @@ type rangedState struct {
 	goalSet   bool
 	flee      bool
 	navLocked bool // CNPC navOverride: the task leaves the navigator alone
+	override  bool // CNPC navOverride set by EntityAIStalkTarget
+	fired     bool // CNPC hasFired: a burst ended
 	inited    bool // the task's constructor ran (its timer's first value)
 }
 
@@ -101,7 +103,7 @@ func (m *Manager) rangedReset(a *Actor) {
 	case RangedCNPC: // EntityAIRangedAttack.resetTask: also drops the target
 		a.Target = nil
 		m.clearPath(a)
-		a.seeTime, a.rangedCool = 0, r.MinInterval/2
+		a.seeTime, a.rangedCool, a.rs.fired = 0, r.MinInterval/2, false
 	}
 }
 
@@ -216,7 +218,7 @@ func (m *Manager) cnpcFight(a, t *Actor) {
 	if !shoot && !(a.rs.on && a.rs.goalSet) {
 		m.rangedReset(a)
 	} else {
-		a.rs.navLocked = r.Tactic == navNone || (r.UseRangeMelee == 2 && !inMelee)
+		a.rs.navLocked = r.Tactic == navNone || a.rs.override || (r.UseRangeMelee == 2 && !inMelee)
 		m.cnpcRanged(a, t)
 	}
 	if a.Target == t && r.UseRangeMelee != 0 && (r.UseRangeMelee != 1 || inMelee) {
@@ -263,7 +265,7 @@ func (m *Manager) cnpcRanged(a, t *Actor) {
 	if a.rs.burst-1 <= r.Burst {
 		a.rangedCool = r.FireRate
 	} else {
-		a.rs.burst = 0
+		a.rs.burst, a.rs.fired = 0, true
 		a.rangedCool = r.MaxInterval - int(math.Floor(float64(m.Rand.Float32()*float32(r.MaxInterval-r.MinInterval))))
 	}
 	if a.rs.burst > 1 {

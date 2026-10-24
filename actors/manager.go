@@ -50,6 +50,14 @@ type Manager struct {
 	// not see it as hostile (a target task's own pick: a wolf's sheep, a
 	// skirmish); a dead or out-of-range target still goes.
 	Keeps func(a, t *Actor) bool
+	// PathWeight, if set, is a's getBlockPathWeight at a cell (the random
+	// spots a CustomNPC's tasks pick); nil weighs all alike.
+	PathWeight func(a *Actor, x, y, z int) float32
+	// Opaque is Block.isOpaqueCube and RayHits World.rayTraceBlocks (a
+	// block meets the segment): the cover a CustomNPC ambushes or stalks
+	// from. Without both it finds none.
+	Opaque  func(x, y, z int) bool
+	RayHits func(from, to Vec) bool
 	// OnExtinguish is called when water or rain puts a burning actor out
 	// (random.fizz 0.7, 1.6 + (r - r) * 0.4).
 	OnExtinguish func(a *Actor)

@@ -18,7 +18,7 @@ const (
 // fight runs target selection and the attack for one tick. It reports
 // whether the actor is busy fighting (the mode is skipped then).
 func (m *Manager) fight(a *Actor) bool {
-	if (a.Melee.Damage <= 0 && a.Ranged == nil) || a.Brain.Mode == Flee {
+	if (a.Melee.Damage <= 0 && a.Ranged == nil && a.CNPC == nil) || a.Brain.Mode == Flee {
 		return false
 	}
 	if t := a.Target; t != nil {
@@ -41,6 +41,9 @@ func (m *Manager) fight(a *Actor) bool {
 	}
 	if a.Target == nil && (m.ticks+hash(a.ID))%10 == 0 {
 		a.Target = m.pickTarget(a)
+	}
+	if a.CNPC != nil {
+		return m.cnpcTasks(a)
 	}
 	t := a.Target
 	if t == nil {
