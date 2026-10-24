@@ -96,6 +96,21 @@ func (m *Manager) start(g *nav.Graph, v Vec) nav.Pos {
 	return nav.Pos{X: int(math.Floor(v.X - m.half)), Y: int(math.Floor(v.Y + 0.01)), Z: int(math.Floor(v.Z - m.half))}
 }
 
+// PathEnds is PathNavigate.getPathToXYZ(goal) != null &&
+// PathEntity.isDestinationSame(goal): a path from a toward goal's cell
+// (it heads for the nearest cell when goal is out of reach) whose last
+// point is in goal's column, (int) x and z as the reference casts them.
+func (m *Manager) PathEnds(a *Actor, goal Vec) bool {
+	g := m.graphFor(a)
+	to := nav.Pos{X: int(math.Floor(goal.X)), Y: int(goal.Y), Z: int(math.Floor(goal.Z))}
+	path, ok := g.Path(m.start(g, a.Pos()), to, maxNodes)
+	if !ok {
+		return false
+	}
+	e := path[len(path)-1]
+	return e.X == int(goal.X) && e.Z == int(goal.Z)
+}
+
 // Detours: the long search reaches longRange blocks with longNodes
 // expansions (spread over ticks by pathBudget); a turned leg is detourLen
 // blocks long and held for detourTicks.
