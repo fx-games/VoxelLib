@@ -154,7 +154,7 @@ func (ctx *Context) Play(name string) {
 }
 
 // AssetPath turns a resource location ("textures/gui/widgets.png",
-// "lotr:gui/map.png") into its path in a pack.
+// "mod:gui/map.png") into its path in a pack.
 func AssetPath(loc string) string {
 	dom, p := resloc.Split(loc)
 	return "assets/" + dom + "/" + p

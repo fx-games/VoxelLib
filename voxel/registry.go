@@ -100,11 +100,11 @@ type BlockDef struct {
 	// models) by a position hash (RenderBlocks.renderCrossedSquares and
 	// friends).
 	PlantOffset PlantOffset
-	// Scatter, when set, adds LOTR's scattered fallen-leaf quads
+	// Scatter, when set, adds a mod's scattered fallen-leaf quads
 	// (ShapeBoxes).
 	Scatter *Scatter
 	// UVRandom marks faces (1<<Face) whose texture the mesher turns by a
-	// position-dependent uvRotate (the 1.7 reference RenderBlocks), as LOTR's
+	// position-dependent uvRotate (the 1.7 reference RenderBlocks), as a mod's
 	// randomly rotated natural blocks (see mesh.RenderBlocksSides).
 	UVRandom uint8
 	// UVSeed, when set, is per face the side index whose hash turns it
@@ -623,7 +623,7 @@ func canonicalProps(props map[string]string) string {
 	return b.String()
 }
 
-// Scatter draws a block as LOTR's LOTRRenderBlocks.renderFallenLeaves:
+// Scatter draws a block as a mod's renderFallenLeaves does:
 // Leaves (a random count in [0]..[1]) single-sided, up-facing quads of the
 // block's up texture, each XSize x ZSize texels (random in their ranges)
 // cut from a random spot of the icon, at a random place and turn, from a
@@ -643,5 +643,5 @@ const (
 	OffsetGrass              // tall grass: x, z by ±0.25, y by -0.2..0
 	OffsetFlower             // flowers: x, z by ±0.15
 	OffsetDouble             // double plants: x, z by ±0.15, the same for both halves
-	OffsetClover             // LOTR clovers: x, z by ±0.25 (the grass hash), y kept
+	OffsetClover             // a mod's clovers: x, z by ±0.25 (the grass hash), y kept
 )

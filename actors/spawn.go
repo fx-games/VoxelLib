@@ -8,7 +8,7 @@ import (
 )
 
 // SpawnRule is one entry of the game's spawn table (the reference's biome spawn
-// lists, LOTR's per-biome NPC spawn lists).
+// lists, a mod's per-biome NPC spawn lists).
 type SpawnRule struct {
 	Kind     string   `json:"kind"`
 	Category string   `json:"category"` // caps are per category ("monster", "creature"...)

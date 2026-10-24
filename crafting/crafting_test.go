@@ -9,7 +9,7 @@ import (
 )
 
 const recipesJSON = `{
-  "ores": {"plankWood": ["test:planks#*", "lotr:planks#*"], "stickWood": ["test:stick"]},
+  "ores": {"plankWood": ["test:planks#*", "mod:planks#*"], "stickWood": ["test:stick"]},
   "recipes": [
     {"type": "shaped", "pattern": ["XXX", " # ", " # "], "key": {"X": "ore:plankWood", "#": "ore:stickWood"},
      "result": {"item": "test:wooden_pickaxe"}},
@@ -32,7 +32,7 @@ func setup(t *testing.T) (*inventory.Registry, *Book, *Smelting) {
 	reg := inventory.NewRegistry()
 	for _, it := range []*inventory.Item{
 		{Key: "test:planks", HasSubtypes: true, BurnTime: 300},
-		{Key: "lotr:planks", HasSubtypes: true, BurnTime: 300},
+		{Key: "mod:planks", HasSubtypes: true, BurnTime: 300},
 		{Key: "test:log", HasSubtypes: true, BurnTime: 300},
 		{Key: "test:stick", BurnTime: 100},
 		{Key: "test:cobblestone"},
@@ -85,7 +85,7 @@ func key(s *inventory.Stack) string {
 func TestShaped(t *testing.T) {
 	reg, b, _ := setup(t)
 	P, S, C := "test:planks", "test:stick", "test:cobblestone"
-	L := "lotr:planks#3"
+	L := "mod:planks#3"
 	cases := []struct {
 		w    int
 		rows []string

@@ -28,7 +28,7 @@ struct PackU {
 	weather: vec4f, // rainStrength, wetness, near, far
 	eye: vec4f,     // nightVision, blindness, eyeBrightnessSmooth
 	eye2: vec4f,    // eyeBrightness, frameTime, celestialAngle
-	ints: vec4<i32>, // worldTime, isEyeInWater, frameCounter, lotrTime
+	ints: vec4<i32>, // worldTime, isEyeInWater, frameCounter, packTime
 }
 
 const PI = 3.1415927;
@@ -55,14 +55,14 @@ fn luma(c: vec3f) -> f32 { return dot(c, vec3f(0.299, 0.587, 0.114)); }
 fn m3(m: mat4x4f) -> mat3x3f { return mat3x3f(m[0].xyz, m[1].xyz, m[2].xyz); }
 fn rainStrength() -> f32 { return pu.weather.x; }
 fn frameTimeCounter() -> f32 { return pu.view.w; }
-fn lotrTime() -> f32 { return f32(pu.ints.w); }
+fn packTime() -> f32 { return f32(pu.ints.w); }
 fn texelSize() -> vec2f { return 1.0 / pu.view.xy; }
 fn nearP() -> f32 { return pu.weather.z; }
 fn farP() -> f32 { return pu.weather.w; }
 fn comp() -> f32 { return 1.0 - nearP() / farP() / farP(); }
 fn isEyeInWater() -> f32 { return f32(pu.ints.y); }
 fn eyeSmoothY() -> f32 { return pu.eye.w; }
-fn night() -> f32 { return clamp((lotrTime() - 13000.0) / 300.0, 0.0, 1.0) - clamp((lotrTime() - 22800.0) / 200.0, 0.0, 1.0); }
+fn night() -> f32 { return clamp((packTime() - 13000.0) / 300.0, 0.0, 1.0) - clamp((packTime() - 22800.0) / 200.0, 0.0, 1.0); }
 // GL texture coordinates (t up) of a render target to WebGPU (v down).
 fn glUV(t: vec2f) -> vec2f { return vec2f(t.x, 1.0 - t.y); }
 // gl_FragCoord.xy from @builtin(position).
@@ -70,14 +70,14 @@ fn glFrag(p: vec4f) -> vec2f { return vec2f(p.x, pu.view.y - p.y); }
 // float hour, cmpH, cmpH1 and the ToD mix of the lighting shaders.
 fn todMix(t: array<vec3f, 7>) -> vec3f {
 	var tt = t;
-	let hour = max(gmod(lotrTime() / 1000.0 + 2.0, 24.0) - 2.0, 0.0);
+	let hour = max(gmod(packTime() / 1000.0 + 2.0, 24.0) - 2.0, 0.0);
 	let cmpH = max(-abs(floor(hour) - 6.0) + 6.0, 0.0);
 	let cmpH1 = max(-abs(floor(hour) - 5.0) + 6.0, 0.0);
 	return mix(tt[i32(cmpH)], tt[i32(cmpH1)], fract(hour));
 }
-// tr from trCalc = min(abs(lotrTime-vec2(t0,12700.0)),750.0).
+// tr from trCalc = min(abs(packTime-vec2(t0,12700.0)),750.0).
 fn trOf(t0: f32) -> f32 {
-	let trCalc = min(abs(vec2f(lotrTime()) - vec2f(t0, 12700.0)), vec2f(750.0));
+	let trCalc = min(abs(vec2f(packTime()) - vec2f(t0, 12700.0)), vec2f(750.0));
 	return max(min(trCalc.x, trCalc.y) / 375.0 - 1.0, 0.0);
 }
 fn ycocg(c: vec3f) -> vec3f {
@@ -1225,7 +1225,7 @@ fn c0vars() -> C0V {
 	o.moonVisibility = pow(clamp(-o.SdotU + 0.15, 0.0, 0.15) / 0.15, 4.0);
 	o.sunlight = todMix(c0ToD());
 	o.tr = trOf(23000.0);
-	let lt = lotrTime();
+	let lt = packTime();
 	let tr2 = clamp(min(min(abs(lt - 23000.0), 750.0), min(abs(lt - 12700.0), 800.0)) / 800.0 - 0.5, 0.0, 1.0) * 2.0;
 	let bounced = vec4f(0.5, 0.66, 1.3, 0.27);
 	let sun_ambient = bounced.w * (vec3f(0.25, 0.62, 1.32) - rain * vec3f(0.1, 0.47, 1.17)) * (1.0 + rain * 7.0) + o.sunlight * (bounced.x + bounced.z) * (1.0 - rain * 0.95);
@@ -1440,7 +1440,7 @@ fn c1vars() -> C1V {
 	let sunlight04 = pow(o.sunlight, vec3f(0.454));
 	let eyebright = max(eyeSmoothY() / 255.0 - 0.5 / 16.0, 0.0) * 1.03225806452;
 	let SkyL2 = mix(1.0, eyebright * eyebright, eyebright);
-	let lt = lotrTime();
+	let lt = packTime();
 	let trCalc = min(abs(vec2f(lt) - vec2f(23050.0, 12700.0)), vec2f(750.0));
 	o.tr = max(min(trCalc.x, trCalc.y) / 375.0 - 1.0, 0.0);
 	// the vsh then shadows tr with a local for the rest of main()
@@ -1477,7 +1477,7 @@ fn c1vars() -> C1V {
 	o.cloudColor2 = 0.1 * o.sunlight * o.sunVisibility * (1.0 - rain * 0.15) * length(o.rawAvg) + 1.5 * length(o.rawAvg) * mix(vec3f(0.15, 0.4, 1.0), vec3f(0.65, 0.65, 0.65), rain) * (1.0 - rain * 0.1) + 2.0 * moonlight * o.moonVisibility * (1.0 - rain * 0.15);
 	return o;
 }
-fn tmult() -> f32 { return mix(min(abs(lotrTime() - 6000.0) / 6000.0, 1.0), 1.0, rainStrength()); }
+fn tmult() -> f32 { return mix(min(abs(packTime() - 6000.0) / 6000.0, 1.0), 1.0, rainStrength()); }
 fn drawSun(fposition: vec3f, color: vec3f, vis: f32, v: C1V) -> vec3f {
 	let sVector = normalize(fposition);
 	let angle = (1.0 - max(dot(sVector, v.sunVec), 0.0)) * 650.0;

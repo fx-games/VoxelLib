@@ -32,7 +32,7 @@ func ParseStance(s string) Stance {
 
 // Faction is one side. Relations between factions come from Enemies and
 // Allies (either side listing the other is enough). The player's standing
-// is a number of points (CustomNPC faction points, LOTR alignment): at or
+// is a number of points (CustomNPC faction points, a mod's alignment): at or
 // above FriendlyAt the faction is friendly, at or above NeutralAt neutral,
 // below it hostile.
 type Faction struct {

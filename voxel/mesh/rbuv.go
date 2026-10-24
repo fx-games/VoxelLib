@@ -122,14 +122,14 @@ var rbTab = func() (t [6][4][4][2]uint32) {
 
 // RenderBlocksSides is the default StateInfo.UVSeed: the side whose hash
 // turns each face when RenderBlocks' uvRotate fields are set per side
-// (LOTR's natural blocks): renderFaceZNeg reads uvRotateEast (side 5), and
+// (a mod's natural blocks): renderFaceZNeg reads uvRotateEast (side 5), and
 // so on.
 var RenderBlocksSides = [6]uint8{0, 1, 5, 4, 2, 3}
 
 // uvRandom is the uvRotate (0..3) of face f of the block at world x,y,z
 // with a UVRandom face: h = (x*234890405 ^ z*37383934 ^ y) + side*285502
 // in int arithmetic, then java.util.Random setSeed(h), setSeed(nextLong()),
-// nextInt(4) (LOTRReplacedMethods.BlockRendering.renderStandardBlock).
+// nextInt(4) (the mod's replaced renderStandardBlock).
 func uvRandom(info *voxel.StateInfo, x, y, z int, f voxel.Face) int {
 	side := RenderBlocksSides[f]
 	if info.UVSeed != nil {

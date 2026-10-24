@@ -15,8 +15,8 @@ type PartPose struct {
 	Hidden bool       // isHidden or !showModel: the part and its children are not drawn
 	// Pre is the GL transform render() applies around this part's
 	// render call (glPushMatrix; glScalef...; part.render(); glPopMatrix),
-	// in the parent's frame in GL units (blocks), e.g. LOTR dwarves'
-	// glScalef(1.25,1,1) around the body. Zero means identity.
+	// in the parent's frame in GL units (blocks), e.g. a dwarf
+	// model's glScalef(1.25,1,1) around the body. Zero means identity.
 	Pre mgl32.Mat4
 	// Post is a GL transform applied after the part's rotation, to its
 	// boxes and children: ModelScaleRenderer.render's glScalef(config)

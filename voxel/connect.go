@@ -3,8 +3,8 @@ package voxel
 import "sync/atomic"
 
 // Connect gives every face of a block the texture its eight neighbours in
-// the face's own plane pick (connected textures, as LOTR's
-// LOTRConnectedTextures or OptiFine's CTM). The mesher builds the mask
+// the face's own plane pick (connected textures, as a mod's
+// connected-texture blocks or OptiFine's CTM). The mesher builds the mask
 // (see ConnectOffsets) and draws Icons[Mask[mask]].
 type Connect struct {
 	// Tag: a neighbour carrying it connects.
@@ -13,7 +13,7 @@ type Connect struct {
 	// offset along it never connects (a thin gate's edge faces). -1: none.
 	Plane int8
 	// Below, when set, makes a neighbour one block lower connect unless it
-	// carries Below (LOTR's open gates standing on the ground).
+	// carries Below (a mod's open gates standing on the ground).
 	Below string
 	// Icons are texture names; Mask[m] indexes them for neighbour mask m.
 	Icons []string
@@ -33,7 +33,7 @@ type ConnectInfo struct {
 // neighbours for mask bits 0..7: top-left, top, top-right, left, right,
 // bottom-left, bottom, bottom-right, where left/right run along the
 // texture's u and top/bottom along its v as the 1.7 reference's RenderBlocks
-// draws the face (LOTRConnectedTextures.getConnectedIconBlock's side
+// draws the face (the connected-texture getConnectedIconBlock's side
 // mapping: down/up (x, z), north (-x, -y), south (x, -y), west (z, -y),
 // east (-z, -y)).
 var ConnectOffsets = func() (o [FaceCount][8][3]int) {

@@ -522,7 +522,7 @@ func rotateRules(r voxel.FaceRules, rx, ry int) voxel.FaceRules {
 func all(t string) [6]string { return [6]string{t, t, t, t, t, t} }
 
 // ModelBoxes returns the elements of block model id ("block/stairs",
-// "lotr:block/x") as voxel boxes: per-face textures resolved through the
+// "mod:block/x") as voxel boxes: per-face textures resolved through the
 // model's texture variables, with vars (variable → texture) taking
 // precedence, plus UVs (with their "rotation"), element rotations (with
 // "rescale"), cullfaces and which faces take the block's tint

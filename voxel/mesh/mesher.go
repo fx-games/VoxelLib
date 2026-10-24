@@ -941,7 +941,7 @@ func plantOffset(o voxel.PlantOffset, x, y, z int) (off [3]int) {
 	return
 }
 
-// scatterBoxes are the leaf quads of LOTRRenderBlocks.renderFallenLeaves
+// scatterBoxes are the leaf quads of a mod's renderFallenLeaves
 // for the block at world x, y, z, as flat unshaded up faces (1/16 units,
 // block-local).
 func scatterBoxes(s *voxel.Scatter, x, y, z int) []voxel.Box {

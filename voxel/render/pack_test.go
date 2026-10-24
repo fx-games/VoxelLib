@@ -9,14 +9,14 @@ import (
 
 func near32(a, b, eps float32) bool { return float32(math.Abs(float64(a-b))) <= eps }
 
-func TestLotrTime(t *testing.T) {
+func TestPackTime(t *testing.T) {
 	// worldTime is getWorldTime()%24000; the pack halves it with int division.
 	for _, c := range []struct {
 		wt   int64
 		want int32
 	}{{0, 0}, {1, 0}, {3, 1}, {23999, 11999}, {24000, 0}, {36001, 6000}, {48000*7 + 13000, 6500}} {
-		if got := LotrTime(c.wt); got != c.want {
-			t.Errorf("LotrTime(%d) = %d, want %d", c.wt, got, c.want)
+		if got := PackTime(c.wt); got != c.want {
+			t.Errorf("PackTime(%d) = %d, want %d", c.wt, got, c.want)
 		}
 	}
 }
@@ -42,14 +42,14 @@ func TestSunPosition(t *testing.T) {
 	}
 }
 
-func TestSunAngleFromLotrTime(t *testing.T) {
-	// LOTR noon (t = 12000 of 48000) is celestial angle 0 → sunAngle 0.25;
+func TestSunAngleFromPackTime(t *testing.T) {
+	// Half-speed noon (t = 12000 of 48000) is celestial angle 0 → sunAngle 0.25;
 	// midnight is 0.5 → sunAngle 0.75 and the moon casts the shadow.
 	for _, c := range []struct {
 		t        float64
 		sa, shad float32
 	}{{12000, 0.25, 0.25}, {36000, 0.75, 0.25}} {
-		ca := lotrCelestial(c.t)
+		ca := slowCelestial(c.t)
 		sa := SunAngle(ca)
 		_, sh := ShadowModelView(ca, 0, 0, 0)
 		if !near32(sa, c.sa, 1e-5) || !near32(sh, c.shad, 1e-5) {
@@ -58,9 +58,9 @@ func TestSunAngleFromLotrTime(t *testing.T) {
 	}
 }
 
-// lotrCelestial mirrors LOTRWorldProvider.calculateCelestialAngle
-// (VoxelHobbit look.CelestialAngle) for the test.
-func lotrCelestial(t float64) float32 {
+// slowCelestial mirrors a 48000-tick day's calculateCelestialAngle
+// (the game's CelestialAngle) for the test.
+func slowCelestial(t float64) float32 {
 	d := float32(math.Mod(t, 48000)) / 48000
 	d -= 0.25
 	if d < 0 {

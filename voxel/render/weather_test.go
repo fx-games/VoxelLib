@@ -47,7 +47,7 @@ func TestWeather(t *testing.T) {
 	}
 	// Row z=0: ash at x=1, rain at x=2,4,5. Row z=1: snow at x=0 then ash
 	// at x=1 share one binding, so ash falls with the snow texture as in
-	// LOTRWeatherRenderer.
+	// the weather renderer.
 	if out[0].Texture != "ash" || out[1].Texture != "rain" || out[2].Texture != "snow" || len(out[2].Verts) != 8 {
 		t.Fatalf("draw runs %q %q %q (%d verts)", out[0].Texture, out[1].Texture, out[2].Texture, len(out[2].Verts))
 	}

@@ -36,7 +36,7 @@ func glintTRS(s, tx, ty, deg float32, rotFirst bool) glintAffine {
 	return glintAffine{s * c, -s * n, s * (c*tx - n*ty), s * n, s * c, s * (n*tx + c*ty)}
 }
 
-// itemGlint is a flat item's layer 0 or 1 at ms (Minecraft.getSystemTime):
+// itemGlint is a flat item's layer 0 or 1 at ms (the client's getSystemTime):
 // glScalef(0.125), glTranslatef(t, 0, 0), glRotatef(-50 / +10, 0, 0, 1),
 // t = ms%3000/3000*8 and -(ms%4873/4873*8). The glint pass's
 // renderItemIn2D(0, 0, 1, 1) puts u = x, v = 1 - y on the item's 0..1
@@ -55,7 +55,7 @@ func modelGlint(ticks float32, k int) glintAffine {
 	return glintTRS(0.33333334, 0, ticks*(0.001+float32(k)*0.003)*20, 30-float32(k)*60, false)
 }
 
-// glintClock is Minecraft.getSystemTime in milliseconds.
+// glintClock is the client's getSystemTime in milliseconds.
 var glintClock = func() int64 { return time.Now().UnixMilli() }
 
 // glintTex is the glint texture's bind group (SetGlintTexture); nil draws

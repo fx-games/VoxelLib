@@ -224,7 +224,7 @@ func (mt *Actor) Rearing() bool { return mt.Mount != nil && mt.Mount.rearing }
 
 // mountTick is a mount's EntityHorse.onUpdate/onLivingUpdate part: the
 // rearing, eating and mouth timers and animation values, the 1 in 900
-// chance a tick to heal 1 (also LOTRMountFunctions.update), grazing.
+// chance a tick to heal 1 (also a mod's mount update), grazing.
 func (m *Manager) mountTick(a *Actor) {
 	s := a.Mount
 	if s.mouthTicks > 0 && s.mouthTicks+1 > 30 {
@@ -271,7 +271,7 @@ func (m *Manager) mountTick(a *Actor) {
 	}
 }
 
-// buck is EntityAIRunAroundLikeCrazy (LOTREntityAIUntamedPanic): an
+// buck is EntityAIRunAroundLikeCrazy (a mod's untamed-panic task): an
 // untamed mount under a player runs to random spots 5 blocks around at
 // speed 1.2; each tick on the way, at 1 in 50, it is tamed with chance
 // Temper/MaxTemper, else its temper rises 5 and it throws the rider.
@@ -321,7 +321,7 @@ func (s *MountStats) event(mt *Actor, ev MountEvent) {
 	}
 }
 
-// rideInput is EntityHorse.moveEntityWithHeading (LOTRMountFunctions.move)
+// rideInput is EntityHorse.moveEntityWithHeading (and a mod's mount move)
 // under a player on a saddled mount: it turns with the rider, strafes at
 // half speed, backs at a quarter, steps 1.0 high, accelerates
 // movementSpeed*0.1 in the air, stands while rearing on the ground, and a

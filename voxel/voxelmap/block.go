@@ -34,7 +34,7 @@ import (
 //     "neighbour_light" lights it from its brightest neighbour;
 //     "offset_grass", "offset_flower", "offset_double" and "offset_clover"
 //     shift a cross plant like 1.7's tall grass, flowers, double plants and
-//     LOTR clovers (voxel.BlockDef.PlantOffset).
+//     a mod's clovers (voxel.BlockDef.PlantOffset).
 //   - uvrandom: faces whose texture turns by a position-dependent quarter
 //     turn (voxel.BlockDef.UVRandom); uvseed, six side indices (down, up,
 //     north, south, west, east), picks each face's hash side
@@ -51,7 +51,7 @@ import (
 //     0 when absent) when blocks.json has it (Map.ReadChunk).
 //   - te_below: the te fields come from the tile entity one block lower (the
 //     upper half of a two-block piece whose lower half holds it).
-//   - scatter: LOTR fallen-leaf quads (voxel.Scatter: "leaves", "xsize",
+//   - scatter: a mod's fallen-leaf quads (voxel.Scatter: "leaves", "xsize",
 //     "zsize" as [min, max], "shade"); a "none" shape becomes ShapeBoxes.
 //
 // Every other field (sounds, ...) is left to the game in Raw.

@@ -6,7 +6,7 @@ import (
 )
 
 // TestTexArrayGrid checks the layer allocation past the GPU's array layer
-// limit: Hobbiton needs 3236 physical layers on Metal's 2048.
+// limit: a large map region needs 3236 physical layers on Metal's 2048.
 func TestTexArrayGrid(t *testing.T) {
 	for _, c := range []struct{ layers, max, grid int }{
 		{64, 2048, 0}, {2048, 2048, 0}, {2049, 2048, 1}, {3236, 2048, 1}, {8192, 2048, 1}, {8193, 2048, 2}, {maxLayerCode + maxLayerCode/4 + 16, 2048, 2},

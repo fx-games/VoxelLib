@@ -14,13 +14,13 @@ const (
 	PrecipNone Precip = iota
 	PrecipRain
 	PrecipSnow
-	PrecipAsh  // LOTR: Mordor, Dagorlad, volcanoes
-	PrecipSand // LOTR: sandstorms
+	PrecipAsh  // a mod's ash fall (volcanic biomes)
+	PrecipSand // a mod's sandstorms
 	PrecipCount
 )
 
-// Weather is the falling rain and snow around the viewer, drawn like the
-// LOTR mod's LOTRWeatherRenderer (the 1.7 reference's renderRainSnow plus ash
+// Weather is the falling rain and snow around the viewer, drawn like a
+// mod's weather renderer (the 1.7 reference's renderRainSnow plus ash
 // and sand): one camera-facing strip per column within Radius, from the
 // precipitation height up to the viewer's feet + Radius.
 type Weather struct {
@@ -51,7 +51,7 @@ func (r *Renderer) DrawWeather(cam *Camera) {
 	}
 }
 
-// weatherPlane is LOTRWeatherRenderer's rainXCoords/rainYCoords: per
+// weatherPlane is the weather renderer's rainXCoords/rainYCoords: per
 // column offset (dx, dz) from the viewer, half the unit vector across the
 // line of sight (NaN on the viewer's own column, as in Java).
 func weatherPlane(dx, dz int) (float32, float32) {

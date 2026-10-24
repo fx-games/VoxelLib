@@ -3,9 +3,11 @@ package ui
 import (
 	"testing"
 	"time"
+
+	"github.com/memmaker/voxellib/resloc"
 )
 
-// The window's top-left as LOTRGuiNotificationDisplay.updateWindow places
+// The window's top-left as a mod's notification display (updateWindow) places
 // a 190x32 window on a 427 wide GUI, 3000 ms long, values worked by hand
 // from the reference arithmetic.
 func TestNotifications(t *testing.T) {
@@ -14,8 +16,8 @@ func TestNotifications(t *testing.T) {
 	rec := func(ctx *Context, x, y int) { got = append(got, [2]int{x, y}) }
 	t0 := time.Unix(1000, 0)
 	var q Notifications
-	q.Add(&Notification{Sheet: "minecraft:textures/gui/widgets.png", W: 190, H: 32, Duration: 3 * time.Second, Draw: rec}, t0)
-	q.Add(&Notification{Sheet: "minecraft:textures/gui/widgets.png", W: 190, H: 32, Duration: 6 * time.Second, Draw: rec}, t0)
+	q.Add(&Notification{Sheet: resloc.Default + ":textures/gui/widgets.png", W: 190, H: 32, Duration: 3 * time.Second, Draw: rec}, t0)
+	q.Add(&Notification{Sheet: resloc.Default + ":textures/gui/widgets.png", W: 190, H: 32, Duration: 6 * time.Second, Draw: rec}, t0)
 	for _, c := range []struct {
 		ms   int
 		want [][2]int

@@ -506,7 +506,7 @@ func (a *App) TopScreen() Screen {
 
 // Paused reports whether the world stands still: the reference isGamePaused,
 // the top screen's doesGuiPauseGame (a screen with a PausesGame method
-// that returns false, such as LOTR's map, lets the world run; any other
+// that returns false, such as a mod's map, lets the world run; any other
 // screen pauses).
 func (a *App) Paused() bool {
 	s := a.TopScreen()

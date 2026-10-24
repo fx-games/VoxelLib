@@ -246,7 +246,7 @@ func TestBoxNoShade(t *testing.T) {
 	}
 }
 
-// TestScatterBoxes: the first fallen leaf at 10,64,-3 (LOTR's
+// TestScatterBoxes: the first fallen leaf at 10,64,-3 (a mod's
 // renderFallenLeaves), from a Python transcription of java.util.Random.
 func TestScatterBoxes(t *testing.T) {
 	bs := scatterBoxes(&voxel.Scatter{Leaves: [2]int32{6, 10}, XSize: [2]int32{2, 6}, ZSize: [2]int32{2, 6}}, 10, 64, -3)

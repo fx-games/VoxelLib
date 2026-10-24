@@ -130,7 +130,7 @@ func (r *Shapeless) Result(*inventory.Grid) *inventory.Stack { return r.Out.Copy
 // Book is a list of recipes for one kind of crafting table, tried in order.
 type Book struct {
 	Recipes []Recipe
-	// NoRepair turns off the two-item repair combine (LOTR's faction tables
+	// NoRepair turns off the two-item repair combine (a mod's faction tables
 	// still have it; the vanilla table does).
 	NoRepair bool
 }

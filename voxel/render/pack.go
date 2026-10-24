@@ -11,7 +11,7 @@ import (
 )
 
 // Shader pack mode: a port of an OptiFine (1.7.10 HD U E7) GLSL pack,
-// Sildur's Vibrant with the LOTR time fix ("shaders fix lotr"). This file
+// Sildur's Vibrant with a half-speed day time fix. This file
 // holds the CPU side of OptiFine's Shaders class: the uniforms, the sun
 // and shadow matrices and the per-frame smoothing. The passes are in
 // pack_wgsl.go and pack_gpu.go.
@@ -98,9 +98,9 @@ var (
 	packDistB = float32((math.Exp(1.0) - math.Exp(0.05)) * packShadowDistance / 128)
 )
 
-// LotrTime is the pack's "int lotrTime = worldTime/2" with OptiFine's
+// PackTime is the pack's "int packTime = worldTime/2" with OptiFine's
 // worldTime uniform (getWorldTime() % 24000, as int).
-func LotrTime(worldTime int64) int32 { return int32(worldTime%24000) / 2 }
+func PackTime(worldTime int64) int32 { return int32(worldTime%24000) / 2 }
 
 // SunAngle is Shaders.sunAngle for a celestial angle.
 func SunAngle(ca float32) float32 {
@@ -180,7 +180,7 @@ type packUniforms struct {
 	Weather                 [4]float32 // rainStrength, wetness, near, far
 	Eye                     [4]float32 // nightVision, blindness, eyeBrightnessSmooth.xy
 	Eye2                    [4]float32 // eyeBrightness.xy, frameTime, celestialAngle
-	Ints                    [4]int32   // worldTime, isEyeInWater, frameCounter, lotrTime
+	Ints                    [4]int32   // worldTime, isEyeInWater, frameCounter, packTime
 }
 
 // update advances the smoothing state by dtMs (OptiFine diffSystemTime)
@@ -233,7 +233,7 @@ func (s *packState) update(f *PackFrame, cam [3]float64, view, proj mgl32.Mat4, 
 		Weather:    [4]float32{f.Rain, s.wetness, packNear, f.Far},
 		Eye:        [4]float32{f.NightVision, f.Blindness, float32(math.Round(float64(s.eyeFade[0]))), float32(math.Round(float64(s.eyeFade[1])))},
 		Eye2:       [4]float32{eb[0], eb[1], ft, f.CelestialAngle},
-		Ints:       [4]int32{int32(f.WorldTime % 24000), f.EyeInWater, s.frameCounter, LotrTime(f.WorldTime)},
+		Ints:       [4]int32{int32(f.WorldTime % 24000), f.EyeInWater, s.frameCounter, PackTime(f.WorldTime)},
 	}
 	s.prevMV, s.prevProj, s.prevCam = view, proj, cam
 	return u
