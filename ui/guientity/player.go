@@ -44,10 +44,24 @@ var armorParts = [4][]int{{0, 1}, {2, 3, 4}, {2, 5, 6}, {5, 6}} // Biped's part 
 var armorInflate = [4]float32{1, 1, 0.5, 1}
 
 // Armor is a piece of armour drawn over the Player's skin: Tex its layer
-// texture, Piece Helmet, Chest, Leggings or Boots.
+// texture, Piece Helmet, Chest, Leggings or Boots on the biped; or, with
+// Geo, its own cube geometry (an armour mod's model in modern part names:
+// head, hat, body, right_arm, left_arm, right_leg, left_leg roots, which
+// follow the biped's parts) drawn with Tex.
 type Armor struct {
 	Tex   *image.NRGBA
 	Piece int
+	Geo   *cuboid.Geometry
+}
+
+// bipedPart is the biped part each of a mesh's root parts follows.
+var bipedPart = map[string]int{"head": 0, "hat": 1, "body": 2, "right_arm": 3, "left_arm": 4, "right_leg": 5, "left_leg": 6}
+
+// mesh is a Geo armour's built model and pose.
+type mesh struct {
+	mdl   *model.Model
+	pose  *cuboid.Pose
+	world []mgl32.Mat4
 }
 
 // Player is the inventory screen's player (GuiInventory.func_147046_a):
@@ -57,12 +71,13 @@ type Player struct {
 	Skin  *image.NRGBA
 	Armor []Armor
 
-	geo   *cuboid.Geometry
-	mdl   *model.Model
-	pose  *cuboid.Pose
-	world []mgl32.Mat4
-	gt    Target
-	armor [4]*model.Model // the armour pieces' models, built when first worn
+	geo    *cuboid.Geometry
+	mdl    *model.Model
+	pose   *cuboid.Pose
+	world  []mgl32.Mat4
+	gt     Target
+	armor  [4]*model.Model // the armour pieces' models, built when first worn
+	meshes map[*cuboid.Geometry]*mesh
 }
 
 func (p *Player) Draw(ctx *ui.Context, x0, y0, mx, my int) {
@@ -78,6 +93,12 @@ func (p *Player) Draw(ctx *ui.Context, x0, y0, mx, my int) {
 	view, body := Matrices(float32(x), float32(y), 30, dx, dy)
 	head := [3]float32{mgl32.DegToRad(pitch), mgl32.DegToRad(yaw - yawOffset), 0}
 	p.pose.Parts[0].Rot, p.pose.Parts[1].Rot = head, head
+	p.pose.Parts[1].Hidden = false // the hair layer hides under a mesh helmet (it would poke through)
+	for _, a := range p.Armor {
+		if a.Geo != nil && a.Piece == Helmet {
+			p.pose.Parts[1].Hidden = true
+		}
+	}
 	p.world = p.pose.World(p.geo, p.world)
 	for i := range p.world {
 		p.world[i] = body.Mul4(p.world[i])
@@ -85,6 +106,12 @@ func (p *Player) Draw(ctx *ui.Context, x0, y0, mx, my int) {
 	white := [4]float32{1, 1, 1, 1}
 	ds := []Draw{{Model: p.mdl, Skin: p.mdl.SkinWorld(p.world, nil), Tex: p.Skin, Color: white}}
 	for _, a := range p.Armor {
+		if a.Geo != nil {
+			if d, ok := p.meshDraw(a, body); ok {
+				ds = append(ds, d)
+			}
+			continue
+		}
 		m := p.armor[a.Piece]
 		if m == nil {
 			g := biped(armorInflate[a.Piece])
@@ -95,4 +122,33 @@ func (p *Player) Draw(ctx *ui.Context, x0, y0, mx, my int) {
 		ds = append(ds, Draw{Model: m, Skin: m.SkinWorld(p.world, nil), Tex: a.Tex, Color: white})
 	}
 	p.gt.Draw(ctx, view, ds)
+}
+
+// meshDraw poses a Geo armour like the player (its root parts turn with
+// the biped's parts of the same name) under body and draws it with its
+// texture. A geometry that does not build draws nothing.
+func (p *Player) meshDraw(a Armor, body mgl32.Mat4) (Draw, bool) {
+	m := p.meshes[a.Geo]
+	if m == nil {
+		mdl, err := cuboid.Build(a.Geo, nil)
+		if err != nil {
+			return Draw{}, false
+		}
+		m = &mesh{mdl: mdl, pose: a.Geo.RestPose()}
+		if p.meshes == nil {
+			p.meshes = map[*cuboid.Geometry]*mesh{}
+		}
+		p.meshes[a.Geo] = m
+	}
+	m.pose.Root = p.pose.Root
+	for i, part := range a.Geo.Parts {
+		if bi, ok := bipedPart[part.Name]; ok && part.Parent < 0 {
+			m.pose.Parts[i].Rot = p.pose.Parts[bi].Rot
+		}
+	}
+	m.world = m.pose.World(a.Geo, m.world)
+	for i := range m.world {
+		m.world[i] = body.Mul4(m.world[i])
+	}
+	return Draw{Model: m.mdl, Skin: m.mdl.SkinWorld(m.world, nil), Tex: a.Tex, Color: [4]float32{1, 1, 1, 1}}, true
 }

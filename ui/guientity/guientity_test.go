@@ -77,3 +77,26 @@ func TestArmor(t *testing.T) {
 		t.Fatal("not ModelBiped(1)")
 	}
 }
+
+// TestMeshArmor expects a Geo armour's root parts to follow the biped's
+// parts of the same name, and its children to come along.
+func TestMeshArmor(t *testing.T) {
+	g := &cuboid.Geometry{Name: "helm", TexSize: [2]int{64, 32}, Render: []int{0}, Parts: []cuboid.Part{
+		{Name: "head", Parent: -1, Boxes: []cuboid.Box{{Pos: [3]float32{-4, -8, -4}, Size: [3]int{8, 8, 8}, Inflate: 0.9, TexSize: [2]float32{64, 32}}}},
+		{Name: "visor", Parent: 0, Pivot: [3]float32{0, -4, -4}, Rot: [3]float32{0.7, 0, 0}, Boxes: []cuboid.Box{{Size: [3]int{7, 5, 0}, TexSize: [2]float32{64, 32}}}},
+	}}
+	p := &Player{geo: Biped()}
+	p.pose = p.geo.RestPose()
+	p.pose.Parts[0].Rot = [3]float32{0.5, 0.25, 0}
+	d, ok := p.meshDraw(Armor{Geo: g}, mgl32.Ident4())
+	if !ok || len(d.Skin) != 2 {
+		t.Fatalf("mesh draw %v, %d skin matrices", ok, len(d.Skin))
+	}
+	m := p.meshes[g]
+	if m.pose.Parts[0].Rot != p.pose.Parts[0].Rot || m.pose.Parts[1].Rot != g.Parts[1].Rot {
+		t.Fatalf("mesh pose %v / %v", m.pose.Parts[0].Rot, m.pose.Parts[1].Rot)
+	}
+	if m.world[1] == m.world[0] || m.world[1] == (mgl32.Mat4{}) {
+		t.Fatal("the visor does not hang off the head")
+	}
+}
