@@ -1,6 +1,9 @@
 package actors
 
-import "testing"
+import (
+	"math"
+	"testing"
+)
 
 // TestOldAI: the pre-task AI keeps a far target and strikes a near one
 // only while it sees it (EntityMob.attackEntity).
@@ -27,5 +30,23 @@ func TestOldAI(t *testing.T) {
 	o.Body.X = 60.5
 	if m.fight(a); a.Target != o {
 		t.Fatal("dropped a far target")
+	}
+}
+
+// TestOldAIWalk: the pre-task chase pushes the speed times 0.1.
+func TestOldAIWalk(t *testing.T) {
+	m := NewManager(flat(40), nil, nil, 1)
+	a := New("a", "npc", 0.5, 1, 0.5)
+	o := New("o", "npc", 20.5, 1, 0.5)
+	a.Speed, a.Melee.Damage, a.OldAI = 0.95, 5, true
+	m.Add(a)
+	m.Add(o)
+	m.Keeps = func(x, y *Actor) bool { return x == a && y == o }
+	a.Target = o
+	for i := 0; i < 40 && a.Body.MoveSpeed == 0; i++ {
+		m.Tick()
+	}
+	if got, want := a.Body.MoveSpeed, 0.95*0.1/0.98; math.Abs(got-want) > 1e-9 {
+		t.Fatalf("push %v, want %v", got, want)
 	}
 }

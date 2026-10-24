@@ -284,7 +284,8 @@ type Actor struct {
 	// OldAI is the pre-task AI (EntityCreature.updateEntityActionState,
 	// EntityMob.attackEntity): the target is kept at any range while it
 	// lives, and a blow (every Melee.Cooldown) strikes only a seen target
-	// nearer than 2 whose box overlaps in height.
+	// nearer than 2 whose box overlaps in height; its walk pushes Speed
+	// times 0.1 (not Speed squared).
 	OldAI bool
 	// KnockOwn makes knockBack an override with the push KnockPush
 	// (vanilla 0.4): no KnockbackResist roll, a lift of 0.2+KnockPush/2,

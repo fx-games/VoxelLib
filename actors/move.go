@@ -325,6 +325,9 @@ func (m *Manager) moveTo(a *Actor, goal Vec, mul float64) bool {
 	// full input → 4.3 m/s.
 	s := c.moveSpeed() * mul
 	b.MoveSpeed = s * s / 0.98
+	if c.OldAI { // moveForward the attribute, moveFlying's factor getAIMoveSpeed 0.1
+		b.MoveSpeed = min(c.moveSpeed(), 1) * 0.1 / 0.98
+	}
 	n2 := &c.nav
 	n2.in = character.Input{Forward: fwd, Yaw: c.Yaw, Jump: jump}
 	// Stuck check every 20 ticks: no progress means a new plan, and a hop.
