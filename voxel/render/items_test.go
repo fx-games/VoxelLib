@@ -38,3 +38,12 @@ func TestFirstPersonItem(t *testing.T) {
 		t.Errorf("32 texel back face at %v, 16 texel at %v", b, a)
 	}
 }
+
+// TestFirstPersonEat: at the end of the use the item sits 0.6 right, 0.5
+// down of its rest, plus the bob |cos(0)*0.1|.
+func TestFirstPersonEat(t *testing.T) {
+	m := FirstPersonEat(0, 32, 1)
+	if x, y := m.Col(3)[0], m.Col(3)[1]; x < 0.59 || x > 0.61 || y > -0.39 || y < -0.41 {
+		t.Fatalf("end offset %v %v", x, y)
+	}
+}

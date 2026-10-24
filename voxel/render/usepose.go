@@ -34,3 +34,27 @@ func FirstPersonDraw(f10 float32) mgl32.Mat4 {
 		Mul4(mgl32.Scale3D(1, 1, 1+f11*0.2)).Mul4(mgl32.Translate3D(0, -0.5, 0)).
 		Mul4(mgl32.HomogRotate3DY(deg(50))).Mul4(mgl32.HomogRotate3DZ(deg(335)))
 }
+
+// FirstPersonEat is the eat and drink motion, in view space before
+// FirstPersonHold (in place of the swing offset), useCount ticks left of
+// maxUse at the partial tick: the item bobs |cos(f6/4*pi)*0.1| while the
+// last 80% of the use runs and swings to the mouth (0.6 right,
+// 0.5 down, turned 90 about Y, 10 about X, 30 about Z) at the start.
+func FirstPersonEat(useCount, maxUse int, partial float32) mgl32.Mat4 {
+	f6 := float32(useCount) - partial + 1
+	f7 := 1 - f6/float32(maxUse)
+	f8 := 1 - f7
+	f8 = f8 * f8 * f8
+	f8 = f8 * f8 * f8
+	f8 = f8 * f8 * f8
+	f9 := 1 - f8
+	bob := float32(0)
+	if f7 > 0.2 {
+		bob = float32(math.Abs(float64(float32(math.Cos(float64(f6/4*math.Pi))) * 0.1)))
+	}
+	return mgl32.Translate3D(0, bob, 0).
+		Mul4(mgl32.Translate3D(f9*0.6, -f9*0.5, 0)).
+		Mul4(mgl32.HomogRotate3DY(mgl32.DegToRad(f9 * 90))).
+		Mul4(mgl32.HomogRotate3DX(mgl32.DegToRad(f9 * 10))).
+		Mul4(mgl32.HomogRotate3DZ(mgl32.DegToRad(f9 * 30)))
+}

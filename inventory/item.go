@@ -53,12 +53,27 @@ type Armor struct {
 	Points int // damageReduceAmount
 }
 
-// Food is the ItemFood part of an item.
+// Food is the ItemFood part of an item: declared, the item is eaten
+// (survival.Eating) when used while hungry, or always if AlwaysEdible.
 type Food struct {
 	Hunger       int     // healAmount
 	Saturation   float32 // saturationModifier
 	AlwaysEdible bool
-	UseTicks     int // 0 means 32
+	UseTicks     int  // 0 means 32
+	Drink        bool // EnumAction.drink: the drink sound, no crumbs
+	// Effect is setPotionEffect's: given by chance once eaten.
+	Effect *FoodEffect
+	// Leaves is the item left in the hand once eaten (ItemSoup's bowl);
+	// nil: none.
+	Leaves *Item
+}
+
+// FoodEffect is ItemFood's potion effect: Potion for Seconds at Amp, with
+// probability Chance.
+type FoodEffect struct {
+	Potion       string
+	Seconds, Amp int
+	Chance       float32
 }
 
 // Ctx is passed to an item's hooks. User and Target are the game's entities.
