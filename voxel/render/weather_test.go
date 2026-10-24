@@ -75,3 +75,25 @@ func TestLightmapAt(t *testing.T) {
 		t.Errorf("clamped At = %v", got)
 	}
 }
+
+// TestBlockBoost: a fractional block light boost is filtered between the
+// lightmap's levels and capped at 15.
+func TestBlockBoost(t *testing.T) {
+	var r Renderer
+	for s := range 16 {
+		for b := range 16 {
+			r.light[s][b][0] = float32(b * 10)
+		}
+	}
+	for _, c := range []struct {
+		block uint8
+		want  float32
+	}{{3, 105}, {10, 150}, {0, 75}} {
+		if got := r.modelLight(drawParams{sky: 4, block: c.block, boost: 7.5})[0]; got != c.want {
+			t.Errorf("block %d: %v, want %v", c.block, got, c.want)
+		}
+	}
+	if got := r.modelLight(drawParams{sky: 4, block: 3})[0]; got != 30 {
+		t.Errorf("no boost: %v", got)
+	}
+}

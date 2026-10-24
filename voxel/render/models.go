@@ -50,6 +50,10 @@ type ModelInstance struct {
 	Scale      float32      // 0 means 1
 	Skin       []mgl32.Mat4 // from model.Animator.Skin; nil = bind pose
 	Sky, Block uint8        // light levels at the model
+	// BlockBoost raises the block light by a fraction of levels, filtered
+	// between the lightmap's levels like a lightmap coordinate, capped at
+	// 15 (e.g. 7.5 for a glowing sprite).
+	BlockBoost float32
 	// Tilt tips the whole model over by Tilt radians toward the world
 	// direction TiltYaw (yaw convention), pivoting at its origin, e.g. a
 	// falling corpse.
@@ -88,10 +92,19 @@ type drawParams struct {
 	blend          uint8
 	cutoff         float32
 	texture        int
+	boost          float32
 }
 
 func (in *ModelInstance) params() drawParams {
-	return drawParams{in.Sky, in.Block, in.Fade, in.Color, in.Overlay, in.Emissive, in.Blend, in.AlphaCutoff, in.Texture}
+	return drawParams{in.Sky, in.Block, in.Fade, in.Color, in.Overlay, in.Emissive, in.Blend, in.AlphaCutoff, in.Texture, in.BlockBoost}
+}
+
+// modelLight is the lightmap colour of an instance's light.
+func (r *Renderer) modelLight(d drawParams) mgl32.Vec3 {
+	if d.boost != 0 {
+		return r.light.At(float32(d.sky), min(float32(d.block)+d.boost, 15))
+	}
+	return r.LightColor(d.sky, d.block)
 }
 
 // TiltMatrix rotates the vertical toward world direction yaw by angle
