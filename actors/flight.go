@@ -19,6 +19,7 @@ type Flight struct {
 	Forward float64 // forward input while steering
 	Hover   float64 // vertical speed factor after each move while not Still
 	Still   bool    // sitting: all motion cleared after each move
+	AimY    float64 // the height in the target block flown to (0: its centre, 0.5)
 	Think   func(a *Actor)
 }
 
@@ -41,7 +42,11 @@ func (a *Actor) Steer() {
 		return
 	}
 	dx := float64(f.Target[0]) + 0.5 - b.X
-	dy := float64(f.Target[1]) + 0.5 - b.Y
+	aim := f.AimY
+	if aim == 0 {
+		aim = 0.5
+	}
+	dy := float64(f.Target[1]) + aim - b.Y
 	dz := float64(f.Target[2]) + 0.5 - b.Z
 	b.VX += (sign(dx)*f.Pull.X - b.VX) * f.Speed
 	b.VY += (sign(dy)*f.Pull.Y - b.VY) * f.Speed

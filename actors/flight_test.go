@@ -47,3 +47,17 @@ func TestFlightSteerAndHover(t *testing.T) {
 		t.Fatalf("still: v %v %v %v health %v", b.VX, b.VY, b.VZ, a.Health)
 	}
 }
+
+// TestFlightAimY: a body at y 5.3 climbs to block 5's centre but sinks
+// to an aim of 0.1 in it (the bat's).
+func TestFlightAimY(t *testing.T) {
+	for _, c := range []struct{ aim, sign float64 }{{0, 1}, {0.1, -1}} {
+		a := New("b", "bat", 0.5, 5.3, 0.5)
+		a.Fly = &Flight{Speed: 0.1, Pull: Vec{0.5, 0.7, 0.5}, AimY: c.aim}
+		a.Fly.SetTarget(0, 5, 0)
+		a.Steer()
+		if math.Abs(a.Body.VY-c.sign*0.07) > 1e-12 {
+			t.Fatalf("aim %v: vy %v", c.aim, a.Body.VY)
+		}
+	}
+}
