@@ -248,10 +248,14 @@ func (m *Manager) Tick() {
 		if a.revengeTicks > 0 {
 			a.revengeTicks--
 		}
-		if a.attackerTicks > 0 {
-			a.attackerTicks--
-		} else {
-			a.attacker = nil
+		// recentlyHit counts down after onDeathUpdate, so at the death's
+		// last tick OnRemove reads it as onDeathUpdate's deathTime 20 does
+		if a.Alive() || a.DeathTime+1 < DeathTicks {
+			if a.attackerTicks > 0 {
+				a.attackerTicks--
+			} else {
+				a.attacker = nil
+			}
 		}
 		if !a.Alive() {
 			a.DeathTime++

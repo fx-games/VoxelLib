@@ -424,7 +424,8 @@ func (a *Actor) SetRevenge(src *Actor) { a.revenge, a.revengeTicks = src, 100 }
 func (a *Actor) Attacker() *Actor { return a.attacker }
 
 // RecentlyHit is recentlyHit: 100 after a hurt by a player (or a source
-// AttackerClears accepts), counting down each tick.
+// AttackerClears accepts), counting down each tick; in OnRemove after a
+// death, its value at onDeathUpdate's deathTime 20 (the XP's).
 func (a *Actor) RecentlyHit() int { return a.attackerTicks }
 
 // SetRecentlyHit sets recentlyHit, leaving Attacker (a CustomNPC's hurt by
