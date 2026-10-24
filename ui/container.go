@@ -9,9 +9,12 @@ import (
 
 // ItemStack is what a slot shows; the game builds it from its item stacks.
 type ItemStack struct {
-	Icon      *Sprite // nil: empty slot
-	Count     int     // shown when > 1
-	CountText string  // shown instead of Count when set
+	Icon *Sprite // nil: empty slot
+	// Glint draws the enchantment glint over Icon (ItemOf, and the
+	// views over inventory stacks, set it from Stack.Glints).
+	Glint     bool
+	Count     int    // shown when > 1
+	CountText string // shown instead of Count when set
 	// Damage is the durability bar's fill (damage / max); shown when Bar.
 	Damage float64
 	Bar    bool
@@ -485,7 +488,7 @@ func DrawItem(ctx *Context, st ItemStack, x, y int) {
 		return
 	}
 	c := ctx.Canvas
-	st.Icon.DrawSized(c, float32(x), float32(y), 16, 16)
+	st.Sprite(ctx).DrawSized(c, float32(x), float32(y), 16, 16)
 	txt := st.CountText
 	if txt == "" && st.Count > 1 {
 		txt = strconv.Itoa(st.Count)

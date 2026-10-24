@@ -30,3 +30,27 @@ func TestGlintIcon(t *testing.T) {
 		t.Errorf("k=4 size %v", b)
 	}
 }
+
+// TestGlintPasses: a potion glints its overlay (pass 0) only, other
+// multi-pass icons every pass, each pass drawn over the last.
+func TestGlintPasses(t *testing.T) {
+	px := func(x int, c color.NRGBA) *image.NRGBA {
+		img := image.NewNRGBA(image.Rect(0, 0, 2, 1))
+		img.SetNRGBA(x, 0, c)
+		return img
+	}
+	overlay, bottle := px(0, color.NRGBA{0, 0, 0, 255}), px(1, color.NRGBA{0, 0, 0, 255})
+	glint := image.NewNRGBA(image.Rect(0, 0, 4, 4))
+	for i := range glint.Pix {
+		glint.Pix[i] = 255
+	}
+	lit := func(img *image.NRGBA, x int) bool { return img.NRGBAAt(x*glintScale, 0).R > 0 }
+	pot := glintPasses(glintSrc{[]*image.NRGBA{overlay, bottle}, true}, glint, 0)
+	if !lit(pot, 0) || lit(pot, 1) || pot.NRGBAAt(glintScale, 0).A != 255 {
+		t.Fatalf("potion: overlay lit %v, bottle lit %v", lit(pot, 0), lit(pot, 1))
+	}
+	other := glintPasses(glintSrc{[]*image.NRGBA{overlay, bottle}, false}, glint, 0)
+	if !lit(other, 0) || !lit(other, 1) {
+		t.Fatal("multi-pass: every pass glints")
+	}
+}

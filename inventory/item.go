@@ -98,6 +98,9 @@ type Item struct {
 	Tool        *Tool
 	Armor       *Armor
 	Food        *Food
+	// Glint: every stack of the item glints (Item.hasEffect always true,
+	// e.g. a nether star); see Stack.Glints.
+	Glint bool
 	// Blocks makes the item a blocker (a shield): used, it is raised.
 	Blocks *BlocksAttacks
 	// Weapon is the weapon component (axes disable blockers).

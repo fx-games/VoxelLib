@@ -3,8 +3,214 @@ package ui
 import (
 	"image"
 	"image/draw"
+	"log"
 	"math"
+	"strconv"
+	"sync"
+	"time"
+
+	"github.com/memmaker/voxellib/inventory"
 )
+
+// GlintTexture is the default glint texture's resource location
+// (RenderItem.RES_ITEM_GLINT), loaded from Context.Assets on first use.
+const GlintTexture = "textures/misc/enchanted_item_glint.png"
+
+// glintScale is a glinting copy's size over its icon's: the glint
+// changes within a GUI pixel at GUI scales up to 4.
+const glintScale = 4
+
+// glintState is a Context's slot glint: the texture, each icon's passes
+// and its glinting copy, redrawn when the clock moves.
+type glintState struct {
+	mu     sync.Mutex
+	tex    image.Image
+	tried  bool
+	images map[Texture]image.Image // SetTexture's images: a sprite's default passes
+	srcs   map[*Sprite]glintSrc
+	copies map[*Sprite]*glintCopy
+}
+
+// glintSrc is an icon's tinted passes; first: only pass 0 glints.
+type glintSrc struct {
+	passes []*image.NRGBA
+	first  bool
+}
+
+type glintCopy struct {
+	sp  *Sprite
+	loc string
+	ms  int64
+}
+
+// ItemOf is what a slot shows for s with icon: its count, and the glint
+// when s.Glints(). nil or an empty stack shows nothing.
+func ItemOf(s *inventory.Stack, icon *Sprite) ItemStack {
+	if s == nil || s.Item == nil || s.Count <= 0 {
+		return ItemStack{}
+	}
+	return ItemStack{Icon: icon, Count: s.Count, Glint: s.Glints()}
+}
+
+// withGlint adds s's glint to what a game's item func made of it.
+func withGlint(st ItemStack, s *inventory.Stack) ItemStack {
+	st.Glint = st.Glint || !st.Empty() && s.Glints()
+	return st
+}
+
+// Sprite is the icon as a slot draws it: glinting when Glint (DrawItem).
+func (s ItemStack) Sprite(ctx *Context) *Sprite {
+	if s.Glint && s.Icon != nil {
+		return ctx.glinted(s.Icon)
+	}
+	return s.Icon
+}
+
+// SetGlintTexture sets the slot glint's texture in place of GlintTexture.
+func (ctx *Context) SetGlintTexture(img image.Image) {
+	g := &ctx.glint
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.tex, g.tried = img, true
+}
+
+// GlintTexture is the slot glint's texture: SetGlintTexture's, else
+// GlintTexture from Assets (loaded once); nil without one.
+func (ctx *Context) GlintTexture() image.Image {
+	g := &ctx.glint
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return ctx.glintTexture()
+}
+
+// glintTexture is GlintTexture with ctx.glint.mu held.
+func (ctx *Context) glintTexture() image.Image {
+	g := &ctx.glint
+	if !g.tried {
+		g.tried = true
+		if ctx.Assets != nil {
+			img, err := loadImage(ctx.Assets, AssetPath(GlintTexture))
+			if err != nil {
+				log.Printf("ui: glint: %v", err)
+			} else {
+				g.tex = img
+			}
+		}
+	}
+	return g.tex
+}
+
+// SetGlintPasses gives sp's glint its passes, each drawn over the last and
+// glinting where it is (renderItemIntoGUI's renderEffect after each pass
+// with hasEffect(pass)); first: only pass 0 glints (a potion's overlay).
+// No passes: sp never glints (a 3D block icon). A sprite without passes
+// glints its SetTexture image, or not at all.
+func (ctx *Context) SetGlintPasses(sp *Sprite, passes []*image.NRGBA, first bool) {
+	g := &ctx.glint
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if g.srcs == nil {
+		g.srcs = map[*Sprite]glintSrc{}
+	}
+	g.srcs[sp] = glintSrc{passes, first}
+}
+
+// glinted is sp with the glint at the system time; sp itself without a
+// glint texture or passes.
+func (ctx *Context) glinted(sp *Sprite) *Sprite {
+	g := &ctx.glint
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if ctx.glintTexture() == nil {
+		return sp
+	}
+	src, ok := g.srcs[sp]
+	if !ok {
+		img := g.images[sp.Tex]
+		if img == nil {
+			return sp
+		}
+		src = glintSrc{passes: []*image.NRGBA{spriteImage(img, sp)}}
+		if g.srcs == nil {
+			g.srcs = map[*Sprite]glintSrc{}
+		}
+		g.srcs[sp] = src
+	}
+	if len(src.passes) == 0 {
+		return sp
+	}
+	ms := time.Now().UnixMilli()
+	c := g.copies[sp]
+	if c != nil && c.ms == ms {
+		return c.sp
+	}
+	out := glintPasses(src, g.tex, ms)
+	if c != nil {
+		c.ms = ms
+		if u, ok := c.sp.Tex.(interface{ Update(image.Image) bool }); ok && u.Update(out) {
+			return c.sp
+		}
+	}
+	if c == nil {
+		if g.copies == nil {
+			g.copies = map[*Sprite]*glintCopy{}
+		}
+		c = &glintCopy{sp: &Sprite{}, loc: "voxellib:glint/" + strconv.Itoa(len(g.copies)), ms: ms}
+		g.copies[sp] = c
+	}
+	t := ctx.setTexture(c.loc, out) // a canvas without Update: a new texture each time
+	w, h := t.Size()
+	*c.sp = Sprite{Tex: t, W: float32(w), H: float32(h), TW: float32(w), TH: float32(h)}
+	return c.sp
+}
+
+// spriteImage is sp's region of its texture's image.
+func spriteImage(img image.Image, sp *Sprite) *image.NRGBA {
+	b := img.Bounds()
+	tw, th := sp.sheet()
+	kx, ky := float32(b.Dx())/tw, float32(b.Dy())/th
+	r := image.Rect(int(sp.U*kx), int(sp.V*ky), int((sp.U+sp.W)*kx), int((sp.V+sp.H)*ky)).Add(b.Min)
+	out := image.NewNRGBA(image.Rect(0, 0, r.Dx(), r.Dy()))
+	draw.Draw(out, out.Rect, img, r.Min, draw.Src)
+	return out
+}
+
+// glintPasses is renderItemIntoGUI's multi-pass glint: each pass drawn
+// over the last, then glinting where it is (renderEffect after each pass
+// with hasEffect(pass); the glint's blend zeroes the alpha it read).
+func glintPasses(src glintSrc, glint image.Image, ms int64) *image.NRGBA {
+	if len(src.passes) == 1 {
+		return GlintIcon(src.passes[0], glint, ms, glintScale)
+	}
+	var out *image.NRGBA
+	for i, p := range src.passes {
+		var l *image.NRGBA
+		if i == 0 || !src.first {
+			l = GlintIcon(p, glint, ms, glintScale)
+		} else {
+			l = upscale(p, glintScale)
+		}
+		if out == nil {
+			out = l
+		} else {
+			draw.Draw(out, out.Rect, l, image.Point{}, draw.Over)
+		}
+	}
+	return out
+}
+
+// upscale is img k times larger, nearest.
+func upscale(img *image.NRGBA, k int) *image.NRGBA {
+	b := img.Rect
+	out := image.NewNRGBA(image.Rect(0, 0, b.Dx()*k, b.Dy()*k))
+	for y := range out.Rect.Dy() {
+		for x := range out.Rect.Dx() {
+			i := img.PixOffset(b.Min.X+x/k, b.Min.Y+y/k)
+			copy(out.Pix[out.PixOffset(x, y):], img.Pix[i:i+4])
+		}
+	}
+	return out
+}
 
 // GlintIcon is a slot icon with the enchantment glint at ms
 // (getSystemTime), the 1.7.10 reference's RenderItem.renderEffect over a

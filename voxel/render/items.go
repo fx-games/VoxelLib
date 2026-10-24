@@ -6,6 +6,7 @@ import (
 	"math"
 
 	"github.com/go-gl/mathgl/mgl32"
+	"github.com/memmaker/voxellib/inventory"
 	"github.com/memmaker/voxellib/items/extrude"
 )
 
@@ -19,17 +20,8 @@ type ItemRenderer struct {
 	ranges  [][2]int32 // first, count per item
 	texels  []int      // the larger sprite side per item (In2D)
 	noDepth bool       // the item being drawn writes no depth (ItemPose.NoDepth)
-	glint   bool       // the item being drawn glints (ItemPose.Glint)
-	glints  int        // ItemPose.Glints
+	glints  int        // the item being drawn's glint passes (ItemPose.GlintPasses)
 	unlit   bool       // ItemPose.Unlit
-}
-
-// glintPasses is how many glint passes the item being drawn gets.
-func (ir *ItemRenderer) glintPasses() int {
-	if ir.glint {
-		return ir.glints + 1
-	}
-	return ir.glints
 }
 
 // ItemInstance is one item to draw in the world.
@@ -39,7 +31,9 @@ type ItemInstance struct {
 	Yaw        float64 // spin around Y, radians
 	Scale      float32 // edge length in blocks (reference drops: 0.5)
 	Sky, Block uint8   // light levels 0..15 at the item
-	Glint      bool    // the enchantment glint (glint.go)
+	Glint      bool    // the enchantment glint (glint.go) without a Stack
+	// Stack is the stack drawn: it glints when Stack.Glints().
+	Stack *inventory.Stack
 }
 
 // NewItemRenderer extrudes every sprite and uploads them. names[i] is the
@@ -101,10 +95,10 @@ func (ir *ItemRenderer) DrawWorld(cam *Camera, items []ItemInstance) {
 		model := mgl32.Translate3D(float32(it.X-cam.X), float32(it.Y-cam.Y), float32(it.Z-cam.Z)).
 			Mul4(mgl32.HomogRotate3DY(float32(-it.Yaw))).
 			Mul4(mgl32.Scale3D(s, s, s))
-		ir.glint = it.Glint
+		ir.glints = ItemPose{Glint: it.Glint, Stack: it.Stack}.GlintPasses()
 		ir.draw(it.Item, vp, model, it.Sky, it.Block)
 	}
-	ir.glint = false
+	ir.glints = 0
 	ir.end()
 }
 
@@ -119,13 +113,26 @@ type ItemPose struct {
 	// NoDepth blends the item and writes no depth (glDepthMask(false), e.g.
 	// a sneaking ranger's equipment).
 	NoDepth bool
-	Glint   bool // the enchantment glint (glint.go)
-	// Glints adds glint passes over Glint's one (each the same two
+	// Stack is the stack drawn: it glints when Stack.Glints() (the
+	// enchantment glint, glint.go). Leave it nil where the reference draws
+	// no glint for the stack.
+	Stack *inventory.Stack
+	Glint bool // glints without a Stack
+	// Glints adds glint passes over the glint's one (each the same two
 	// scrolling layers, added up), e.g. a stronger glow.
 	Glints int
 	// Unlit draws without the directional shading (GL_LIGHTING off); the
 	// lightmap still applies.
 	Unlit bool
+}
+
+// GlintPasses is how many glint passes the pose draws: Glints, plus one
+// when Glint or Stack.Glints().
+func (it ItemPose) GlintPasses() int {
+	if it.Glint || it.Stack.Glints() {
+		return it.Glints + 1
+	}
+	return it.Glints
 }
 
 // DrawPosed draws items at arbitrary transforms. Call after Renderer.Render
@@ -138,10 +145,10 @@ func (ir *ItemRenderer) DrawPosed(cam *Camera, items []ItemPose) {
 	ir.begin(ir.r.CurrentFog())
 	for _, it := range items {
 		model := mgl32.Translate3D(float32(it.X-cam.X), float32(it.Y-cam.Y), float32(it.Z-cam.Z)).Mul4(it.M)
-		ir.noDepth, ir.glint, ir.glints, ir.unlit = it.NoDepth, it.Glint, it.Glints, it.Unlit
+		ir.noDepth, ir.glints, ir.unlit = it.NoDepth, it.GlintPasses(), it.Unlit
 		ir.draw(it.Item, vp, model, it.Sky, it.Block)
 	}
-	ir.noDepth, ir.glint, ir.glints, ir.unlit = false, false, 0, false
+	ir.noDepth, ir.glints, ir.unlit = false, 0, false
 	ir.end()
 }
 
@@ -231,7 +238,7 @@ func (ir *ItemRenderer) DrawHandModel(item string, aspect float32, model mgl32.M
 }
 
 // DrawHandItem is DrawHandModel for it.Item with it.M as the model and
-// its light and Glint (X, Y, Z and NoDepth are ignored).
+// its light and glint (X, Y, Z and NoDepth are ignored).
 func (ir *ItemRenderer) DrawHandItem(aspect float32, it ItemPose) {
 	if _, ok := ir.index[it.Item]; !ok {
 		return
@@ -239,9 +246,9 @@ func (ir *ItemRenderer) DrawHandItem(aspect float32, it ItemPose) {
 	clearHandDepth()
 	proj := mgl32.Perspective(mgl32.DegToRad(70), aspect, 0.05, 10)
 	ir.begin(Fog{Color: mgl32.Vec3{}, Start: 1e6, End: 2e6}) // no fog on the hand
-	ir.glint, ir.glints, ir.unlit = it.Glint, it.Glints, it.Unlit
+	ir.glints, ir.unlit = it.GlintPasses(), it.Unlit
 	ir.draw(it.Item, proj, it.M, it.Sky, it.Block)
-	ir.glint, ir.glints, ir.unlit = false, 0, false
+	ir.glints, ir.unlit = 0, false
 	ir.end()
 }
 

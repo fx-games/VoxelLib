@@ -2,6 +2,7 @@ package render
 
 import (
 	"image"
+	"log"
 	"math"
 	"time"
 
@@ -91,6 +92,25 @@ func (r *Renderer) SetGlintTexture(img image.Image) error {
 		wgpu.BindGroupEntry{Binding: 0, TextureView: g.tex.view},
 		wgpu.BindGroupEntry{Binding: 1, Sampler: g.samp})
 	return nil
+}
+
+// GlintTexture is the default glint texture's name in a TextureSource
+// (RenderItem.RES_ITEM_GLINT).
+const GlintTexture = "minecraft:misc/enchanted_item_glint"
+
+// loadGlint sets Opt.Glint, else the source's GlintTexture, as the glint
+// texture; with neither the one set before stays.
+func (r *Renderer) loadGlint() {
+	img := r.Opt.Glint
+	if img == nil && r.src != nil {
+		img, _ = r.src.Texture(GlintTexture)
+	}
+	if img == nil {
+		return
+	}
+	if err := r.SetGlintTexture(img); err != nil {
+		log.Printf("glint texture: %v", err)
+	}
 }
 
 // glintOn reports whether a glint pass can draw: a texture is set.

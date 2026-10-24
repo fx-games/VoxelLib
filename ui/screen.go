@@ -128,6 +128,7 @@ type Context struct {
 	SetClipboard func(string)
 
 	textures map[string]Texture
+	glint    glintState // the slot glint (glint.go)
 }
 
 // NewContext loads the font from assets and makes a context with a screen
@@ -182,7 +183,22 @@ func (ctx *Context) Tex(loc string) Texture {
 // SetTexture registers an image under a resource location (generated
 // images such as item icons or a rendered map).
 // A texture already registered there is released.
+// A slot glints its image (SetGlintPasses).
 func (ctx *Context) SetTexture(loc string, img image.Image) Texture {
+	old := ctx.textures[loc]
+	t := ctx.setTexture(loc, img)
+	g := &ctx.glint
+	g.mu.Lock()
+	if g.images == nil {
+		g.images = map[Texture]image.Image{}
+	}
+	delete(g.images, old)
+	g.images[t] = img
+	g.mu.Unlock()
+	return t
+}
+
+func (ctx *Context) setTexture(loc string, img image.Image) Texture {
 	release(ctx.textures[loc])
 	t := ctx.Canvas.NewTexture(img)
 	ctx.textures[loc] = t

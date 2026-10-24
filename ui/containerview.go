@@ -22,10 +22,13 @@ func (v *ContainerView) Slot(i int) ItemStack {
 	if i < 0 || i >= len(v.C.Slots) {
 		return ItemStack{}
 	}
-	return v.Item(v.C.Slots[i].Stack())
+	s := v.C.Slots[i].Stack()
+	return withGlint(v.Item(s), s)
 }
 
-func (v *ContainerView) Cursor() ItemStack { return v.Item(v.C.Player.Cursor) }
+func (v *ContainerView) Cursor() ItemStack {
+	return withGlint(v.Item(v.C.Player.Cursor), v.C.Player.Cursor)
+}
 
 func (v *ContainerView) Click(i, button int, shift bool) {
 	mode := inventory.Pickup

@@ -188,12 +188,12 @@ func (g *PlayerGUI) Draw(fbW, fbH, ww, wh int, partial float32) {
 	g.Ctx.Resize(ww, wh)
 	st := &g.HUD.State
 	for i := range st.Hotbar {
-		st.Hotbar[i] = g.Item(g.Player.Main[i])
+		st.Hotbar[i] = withGlint(g.Item(g.Player.Main[i]), g.Player.Main[i])
 	}
 	st.Selected = g.Player.Held
 	st.OffHand = ItemStack{}
 	if g.Player.OffSlot() >= 0 {
-		st.OffHand = g.Item(g.Player.Off)
+		st.OffHand = withGlint(g.Item(g.Player.Off), g.Player.Off)
 	}
 	g.HUD.Draw(g.Ctx, partial)
 	g.Ctx.Screens.Draw(g.In.X, g.In.Y, partial)

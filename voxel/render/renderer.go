@@ -33,6 +33,9 @@ type Options struct {
 	// Missing returns the placeholder texture; IsGreyscale decides tinting.
 	Missing     func(size int) image.Image
 	IsGreyscale func(image.Image) bool
+	// Glint is the enchantment glint texture New sets (SetGlintTexture);
+	// nil: the TextureSource's GlintTexture, if it has one.
+	Glint image.Image
 	// BlockTint colours tinted blocks by position and biome (mesh.Config).
 	BlockTint func(info *voxel.StateInfo, x, y, z int, biome func(x, z int) uint8) uint32
 	// RenderBlocksUV maps block textures like the 1.7 reference (mesh.Config).
@@ -302,6 +305,7 @@ func New(w *voxel.World, src TextureSource, opt Options) (*Renderer, error) {
 	}
 	r.start = time.Now()
 	r.reloadTextures()
+	r.loadGlint()
 	return r, nil
 }
 

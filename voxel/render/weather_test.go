@@ -105,8 +105,7 @@ func TestGlintPasses(t *testing.T) {
 		glints int
 		want   int
 	}{{false, 0, 0}, {true, 0, 1}, {false, 4, 4}, {true, 4, 5}} {
-		ir := ItemRenderer{glint: c.glint, glints: c.glints}
-		if got := ir.glintPasses(); got != c.want {
+		if got := (ItemPose{Glint: c.glint, Glints: c.glints}).GlintPasses(); got != c.want {
 			t.Errorf("%+v: %d", c, got)
 		}
 	}

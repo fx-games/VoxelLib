@@ -46,6 +46,9 @@ func New(a *app.App, assets fs.FS, lang *i18n.Catalog) (*UI, error) {
 	}
 	u.Ctx = ctx
 	ctx.InWorld = true
+	if ro := &a.Config.Engine.RenderOptions; ro.Glint == nil {
+		ro.Glint = ctx.GlintTexture() // the world's glint from the GUI packs
+	}
 	if a.Win != nil {
 		ctx.Clipboard = a.Win.GetClipboardString // the native clipboard (GLFW)
 		ctx.SetClipboard = a.Win.SetClipboardString

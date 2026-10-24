@@ -8,6 +8,7 @@ import (
 	"strconv"
 
 	"github.com/go-gl/mathgl/mgl32"
+	"github.com/memmaker/voxellib/inventory"
 	"github.com/memmaker/voxellib/model"
 )
 
@@ -86,8 +87,11 @@ type ModelInstance struct {
 	// AlphaCutoff discards texels with alpha at or below it (glAlphaFunc
 	// GL_GREATER); 0 means 0.5. Reference entities use 0.1.
 	AlphaCutoff float32
-	// Glint draws the enchantment glint over the model (glint.go) at
-	// GlintTicks, the entity's ticksExisted plus the partial tick.
+	// Stack is the stack the model shows (worn armour): it draws the
+	// enchantment glint over the model (glint.go) when Stack.Glints(); Glint
+	// does without a stack. The glint scrolls by GlintTicks, the entity's
+	// ticksExisted plus the partial tick.
+	Stack      *inventory.Stack
 	Glint      bool
 	GlintTicks float32
 	// UVOffset shifts the texture coordinates, wrapping around the
@@ -125,7 +129,7 @@ func (d drawParams) lightMode() float32 {
 }
 
 func (in *ModelInstance) params() drawParams {
-	d := drawParams{in.Sky, in.Block, in.Fade, in.Color, in.Overlay, in.Emissive, in.LightOnly, in.Blend, in.AlphaCutoff, in.Texture, in.BlockBoost, in.Glint, in.GlintTicks, in.UVOffset, 0}
+	d := drawParams{in.Sky, in.Block, in.Fade, in.Color, in.Overlay, in.Emissive, in.LightOnly, in.Blend, in.AlphaCutoff, in.Texture, in.BlockBoost, in.Glint || in.Stack.Glints(), in.GlintTicks, in.UVOffset, 0}
 	if in.UVOffset != ([2]float32{}) {
 		d.uvWrap = 1
 	}
