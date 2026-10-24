@@ -831,9 +831,17 @@ func (e *Engine) Render(cam *render.Camera) { e.Renderer.Render(cam) }
 // Block returns the state at a position.
 func (e *Engine) Block(x, y, z int) voxel.StateID { return e.World.Block(x, y, z) }
 
-// SetBlock changes a block and rebuilds the affected sections immediately on
-// the calling thread, so edits appear in the same frame (the reference does the
-// same for player-caused changes near the camera).
+// SetBlock changes a block for the player and rebuilds the affected sections
+// at once on the calling (render) thread, so the edit shows in the same frame:
+// the reference's "player affected" sections, which it compiles synchronously.
+//
+// Every other block change (doors, gates, NPCs, block ticks, a simulation tick
+// on its own goroutine) calls World.SetBlock instead. That is the one place
+// those changes reach the renderer: World.SetBlock marks the sections around
+// the block dirty (and relights), and the next Update takes them into e.dirty,
+// where dispatch hands them to the mesh workers nearest the viewer first and
+// inFlight/redo cover a section already being meshed. World.SetBlock touches
+// no engine or GPU state, so it is safe off the render thread.
 func (e *Engine) SetBlock(x, y, z int, id voxel.StateID) bool {
 	if !e.World.SetBlock(x, y, z, id) {
 		return false
