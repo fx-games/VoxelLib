@@ -268,6 +268,9 @@ func (p *Player) interact() {
 	}
 	if !ok {
 		p.Progress = 0
+		if attack && clicks[Attack] && a.Hooks.AttackMiss != nil {
+			a.Hooks.AttackMiss()
+		}
 		if use && a.Hooks.UseItem != nil && (clicks[Use] || p.useDelay == 0 && (a.Hooks.UsingItem == nil || !a.Hooks.UsingItem())) {
 			p.useDelay = 4
 			a.Hooks.UseItem()

@@ -161,6 +161,9 @@ type Hooks struct {
 	// it repeats every 4 ticks unless UsingItem reports a use in progress
 	// (the reference's right-click delay). Air use does not swing.
 	UseItem func() bool
+	// AttackMiss is an attack click at nothing (startAttack's miss: the
+	// game resets its attack strength there).
+	AttackMiss func()
 	// Status is appended to the window title.
 	Status func() string
 }
