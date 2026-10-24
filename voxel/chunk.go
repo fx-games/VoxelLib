@@ -11,6 +11,10 @@ type Section struct {
 	// nonAir counts non-air states; zero means the section can be skipped by
 	// the mesher and the renderer entirely (the reference's hasOnlyAir()).
 	nonAir int
+	// ticking counts the states of the chunk's tickFlags and tickBits has
+	// the bit SectionIndex set for each (nil while there are none).
+	ticking  int32
+	tickBits *[SectionVolume / 64]uint64
 }
 
 func NewSection() *Section {
@@ -72,6 +76,96 @@ type Chunk struct {
 	// writing.
 	version uint64
 	minY    int
+	// tickMask has bit i set when Sections[i] holds a state of tickFlags
+	// (nil before the first Ticking); SetRaw keeps both up to date.
+	tickMask  uint64
+	tickFlags *TickFlags
+}
+
+// TickFlags marks a set of states the chunks keep a count of, such as the
+// randomly ticking ones (NewTickFlags).
+type TickFlags struct {
+	f    []bool
+	root *TickFlags // the first table of a line of Grow, all counting alike
+}
+
+// NewTickFlags makes a table of the states whose f[id] is true; f must
+// not change afterwards (make a new table instead).
+func NewTickFlags(f []bool) *TickFlags {
+	t := &TickFlags{f: f}
+	t.root = t
+	return t
+}
+
+// Grow returns the table for f, which extends t's: the chunks' counts
+// carry over when the added states are all unmarked.
+func (t *TickFlags) Grow(f []bool) *TickFlags {
+	for _, v := range f[len(t.f):] {
+		if v {
+			return NewTickFlags(f)
+		}
+	}
+	return &TickFlags{f: f, root: t.root}
+}
+
+func (t *TickFlags) has(id StateID) bool { return int(id) < len(t.f) && t.f[id] }
+
+// Ticking returns the sections holding a state of t as a mask, bit i for
+// Sections[i] (the reference's ExtendedBlockStorage.getNeedsRandomTick,
+// tickRefCount > 0; the first 64 sections). The counts are made on the
+// first call with t and kept by SetRaw after that. Call it under the
+// world's read lock, from one goroutine.
+func (c *Chunk) Ticking(t *TickFlags) uint64 {
+	if c.tickFlags == t {
+		return c.tickMask
+	}
+	if c.tickFlags != nil && c.tickFlags.root == t.root {
+		c.tickFlags = t
+		return c.tickMask
+	}
+	c.tickFlags, c.tickMask = t, 0
+	var tmp [SectionVolume]StateID
+	for i, s := range c.Sections {
+		if s == nil {
+			continue
+		}
+		s.ticking, s.tickBits = 0, nil
+		if s.nonAir == 0 {
+			// all air
+		} else if s.Blocks.Bits() == 0 {
+			if t.has(s.Blocks.Get(0)) {
+				s.ticking = SectionVolume
+				s.tickBits = new([SectionVolume / 64]uint64)
+				for j := range s.tickBits {
+					s.tickBits[j] = ^uint64(0)
+				}
+			}
+		} else if s.Blocks.MayContain(t.has) {
+			s.Blocks.Unpack(&tmp)
+			for j, v := range tmp {
+				if t.has(v) {
+					if s.tickBits == nil {
+						s.tickBits = new([SectionVolume / 64]uint64)
+					}
+					s.ticking++
+					s.tickBits[j>>6] |= 1 << uint(j&63)
+				}
+			}
+		}
+		if s.ticking > 0 && i < 64 {
+			c.tickMask |= 1 << uint(i)
+		}
+	}
+	return c.tickMask
+}
+
+// SetSection replaces Sections[i] (the next Ticking counts afresh).
+func (c *Chunk) SetSection(i int, s *Section) { c.Sections[i], c.tickFlags = s, nil }
+
+// TickingAt reports whether the state at SectionIndex i of a section
+// in the last Ticking's mask is one of its states.
+func (s *Section) TickingAt(i int) bool {
+	return s.tickBits != nil && s.tickBits[i>>6]&(1<<uint(i&63)) != 0
 }
 
 var versions atomic.Uint64
@@ -117,11 +211,32 @@ func (c *Chunk) SetRaw(x, y, z int, id StateID) {
 	if s == nil {
 		return
 	}
-	old := s.Blocks.Set(SectionIndex(x, y, z), id)
+	j := SectionIndex(x, y, z)
+	old := s.Blocks.Set(j, id)
 	if old == Air && id != Air {
 		s.nonAir++
 	} else if old != Air && id == Air {
 		s.nonAir--
+	}
+	if t := c.tickFlags; t != nil {
+		if t.has(old) {
+			s.ticking--
+			s.tickBits[j>>6] &^= 1 << uint(j&63)
+		}
+		if t.has(id) {
+			if s.tickBits == nil {
+				s.tickBits = new([SectionVolume / 64]uint64)
+			}
+			s.ticking++
+			s.tickBits[j>>6] |= 1 << uint(j&63)
+		}
+		if i := uint(y-c.minY) >> 4; i < 64 {
+			if s.ticking > 0 {
+				c.tickMask |= 1 << i
+			} else {
+				c.tickMask &^= 1 << i
+			}
+		}
 	}
 }
 

@@ -6,6 +6,8 @@ package blocktick
 
 import (
 	"container/heap"
+	"math/bits"
+	"slices"
 
 	"github.com/memmaker/voxellib/voxel"
 )
@@ -39,6 +41,8 @@ type Ticks struct {
 	next    int // the index in due of the next tick to run
 	parked  map[voxel.ChunkPos][]*Entry
 	picks   []pick
+	flags   *voxel.TickFlags // Random as the chunks count it
+	nflags  int
 }
 
 type key struct {
@@ -46,10 +50,7 @@ type key struct {
 	block int32
 }
 
-type pick struct {
-	x, y, z int
-	id      voxel.StateID
-}
+type pick struct{ x, y, z int }
 
 // Entry is a scheduled tick (NextTickListEntry).
 type Entry struct {
@@ -173,9 +174,15 @@ func (t *Ticks) ChunkLoaded(c voxel.ChunkPos, now int64) {
 
 // RunRandom is the random block ticks of func_147456_g for the loaded
 // chunks within radius chunks of each centre (each chunk once): per
-// section that holds a randomly ticking state, RandomPerSection picks of
+// section that holds a randomly ticking state (Random only grows), RandomPerSection picks of
 // the updateLCG, each running the picked block's tick if it ticks randomly.
 func (t *Ticks) RunRandom(centres []voxel.ChunkPos, radius int) {
+	if t.flags == nil {
+		t.flags = voxel.NewTickFlags(slices.Clone(t.Random))
+	} else if len(t.Random) != t.nflags {
+		t.flags = t.flags.Grow(slices.Clone(t.Random))
+	}
+	t.nflags = len(t.Random)
 	seen := map[voxel.ChunkPos]bool{}
 	for _, c := range centres {
 		for dx := -radius; dx <= radius; dx++ {
@@ -207,17 +214,16 @@ func (t *Ticks) randomChunk(p voxel.ChunkPos) {
 	// changes blocks, and the picked positions do not depend on them.
 	t.picks = t.picks[:0]
 	x0, z0 := p.X<<4, p.Z<<4
-	for i, s := range c.Sections {
-		if s.IsEmpty() || !s.Blocks.MayContain(t.mayTick) {
-			continue
-		}
+	for m := c.Ticking(t.flags); m != 0; m &= m - 1 {
+		i := bits.TrailingZeros64(m)
+		s := c.Sections[i]
 		y0 := c.MinY() + i<<4
 		for range RandomPerSection {
 			t.LCG = t.LCG*3 + 1013904223
 			r := t.LCG >> 2
 			x, z, y := int(r&15), int(r>>8&15), int(r>>16&15)
-			if id := s.Blocks.Get(voxel.SectionIndex(x, y, z)); t.mayTick(id) {
-				t.picks = append(t.picks, pick{x0 + x, y0 + y, z0 + z, id})
+			if s.TickingAt(voxel.SectionIndex(x, y, z)) {
+				t.picks = append(t.picks, pick{x0 + x, y0 + y, z0 + z})
 			}
 		}
 	}

@@ -298,7 +298,7 @@ func (e *Engine) applyDelta(s *dimSrc, c *voxel.Chunk) {
 		sc, _ := it.(anvil.Compound)
 		i := sc.Int("Y") - e.World.MinSection()
 		if i >= 0 && i < len(c.Sections) && i < 64 {
-			c.Sections[i] = d.Sections[i]
+			c.SetSection(i, d.Sections[i])
 			c.Edited |= 1 << uint(i)
 		}
 	}
