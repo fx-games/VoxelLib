@@ -281,6 +281,11 @@ type Actor struct {
 	// it picks only a target it sees, and EntityAITarget.continueExecuting
 	// drops that one beyond AggroRange or unseen for over 60 ticks.
 	TargetSight bool
+	// OldAI is the pre-task AI (EntityCreature.updateEntityActionState,
+	// EntityMob.attackEntity): the target is kept at any range while it
+	// lives, and a blow (every Melee.Cooldown) strikes only a seen target
+	// nearer than 2 whose box overlaps in height.
+	OldAI bool
 	// KnockOwn makes knockBack an override with the push KnockPush
 	// (vanilla 0.4): no KnockbackResist roll, a lift of 0.2+KnockPush/2,
 	// nothing at all when KnockPush <= 0; a blow's push (addVelocity) is

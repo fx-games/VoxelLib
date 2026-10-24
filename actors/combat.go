@@ -23,7 +23,7 @@ func (m *Manager) fight(a *Actor) bool {
 	}
 	if t := a.Target; t != nil {
 		r := a.AggroRange * 1.5
-		if !t.Alive() || t.Pos().dist2(a.Pos()) > r*r ||
+		if !t.Alive() || !a.OldAI && t.Pos().dist2(a.Pos()) > r*r ||
 			(m.Factions.Sees(a, t) != Hostile && t != a.revenge && (m.Keeps == nil || !m.Keeps(a, t))) {
 			a.Target = nil
 		}
@@ -175,7 +175,12 @@ func (m *Manager) melee(a, t *Actor) {
 		m.stop(a)
 	}
 	m.face(a, t)
-	if d2 <= r2 && a.attackCool <= 0 && !a.Melee.Hold {
+	hit := d2 <= r2
+	if a.OldAI {
+		ab, tb := a.Box(), t.Box()
+		hit = d2 < 4 && tb.MaxY > ab.MinY && tb.MinY < ab.MaxY && m.sees(a, t)
+	}
+	if hit && a.attackCool <= 0 && !a.Melee.Hold {
 		a.attackCool = max(1, a.Melee.Cooldown)
 		dmg := a.Melee.Damage
 		if a.Melee.Bonus != nil {
