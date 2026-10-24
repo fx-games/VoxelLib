@@ -236,6 +236,9 @@ func (m *Manager) Tick() {
 				m.buck(a)
 				continue
 			}
+			if m.steering(a) {
+				continue
+			}
 		}
 		if a.Blocked {
 			a.nav.in = character.Input{}
@@ -258,6 +261,8 @@ func (m *Manager) Tick() {
 		if s := a.Mount; s != nil && a.Alive() {
 			if a.Controlled() {
 				in = m.rideInput(a)
+			} else if s.Steer != nil && s.Steer.running {
+				in = m.steerInput(a)
 			} else if s.Eating || s.rearing { // isMovementBlocked
 				in.Forward, in.Strafe, in.Jump = 0, 0, false
 			}

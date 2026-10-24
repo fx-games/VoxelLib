@@ -196,6 +196,7 @@ type MountStats struct {
 	Tame      bool   `json:"tame,omitempty"`
 	Temper    int    `json:"temper,omitempty"`
 	Saddled   bool   `json:"saddled,omitempty"`
+	Steer     *Steer `json:"-"`               // a lure-steered mount (the pig)
 	Owner     string `json:"owner,omitempty"` // the taming actor's ID
 	Eating    bool   `json:"eating,omitempty"`
 	// Graze reports whether the block under an idle horse is grass, where
