@@ -92,6 +92,9 @@ type Player struct {
 	SpawnX, SpawnY, SpawnZ float64
 	// Frozen: the chunk under the player isn't ready; the player waits.
 	Frozen bool
+	// Dead is set by the game while the player is dead (health 0): no
+	// view bob.
+	Dead bool
 	// Breaking is the block being broken and its progress 0..1 (for a
 	// crack overlay, see BreakStage); Progress 0 = none.
 	Breaking voxel.BlockPos
@@ -193,11 +196,12 @@ func (p *Player) tick() {
 		Jump:    in.Down(ActJump), Sneak: in.Down(ActSneak), Sprint: in.Down(ActSprint)}
 	ci.Using = a.Hooks.UsingItem != nil && a.Hooks.UsingItem()
 	if a.Hooks.Ride != nil && a.Hooks.Ride(ci) {
+		p.bobTick(a.Cam.Yaw, a.Cam.Pitch, false, true)
 		return
 	}
 	sneakEdge := p.OnGround && ci.Sneak // moveEntity's flag, from the last tick's onGround
 	p.Tick(a.Terrain, ci)
-	p.bobTick(a.Cam.Yaw, a.Cam.Pitch, sneakEdge)
+	p.bobTick(a.Cam.Yaw, a.Cam.Pitch, sneakEdge, false)
 	if !p.Flying && !sneakEdge { // canTriggerWalking, moveEntity's flag
 		x, y, z := int(math.Floor(p.X)), int(math.Floor(p.Y-0.20000000298023224)), int(math.Floor(p.Z))
 		if t := a.Terrain; t != nil && t.StepBelow != nil && t.StepBelow(x, y-1, z) {
@@ -447,23 +451,31 @@ func rayBox(ox, oy, oz, dx, dy, dz float64, b collide.AABB) (float64, bool) {
 // on the ground), EntityPlayer.onLivingUpdate's cameraYaw (horizontal
 // speed up to 0.1, 0 in the air) and cameraPitch (atan(-motionY*0.2)*15,
 // 0 on the ground), and EntityPlayerSP's renderArmYaw/Pitch, which follow
-// the look halfway each tick.
-// ponytail: riding and death are not seen here (both stop the bob in MC).
-func (p *Player) bobTick(yaw, pitch float64, sneakEdge bool) {
+// the look halfway each tick. Dead, both targets are 0. Riding
+// (updateRidden) there is no move and no motion, and after the update
+// cameraYaw is 0 (prevCameraYaw keeps the decayed value).
+func (p *Player) bobTick(yaw, pitch float64, sneakEdge, riding bool) {
 	p.prevWalk = p.walkDist
-	if !sneakEdge {
+	if !sneakEdge && !riding {
 		p.walkDist += math.Hypot(p.X-p.PrevX, p.Z-p.PrevZ) * 0.6
 	}
 	f := min(math.Hypot(p.VX, p.VZ), 0.1)
 	f1 := math.Atan(-p.VY*0.20000000298023224) * 15
-	if !p.OnGround {
+	if !p.OnGround || p.Dead {
 		f = 0
-	} else {
+	}
+	if p.OnGround || p.Dead {
 		f1 = 0
+	}
+	if riding {
+		f, f1 = 0, 0
 	}
 	p.prevBobYaw, p.prevBobPitch = p.bobYaw, p.bobPitch
 	p.bobYaw += (f - p.bobYaw) * 0.4
 	p.bobPitch += (f1 - p.bobPitch) * 0.8
+	if riding {
+		p.prevBobYaw, p.bobYaw = p.bobYaw, 0
+	}
 	if !p.armInit {
 		p.armYaw, p.armPitch, p.armInit = yaw, pitch, true
 	}

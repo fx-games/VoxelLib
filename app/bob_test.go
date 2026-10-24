@@ -15,7 +15,7 @@ func TestViewBob(t *testing.T) {
 	a := &App{}
 	p := &Player{Character: character.New(0, 64, 0), a: a}
 	p.PrevX, p.X, p.VX, p.OnGround = 0, 0.2, 0.2, true
-	p.bobTick(0, 0, false)
+	p.bobTick(0, 0, false, false)
 	if math.Abs(p.walkDist-0.12) > 1e-12 || math.Abs(p.bobYaw-0.04) > 1e-12 || p.bobPitch != 0 {
 		t.Fatalf("walk %v bobYaw %v bobPitch %v", p.walkDist, p.bobYaw, p.bobPitch)
 	}
@@ -30,12 +30,12 @@ func TestViewBob(t *testing.T) {
 	// Sneaking on the ground adds no distance; in the air cameraYaw decays
 	// (0.064 after the sneak tick) and cameraPitch follows atan(-motionY*0.2)*15.
 	p.PrevX, p.X = 0.2, 0.4
-	p.bobTick(1, 0, true)
+	p.bobTick(1, 0, true, false)
 	if math.Abs(p.walkDist-0.12) > 1e-12 || math.Abs(p.armYaw-0.5) > 1e-12 {
 		t.Fatalf("sneak walk %v armYaw %v", p.walkDist, p.armYaw)
 	}
 	p.OnGround, p.VY = false, -0.5
-	p.bobTick(1, 0, false)
+	p.bobTick(1, 0, false, false)
 	want := math.Atan(0.1*1.0000000149011612) * 15 * 0.8
 	if math.Abs(p.bobPitch-want) > 1e-9 || math.Abs(p.bobYaw-0.064*0.6) > 1e-12 {
 		t.Errorf("air bobPitch %v want %v, bobYaw %v", p.bobPitch, want, p.bobYaw)
@@ -46,5 +46,23 @@ func TestViewBob(t *testing.T) {
 	v := p.HandPose(1).View
 	if w := mgl32.HomogRotate3DY(0.025); !v.ApproxEqualThreshold(w, 1e-6) {
 		t.Errorf("arm lag %v, want %v", v, w)
+	}
+}
+
+// TestViewBobRideDead: riding, the walk stands, cameraYaw ends the tick
+// at 0 with the decayed value as prev and cameraPitch decays to 0; dead
+// on the ground, cameraYaw decays though the player moves.
+func TestViewBobRideDead(t *testing.T) {
+	p := &Player{Character: character.New(0, 64, 0), a: &App{}}
+	p.walkDist, p.bobYaw, p.bobPitch = 1, 0.1, 2
+	p.PrevX, p.X, p.VX, p.VY, p.OnGround = 0, 0.2, 0.2, -0.5, false
+	p.bobTick(0, 0, false, true)
+	if p.walkDist != 1 || p.prevWalk != 1 || p.bobYaw != 0 || math.Abs(p.prevBobYaw-0.06) > 1e-12 || math.Abs(p.bobPitch-0.4) > 1e-12 {
+		t.Fatalf("riding: walk %v bobYaw %v prev %v pitch %v", p.walkDist, p.bobYaw, p.prevBobYaw, p.bobPitch)
+	}
+	p.bobYaw, p.OnGround, p.Dead = 0.1, true, true
+	p.bobTick(0, 0, false, false)
+	if math.Abs(p.bobYaw-0.06) > 1e-12 {
+		t.Fatalf("dead bobYaw %v", p.bobYaw)
 	}
 }
