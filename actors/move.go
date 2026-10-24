@@ -69,7 +69,7 @@ func (m *Manager) setGraph(g *nav.Graph, a *Actor) {
 		}
 	}
 	g.W, g.Door, g.Water, g.Dry, g.Cost = m.W, nil, nil, nil, m.costFn
-	g.Size, g.Closest = nav.SizeOf(a.Body.Width, a.Body.Height), true
+	g.Size, g.Closest, g.Range = nav.SizeOf(a.Body.Width, a.Body.Height), true, 0
 	m.half = a.Body.Width / 2
 	if a.OpensDoors || a.CNPC != nil && a.CNPC.DoorInteract == 0 && m.Doors != nil { // setBreakDoors
 		g.Door = m.doorFn
@@ -100,8 +100,12 @@ func (m *Manager) start(g *nav.Graph, v Vec) nav.Pos {
 // PathEntity.isDestinationSame(goal): a path from a toward goal's cell
 // (it heads for the nearest cell when goal is out of reach) whose last
 // point is in goal's column, (int) x and z as the reference casts them.
+// The search keeps within AggroRange (followRange) of goal, as PathFinder
+// does within getPathSearchRange.
 func (m *Manager) PathEnds(a *Actor, goal Vec) bool {
 	g := m.graphFor(a)
+	g.Range = float32(a.AggroRange)
+	defer func() { g.Range = 0 }()
 	to := nav.Pos{X: int(math.Floor(goal.X)), Y: int(goal.Y), Z: int(math.Floor(goal.Z))}
 	path, ok := g.Path(m.start(g, a.Pos()), to, maxNodes)
 	if !ok {

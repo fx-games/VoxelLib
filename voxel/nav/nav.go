@@ -6,7 +6,10 @@
 // author's TerminalAssassin geometry package.
 package nav
 
-import "container/heap"
+import (
+	"container/heap"
+	"math"
+)
 
 // World reports whether a cell blocks movement.
 type World interface{ Solid(x, y, z int) bool }
@@ -48,6 +51,9 @@ type Graph struct {
 	// expanded cell nearest to it instead of none (PathFinder.addToPath
 	// returns the closest point), unless that cell is the start.
 	Closest bool
+	// Range, if > 0, is PathFinder's search range: a cell is entered only
+	// while nearer than this to the goal (func_75860_b's distanceTo check).
+	Range float32
 
 	// A search's nodes: slab chunks reused from search to search (used
 	// of them taken), found by the cache window's index or, outside it,
@@ -325,6 +331,12 @@ func abs(a int) int {
 	return a
 }
 
+// dist is PathPoint.distanceTo, in float32 as the reference has it.
+func dist(a, b Pos) float32 {
+	x, y, z := float32(b.X-a.X), float32(b.Y-a.Y), float32(b.Z-a.Z)
+	return float32(math.Sqrt(float64(x*x + y*y + z*z)))
+}
+
 func h(a, b Pos) int {
 	dx, dz := abs(a.X-b.X), abs(a.Z-b.Z)
 	mn, mx := dx, dz
@@ -368,7 +380,7 @@ func (g *Graph) Path(from, to Pos, maxNodes int) ([]Pos, bool) {
 	if !g.Begin(from, to, maxNodes) {
 		return nil, false
 	}
-	path, _ := g.Step(g.maxNodes)
+	path, _ := g.Step(g.maxNodes + 1) // the last one reports the budget spent
 	return path, path != nil
 }
 
@@ -439,6 +451,9 @@ func (g *Graph) Step(budget int) (path []Pos, done bool) {
 		cur.closed = true
 		ns, walk := g.neighbors(cur.pos, buf[:0])
 		for i, np := range ns {
+			if g.Range > 0 && dist(np, to) >= g.Range {
+				continue
+			}
 			n := g.get(np)
 			if n.closed {
 				continue

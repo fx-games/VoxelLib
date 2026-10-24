@@ -20,8 +20,8 @@ import (
 // or a higher priority shares a mutex bit with it, and stops a running
 // one of a lower priority that does.
 // ponytail: no Surround (EntityAIOrbitTarget) or LeapType 2
-// (EntityAIPounceTarget); distances are from the feet (a player's posY is
-// its eyes); the paths the tasks set are not asked to end at their goal.
+// (EntityAIPounceTarget). Distances are from the feet, the server's posY
+// (EntityPlayerMP's yOffset is 0).
 type CNPCAI struct {
 	OnAttack  int
 	Tactic    int     // TacticalVariant, EnumNavType ordinal
@@ -557,7 +557,7 @@ func (m *Manager) shelterShould(a *Actor) (Vec, bool) {
 // within the aggro range if the target is a player, else the first of the
 // target's kind within it (3 up and down); a spot 16 away from it, not
 // nearer to it; HitNRun only once hurt since the last time it was far or
-// near (melee) or once a burst was shot.
+// near (melee) or once a burst was shot; and a path that ends there.
 func (m *Manager) avoidShould(a *Actor) bool {
 	st, c, t := &a.cn, a.CNPC, a.Target
 	if t == nil {
@@ -591,7 +591,7 @@ func (m *Manager) avoidShould(a *Actor) bool {
 	} else {
 		hold = c.OnAttack == 0 && !a.rs.fired
 	}
-	if !ok || o.Pos().dist2(p) < o.Pos().dist2(a.Pos()) || c.Tactic == navHitNRun && hold {
+	if !ok || o.Pos().dist2(p) < o.Pos().dist2(a.Pos()) || c.Tactic == navHitNRun && hold || !m.PathEnds(a, p) {
 		return false
 	}
 	st.t, st.goal = o, p
