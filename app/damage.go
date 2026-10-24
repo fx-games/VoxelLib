@@ -16,17 +16,77 @@ type damageOverlay struct {
 	mesher *mesh.Mesher
 }
 
+// crack is another breaker's DestroyBlockProgress.
+type crack struct {
+	pos   voxel.BlockPos
+	stage int
+	tick  int // set at (DestroyBlockProgress.createdAtCloudUpdateTick)
+	d     damageOverlay
+}
+
+// DestroyBlockPartially shows breaker id's cracks at stage 0..9 on b; any
+// other stage clears them (RenderGlobal.destroyBlockInWorldPartially). The
+// player's own cracks come from Player.BreakStage instead.
+func (a *App) DestroyBlockPartially(id int, b voxel.BlockPos, stage int) {
+	if stage < 0 || stage >= 10 {
+		if c := a.cracks[id]; c != nil {
+			c.d.mesh.Delete()
+			delete(a.cracks, id)
+		}
+		return
+	}
+	c := a.cracks[id]
+	if c == nil {
+		if a.cracks == nil {
+			a.cracks = map[int]*crack{}
+		}
+		c = &crack{}
+		a.cracks[id] = c
+	}
+	c.pos, c.stage, c.tick = b, stage, a.Tick
+}
+
+// expireCracks drops cracks not renewed for 400 ticks, checked every 20
+// (RenderGlobal.updateClouds).
+func (a *App) expireCracks() {
+	if a.Tick%20 != 0 {
+		return
+	}
+	for id, c := range a.cracks {
+		if a.Tick-c.tick > 400 {
+			c.d.mesh.Delete()
+			delete(a.cracks, id)
+		}
+	}
+}
+
 // drawDamage draws the cracks on the block the player is breaking
-// (EntityRenderer.renderWorld "destroyProgress", after the selection box).
-// The game sets the textures with Renderer.SetDamageTextures.
-func (a *App) drawDamage() {
-	p, d := a.Player, &a.damage
+// (EntityRenderer.renderWorld "destroyProgress", after the selection box)
+// and the other breakers' (RenderGlobal.drawBlockDamageTexture: dropped
+// past 32 blocks from the player). The game sets the textures with
+// Renderer.SetDamageTextures.
+func (a *App) drawDamage(alpha float64) {
+	p := a.Player
 	stage, b := p.BreakStage(), p.Breaking
 	if c := a.Config.Debug.Crack; c > 0 {
 		if h, ent, ok := a.Target(); ok && ent == nil {
 			stage, b = min(c, 10)-1, h.Block
 		}
 	}
+	a.drawCrack(&a.damage, b, stage)
+	px, py, pz := p.Lerp(alpha)
+	for id, c := range a.cracks {
+		dx, dy, dz := float64(c.pos.X)-px, float64(c.pos.Y)-py, float64(c.pos.Z)-pz
+		if dx*dx+dy*dy+dz*dz > 1024 {
+			c.d.mesh.Delete()
+			delete(a.cracks, id)
+			continue
+		}
+		a.drawCrack(&c.d, c.pos, c.stage)
+	}
+}
+
+func (a *App) drawCrack(d *damageOverlay, b voxel.BlockPos, stage int) {
 	if stage < 0 {
 		return
 	}

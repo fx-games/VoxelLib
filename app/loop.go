@@ -46,6 +46,7 @@ func (a *App) tick() {
 		return
 	}
 	a.Tick++
+	a.expireCracks()
 	a.Player.tick()
 	a.Entities.tick()
 	if a.Hooks.Tick != nil {
@@ -172,7 +173,7 @@ func (a *App) loop() {
 				a.Eng.Renderer.DrawBlockOutline(&a.Cam, h.Block.X, h.Block.Y, h.Block.Z)
 			}
 		}
-		a.drawDamage()
+		a.drawDamage(alpha)
 		a.drawEntities(alpha)
 		if a.Hooks.Draw != nil {
 			a.Hooks.Draw(alpha)

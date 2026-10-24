@@ -192,6 +192,7 @@ type App struct {
 	sessionStart  time.Time
 	readyLogged   bool
 	damage        damageOverlay
+	cracks        map[int]*crack // DestroyBlockPartially, by breaker id
 }
 
 // New opens the window and the GPU. Call it on the main thread (lock it in
