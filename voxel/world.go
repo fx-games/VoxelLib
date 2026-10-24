@@ -343,13 +343,14 @@ func (w *World) PrecipitationHeight(x, z int) int {
 		return int(v) - 1 + w.MinY
 	}
 	h := w.MinY
+	stops := func(id StateID) bool { i := &t[id]; return i.Collides || i.Shape == ShapeLiquid }
 	for y := w.MaxY() - 1; y >= w.MinY; y-- {
 		s := c.Section(y)
-		if s.IsEmpty() {
+		if s.IsEmpty() || y&15 == 15 && !s.Blocks.MayContain(stops) {
 			y &^= 15 // skip to the section bottom
 			continue
 		}
-		if i := &t[s.Blocks.Get(SectionIndex(x&15, y, z&15))]; i.Collides || i.Shape == ShapeLiquid {
+		if stops(s.Blocks.Get(SectionIndex(x&15, y, z&15))) {
 			h = y + 1
 			break
 		}
