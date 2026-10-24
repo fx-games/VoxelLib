@@ -290,6 +290,10 @@ func (m *Manager) Tick() {
 			}
 			continue
 		}
+		if a.Move != nil {
+			a.Move(a)
+			continue
+		}
 		in := a.nav.in
 		a.Body.StepHeight, a.Body.AirAccel = 0, 0
 		if s := a.Mount; s != nil && a.Alive() {

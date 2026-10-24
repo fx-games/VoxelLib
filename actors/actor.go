@@ -311,6 +311,9 @@ type Actor struct {
 	// first and returns the amount to apply (< 0: refused, as an override
 	// returning false; 0: still a Blow, as super.attackEntityFrom(src, 0)).
 	Ward func(a, src *Actor, amount float64) float64
+	// Move, if set, moves the actor each tick instead of the living
+	// physics (a non-living entity with its own onUpdate motion).
+	Move func(a *Actor)
 	// OnDamage, if set, is a damageEntity override: it runs once the
 	// health is lowered, before OnHurt and the death check, with the
 	// amount before armour; it may raise Health again to cheat death.
