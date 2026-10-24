@@ -82,6 +82,9 @@ type Chunk struct {
 	tickFlags *TickFlags
 	// tickNew is set when the chunk holds states past the end of tickFlags.
 	tickNew bool
+	// precip caches PrecipitationHeight per column (z<<4|x) as the height
+	// - minY + 1, 0 unknown; SetRaw and SetSection forget it.
+	precip atomic.Pointer[[256]atomic.Int32]
 }
 
 // TickFlags marks a set of states the chunks keep a count of, such as the
@@ -173,7 +176,10 @@ func (c *Chunk) Ticking(t *TickFlags) uint64 {
 }
 
 // SetSection replaces Sections[i] (the next Ticking counts afresh).
-func (c *Chunk) SetSection(i int, s *Section) { c.Sections[i], c.tickFlags = s, nil }
+func (c *Chunk) SetSection(i int, s *Section) {
+	c.Sections[i], c.tickFlags = s, nil
+	c.precip.Store(nil)
+}
 
 // TickingAt reports whether the state at SectionIndex i of a section
 // in the last Ticking's mask is one of its states.
@@ -226,6 +232,9 @@ func (c *Chunk) SetRaw(x, y, z int, id StateID) {
 	}
 	j := SectionIndex(x, y, z)
 	old := s.Blocks.Set(j, id)
+	if p := c.precip.Load(); p != nil {
+		p[(z&15)<<4|x&15].Store(0)
+	}
 	if old == Air && id != Air {
 		s.nonAir++
 	} else if old != Air && id == Air {

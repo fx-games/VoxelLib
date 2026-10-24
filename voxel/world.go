@@ -331,6 +331,18 @@ func (w *World) PrecipitationHeight(x, z int) int {
 	if c == nil {
 		return w.MinY
 	}
+	p := c.precip.Load()
+	if p == nil {
+		p = new([256]atomic.Int32)
+		if !c.precip.CompareAndSwap(nil, p) {
+			p = c.precip.Load()
+		}
+	}
+	col := &p[(z&15)<<4|x&15]
+	if v := col.Load(); v != 0 {
+		return int(v) - 1 + w.MinY
+	}
+	h := w.MinY
 	for y := w.MaxY() - 1; y >= w.MinY; y-- {
 		s := c.Section(y)
 		if s.IsEmpty() {
@@ -338,8 +350,10 @@ func (w *World) PrecipitationHeight(x, z int) int {
 			continue
 		}
 		if i := &t[s.Blocks.Get(SectionIndex(x&15, y, z&15))]; i.Collides || i.Shape == ShapeLiquid {
-			return y + 1
+			h = y + 1
+			break
 		}
 	}
-	return w.MinY
+	col.Store(int32(h - w.MinY + 1))
+	return h
 }

@@ -147,3 +147,26 @@ func TestVersion(t *testing.T) {
 		t.Fatal("light pass kept the neighbour's version")
 	}
 }
+
+// TestPrecipitationHeightCache: the cached height follows SetBlock and
+// SetSection.
+func TestPrecipitationHeightCache(t *testing.T) {
+	w, stone := flatWorld(t)
+	if h := w.PrecipitationHeight(3, 3); h != 64 {
+		t.Fatalf("flat: %d, want 64", h)
+	}
+	w.SetBlock(3, 70, 3, stone)
+	if h := w.PrecipitationHeight(3, 3); h != 71 {
+		t.Fatalf("after a block at 70: %d, want 71", h)
+	}
+	w.SetBlock(3, 70, 3, Air)
+	if h, o := w.PrecipitationHeight(3, 3), w.PrecipitationHeight(4, 3); h != 64 || o != 64 {
+		t.Fatalf("after clearing it: %d (neighbour %d), want 64", h, o)
+	}
+	c := w.Chunk(ChunkPos{0, 0})
+	c.SetSection(len(c.Sections)-1, NewSection())
+	c.SetRaw(3, 319, 3, stone)
+	if h := w.PrecipitationHeight(3, 3); h != 320 {
+		t.Fatalf("after SetRaw at the top: %d, want 320", h)
+	}
+}
