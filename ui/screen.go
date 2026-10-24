@@ -78,6 +78,14 @@ func (ctx *Context) ClipboardText() string {
 	return ctx.Clipboard()
 }
 
+// SetClipboardText is GuiScreen.setClipboardString: puts s on the platform
+// clipboard; a no-op without one.
+func (ctx *Context) SetClipboardText(s string) {
+	if ctx.SetClipboard != nil {
+		ctx.SetClipboard(s)
+	}
+}
+
 // Screen is one GUI screen (GuiScreen): Init lays it out for ctx.W x ctx.H
 // (on open, on return to it and on resize), Update runs at 20 Hz, Draw
 // draws it, Input handles an event (true: consumed).
@@ -113,6 +121,8 @@ type Context struct {
 	Screens *Manager
 	// Clipboard reads the platform clipboard's text; nil: none.
 	Clipboard func() string
+	// SetClipboard writes the platform clipboard's text; nil: none.
+	SetClipboard func(string)
 
 	textures map[string]Texture
 }
