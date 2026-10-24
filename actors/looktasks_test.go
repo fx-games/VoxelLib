@@ -97,3 +97,35 @@ func TestFlierLooks(t *testing.T) {
 		t.Error("idle look dropped while flying")
 	}
 }
+
+// TestLookHeld: a held look bit stops the running watch and keeps it from
+// starting again until released.
+func TestLookHeld(t *testing.T) {
+	m := NewManager(flat(16), nil, nil, 1)
+	p := New("p", "player", 4.5, 1, 0.5)
+	p.Player = true
+	h := New("h", "npc", 0.5, 1, 0.5)
+	h.Brain = Brain{Mode: Stand, Home: h.Pos(), Face: 0}
+	h.Looks = []LookTask{{Priority: 12, Kind: LookWatch2, Dist: 8, Chance: 1}}
+	m.Add(p)
+	m.Add(h)
+	for range 3 {
+		m.Tick()
+	}
+	if !h.Watching() {
+		t.Fatal("not watching")
+	}
+	h.LookHeld = true
+	for range 6 {
+		if m.Tick(); h.Watching() {
+			t.Fatal("watching while held")
+		}
+	}
+	h.LookHeld = false
+	for range 3 {
+		m.Tick()
+	}
+	if !h.Watching() {
+		t.Fatal("not watching after release")
+	}
+}

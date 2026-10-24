@@ -106,7 +106,7 @@ func (m *Manager) lookTasks(a *Actor, busy, moving bool) { m.lookRun(a, busy, mo
 func (m *Manager) lookRun(a *Actor, busy, gate, moving bool) {
 	l := &a.lt
 	stop := func() { *l = lookRun{ran: l.ran, busy: l.busy} }
-	if busy {
+	if busy || a.LookHeld {
 		stop()
 		return
 	}

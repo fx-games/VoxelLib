@@ -244,7 +244,11 @@ type Actor struct {
 	Yaw, Pitch, HeadYaw float64 // radians, as character.Input
 	// Looks are the mob's look tasks (looktasks.go); empty: the default
 	// idle look.
-	Looks                []LookTask
+	Looks []LookTask
+	// LookHeld: a game-run task sharing the look mutex bit, of a higher
+	// priority than all of Looks, is running; the look tasks stop and do
+	// not start.
+	LookHeld             bool
 	PrevYaw, PrevHeadYaw float64
 	Player               bool // body driven by the game (input), not by a brain
 	Sprinting            bool // set by the game: a sprinting player (+1 knockback), a charging mount (speed ×1.3)
