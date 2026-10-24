@@ -114,7 +114,9 @@ func (m *Manager) pickTarget(a *Actor) *Actor {
 			}
 		}
 	}
-	a.picked = m.nearestHostile(a, a.AggroRange)
+	if t := m.nearestHostile(a, a.AggroRange); t != nil {
+		a.SetPicked(t)
+	}
 	return a.picked
 }
 
@@ -131,11 +133,32 @@ func (m *Manager) nearestHostile(a *Actor, r float64) *Actor {
 		}
 		hostile := m.Factions.Sees(a, o) == Hostile
 		if (hostile || m.AlsoTargets != nil) && (m.CanTarget == nil || m.CanTarget(a, o)) && (hostile || m.AlsoTargets(a, o)) &&
-			(!a.TargetSight || m.sees(a, o)) {
+			(!a.TargetSight || m.sees(a, o)) && (!a.TargetNearby || m.nearby(a, o)) {
 			best, bd = o, d
 		}
 	}
 	return best
+}
+
+// nearby is EntityAITarget.isSuitableTarget's nearbyOnly part: the task's
+// one answer (not one per target) holds until reachDelay runs out, then
+// canEasilyReach asks again: a path toward t (getPathToEntityLiving)
+// whose last point is within 1.5 blocks of t's column.
+func (m *Manager) nearby(a, t *Actor) bool {
+	if a.reachDelay--; a.reachDelay <= 0 {
+		a.reach = 0
+	}
+	if a.reach == 0 {
+		a.reach = 2
+		a.reachDelay = 10 + m.Rand.Intn(5)
+		if e, ok := m.pathEnd(a, t); ok {
+			i, j := e.X-int(math.Floor(t.Body.X)), e.Z-int(math.Floor(t.Body.Z))
+			if float64(i*i+j*j) <= 2.25 {
+				a.reach = 1
+			}
+		}
+	}
+	return a.reach == 1
 }
 
 // MeleeReach2 is the squared reach of a's melee against t, from feet to

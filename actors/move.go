@@ -121,16 +121,25 @@ func (m *Manager) PathEnds(a *Actor, goal Vec) bool {
 // search toward t's feet within AggroRange gets it at least one point
 // nearer (PathFinder keeps the nearest point; the start alone is no path).
 func (m *Manager) PathToward(a, t *Actor) bool {
+	_, ok := m.pathEnd(a, t)
+	return ok
+}
+
+// pathEnd is PathToward's path's final point.
+func (m *Manager) pathEnd(a, t *Actor) (nav.Pos, bool) {
 	if b := a.Body; !b.OnGround && !(a.CanSwim && (b.InWater || b.InLava)) {
-		return false
+		return nav.Pos{}, false
 	}
 	g := m.graphFor(a)
 	g.Range = float32(a.AggroRange)
 	defer func() { g.Range = 0 }()
 	tp := t.Pos()
 	to := nav.Pos{X: int(math.Floor(tp.X - m.half)), Y: int(math.Floor(t.Box().MinY)), Z: int(math.Floor(tp.Z - m.half))}
-	_, ok := g.Path(m.start(g, a.Pos()), to, maxNodes)
-	return ok
+	path, ok := g.Path(m.start(g, a.Pos()), to, maxNodes)
+	if !ok || len(path) == 0 {
+		return nav.Pos{}, false
+	}
+	return path[len(path)-1], true
 }
 
 // Detours: the long search reaches longRange blocks with longNodes

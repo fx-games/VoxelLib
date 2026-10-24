@@ -281,6 +281,10 @@ type Actor struct {
 	// it picks only a target it sees, and EntityAITarget.continueExecuting
 	// drops that one beyond AggroRange or unseen for over 60 ticks.
 	TargetSight bool
+	// TargetNearby is that task's nearbyOnly: it picks only a target a path
+	// gets within 1.5 blocks of (canEasilyReach), the answer kept for 10
+	// to 14 suitability checks.
+	TargetNearby bool
 	// OldAI is the pre-task AI (EntityCreature.updateEntityActionState,
 	// EntityMob.attackEntity): the target is kept at any range while it
 	// lives, and a blow (every Melee.Cooldown) strikes only a seen target
@@ -376,6 +380,7 @@ type Actor struct {
 	seeTime                int
 	picked                 *Actor // the nearest-hostile pick (its target task runs while it is the target)
 	unseen                 int    // EntityAITarget.targetUnseenTicks
+	reach, reachDelay      int    // targetSearchStatus (0 unknown, 1 reachable, 2 not), targetSearchDelay
 	rs                     rangedState
 	cn                     cnpcState
 	revenge                *Actor
@@ -425,6 +430,11 @@ func (a *Actor) RecentlyHit() int { return a.attackerTicks }
 // SetRecentlyHit sets recentlyHit, leaving Attacker (a CustomNPC's hurt by
 // a player's follower).
 func (a *Actor) SetRecentlyHit(n int) { a.attackerTicks = n }
+
+// SetPicked marks t, a target the game's own nearest-target task gave a,
+// as that task's pick: TargetSight's continueExecuting checks keep it
+// (startExecuting resets the unseen and nearbyOnly counts).
+func (a *Actor) SetPicked(t *Actor) { a.picked, a.unseen, a.reach, a.reachDelay = t, 0, 0, 0 }
 
 // HurtResist is hurtResistantTime: MaxHurtResist after a hit, counting
 // down each tick.
