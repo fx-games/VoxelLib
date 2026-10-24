@@ -100,14 +100,10 @@ func (mr *ModelRenderer) drawModel(g *gpuModel, model mgl32.Mat4, skin []mgl32.M
 	if cutoff == 0 {
 		cutoff = 0.5
 	}
-	emissive := float32(0)
-	if d.emissive {
-		emissive = 1
-	}
 	lc := mr.r.modelLight(d) // look agent: lightmap colour (modelWGSL u.light.rgb)
 	// light.w: the light levels for the shader pack
 	u := mr.gpu.u.reset().mat(l.vp).mat(model).f(lc[0], lc[1], lc[2], lightCode(d.sky, d.block)).
-		f(l.fog.Color[0], l.fog.Color[1], l.fog.Color[2], d.fade).f(fx(l.fog), fy(l.fog), cutoff, emissive).
+		f(l.fog.Color[0], l.fog.Color[1], l.fog.Color[2], d.fade).f(fx(l.fog), fy(l.fog), cutoff, d.lightMode()).
 		f(color[:]...).f(d.overlay[:]...).f(d.uvOff[0], d.uvOff[1], d.uvWrap, 0)
 	for _, b := range bones(skin, g.bones) {
 		u.mat(b)

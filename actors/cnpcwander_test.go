@@ -169,3 +169,31 @@ func TestCNPCWorldLines(t *testing.T) {
 		t.Fatalf("%d world lines in 54000 ticks (about 10), wandered %.1f", n, far)
 	}
 }
+
+// TestCNPCRouteHoldsWorldLines: a custom NPC walking a route says no world
+// line while a segment is walked (EntityAIMovingPath, PASSIVE and before
+// EntityAIWorldLines, runs); its pauses at the points leave them.
+func TestCNPCRouteHoldsWorldLines(t *testing.T) {
+	m := NewManager(flat(60), nil, nil, 1)
+	a := New("a", "npc", 20.5, 1, 20.5)
+	a.CNPC, a.PersistReq = &CNPCAI{OnAttack: 3, FindShelter: 2, WorldLines: true}, true
+	a.Brain = Brain{Mode: Route, Points: []Vec{{X: 20.5, Y: 1, Z: 20.5}, {X: 32.5, Y: 1, Z: 20.5}}, Pattern: BackForth, Pause: 100}
+	m.Add(a)
+	walking, paused := 0, 0
+	m.CNPCWorldLine = func(s *Actor) {
+		if s != a {
+			return
+		}
+		if a.routeHeld {
+			walking++
+		} else {
+			paused++
+		}
+	}
+	for range 54000 {
+		m.Tick()
+	}
+	if walking != 0 || paused < 1 {
+		t.Fatalf("world lines: %d while walking, %d in pauses", walking, paused)
+	}
+}

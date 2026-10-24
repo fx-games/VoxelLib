@@ -76,6 +76,11 @@ type ModelInstance struct {
 	// Emissive draws at full brightness, ignoring world light and
 	// shading (e.g. eyes drawn with lighting off).
 	Emissive bool
+	// LightOnly draws in the lightmap colour at Sky/Block without the
+	// two-light entity shade (lighting off, the lightmap kept), e.g.
+	// labels; under a shader pack it takes the textured path with those
+	// light levels. Emissive wins over it.
+	LightOnly bool
 	// Blend selects BlendNone, BlendAlpha or BlendAdditive.
 	Blend uint8
 	// AlphaCutoff discards texels with alpha at or below it (glAlphaFunc
@@ -97,6 +102,7 @@ type drawParams struct {
 	fade           float32
 	color, overlay [4]float32
 	emissive       bool
+	lightOnly      bool
 	blend          uint8
 	cutoff         float32
 	texture        int
@@ -107,8 +113,19 @@ type drawParams struct {
 	uvWrap         float32
 }
 
+// lightMode is the shader's fog.w: 1 emissive, 0.5 light only, 0 lit.
+func (d drawParams) lightMode() float32 {
+	switch {
+	case d.emissive:
+		return 1
+	case d.lightOnly:
+		return 0.5
+	}
+	return 0
+}
+
 func (in *ModelInstance) params() drawParams {
-	d := drawParams{in.Sky, in.Block, in.Fade, in.Color, in.Overlay, in.Emissive, in.Blend, in.AlphaCutoff, in.Texture, in.BlockBoost, in.Glint, in.GlintTicks, in.UVOffset, 0}
+	d := drawParams{in.Sky, in.Block, in.Fade, in.Color, in.Overlay, in.Emissive, in.LightOnly, in.Blend, in.AlphaCutoff, in.Texture, in.BlockBoost, in.Glint, in.GlintTicks, in.UVOffset, 0}
 	if in.UVOffset != ([2]float32{}) {
 		d.uvWrap = 1
 	}

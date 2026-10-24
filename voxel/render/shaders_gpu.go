@@ -134,7 +134,7 @@ struct U {
 	model: mat4x4f,
 	light: vec4f,    // lightmap colour (Renderer.LightColor)
 	fogColor: vec4f, // rgb, fade
-	fog: vec4f,      // start, end, alpha cutoff, emissive
+	fog: vec4f,      // start, end, alpha cutoff, emissive (1) or light only (0.5)
 	color: vec4f,    // texture multiplier (glColor4f)
 	overlay: vec4f,  // rgb mixed over the lit result by a (hurt flash)
 	uvOff: vec4f,    // texture offset xy, z > 0.5: offset and wrap (ModelInstance.UVOffset)
@@ -175,7 +175,7 @@ fn fs(i: VOut) -> @location(0) vec4f {
 	let fade = u.fogColor.a;
 	if (fade > 0.0 && fract(52.9829189 * fract(dot(i.pos.xy, vec2f(0.06711056, 0.00583715)))) < fade) { discard; }
 	var light = i.shade * u.light.rgb;
-	if (u.fog.w > 0.5) { light = vec3f(1.0); }
+	if (u.fog.w > 0.75) { light = vec3f(1.0); } else if (u.fog.w > 0.25) { light = u.light.rgb; }
 	let col = mix(c.rgb * light, u.overlay.rgb * light, u.overlay.a);
 	return vec4f(mix(col, u.fogColor.rgb, fogFactor(i.dist, u.fog)), c.a);
 }

@@ -393,6 +393,8 @@ type Actor struct {
 	nav                    navigator
 	jump                   jumpCharge
 	routeWait              int
+	routeWalk              bool // route walks a segment this tick
+	routeHeld              bool // it did last tick: EntityAIMovingPath runs
 	look                   lookState
 	lt                     lookRun
 }

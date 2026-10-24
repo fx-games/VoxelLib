@@ -320,7 +320,9 @@ func (m *Manager) cnpcShould(a *Actor, i int) bool {
 	st, c, t := &a.cn, a.CNPC, a.Target
 	switch i {
 	case cnWorld: // EntityAIWorldLines.shouldExecute (its cooldown is never read)
-		return !st.attacking && a.Alive() && m.Rand.Intn(1800) == 1
+		// EntityAIMovingPath (PASSIVE, before it) holds it while it runs:
+		// while a route segment is walked, not in its pauses or once done
+		return !st.attacking && a.Alive() && !a.routeHeld && m.Rand.Intn(1800) == 1
 	case cnDoor:
 		return m.bustShould(a)
 	case cnShelter:

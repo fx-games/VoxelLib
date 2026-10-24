@@ -607,7 +607,9 @@ fn fragTextured(albedo: vec4f, normal: vec3f, fragCoord: vec4f, sun: vec3f, amb:
 
 // packModelWGSL is modelWGSL's vertex input and uniforms drawn with
 // gbuffers_textured (gbuffers_entities falls back to it), or with
-// gbuffers_spidereyes for an emissive instance. light.w carries the
+// gbuffers_spidereyes for an emissive instance; a light-only one (fog.w
+// 0.5) stays textured, as labels draw in the entities stage with the
+// entity's lightmap. light.w carries the
 // light levels (sky + 16*block). HAND_FLAG is replaced per variant: hand
 // draws are already in view space.
 var packModelWGSL = `
@@ -652,7 +654,7 @@ fn vs(@location(0) pos: vec3f, @location(1) normal: vec3f, @location(2) uv: vec2
 	o.amb = tl.amb;
 	o.sun = tl.sun;
 	o.skyL = tl.skyL;
-	if (u.fog.w > 0.5) { o.amb = spiderLight(); }
+	if (u.fog.w > 0.75) { o.amb = spiderLight(); }
 	return o;
 }
 @fragment
@@ -661,7 +663,7 @@ fn fs(i: VOut) -> TOut {
 	if (c.a <= u.fog.z) { discard; }
 	let fade = u.fogColor.a;
 	if (fade > 0.0 && fract(52.9829189 * fract(dot(i.pos.xy, vec2f(0.06711056, 0.00583715)))) < fade) { discard; }
-	if (u.fog.w > 0.5) { // gbuffers_spidereyes
+	if (u.fog.w > 0.75) { // gbuffers_spidereyes
 		var o: TOut;
 		o.c5 = vec4f(pow(c.rgb, vec3f(2.2)) * i.amb, c.a);
 		o.c6 = vec4f(normalize(c.rgb + 0.00001), c.a);

@@ -90,6 +90,7 @@ func (b *Brain) speed() float64 {
 // mode. It only sets the carrier's input; bodies move in Manager.Tick.
 func (m *Manager) think(a *Actor) {
 	a.lt.ran, a.lt.busy = false, false
+	a.routeHeld, a.routeWalk = a.routeWalk, false
 	if f := a.Fly; f != nil {
 		a.nav.in = character.Input{}
 		if f.Think != nil {
@@ -408,6 +409,7 @@ func (m *Manager) route(a *Actor) {
 	}
 	if a.Pos().hdist(goal) > reach || math.Abs(a.Pos().Y-goal.Y) > 2 {
 		m.moveTo(a, goal, b.speed())
+		a.routeWalk = true
 		return
 	}
 	a.routeWait = b.Pause

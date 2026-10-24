@@ -58,3 +58,21 @@ func TestModelUVOffset(t *testing.T) {
 	validWGSL(t, modelWGSL)
 	validWGSL(t, modelGlintWGSL)
 }
+
+// TestModelLightOnly: LightOnly reaches the shader as fog.w 0.5, between
+// the lit (0) and emissive (1) thresholds; Emissive wins.
+func TestModelLightOnly(t *testing.T) {
+	for _, c := range []struct {
+		in   ModelInstance
+		want float32
+	}{{ModelInstance{}, 0}, {ModelInstance{LightOnly: true}, 0.5}, {ModelInstance{Emissive: true}, 1}, {ModelInstance{Emissive: true, LightOnly: true}, 1}} {
+		if got := c.in.params().lightMode(); got != c.want {
+			t.Errorf("%+v: mode %v, want %v", c.in, got, c.want)
+		}
+	}
+	for _, s := range []string{modelWGSL, packModelWGSL} {
+		if !strings.Contains(s, "u.fog.w > 0.75") {
+			t.Error("a model program's emissive threshold is not above light only")
+		}
+	}
+}
