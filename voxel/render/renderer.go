@@ -109,11 +109,25 @@ func (r *Renderer) frameLight() bool {
 }
 
 // Fog is a fog override: colour plus start and end distance in blocks;
-// the factor is linear between them (GL_LINEAR).
+// the factor is linear between them (GL_LINEAR), or with Density > 0
+// 1-exp(-Density*distance) (GL_EXP).
 type Fog struct {
 	Color      mgl32.Vec3
 	Start, End float32
+	Density    float32
 }
+
+// gpu is the shaders' fog.x, fog.y: an exponential fog's density as a
+// negative fog.x (fogFactor).
+func (f Fog) gpu() (x, y float32) {
+	if f.Density > 0 {
+		return -f.Density, f.End
+	}
+	return f.Start, f.End
+}
+
+func fx(f Fog) float32 { x, _ := f.gpu(); return x }
+func fy(f Fog) float32 { _, y := f.gpu(); return y }
 
 // CurrentFog returns the fog the terrain is drawn with: Opt.Fog if set,
 // else distance fog ending at the render distance, darkened with daylight

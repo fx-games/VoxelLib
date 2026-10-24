@@ -64,7 +64,8 @@ func (r *Renderer) drawSky(cam *Camera, draws []SkyDraw) {
 		fog[3] = d.AlphaTest
 		if d.Fog != nil {
 			fc = d.Fog.Color
-			fog[0], fog[1], fog[2] = d.Fog.Start, d.Fog.End, 1
+			fog[0], fog[1] = d.Fog.gpu()
+			fog[2] = 1
 		}
 		if d.Opaque {
 			setPipe(p, dev.pipes.skyOpaque)

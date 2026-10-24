@@ -184,7 +184,7 @@ func (r *Renderer) drawBlockMode(b *BlockMesh, mvp, model mgl32.Mat4, lc mgl32.V
 	setPipe(p, pl)
 	u := &r.gpu.u
 	bindUniforms(p, u.reset().mat(clip(mvp)).mat(model).f(lc[0], lc[1], lc[2], mode).
-		f(fog.Color[0], fog.Color[1], fog.Color[2], lv).f(fog.Start, fog.End, layer, 0).
+		f(fog.Color[0], fog.Color[1], fog.Color[2], lv).f(fx(fog), fy(fog), layer, 0).
 		f(l0[0], l0[1], l0[2], flash).f(l1[0], l1[1], l1[2], 0))
 	p.SetBindGroup(1, bg, nil)
 	p.SetIndexBuffer(r.gpu.ebo, gputypes.IndexFormatUint32, 0)

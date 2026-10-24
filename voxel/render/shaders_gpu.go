@@ -14,8 +14,10 @@ import (
 // Light colours come from the lightmap (Options.Lightmap): sampled by
 // terrain, looked up on the CPU (Renderer.LightColor) for the other passes.
 const wgslLight = `
-// Linear fog (GL_LINEAR) between fog.x and fog.y.
+// Linear fog (GL_LINEAR) between fog.x and fog.y; a negative fog.x is
+// GL_EXP with density -fog.x (Fog.gpu).
 fn fogFactor(dist: f32, fog: vec4f) -> f32 {
+	if (fog.x < 0.0) { return 1.0 - clamp(exp(fog.x * dist), 0.0, 1.0); }
 	return clamp((dist - fog.x) / max(fog.y - fog.x, 1e-4), 0.0, 1.0);
 }
 `

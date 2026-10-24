@@ -47,7 +47,7 @@ func (ir *ItemRenderer) drawRange(i int, mvp, model mgl32.Mat4, sky, block uint8
 		unlit = 1
 	}
 	bindUniforms(p, g.u.reset().mat(clip(mvp)).mat(model).f(lc[0], lc[1], lc[2], lightCode(sky, block)).
-		f(f.Color[0], f.Color[1], f.Color[2], float32(i)).f(f.Start, f.End, unlit, 0))
+		f(f.Color[0], f.Color[1], f.Color[2], float32(i)).f(fx(f), fy(f), unlit, 0))
 	p.SetBindGroup(1, g.bg, nil)
 	p.SetVertexBuffer(0, g.vbo, 0)
 	dev.draws++
@@ -64,7 +64,7 @@ func (ir *ItemRenderer) drawRange(i int, mvp, model mgl32.Mat4, sky, block uint8
 	for n := range passes * 2 {
 		a := itemGlint(ms, n%2)
 		bindUniforms(p, g.u.reset().mat(clip(mvp)).mat(model).f(lc[0], lc[1], lc[2], 0).
-			f(f.Color[0], f.Color[1], f.Color[2], float32(i)).f(f.Start, f.End, 0, 0).
+			f(f.Color[0], f.Color[1], f.Color[2], float32(i)).f(fx(f), fy(f), 0, 0).
 			f(GlintColor[0], GlintColor[1], GlintColor[2], 1).f(a[0], a[1], a[2], 0).f(a[3], a[4], a[5], 0))
 		p.SetBindGroup(1, g.bg, nil)
 		dev.draws++
