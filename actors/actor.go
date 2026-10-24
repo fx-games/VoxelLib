@@ -299,6 +299,9 @@ type Actor struct {
 	// OnLand, if set, is a fall override: it gets the fall distance on
 	// landing and returns the distance that deals fall damage.
 	OnLand func(a *Actor, fall float64) float64
+	// NoFallHurt refuses the fall's own hurt (attackEntityFrom turning
+	// DamageSource.fall away); the rider still takes its share.
+	NoFallHurt bool
 	// Blocked is isMovementBlocked: the brain does not run and the body
 	// has no drive (the game sets it).
 	Blocked                bool

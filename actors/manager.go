@@ -325,7 +325,9 @@ func (m *Manager) moveBody(a *Actor, in character.Input) {
 				}
 			}
 		} else if a.fall > 3 { // EntityLivingBase.fall; Entity.fall passes it to the rider
-			m.Hurt(a, nil, math.Ceil(a.fall-3), true)
+			if !a.NoFallHurt {
+				m.Hurt(a, nil, math.Ceil(a.fall-3), true)
+			}
 			if r := a.Rider; r != nil {
 				m.Hurt(r, nil, math.Ceil(a.fall-3), true)
 			}

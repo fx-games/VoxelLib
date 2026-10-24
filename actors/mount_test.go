@@ -127,3 +127,17 @@ func TestDismount(t *testing.T) {
 		t.Fatalf("water: at %.2f %.2f %.2f, want 1.5 %.2f 0.5", p.Body.X, p.Body.Y, p.Body.Z, y+1)
 	}
 }
+
+// TestNoFallHurt: a mount refusing the fall's hurt keeps its health while
+// its rider still takes ceil(d-3).
+func TestNoFallHurt(t *testing.T) {
+	m, p, h, _ := horseWorld(t, MountStats{RideHeight: 0.8, Tame: true, Saddled: true})
+	h.NoFallHurt = true
+	h.Body.Y, h.Body.PrevY = 13, 13
+	for i := 0; i < 60 && !(h.Body.OnGround && h.Body.PrevY == h.Body.Y); i++ {
+		m.Tick()
+	}
+	if h.Health != 20 || p.Health != 12 {
+		t.Fatalf("health mount %.0f rider %.0f, want 20 12", h.Health, p.Health)
+	}
+}
