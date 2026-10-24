@@ -405,6 +405,10 @@ func (a *Actor) Attacker() *Actor { return a.attacker }
 // AttackerClears accepts), counting down each tick.
 func (a *Actor) RecentlyHit() int { return a.attackerTicks }
 
+// SetRecentlyHit sets recentlyHit, leaving Attacker (a CustomNPC's hurt by
+// a player's follower).
+func (a *Actor) SetRecentlyHit(n int) { a.attackerTicks = n }
+
 // HurtResist is hurtResistantTime: MaxHurtResist after a hit, counting
 // down each tick.
 func (a *Actor) HurtResist() int { return a.hurtResist }
