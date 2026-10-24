@@ -96,3 +96,22 @@ func TestScheduledThisTick(t *testing.T) {
 		t.Fatal("still scheduled after the run")
 	}
 }
+
+// Entries gives the delays left in scheduling order; Load takes them back.
+func TestEntriesSaveLoad(t *testing.T) {
+	w, a, _ := world(t)
+	tk := New(w, func(id voxel.StateID) int32 { return int32(id) })
+	tk.Schedule(voxel.BlockPos{X: 1, Y: 1}, int32(a), 7, 0, 100)
+	tk.Schedule(voxel.BlockPos{X: 2, Y: 1}, int32(a), 3, -1, 100)
+	es := tk.Entries(102)
+	if len(es) != 2 || es[0].Pos.X != 1 || es[0].Time != 5 || es[1].Time != 1 || es[1].Priority != -1 {
+		t.Fatalf("entries %+v", es)
+	}
+	back := New(w, tk.BlockOf)
+	for _, e := range es {
+		back.Load(e.Pos, e.Block, int(e.Time), e.Priority, 0)
+	}
+	if got := back.Entries(0); len(got) != 2 || got[0].Time != 5 || got[1].Time != 1 || !back.Pending(voxel.BlockPos{X: 2, Y: 1}, int32(a)) {
+		t.Fatalf("loaded %+v", got)
+	}
+}

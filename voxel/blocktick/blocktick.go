@@ -5,6 +5,7 @@
 package blocktick
 
 import (
+	"cmp"
 	"container/heap"
 	"math/bits"
 	"slices"
@@ -104,17 +105,22 @@ func (t *Ticks) Pending(p voxel.BlockPos, block int32) bool { return t.pending[k
 // Len is the number of waiting ticks.
 func (t *Ticks) Len() int { return len(t.queue) }
 
-// Entries returns the waiting ticks (for saving), in no order.
-func (t *Ticks) Entries() []Entry {
+// Entries returns the waiting ticks at world time now for saving, in
+// order, each Time the delay left (the chunk NBT's TileTicks "t": Load
+// takes them back).
+func (t *Ticks) Entries(now int64) []Entry {
 	out := make([]Entry, 0, len(t.queue))
 	for _, e := range t.queue {
-		out = append(out, *e)
+		c := *e
+		c.Time -= now
+		out = append(out, c)
 	}
 	for _, es := range t.parked {
 		for _, e := range es {
-			out = append(out, *e)
+			out = append(out, *e) // parked with the delay left
 		}
 	}
+	slices.SortStableFunc(out, func(a, b Entry) int { return cmp.Compare(a.seq, b.seq) })
 	return out
 }
 
