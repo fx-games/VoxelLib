@@ -142,8 +142,8 @@ type Hooks struct {
 	// moves, and the game seats the body.
 	Ride func(in character.Input) bool
 	// Sound gets the app's sound events ("block.break", "block.place",
-	// "block.hit" while breaking, "block.step" on walking) with the block
-	// and where; play them with App.Mixer.
+	// "block.hit" while breaking, "block.step" on walking, "swim" before
+	// a step in water) with the block and where; play them with App.Mixer.
 	Sound func(event string, state voxel.StateID, x, y, z float64)
 	// PauseScreen, when set, is opened by the pause action (Esc). Without
 	// it Esc releases the mouse, and a second Esc quits.

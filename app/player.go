@@ -23,6 +23,10 @@ type Terrain struct {
 	// Climb, when set, marks the blocks a character climbs (ladders,
 	// vines): character.Climber.
 	Climb func(x, y, z int) bool
+	// StepBelow, when set, marks the blocks a step 0.2 under the feet
+	// falls through to (the reference's fences, walls and gates: render
+	// types 11, 32 and 21).
+	StepBelow func(x, y, z int) bool
 }
 
 // Climbable is Climb, false without one.
@@ -98,7 +102,7 @@ type Player struct {
 	armYaw, prevArmYaw     float64
 	armPitch, prevArmPitch float64
 	armInit                bool
-	stepDist               float64
+	step                   character.Step
 }
 
 // SwingTicks is the length of the hand swing.
@@ -184,12 +188,18 @@ func (p *Player) tick() {
 	sneakEdge := p.OnGround && ci.Sneak // moveEntity's flag, from the last tick's onGround
 	p.Tick(a.Terrain, ci)
 	p.bobTick(a.Cam.Yaw, a.Cam.Pitch, sneakEdge)
-	if p.OnGround {
-		d := math.Hypot(p.X-p.PrevX, p.Z-p.PrevZ)
-		if p.stepDist += d; p.stepDist > 1.6 && !p.Sneaking() {
-			p.stepDist = 0
-			x, y, z := int(math.Floor(p.X)), int(math.Floor(p.Y-0.2)), int(math.Floor(p.Z))
-			p.sound("block.step", voxel.BlockPos{X: x, Y: y, Z: z}, a.Eng.Block(x, y, z))
+	if !p.Flying && !sneakEdge { // canTriggerWalking, moveEntity's flag
+		x, y, z := int(math.Floor(p.X)), int(math.Floor(p.Y-0.20000000298023224)), int(math.Floor(p.Z))
+		if t := a.Terrain; t != nil && t.StepBelow != nil && t.StepBelow(x, y-1, z) {
+			y--
+		}
+		st := a.Eng.Block(x, y, z)
+		name, _, _ := strings.Cut(a.Eng.World.Reg.Info(st).Name, "#")
+		if p.step.Moved(p.X-p.PrevX, p.Y-p.PrevY, p.Z-p.PrevZ, name == resloc.Qualify("ladder"), st == voxel.Air) {
+			if p.InWater {
+				p.sound("swim", voxel.BlockPos{X: x, Y: y, Z: z}, st)
+			}
+			p.sound("block.step", voxel.BlockPos{X: x, Y: y, Z: z}, st)
 		}
 	}
 }
