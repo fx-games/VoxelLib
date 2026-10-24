@@ -495,10 +495,10 @@ func (m *Manager) cnpcUpdate(a *Actor, i int) {
 // bustShould is EntityAIBustDoor.shouldExecute: blocked by something, a
 // closed wooden door one up from the path's cells up to two past the next
 // within 1.5 (horizontally), else at its own head.
-// ponytail: mobGriefing is taken as on.
+// It needs Griefing.
 func (m *Manager) bustShould(a *Actor) bool {
 	b, n := a.Body, &a.nav
-	if m.Doors == nil || !b.HorizontalCollision || n.path == nil || n.i >= len(n.path) {
+	if m.Doors == nil || !m.Griefing || !b.HorizontalCollision || n.path == nil || n.i >= len(n.path) {
 		return false
 	}
 	found := false

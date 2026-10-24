@@ -59,6 +59,9 @@ type Manager struct {
 	// Doors is the world as the CustomNPC door buster sees it
 	// (CNPCAI.DoorInteract 0); nil: it never runs.
 	Doors DoorBuster
+	// Griefing is the mobGriefing rule: without it the door buster never
+	// starts (EntityAIBustDoor.shouldExecute).
+	Griefing bool
 	// Opaque is Block.isOpaqueCube and RayHits World.rayTraceBlocks (a
 	// block meets the segment): the cover a CustomNPC ambushes or stalks
 	// from. Without both it finds none.

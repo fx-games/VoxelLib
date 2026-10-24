@@ -256,6 +256,13 @@ func TestCNPCBustDoor(t *testing.T) {
 	d := &fakeDoors{w: w}
 	m.Doors = d
 	a.OpensDoors = false
+	for range 100 { // without mobGriefing it never starts
+		m.Tick()
+	}
+	if d.hits != 0 {
+		t.Fatal("busting without griefing")
+	}
+	m.Griefing = true
 	for i := 0; i < 600 && !d.busted; i++ {
 		m.Tick()
 		if w.door[nav.Pos{X: 3, Y: 1}] {
