@@ -128,3 +128,16 @@ func TestMeleeRange(t *testing.T) {
 		t.Fatalf("shots at %v inside a melee range of 12", *ticks)
 	}
 }
+
+// TestArrowAttackSight: EntityAIArrowAttack resets seeTime and holds its
+// shot while the target is out of sight.
+func TestArrowAttackSight(t *testing.T) {
+	r := &Ranged{Damage: 2, MinInterval: 20, MaxInterval: 60, MaxRange: 15, Speed: 1.6}
+	_, a, _, ticks, _ := rangedPair(t, r, 8.5, false)
+	if len(*ticks) != 0 || a.seeTime != 0 {
+		t.Fatalf("fired at %v unseen, seeTime %d", *ticks, a.seeTime)
+	}
+	if _, _, _, ticks, _ := rangedPair(t, &Ranged{Damage: 2, MinInterval: 20, MaxInterval: 60, MaxRange: 15, Speed: 1.6}, 8.5, true); len(*ticks) == 0 {
+		t.Fatal("never fired in sight")
+	}
+}

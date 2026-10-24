@@ -349,7 +349,12 @@ func (m *Manager) shoot(a, t *Actor) {
 	r := a.Ranged
 	d2 := a.Pos().dist2(t.Pos())
 	max2 := r.MaxRange * r.MaxRange
-	a.seeTime++ // ponytail: no line-of-sight test; add a World raycast hook when archers shoot through walls
+	see := m.sees(a, t) // getEntitySenses().canSee
+	if see {
+		a.seeTime++
+	} else {
+		a.seeTime = 0
+	}
 	if d2 <= max2 && a.seeTime >= 20 {
 		m.stop(a)
 	} else {
@@ -360,7 +365,7 @@ func (m *Manager) shoot(a, t *Actor) {
 	a.rangedCool--
 	switch {
 	case a.rangedCool == 0:
-		if d2 > max2 {
+		if d2 > max2 || !see {
 			return
 		}
 		m.fire(a, t, math.Max(0.1, math.Min(1, f)))
