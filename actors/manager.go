@@ -50,6 +50,9 @@ type Manager struct {
 	// does not see t as hostile (a target task's own rule, asked last,
 	// after CanTarget: it may roll a chance).
 	AlsoTargets func(a, t *Actor) bool
+	// AttackerClears, if set, reports a non-player source whose hurt
+	// clears the target's Attacker (a tame wolf's).
+	AttackerClears func(src *Actor) bool
 	// Keeps, if set, keeps an attack target the game set although a does
 	// not see it as hostile (a target task's own pick: a wolf's sheep, a
 	// skirmish); a dead or out-of-range target still goes.
@@ -219,6 +222,11 @@ func (m *Manager) Tick() {
 		}
 		if a.revengeTicks > 0 {
 			a.revengeTicks--
+		}
+		if a.attackerTicks > 0 {
+			a.attackerTicks--
+		} else {
+			a.attacker = nil
 		}
 		if !a.Alive() {
 			a.DeathTime++

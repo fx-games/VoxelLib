@@ -294,6 +294,7 @@ func (m *Manager) Hurt(t, src *Actor, amount float64, unblockable bool) bool {
 	}
 	if src != nil && src != t {
 		t.revenge, t.revengeTicks = src, 100
+		m.hurtBy(t, src)
 		if t.FleeWhenHurt {
 			t.panic = 60
 		}
@@ -326,6 +327,7 @@ func (m *Manager) Blow(t, src *Actor) bool {
 	t.lastDamage, t.hurtResist, t.HurtTime, t.age = 0, MaxHurtResist, MaxHurtTime, 0
 	if src != nil && src != t {
 		t.revenge, t.revengeTicks = src, 100
+		m.hurtBy(t, src)
 		if t.FleeWhenHurt {
 			t.panic = 60
 		}

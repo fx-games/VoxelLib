@@ -329,6 +329,8 @@ type Actor struct {
 	cn                     cnpcState
 	revenge                *Actor
 	revengeTicks           int
+	attacker               *Actor
+	attackerTicks          int
 	panic                  int
 	age                    int // ticks since spawn or last fight (despawn)
 	nav                    navigator
@@ -358,6 +360,20 @@ func (a *Actor) Revenge() *Actor {
 // SetRevenge makes src the actor that last hurt a, as a hit would
 // (setRevengeTarget).
 func (a *Actor) SetRevenge(src *Actor) { a.revenge, a.revengeTicks = src, 100 }
+
+// Attacker is the player that last hurt this one (attackingPlayer): set
+// with 100 ticks by a player's hurt, nil from the tick after they run out
+// or after a hurt by a source AttackerClears accepts.
+func (a *Actor) Attacker() *Actor { return a.attacker }
+
+// hurtBy is attackEntityFrom's attacker bookkeeping (recentlyHit).
+func (m *Manager) hurtBy(t, src *Actor) {
+	if src.Player {
+		t.attacker, t.attackerTicks = src, 100
+	} else if m.AttackerClears != nil && m.AttackerClears(src) {
+		t.attacker, t.attackerTicks = nil, 100
+	}
+}
 
 // Pos returns the feet position.
 // Pathing is !PathNavigate.noPath: it is walking a path.
