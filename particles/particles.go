@@ -31,6 +31,10 @@ type Props struct {
 	// Additive particles glow (fire, sparks): they add light and ignore the
 	// world's light. The rest are lit like terrain and alpha blended.
 	Additive bool
+	// Emit is the particle's own block light (0..15), the reference's
+	// withBlock / lightCoordsWithEmission: the world's block light is raised
+	// to at least Emit, so magic glows in a dark room while smoke stays dim.
+	Emit uint8
 }
 
 // Particle is one live particle.
@@ -42,6 +46,7 @@ type Particle struct {
 	Col0, Col1                   [4]float32
 	Gravity, Drag, Bounce        float64
 	Additive                     bool
+	Emit                         uint8 // own block light 0..15, see Props.Emit
 	// Sprite is 1 + a cell of the renderer's particle atlas (the reference's
 	// particles.png: 16 x 16 cells, index = row*16 + column); 0 draws a
 	// plain square.
@@ -93,7 +98,7 @@ func (s *System) Emit(x, y, z float64, p Props) {
 		q := Particle{X: x + ox, Y: y + oy, Z: z + oz, VX: vx, VY: vy, VZ: vz,
 			Life:  math.Max(0.05, p.Life+s.r()*p.LifeVar),
 			Size0: float32(p.Size0) * k, Size1: float32(p.Size1) * k, Col0: p.Col0, Col1: p.Col1,
-			Gravity: p.Gravity, Drag: p.Drag, Bounce: p.Bounce, Additive: p.Additive}
+			Gravity: p.Gravity, Drag: p.Drag, Bounce: p.Bounce, Additive: p.Additive, Emit: p.Emit}
 		q.PrevX, q.PrevY, q.PrevZ = q.X, q.Y, q.Z
 		s.Add(q) // ponytail: O(n) drop of the oldest, only when full
 	}

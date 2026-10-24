@@ -27,3 +27,11 @@ func TestFallLandAndDie(t *testing.T) {
 		t.Fatalf("%d particles outlived their life", len(s.P))
 	}
 }
+
+func TestEmitCopied(t *testing.T) {
+	var s System
+	s.Emit(0, 0, 0, Props{Count: 1, Life: 1, Emit: 15})
+	if len(s.P) != 1 || s.P[0].Emit != 15 {
+		t.Fatalf("got %+v", s.P)
+	}
+}

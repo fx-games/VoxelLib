@@ -76,11 +76,13 @@ func (pr *ParticleRenderer) Draw(cam *Camera, ps []particles.Particle, alpha flo
 					flag = 1
 				}
 				if pack := pr.r.Opt.Pack != nil; pack && light != nil {
-					flag += 2 * lightCode(light(x, y, z)) // the pack lights them (packParticleWGSL)
+					sky, block := light(x, y, z)
+					flag += 2 * lightCode(sky, max(block, q.Emit)) // the pack lights them (packParticleWGSL); Emit is the particle's own light
 				} else if pack {
 					flag += 2 * 15
 				} else if !additive && light != nil {
-					lc = pr.r.LightColor(light(x, y, z))
+					sky, block := light(x, y, z)
+					lc = pr.r.LightColor(sky, max(block, q.Emit))
 				}
 				pr.buf = append(pr.buf, float32(x-cam.X), float32(y-cam.Y), float32(z-cam.Z), size,
 					col[0]*lc[0], col[1]*lc[1], col[2]*lc[2], col[3], float32(q.Sprite), flag, q.UV[0], q.UV[1], q.UV[2], q.UV[3])
