@@ -2,6 +2,7 @@ package actors
 
 import (
 	"math"
+	"slices"
 
 	"github.com/memmaker/voxellib/character"
 	"github.com/memmaker/voxellib/voxel/nav"
@@ -38,6 +39,10 @@ type CNPCAI struct {
 	// Return is ReturnToStart: EntityAIReturn walks it back to Brain.Home
 	// (MovingType Standing: Stand, Wandering: Wander within Range, Route).
 	Return bool
+	// NPCInteract (npcInteracting): a wanderer may walk to another custom
+	// NPC to meet it. StopInteract (stopAndInteract): it stops and faces
+	// whoever interacts with it (Manager.CNPCInteract).
+	NPCInteract, StopInteract bool
 }
 
 // EnumNavType ordinals.
@@ -56,6 +61,7 @@ const (
 	cnLeap
 	cnResp
 	cnAttack
+	cnWander
 	cnReturn
 	cnTasks
 )
@@ -97,6 +103,14 @@ type cnpcState struct {
 	rTotal, rStuckTicks, rStuck int
 	rWas                        bool
 	rPre                        Vec
+
+	// lastInteract and with are EntityNPCInterface's lastInteract and
+	// interactingEntities; near and wgoal are EntityAIWander's nearbyNPC
+	// and x/y/zPosition.
+	lastInteract int
+	with         []*Actor
+	near         *Actor
+	wgoal        Vec
 
 	// attacking is the isAttacking flag, reset counts CombatHandler's
 	// combatResetTimer.
@@ -149,6 +163,8 @@ func (a *Actor) cnpcHas(i int) bool {
 		return a.cnpcResp() != respNone
 	case cnReturn:
 		return c.Return
+	case cnWander:
+		return a.Brain.Mode == Wander // setMoveType: MovingType Wandering
 	}
 	return c.OnAttack == 0
 }
@@ -158,7 +174,7 @@ func (a *Actor) cnpcMutex(i int) int {
 	switch i {
 	case cnDoor:
 		return 0
-	case cnShelter, cnSprint, cnReturn:
+	case cnShelter, cnSprint, cnReturn, cnWander:
 		return 1
 	case cnLeap:
 		return 5
@@ -327,6 +343,8 @@ func (m *Manager) cnpcShould(a *Actor, i int) bool {
 		return t != nil && t.Alive()
 	case cnReturn:
 		return m.returnShould(a)
+	case cnWander:
+		return m.wanderShould(a)
 	}
 	switch a.cnpcResp() {
 	case respPanic:
@@ -391,7 +409,12 @@ func (m *Manager) cnpcCont(a *Actor, i int) bool {
 		}
 		return a.cnpcProj() || a.Pos().dist2(t.Pos()) <= a.AggroRange*a.AggroRange
 	case cnReturn:
-		return a.Alive() && !st.attacking && !a.homeNear() && st.rTotal <= 600
+		return a.Alive() && !st.attacking && !a.homeNear() && st.rTotal <= 600 && !a.cnpcInteracting()
+	case cnWander: // EntityAIWander.continueExecuting
+		if n := st.near; n != nil && (!m.meetable(a, n) || a.Pos().dist2(n.Pos()) < a.Body.Width*1.5) {
+			return false
+		}
+		return a.pathing() && !a.walked() && a.Alive() && !a.cnpcInteracting()
 	}
 	switch a.cnpcResp() {
 	case respPanic:
@@ -437,6 +460,9 @@ func (m *Manager) cnpcStart(a *Actor, i int) {
 		st.rStuckTicks, st.rTotal, st.rStuck = 0, 0, 0
 		m.returnNav(a, false)
 		return
+	case cnWander:
+		m.setPath(a, st.wgoal, 1)
+		return
 	}
 	switch a.cnpcResp() {
 	case respPanic, respDodgeShoot, respZigZag:
@@ -472,6 +498,18 @@ func (m *Manager) cnpcReset(a *Actor, i int) {
 	case cnReturn:
 		st.rWas = false
 		m.clearPath(a)
+		return
+	case cnWander: // EntityAIWander.resetTask
+		// ponytail: the meeting's "........." is a chat bubble only
+		// (hideText); bubbles are not drawn, so it is not said.
+		// ponytail: the walk always stops here (the reference walks on
+		// when the one met turned unmeetable on the way)
+		m.clearPath(a)
+		if n := st.near; n != nil && a.Pos().dist2(n.Pos()) < 12 {
+			m.CNPCInteract(a, n)
+			m.CNPCInteract(n, a)
+		}
+		st.near = nil
 		return
 	}
 	switch a.cnpcResp() {
@@ -525,6 +563,11 @@ func (m *Manager) cnpcUpdate(a *Actor, i int) {
 		return
 	case cnReturn:
 		m.returnUpdate(a)
+		return
+	case cnWander:
+		if n := a.cn.near; n != nil {
+			m.clearPath(n) // the one met waits
+		}
 		return
 	}
 	switch a.cnpcResp() {
@@ -867,12 +910,12 @@ func (m *Manager) lookingAway(a, t *Actor) bool {
 // (preAttackPos) and waits; a route walker within 32 of its point stays;
 // then with no path or after a fight, or a wanderer beyond its range, or
 // a stander off its place.
-// ponytail: no owner, interaction or follower checks (the engine has no
-// hired or talking custom NPC state). Very near its place, it skips the
+// ponytail: no owner or follower checks (the engine has no hired custom
+// NPC). Very near its place, it skips the
 // start that the reference ends at once, clearing only wasAttacked.
 func (m *Manager) returnShould(a *Actor) bool {
 	st, b := &a.cn, &a.Brain
-	if !a.Alive() {
+	if !a.Alive() || a.cnpcInteracting() {
 		return false
 	}
 	if w := m.Sky; w != nil {
@@ -984,4 +1027,136 @@ func (m *Manager) returnNav(a *Actor, towards bool) {
 	}
 	m.clearPath(a)
 	m.setPath(a, p, 1)
+}
+
+// cnpcInteracting is EntityNPCInterface.isInteracting (the server's): for
+// 40 ticks from the last interaction (and from its first tick), then
+// while it stops to interact and someone interacted within 180 ticks.
+func (a *Actor) cnpcInteracting() bool {
+	st := &a.cn
+	if a.Ticks-st.lastInteract < 40 {
+		return true
+	}
+	return a.CNPC.StopInteract && len(st.with) > 0 && a.Ticks-st.lastInteract < 180
+}
+
+// CNPCInteract is EntityNPCInterface.addInteract: a custom NPC that stops
+// to interact and is not attacking stops its path and faces e (a living
+// one) from now; within 180 ticks of the last interaction, e alone.
+func (m *Manager) CNPCInteract(a, e *Actor) {
+	st := &a.cn
+	if a.CNPC == nil || !a.CNPC.StopInteract || st.attacking || !e.Alive() {
+		return
+	}
+	if a.Ticks-st.lastInteract < 180 {
+		st.with = st.with[:0]
+	}
+	m.clearPath(a)
+	st.lastInteract = a.Ticks
+	if !slices.Contains(st.with, e) {
+		st.with = append(st.with, e)
+	}
+}
+
+// interactLook is EntityAILook's look at the nearest one interacting
+// within 3.46 (distance squared 12), dropping those beyond; false
+// when none.
+func (m *Manager) interactLook(a *Actor) bool {
+	st := &a.cn
+	if a.CNPC == nil || !a.cnpcInteracting() {
+		return false
+	}
+	var t *Actor
+	best := 12.0
+	keep := st.with[:0]
+	for _, e := range st.with {
+		d := e.Pos().dist2(a.Pos())
+		if d < best {
+			t, best = e, d
+		} else if d > 12 {
+			continue
+		}
+		keep = append(keep, e)
+	}
+	st.with = keep
+	if t == nil {
+		return false
+	}
+	a.HeadYaw = turn(a.HeadYaw, yawTo(a.Pos(), t.Pos()), 10*math.Pi/180)
+	return true
+}
+
+// meetable is NPCInteractSelector with getNearbyNPC's own filter:
+// another living custom NPC that stops to interact and is not attacking,
+// of a faction a is not hostile to, while a is alive and stops too.
+func (m *Manager) meetable(a, o *Actor) bool {
+	return o != a && o.CNPC != nil && a.Alive() && o.Alive() && a.CNPC.StopInteract && o.CNPC.StopInteract &&
+		!o.cn.attacking && (m.Factions == nil || m.Factions.Sees(a, o) != Hostile)
+}
+
+// wanderShould is CustomNPC's EntityAIWander.shouldExecute: idle (age
+// under 100), no path, not interacting, a 1 in 80 chance; then with
+// NPCInteract a 1 in 4 chance to meet a custom NPC within the walking
+// range (7 up and down at most), which waits for it; else a random spot
+// within the walking range around the start (toward it when near the
+// edge), at most the nav range of 32.
+// ponytail: no flier height (canFly).
+func (m *Manager) wanderShould(a *Actor) bool {
+	st, b := &a.cn, &a.Brain
+	if a.age >= 100 || a.pathing() || a.cnpcInteracting() || m.Rand.Intn(80) != 0 {
+		return false
+	}
+	wr := int(b.Range)
+	if a.CNPC.NPCInteract && m.Rand.Intn(4) == 1 {
+		st.near = m.nearbyNPC(a, wr)
+	}
+	if n := st.near; n != nil {
+		st.wgoal = Vec{math.Floor(n.Body.X), math.Floor(n.Body.Y), math.Floor(n.Body.Z)}
+		m.CNPCInteract(n, a)
+		return true
+	}
+	var p Vec
+	var ok bool
+	switch {
+	case wr <= 0:
+		p, ok = m.randomTarget(a, 32, 7, nil)
+	default:
+		r := 0 // (int) of a NaN square root
+		if v := float64(wr*wr) - a.Pos().dist2(b.Home); v > 0 {
+			r = min(int(math.Sqrt(v)), 32)
+		}
+		if r < 3 {
+			r = min(wr, 32)
+			h := b.Home
+			p, ok = m.randomTarget(a, r/2, min(r/2, 7), &Vec{h.X - a.Body.X, h.Y - a.Body.Y, h.Z - a.Body.Z})
+		} else {
+			p, ok = m.randomTarget(a, r, min(r/2, 7), nil)
+		}
+	}
+	st.wgoal = p
+	return ok
+}
+
+// nearbyNPC is EntityAIWander.getNearbyNPC: one at random of the
+// meetable custom NPCs whose box meets a's grown by the walking range.
+func (m *Manager) nearbyNPC(a *Actor, wr int) *Actor {
+	box := a.Box().Grow(float64(wr), float64(min(wr, 7)), float64(wr))
+	var list []*Actor
+	for _, o := range m.Actors {
+		if m.meetable(a, o) && o.Box().Intersects(box) {
+			list = append(list, o)
+		}
+	}
+	if len(list) == 0 {
+		return nil
+	}
+	return list[m.Rand.Intn(len(list))]
+}
+
+// walked is PathNavigate.noPath for a task's walk once searched: no path
+// found, or the path walked to its end (the nearest point to a goal out of
+// reach, such as a random spot inside the ground).
+func (a *Actor) walked() bool {
+	n := &a.nav
+	return n.has && !n.pending && (n.path == nil || n.i >= len(n.path))
 }

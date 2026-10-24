@@ -120,6 +120,11 @@ func (m *Manager) think(a *Actor) {
 		m.stop(a)
 		m.idleLook(a, b.Face)
 	case Wander, Stroll:
+		if a.CNPC != nil { // its own wander task (cnWander)
+			m.stop(a)
+			m.idleLook(a, a.Yaw)
+			return
+		}
 		m.wander(a)
 	case Follow:
 		m.follow(a)

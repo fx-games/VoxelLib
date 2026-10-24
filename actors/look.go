@@ -31,6 +31,14 @@ type lookState struct {
 // turns to the head after 10 ticks).
 func (m *Manager) cnpcLook(a *Actor) {
 	l, b := &a.look, &a.Brain
+	inter := a.CNPC != nil && a.cnpcInteracting()
+	if inter { // EntityAIWatchClosest stops; EntityAILook faces the one met
+		l.watch = nil
+		if m.interactLook(a) {
+			m.bodyHelper(a)
+			return
+		}
+	}
 	if b.Look == LookFixed {
 		a.Yaw, a.HeadYaw = b.Face, b.Face
 		return
@@ -38,7 +46,7 @@ func (m *Manager) cnpcLook(a *Actor) {
 	if l.watch != nil && (!l.watch.Alive() || l.watch.Pos().dist2(a.Pos()) > 25 || l.watchTime <= 0) {
 		l.watch = nil
 	}
-	if l.watch == nil && b.Look != LookHead && m.ticks%3 == 0 && m.Rand.Float64() < 0.002 {
+	if l.watch == nil && b.Look != LookHead && m.ticks%3 == 0 && m.Rand.Float64() < 0.002 && !inter {
 		if t := m.closestLiving(a); t != nil && (m.Sees == nil || m.Sees(a, t)) {
 			l.watch, l.watchTime = t, 60+m.Rand.Intn(60)
 		}

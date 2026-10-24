@@ -85,7 +85,7 @@ func TestCNPCReturn(t *testing.T) {
 	a.CNPC = &CNPCAI{Return: true, FindShelter: 2, OnAttack: 3}
 	a.Brain = Brain{Mode: Stand, Home: a.Pos()}
 	m.Add(a)
-	a.Body.X, a.cn.attacking = 8.5, true
+	a.Body.X, a.cn.attacking, a.Ticks = 8.5, true, 100 // past the first 40 ticks' interacting
 	if m.returnShould(a) || !a.cn.rWas || a.cn.rPre.X != 8.5 {
 		t.Fatal("no preAttackPos")
 	}
