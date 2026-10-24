@@ -56,6 +56,40 @@ func startProfiles() func() {
 
 // printBenchExtra reports tick times, GPU time (VOXELLIB_BENCH_GPU: submit
 // to idle) and the last frame's draws and memory.
+// printBenchTickFrames splits the frames into those that ran a tick and
+// those that did not: interval and CPU, p99 and max. A frame's interval
+// is the time since the frame before it, so frames[i] pairs with cpu[i-1].
+func printBenchTickFrames(frames, cpu []time.Duration, ticked []bool) {
+	var tf, tc, nf, nc []time.Duration
+	for i := range min(len(cpu), len(ticked)) {
+		f := time.Duration(-1)
+		if i+1 < len(frames) {
+			f = frames[i+1]
+		}
+		if ticked[i] {
+			tc = append(tc, cpu[i])
+			if f >= 0 {
+				tf = append(tf, f)
+			}
+		} else {
+			nc = append(nc, cpu[i])
+			if f >= 0 {
+				nf = append(nf, f)
+			}
+		}
+	}
+	pm := func(ds []time.Duration) string {
+		if len(ds) == 0 {
+			return "n/a"
+		}
+		ds = slices.Clone(ds)
+		slices.Sort(ds)
+		return fmt.Sprintf("p99 %.2fms max %.2fms", ms(ds[len(ds)*99/100]), ms(ds[len(ds)-1]))
+	}
+	fmt.Printf("bench frames: with a tick %d: interval %s, cpu %s | without %d: interval %s, cpu %s\n",
+		len(tc), pm(tf), pm(tc), len(nc), pm(nf), pm(nc))
+}
+
 func printBenchExtra(ticks, gpu []time.Duration, s render.Stats) {
 	stat := func(ds []time.Duration) string {
 		if len(ds) == 0 {

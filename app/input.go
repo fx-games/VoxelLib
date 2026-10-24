@@ -87,6 +87,23 @@ type Input struct {
 	lastJump time.Time
 	lastX    float64
 	lastY    float64
+	// snap holds every bound button's state at the last PollEvents while
+	// the ticks run off the main thread (nil: ask GLFW).
+	snap map[Button]bool
+}
+
+// snapshot records every bound button, on the main thread, for ticks run
+// off it.
+func (in *Input) snapshot() {
+	if in.snap == nil {
+		in.snap = map[Button]bool{}
+	}
+	clear(in.snap)
+	for _, bs := range in.Bindings {
+		for _, b := range bs {
+			in.snap[b] = in.glfwHeld(b)
+		}
+	}
 }
 
 func newInput(a *App) *Input {
@@ -128,6 +145,13 @@ func (in *Input) Down(action string) bool {
 }
 
 func (in *Input) held(b Button) bool {
+	if in.snap != nil {
+		return in.snap[b]
+	}
+	return in.glfwHeld(b)
+}
+
+func (in *Input) glfwHeld(b Button) bool {
 	w := in.a.Win
 	if b >= mouseBase {
 		return w.GetMouseButton(glfw.MouseButton(b-mouseBase)) == glfw.Press
@@ -140,14 +164,16 @@ func (in *Input) held(b Button) bool {
 func (in *Input) Capture(on bool) {
 	w := in.a.Win
 	in.a.Captured = on
-	if on {
-		w.SetInputMode(glfw.CursorMode, glfw.CursorDisabled)
-		if glfw.RawMouseMotionSupported() {
-			w.SetInputMode(glfw.RawMouseMotion, glfw.True)
+	in.a.onMain(func() {
+		if on {
+			w.SetInputMode(glfw.CursorMode, glfw.CursorDisabled)
+			if glfw.RawMouseMotionSupported() {
+				w.SetInputMode(glfw.RawMouseMotion, glfw.True)
+			}
+		} else {
+			w.SetInputMode(glfw.CursorMode, glfw.CursorNormal)
 		}
-	} else {
-		w.SetInputMode(glfw.CursorMode, glfw.CursorNormal)
-	}
+	})
 }
 
 // toScreen sends ev to the top screen; true if a screen is open (the

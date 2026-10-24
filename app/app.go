@@ -70,6 +70,10 @@ type Debug struct {
 	// Crack 1..10 draws the breaking cracks of stage Crack-1 on the
 	// targeted block, as if it were being broken (0: off).
 	Crack int
+	// SerialTicks runs the ticks inline before the frame (as with
+	// VOXELLIB_SERIAL_TICKS=1) instead of overlapping them with the last
+	// frame's present.
+	SerialTicks bool
 }
 
 // Action is what a player does to a block or an entity.
@@ -81,7 +85,8 @@ const (
 )
 
 // Hooks are the game's callbacks; nil ones are skipped. They run on the
-// main thread.
+// main thread, except Tick, which runs while the main thread presents the
+// last frame (never at the same time as another hook or a GLFW call).
 type Hooks struct {
 	// Start runs at the start of each session (first run and after
 	// NewGame), once the engine, the model renderer and the player exist:
@@ -193,6 +198,20 @@ type App struct {
 	readyLogged   bool
 	damage        damageOverlay
 	cracks        map[int]*crack // DestroyBlockPartially, by breaker id
+	// ticking: the ticks run off the main thread (overlapped with the
+	// last frame's present); GLFW calls they make wait in mainQ.
+	ticking bool
+	mainQ   []func()
+}
+
+// onMain runs f now, or after the ticks when they run off the main thread
+// (GLFW calls must stay on it).
+func (a *App) onMain(f func()) {
+	if a.ticking {
+		a.mainQ = append(a.mainQ, f)
+		return
+	}
+	f()
 }
 
 // New opens the window and the GPU. Call it on the main thread (lock it in

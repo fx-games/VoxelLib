@@ -351,6 +351,23 @@ func submit(final bool) {
 
 }
 
+// SubmitFrame submits the frame's rendering (offscreen); EndFrame then
+// waits for a drawable, copies the frame to it and presents. GPU uploads
+// made between the two, by another goroutine (Renderer.Upload, a new
+// texture), are ordered after this frame's draws: the frame never sees
+// them.
+func SubmitFrame() {
+	if dev.enc == nil {
+		return
+	}
+	GPUMark("")
+	submit(false)
+	var err error
+	if dev.enc, err = dev.device.CreateCommandEncoder(&wgpu.CommandEncoderDescriptor{Label: "present"}); err != nil {
+		panic(err)
+	}
+}
+
 // EndFrame submits and presents the frame.
 func EndFrame(*glfw.Window) {
 	if dev.enc == nil {

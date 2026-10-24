@@ -75,6 +75,32 @@ func (a *App) loop() {
 		warm = d
 	}
 	var stopProfile func()
+	var benchTickFrame []bool // bench: the frame ran a tick
+	// The ticks run on their own goroutine while the main thread presents
+	// the last frame (EndFrame: the drawable / vsync wait), like the
+	// reference's integrated server; the main thread joins them before it
+	// reads game state. SerialTicks runs them inline before the frame.
+	overlap := !dbg.SerialTicks && os.Getenv("VOXELLIB_SERIAL_TICKS") == ""
+	pending := false // overlap: the last frame is encoded, its EndFrame not run yet
+	var ticksRun int
+	var runTicks func()
+	tickGo, tickDone := make(chan struct{}), make(chan struct{})
+	if overlap {
+		go func() {
+			tickThread()
+			for range tickGo {
+				runTicks()
+				tickDone <- struct{}{}
+			}
+		}()
+		defer close(tickGo)
+	}
+	defer func() {
+		if pending {
+			render.EndFrame(a.Win)
+		}
+	}()
+	var swapD time.Duration
 	for !a.Win.ShouldClose() && !a.quit && !a.restart {
 		if dbg.Verbose && !a.readyLogged && a.Ready() {
 			a.readyLogged = true
@@ -86,6 +112,7 @@ func (a *App) loop() {
 				if stopProfile != nil {
 					stopProfile()
 				}
+				printBenchTickFrames(benchFrames, benchCPU, benchTickFrame)
 				printBench(benchFrames, benchCPU, &benchMem)
 				printBenchExtra(benchTicks, benchGPU, a.Eng.Renderer.Stats)
 				return
@@ -110,13 +137,39 @@ func (a *App) loop() {
 		// A shot is taken at exactly tick ShotAt, alpha 0: the same
 		// pixels each run, whatever the frame timing.
 		atShot := func() bool { return dbg.Shot != "" && a.Tick >= dbg.ShotAt }
-		for acc >= TickDur && !atShot() {
-			tt := time.Now()
-			a.tick()
-			acc -= TickDur
-			if stopProfile != nil {
-				benchTicks = append(benchTicks, time.Since(tt))
+		ticksRun = 0
+		runTicks = func() {
+			for acc >= TickDur && !atShot() {
+				tt := time.Now()
+				a.tick()
+				acc -= TickDur
+				ticksRun++
+				if stopProfile != nil {
+					benchTicks = append(benchTicks, time.Since(tt))
+				}
 			}
+		}
+		var present time.Duration // overlap: the main thread's EndFrame of the last frame
+		if overlap {
+			a.Input.snapshot()
+			a.ticking = true
+			tickGo <- struct{}{}
+			if pending {
+				tp := time.Now()
+				a.endFrame(gpuWait && stopProfile != nil, &benchGPU)
+				pending = false
+				present = time.Since(tp)
+				swapD = present
+			}
+			<-tickDone
+			a.ticking = false
+			for _, f := range a.mainQ {
+				f()
+			}
+			clear(a.mainQ)
+			a.mainQ = a.mainQ[:0]
+		} else {
+			runTicks()
 		}
 		if a.Paused() {
 			acc = time.Duration(a.alpha * float64(TickDur)) // hold the pose
@@ -205,12 +258,15 @@ func (a *App) loop() {
 		}
 		t3 := time.Now()
 		if dbg.Bench > 0 && time.Since(start) > warm {
-			benchCPU = append(benchCPU, t3.Sub(st.frameStart)-acquire)
+			benchCPU = append(benchCPU, t3.Sub(st.frameStart)-acquire-present)
+			benchTickFrame = append(benchTickFrame, ticksRun > 0)
 		}
-		render.EndFrame(a.Win)
-		if gpuWait && stopProfile != nil {
-			render.FinishGPU()
-			benchGPU = append(benchGPU, time.Since(t3))
+		if overlap {
+			render.SubmitFrame() // the ticks' GPU uploads come after this frame's draws
+			pending = true       // presented while the next frame's ticks run
+		} else {
+			a.endFrame(gpuWait && stopProfile != nil, &benchGPU)
+			swapD = time.Since(t3)
 		}
 		tSwap := time.Now()
 		if a.frameLimit > 0 {
@@ -223,13 +279,13 @@ func (a *App) loop() {
 			}
 		}
 		t4 := time.Now()
-		if cost := t3.Sub(t0) - acquire; a.Tick > 40 {
+		if cost := t3.Sub(t0) - acquire - present; a.Tick > 40 {
 			st.costMax = max(st.costMax, cost)
 			if cost > 12*time.Millisecond {
 				st.slowCosts++
 			}
 		}
-		for i, d := range [6]time.Duration{t1.Sub(t0), t2.Sub(t1), acquire, t3.Sub(t2) - acquire, tSwap.Sub(t3), t4.Sub(tSwap)} {
+		for i, d := range [6]time.Duration{t1.Sub(t0) - present, t2.Sub(t1), acquire, t3.Sub(t2) - acquire, swapD, t4.Sub(tSwap)} {
 			st.phase[i] = max(st.phase[i], d)
 		}
 		st.frames++
@@ -238,6 +294,17 @@ func (a *App) loop() {
 			st.frames, st.fpsTime = 0, time.Now()
 			a.updateTitle(fps)
 		}
+	}
+}
+
+// endFrame submits and presents the frame; gpu also waits for the GPU and
+// records how long that took.
+func (a *App) endFrame(gpu bool, gpuTimes *[]time.Duration) {
+	t := time.Now()
+	render.EndFrame(a.Win)
+	if gpu {
+		render.FinishGPU()
+		*gpuTimes = append(*gpuTimes, time.Since(t))
 	}
 }
 
