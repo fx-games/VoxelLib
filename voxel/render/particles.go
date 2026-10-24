@@ -17,7 +17,7 @@ type ParticleRenderer struct {
 	buf []float32
 }
 
-const particleStride = 14 // rel pos 3, size 1, rgba 4, sprite 1, sheet flag 1, uv rect 4
+const particleStride = 15 // rel pos 3, size 1, rgba 4, sprite 1, sheet flag 1, uv rect 4, roll 1
 
 // particleCorners is the unit quad as two triangles.
 var particleCorners = []float32{-0.5, -0.5, 0.5, -0.5, 0.5, 0.5, -0.5, -0.5, 0.5, 0.5, -0.5, 0.5}
@@ -85,7 +85,7 @@ func (pr *ParticleRenderer) Draw(cam *Camera, ps []particles.Particle, alpha flo
 					lc = pr.r.LightColor(sky, max(block, q.Emit))
 				}
 				pr.buf = append(pr.buf, float32(x-cam.X), float32(y-cam.Y), float32(z-cam.Z), size,
-					col[0]*lc[0], col[1]*lc[1], col[2]*lc[2], col[3], float32(q.Sprite), flag, q.UV[0], q.UV[1], q.UV[2], q.UV[3])
+					col[0]*lc[0], col[1]*lc[1], col[2]*lc[2], col[3], float32(q.Sprite), flag, q.UV[0], q.UV[1], q.UV[2], q.UV[3], q.Roll)
 			}
 			if len(pr.buf) > 0 {
 				pr.drawPass(&pf, additive, sheet, pr.buf)

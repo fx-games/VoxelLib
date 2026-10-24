@@ -56,6 +56,10 @@ type Particle struct {
 	// particles: a quarter of a terrain or item icon).
 	Sheet uint8
 	UV    [4]float32
+	// Roll turns the quad by this many radians about the view direction,
+	// clockwise as the viewer sees it (glRotate about the eye-to-particle
+	// axis); 0: upright.
+	Roll float32
 }
 
 // Lerp is the particle's position between the last two ticks, its size and

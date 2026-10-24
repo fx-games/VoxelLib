@@ -799,8 +799,9 @@ struct VOut {
 }
 @vertex
 fn vs(@location(0) corner: vec2f, @location(1) ipos: vec3f, @location(2) size: f32,
-	@location(3) color: vec4f, @location(4) sprite: vec2f, @location(5) rect: vec4f) -> VOut {
-	let p = ipos + (u.right.xyz * corner.x + u.up.xyz * corner.y) * size;
+	@location(3) color: vec4f, @location(4) sprite: vec2f, @location(5) rect: vec4f, @location(6) roll: f32) -> VOut {
+	let rc = vec2f(corner.x * cos(roll) + corner.y * sin(roll), corner.y * cos(roll) - corner.x * sin(roll)); // Particle.Roll
+	let p = ipos + (u.right.xyz * rc.x + u.up.xyz * rc.y) * size;
 	var o: VOut;
 	o.pos = jitter(u.viewProj * vec4f(p, 1.0));
 	o.color = color;

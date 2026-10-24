@@ -320,8 +320,9 @@ struct VOut {
 ` + wgslLight + `
 @vertex
 fn vs(@location(0) corner: vec2f, @location(1) ipos: vec3f, @location(2) size: f32,
-	@location(3) color: vec4f, @location(4) sprite: vec2f, @location(5) rect: vec4f) -> VOut {
-	let p = ipos + (u.right.xyz * corner.x + u.up.xyz * corner.y) * size;
+	@location(3) color: vec4f, @location(4) sprite: vec2f, @location(5) rect: vec4f, @location(6) roll: f32) -> VOut {
+	let rc = vec2f(corner.x * cos(roll) + corner.y * sin(roll), corner.y * cos(roll) - corner.x * sin(roll)); // Particle.Roll
+	let p = ipos + (u.right.xyz * rc.x + u.up.xyz * rc.y) * size;
 	var o: VOut;
 	o.pos = u.viewProj * vec4f(p, 1.0);
 	o.color = color;
@@ -526,7 +527,7 @@ func (ps *pipelines) init() error {
 		{ArrayStride: 8, StepMode: gputypes.VertexStepModeVertex, Attributes: []gputypes.VertexAttribute{attr(0, gputypes.VertexFormatFloat32x2, 0)}},
 		{ArrayStride: particleStride * 4, StepMode: gputypes.VertexStepModeInstance, Attributes: []gputypes.VertexAttribute{
 			attr(1, gputypes.VertexFormatFloat32x3, 0), attr(2, gputypes.VertexFormatFloat32, 12),
-			attr(3, gputypes.VertexFormatFloat32x4, 16), attr(4, gputypes.VertexFormatFloat32x2, 32), attr(5, gputypes.VertexFormatFloat32x4, 40)}},
+			attr(3, gputypes.VertexFormatFloat32x4, 16), attr(4, gputypes.VertexFormatFloat32x2, 32), attr(5, gputypes.VertexFormatFloat32x4, 40), attr(6, gputypes.VertexFormatFloat32, 56)}},
 	}
 
 	skyBuf := []gputypes.VertexBufferLayout{{ArrayStride: 36, StepMode: gputypes.VertexStepModeVertex,
