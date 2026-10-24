@@ -192,15 +192,19 @@ func (m *Manager) Attack(src, t *Actor, damage float64, knockback int) bool {
 	return true
 }
 
-// HurtKind tells the Protection hook what kind of hurt it is.
+// HurtKind tells the Protection hook what kind of hurt it is: bits, as a
+// DamageSource can be fire and a projectile at once (a fireball).
 type HurtKind int
 
 const (
-	HurtOther      HurtKind = iota
-	HurtMelee               // a blow (Attack)
-	HurtFire                // fire or lava (isFireDamage)
-	HurtProjectile          // a projectile's hit (isProjectile)
+	HurtOther      HurtKind = 0
+	HurtMelee      HurtKind = 1 << 0 // a blow (Attack)
+	HurtFire       HurtKind = 1 << 1 // fire or lava (isFireDamage)
+	HurtProjectile HurtKind = 1 << 2 // a projectile's hit (isProjectile)
 )
+
+// Is reports whether the hurt is (also) of kind b.
+func (k HurtKind) Is(b HurtKind) bool { return k&b != 0 }
 
 // HurtAs is Hurt with the kind of hurt the Protection hooks see.
 func (m *Manager) HurtAs(k HurtKind, t, src *Actor, amount float64, unblockable bool) bool {
@@ -221,7 +225,9 @@ func (m *Manager) hurtAs(k HurtKind, t, src *Actor, amount float64, unblockable 
 // the second half of the invulnerability window only a stronger blow counts,
 // and only by the difference; a fresh hit starts the window, the hurt flash
 // and knockback away from src. Armour reduces it by armor/25 unless
-// unblockable (falls, drowning, magic). It reports whether damage was done.
+// unblockable (falls, drowning, magic). A hurt of 0 (a snowball, an egg)
+// is a Blow, except to a player (EntityPlayer refuses 0); a Ward's
+// negative amount refuses the hurt. It reports whether the hurt counted.
 func (m *Manager) Hurt(t, src *Actor, amount float64, unblockable bool) bool {
 	if !t.Alive() {
 		return false
@@ -232,8 +238,11 @@ func (m *Manager) Hurt(t, src *Actor, amount float64, unblockable bool) bool {
 	if t.Ward != nil {
 		amount = t.Ward(t, src, amount)
 	}
-	if amount <= 0 {
+	if amount < 0 || amount == 0 && t.Player {
 		return false
+	}
+	if amount == 0 {
+		return m.Blow(t, src)
 	}
 	fresh := true
 	if float64(t.hurtResist) > MaxHurtResist/2 {

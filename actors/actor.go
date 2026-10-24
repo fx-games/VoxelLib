@@ -291,7 +291,8 @@ type Actor struct {
 	RideInput           RideInput // the rider's steering, set each tick for a player rider
 	OnHurt              func(a, src *Actor, amount float64)
 	// Ward, if set, is an attackEntityFrom override: it gets each hurt
-	// first and returns the amount to apply (<= 0: the hurt is ignored).
+	// first and returns the amount to apply (< 0: refused, as an override
+	// returning false; 0: still a Blow, as super.attackEntityFrom(src, 0)).
 	Ward func(a, src *Actor, amount float64) float64
 	// OnDamage, if set, is a damageEntity override: it runs once the
 	// health is lowered, before OnHurt and the death check, with the
