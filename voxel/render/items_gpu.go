@@ -42,22 +42,27 @@ func (ir *ItemRenderer) drawRange(i int, mvp, model mgl32.Mat4, sky, block uint8
 		setPipe(p, dev.pipes.item)
 	}
 	lc := ir.r.LightColor(sky, block)
+	unlit := float32(0)
+	if ir.unlit {
+		unlit = 1
+	}
 	bindUniforms(p, g.u.reset().mat(clip(mvp)).mat(model).f(lc[0], lc[1], lc[2], lightCode(sky, block)).
-		f(f.Color[0], f.Color[1], f.Color[2], float32(i)).f(f.Start, f.End, 0, 0))
+		f(f.Color[0], f.Color[1], f.Color[2], float32(i)).f(f.Start, f.End, unlit, 0))
 	p.SetBindGroup(1, g.bg, nil)
 	p.SetVertexBuffer(0, g.vbo, 0)
 	dev.draws++
 
 	p.Draw(gputypes.DrawArgs{VertexCount: uint32(ir.ranges[i][1]), InstanceCount: 1, FirstVertex: uint32(ir.ranges[i][0])})
 	packCast(g.bg, g.vbo, nil, uint32(ir.ranges[i][0]), uint32(ir.ranges[i][1]), model, 1)
-	if !ir.glint || ir.noDepth || !glintOn() { // depth equal finds no depth of a NoDepth item
+	passes := ir.glintPasses()
+	if passes == 0 || ir.noDepth || !glintOn() { // depth equal finds no depth of a NoDepth item
 		return
 	}
 	setPipe(p, dev.pipes.itemGlint)
 	p.SetBindGroup(2, glintTex.bg, nil)
 	ms := glintClock()
-	for layer := range 2 {
-		a := itemGlint(ms, layer)
+	for n := range passes * 2 {
+		a := itemGlint(ms, n%2)
 		bindUniforms(p, g.u.reset().mat(clip(mvp)).mat(model).f(lc[0], lc[1], lc[2], 0).
 			f(f.Color[0], f.Color[1], f.Color[2], float32(i)).f(f.Start, f.End, 0, 0).
 			f(GlintColor[0], GlintColor[1], GlintColor[2], 1).f(a[0], a[1], a[2], 0).f(a[3], a[4], a[5], 0))

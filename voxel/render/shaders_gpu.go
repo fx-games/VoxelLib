@@ -246,7 +246,7 @@ fn vs(@location(0) pos: vec3f, @location(1) uv: vec2f, @location(2) normal: vec3
 fn fs(i: VOut) -> @location(0) vec4f {
 	let c = textureSample(tex, samp, i.uv, i32(u.fogColor.a));
 	if (c.a < 0.5) { discard; }
-	let col = c.rgb * i.shade * u.light.rgb;
+	let col = c.rgb * select(i.shade, 1.0, u.fog.z > 0.5) * u.light.rgb; // fog.z: Unlit
 	return vec4f(mix(col, u.fogColor.rgb, fogFactor(i.dist, u.fog)), 1.0);
 }
 `

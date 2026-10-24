@@ -20,6 +20,16 @@ type ItemRenderer struct {
 	texels  []int      // the larger sprite side per item (In2D)
 	noDepth bool       // the item being drawn writes no depth (ItemPose.NoDepth)
 	glint   bool       // the item being drawn glints (ItemPose.Glint)
+	glints  int        // ItemPose.Glints
+	unlit   bool       // ItemPose.Unlit
+}
+
+// glintPasses is how many glint passes the item being drawn gets.
+func (ir *ItemRenderer) glintPasses() int {
+	if ir.glint {
+		return ir.glints + 1
+	}
+	return ir.glints
 }
 
 // ItemInstance is one item to draw in the world.
@@ -110,6 +120,12 @@ type ItemPose struct {
 	// a sneaking ranger's equipment).
 	NoDepth bool
 	Glint   bool // the enchantment glint (glint.go)
+	// Glints adds glint passes over Glint's one (each the same two
+	// scrolling layers, added up), e.g. a stronger glow.
+	Glints int
+	// Unlit draws without the directional shading (GL_LIGHTING off); the
+	// lightmap still applies.
+	Unlit bool
 }
 
 // DrawPosed draws items at arbitrary transforms. Call after Renderer.Render
@@ -122,10 +138,10 @@ func (ir *ItemRenderer) DrawPosed(cam *Camera, items []ItemPose) {
 	ir.begin(ir.r.CurrentFog())
 	for _, it := range items {
 		model := mgl32.Translate3D(float32(it.X-cam.X), float32(it.Y-cam.Y), float32(it.Z-cam.Z)).Mul4(it.M)
-		ir.noDepth, ir.glint = it.NoDepth, it.Glint
+		ir.noDepth, ir.glint, ir.glints, ir.unlit = it.NoDepth, it.Glint, it.Glints, it.Unlit
 		ir.draw(it.Item, vp, model, it.Sky, it.Block)
 	}
-	ir.noDepth, ir.glint = false, false
+	ir.noDepth, ir.glint, ir.glints, ir.unlit = false, false, 0, false
 	ir.end()
 }
 
@@ -223,9 +239,9 @@ func (ir *ItemRenderer) DrawHandItem(aspect float32, it ItemPose) {
 	clearHandDepth()
 	proj := mgl32.Perspective(mgl32.DegToRad(70), aspect, 0.05, 10)
 	ir.begin(Fog{Color: mgl32.Vec3{}, Start: 1e6, End: 2e6}) // no fog on the hand
-	ir.glint = it.Glint
+	ir.glint, ir.glints, ir.unlit = it.Glint, it.Glints, it.Unlit
 	ir.draw(it.Item, proj, it.M, it.Sky, it.Block)
-	ir.glint = false
+	ir.glint, ir.glints, ir.unlit = false, 0, false
 	ir.end()
 }
 

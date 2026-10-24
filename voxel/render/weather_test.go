@@ -97,3 +97,17 @@ func TestBlockBoost(t *testing.T) {
 		t.Errorf("no boost: %v", got)
 	}
 }
+
+// TestGlintPasses: Glint is one pass, Glints adds to it.
+func TestGlintPasses(t *testing.T) {
+	for _, c := range []struct {
+		glint  bool
+		glints int
+		want   int
+	}{{false, 0, 0}, {true, 0, 1}, {false, 4, 4}, {true, 4, 5}} {
+		ir := ItemRenderer{glint: c.glint, glints: c.glints}
+		if got := ir.glintPasses(); got != c.want {
+			t.Errorf("%+v: %d", c, got)
+		}
+	}
+}
