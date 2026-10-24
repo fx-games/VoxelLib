@@ -26,6 +26,8 @@ type EffectRule struct {
 	Speed float64
 	// Resist sets Resistance to the level, FireProof sets FireProof.
 	Resist, FireProof bool
+	// Magic makes Damage a HurtMagic hurt (DamageSource.magic).
+	Magic bool
 	// Color is the liquid colour 0xRRGGBB, mixed by EffectColor.
 	Color int
 }
@@ -79,7 +81,11 @@ func (m *Manager) effectTick(a *Actor) {
 					a.Health = min(a.MaxHealth, a.Health+r.Heal)
 				}
 				if r.Damage > 0 && a.Health > r.Floor {
-					m.Hurt(a, nil, r.Damage, true)
+					k := HurtOther
+					if r.Magic {
+						k = HurtMagic
+					}
+					m.hurtAs(k, a, nil, r.Damage, true)
 				}
 			}
 			e.Ticks--

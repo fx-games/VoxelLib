@@ -175,8 +175,9 @@ type Ranged struct {
 	// RangedCNPC (MinInterval/MaxInterval as minDelay/maxDelay, MaxRange
 	// as MaxFiringRange, and the fields below).
 	AI int
-	// MoveSpeed is a mod's ranged attack task's path speed factor toward a
-	// target out of range; Switch marks a class with both a melee
+	// MoveSpeed is the ranged attack task's path speed factor toward a
+	// target out of range (RangedSkeleton: 0 is 1, EntityAIArrowAttack's
+	// entityMoveSpeed); Switch marks a class with both a melee
 	// and a ranged task that its attack mode swaps.
 	MoveSpeed float64
 	Switch    bool

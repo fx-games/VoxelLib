@@ -216,6 +216,7 @@ const (
 	HurtMelee      HurtKind = 1 << 0 // a blow (Attack)
 	HurtFire       HurtKind = 1 << 1 // fire or lava (isFireDamage)
 	HurtProjectile HurtKind = 1 << 2 // a projectile's hit (isProjectile)
+	HurtMagic      HurtKind = 1 << 3 // magic (isMagicDamage: poison, harming)
 )
 
 // Is reports whether the hurt is (also) of kind b.
@@ -390,7 +391,11 @@ func (m *Manager) shoot(a, t *Actor) {
 	if d2 <= max2 && a.seeTime >= 20 {
 		m.stop(a)
 	} else {
-		m.moveTo(a, t.Pos(), 1)
+		sp := 1.0 // entityMoveSpeed
+		if r.MoveSpeed > 0 {
+			sp = r.MoveSpeed
+		}
+		m.moveTo(a, t.Pos(), sp)
 	}
 	m.face(a, t)
 	f := math.Sqrt(d2) / r.MaxRange
