@@ -20,7 +20,14 @@ func TestChunkTicking(t *testing.T) {
 	if m := c.Ticking(g); m != 4 {
 		t.Fatalf("grown mask %b", m)
 	}
+	d := newChunk(ChunkPos{X: 1}, 0, 64)
+	d.SetRaw(0, 0, 0, 5)
+	d.Ticking(g)
 	h := g.Grow([]bool{5: true, 6: false, 7: false, 8: true})
+	d.tickMask = 1 << 9 // a chunk without added states keeps its counts
+	if m := d.Ticking(h); m != 1<<9 {
+		t.Fatalf("kept mask %b", m)
+	}
 	c.SetRaw(0, 0, 0, 8) // was unmarked when set under g
 	if m := c.Ticking(h); m != 5 {
 		t.Fatalf("recounted mask %b", m)

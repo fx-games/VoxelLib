@@ -80,35 +80,45 @@ type Chunk struct {
 	// (nil before the first Ticking); SetRaw keeps both up to date.
 	tickMask  uint64
 	tickFlags *TickFlags
+	// tickNew is set when the chunk holds states past the end of tickFlags.
+	tickNew bool
 }
 
 // TickFlags marks a set of states the chunks keep a count of, such as the
 // randomly ticking ones (NewTickFlags).
 type TickFlags struct {
 	f    []bool
-	root *TickFlags // the first table of a line of Grow, all counting alike
+	line *TickFlags // the first table of a line of Grow
+	root *TickFlags // the table of the line that last added marked states
 }
 
 // NewTickFlags makes a table of the states whose f[id] is true; f must
 // not change afterwards (make a new table instead).
 func NewTickFlags(f []bool) *TickFlags {
 	t := &TickFlags{f: f}
-	t.root = t
+	t.line, t.root = t, t
 	return t
 }
 
-// Grow returns the table for f, which extends t's: the chunks' counts
-// carry over when the added states are all unmarked.
+// Grow returns the table for f, which extends t's. The chunks' counts
+// carry over, but for chunks holding added states when one of those is
+// marked.
 func (t *TickFlags) Grow(f []bool) *TickFlags {
+	g := &TickFlags{f: f, line: t.line, root: t.root}
 	for _, v := range f[len(t.f):] {
 		if v {
-			return NewTickFlags(f)
+			g.root = g
+			break
 		}
 	}
-	return &TickFlags{f: f, root: t.root}
+	return g
 }
 
 func (t *TickFlags) has(id StateID) bool { return int(id) < len(t.f) && t.f[id] }
+
+// counts reports whether id is marked or past the end of t (and so has to
+// be looked at in a count).
+func (t *TickFlags) counts(id StateID) bool { return int(id) >= len(t.f) || t.f[id] }
 
 // Ticking returns the sections holding a state of t as a mask, bit i for
 // Sections[i] (the reference's ExtendedBlockStorage.getNeedsRandomTick,
@@ -119,11 +129,11 @@ func (c *Chunk) Ticking(t *TickFlags) uint64 {
 	if c.tickFlags == t {
 		return c.tickMask
 	}
-	if c.tickFlags != nil && c.tickFlags.root == t.root {
+	if o := c.tickFlags; o != nil && o.line == t.line && (o.root == t.root || !c.tickNew) {
 		c.tickFlags = t
 		return c.tickMask
 	}
-	c.tickFlags, c.tickMask = t, 0
+	c.tickFlags, c.tickMask, c.tickNew = t, 0, false
 	var tmp [SectionVolume]StateID
 	for i, s := range c.Sections {
 		if s == nil {
@@ -133,16 +143,19 @@ func (c *Chunk) Ticking(t *TickFlags) uint64 {
 		if s.nonAir == 0 {
 			// all air
 		} else if s.Blocks.Bits() == 0 {
-			if t.has(s.Blocks.Get(0)) {
+			v := s.Blocks.Get(0)
+			c.tickNew = c.tickNew || int(v) >= len(t.f)
+			if t.has(v) {
 				s.ticking = SectionVolume
 				s.tickBits = new([SectionVolume / 64]uint64)
 				for j := range s.tickBits {
 					s.tickBits[j] = ^uint64(0)
 				}
 			}
-		} else if s.Blocks.MayContain(t.has) {
+		} else if s.Blocks.MayContain(t.counts) {
 			s.Blocks.Unpack(&tmp)
 			for j, v := range tmp {
+				c.tickNew = c.tickNew || int(v) >= len(t.f)
 				if t.has(v) {
 					if s.tickBits == nil {
 						s.tickBits = new([SectionVolume / 64]uint64)
@@ -219,6 +232,7 @@ func (c *Chunk) SetRaw(x, y, z int, id StateID) {
 		s.nonAir--
 	}
 	if t := c.tickFlags; t != nil {
+		c.tickNew = c.tickNew || int(id) >= len(t.f)
 		if t.has(old) {
 			s.ticking--
 			s.tickBits[j>>6] &^= 1 << uint(j&63)
