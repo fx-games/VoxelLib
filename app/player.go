@@ -18,7 +18,15 @@ import (
 // Terrain adapts the engine's world to character.World and collide.Solids
 // (and collide.Boxer). Unloaded chunks are solid so nothing falls out of
 // the world while it streams in.
-type Terrain struct{ eng *engine.Engine }
+type Terrain struct {
+	eng *engine.Engine
+	// Climb, when set, marks the blocks a character climbs (ladders,
+	// vines): character.Climber.
+	Climb func(x, y, z int) bool
+}
+
+// Climbable is Climb, false without one.
+func (t *Terrain) Climbable(x, y, z int) bool { return t.Climb != nil && t.Climb(x, y, z) }
 
 func (t *Terrain) Solid(x, y, z int) bool {
 	w := t.eng.World
@@ -47,7 +55,10 @@ func (t *Terrain) Liquid(x, y, z int) character.Liquid {
 	return character.LiquidNone
 }
 
-var _ character.World = (*Terrain)(nil)
+var (
+	_ character.World   = (*Terrain)(nil)
+	_ character.Climber = (*Terrain)(nil)
+)
 
 // Player is the first-person player: the character controller plus
 // reach, block breaking and placing, the hotbar slot and the hand's swing
