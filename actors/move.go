@@ -116,6 +116,23 @@ func (m *Manager) PathEnds(a *Actor, goal Vec) bool {
 	return e.X == int(goal.X) && e.Z == int(goal.Z)
 }
 
+// PathToward is PathNavigate.getPathToEntityLiving(t) != null: the
+// walker can navigate (on the ground, or swimming in a liquid) and a
+// search toward t's feet within AggroRange gets it at least one point
+// nearer (PathFinder keeps the nearest point; the start alone is no path).
+func (m *Manager) PathToward(a, t *Actor) bool {
+	if b := a.Body; !b.OnGround && !(a.CanSwim && (b.InWater || b.InLava)) {
+		return false
+	}
+	g := m.graphFor(a)
+	g.Range = float32(a.AggroRange)
+	defer func() { g.Range = 0 }()
+	tp := t.Pos()
+	to := nav.Pos{X: int(math.Floor(tp.X - m.half)), Y: int(math.Floor(t.Box().MinY)), Z: int(math.Floor(tp.Z - m.half))}
+	_, ok := g.Path(m.start(g, a.Pos()), to, maxNodes)
+	return ok
+}
+
 // Detours: the long search reaches longRange blocks with longNodes
 // expansions (spread over ticks by pathBudget); a turned leg is detourLen
 // blocks long and held for detourTicks.

@@ -32,3 +32,35 @@ func TestPathEnds(t *testing.T) {
 		t.Error("walled-in cell reached")
 	}
 }
+
+// TestPathToward: getPathToEntityLiving is a path when the walker stands
+// and can move nearer; none in the air, and none from a one-cell pocket
+// (no cell nearer than its own).
+func TestPathToward(t *testing.T) {
+	w := flat(20)
+	for x := 9; x <= 11; x++ { // a one-cell pocket at 10,10
+		for z := 9; z <= 11; z++ {
+			if x != 10 || z != 10 {
+				for y := 1; y <= 3; y++ {
+					w.solid[nav.Pos{X: x, Y: y, Z: z}] = true
+				}
+			}
+		}
+	}
+	m := NewManager(w, nil, nil, 1)
+	a := New("a", "a", 0.5, 1, 0.5)
+	a.AggroRange = 16
+	tg := New("t", "t", 5.5, 1, -3.5)
+	a.Body.OnGround = true
+	if !m.PathToward(a, tg) {
+		t.Error("no path on open ground")
+	}
+	if a.Body.OnGround = false; m.PathToward(a, tg) {
+		t.Error("path from the air (canNavigate)")
+	}
+	in := New("i", "i", 10.5, 1, 10.5)
+	in.AggroRange, in.Body.OnGround = 16, true
+	if m.PathToward(in, tg) {
+		t.Error("path out of a walled cell")
+	}
+}
