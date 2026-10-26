@@ -78,3 +78,57 @@ func TestDollRestsOnFloorAndSkinsAtBind(t *testing.T) {
 		t.Fatalf("still standing: crown at %v", d.Joint(Crown))
 	}
 }
+
+// A doll knocked flat gets up into its standing pose without its limbs
+// changing length or going through the floor, and its skin is the bind pose.
+func TestDollRises(t *testing.T) {
+	m := humanoid()
+	d := New(m, mgl32.Translate3D(2, 0, 2))
+	d.Push(mgl32.Vec3{0.3, 0.2, 0}, 0.5)
+	for range 200 {
+		d.Step(room{})
+	}
+	stand := mgl32.Translate3D(3, 0, 2).Mul4(mgl32.HomogRotate3DY(1))
+	d.Rise(stand, 20)
+	for d.Rising() {
+		d.RiseStep()
+		for _, l := range [][2]int{{HipR, FootR}, {ShoulderL, HandL}, {Pelvis, Neck}} {
+			got, want := d.Joint(l[1]).Sub(d.Joint(l[0])).Len(), d.bind[l[1]].Sub(d.bind[l[0]]).Len()
+			if math.Abs(float64(got-want)) > 1e-3 {
+				t.Fatalf("limb %v is %.3f long, want %.3f", l, got, want)
+			}
+		}
+		for j := range numJoints {
+			if d.Joint(j).Y() < -0.01 {
+				t.Fatalf("joint %d under the floor at %v", j, d.Joint(j))
+			}
+		}
+	}
+	for i, s := range d.Skin(stand, 1, nil) {
+		if !s.ApproxEqualThreshold(mgl32.Ident4(), 1e-3) {
+			t.Fatalf("bone %d not standing: %v", i, s)
+		}
+	}
+}
+
+// A doll turned by Turn before rising swings up the shortest way, at most
+// a right angle, however it lies.
+func TestDollTurnsToGetUp(t *testing.T) {
+	m := humanoid()
+	for _, lay := range []mgl32.Mat4{
+		mgl32.HomogRotate3DX(math.Pi / 2), mgl32.HomogRotate3DX(-math.Pi / 2), // on its back, on its front
+		mgl32.HomogRotate3DY(2).Mul4(mgl32.HomogRotate3DZ(math.Pi / 2)), // on its side, turned
+		mgl32.HomogRotate3DY(-1).Mul4(mgl32.HomogRotate3DX(-1.4)),
+	} {
+		place := mgl32.Translate3D(2, 0, 2).Mul4(mgl32.HomogRotate3DY(0.5))
+		d := New(m, place)
+		for j := range d.pos {
+			d.pos[j] = mgl32.TransformCoordinate(mgl32.TransformCoordinate(d.pos[j], place.Inv()), place.Mul4(lay))
+		}
+		d.Rise(place.Mul4(mgl32.HomogRotate3DY(float32(d.Turn()))), 20)
+		w := d.rise.turn.W
+		if a := 2 * math.Acos(math.Min(1, math.Abs(float64(w)))); a > math.Pi/2+1e-3 {
+			t.Fatalf("lying %v: swings up through %.2f rad", lay, a)
+		}
+	}
+}
