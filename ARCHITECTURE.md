@@ -16,6 +16,7 @@ app ─────────── game shell: window, input mapping, 20 Hz t
    ├── projectile       arrows: ballistic flight, sticking in blocks and targets
    ├── ragdoll          kicks (Kick, Flight: impacts) and verlet ragdolls of humanoid models (Doll)
    ├── bettercombat     Better Combat attack animations on a player-shaped body (Humanoid: pose, first-person item; pure, mgl32 only)
+   ├── ui/basepack      the default GUI pack: font, buttons, menu background, English menu strings (cmd/genbasepack draws them)
    ├── audio            1.7.10-reference-style sound: mixer on oto, Ogg Vorbis, sounds.json events, music ticker
    ├── importer/roblox, importer/mcmodel → model (+ model/gltf), via importer/packfs
    ├── items/extrude    sprite → mesh (pure)        items/sheet  sheet cutter (pure)
