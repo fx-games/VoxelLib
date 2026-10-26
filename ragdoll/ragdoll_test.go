@@ -159,3 +159,32 @@ func TestDollComesToRestInCornerAndOnEdge(t *testing.T) {
 		}
 	}
 }
+
+// However hard it is shoved at a wall, a corner or over an edge, no joint
+// and no bone of a doll is ever inside a block, made against a wall or not.
+func TestDollLimbsStayOutOfBlocks(t *testing.T) {
+	for _, c := range []struct{ at, push mgl32.Vec3 }{
+		{mgl32.Vec3{4.6, 1, 4.6}, mgl32.Vec3{0.5, 0, 0.5}},
+		{mgl32.Vec3{4.5, 1, 2}, mgl32.Vec3{0.6, 0.1, 0}},
+		{mgl32.Vec3{2, 1, 4.5}, mgl32.Vec3{0.1, 0.2, 0.7}},
+		{mgl32.Vec3{3.2, 1, 2}, mgl32.Vec3{-0.4, 0, 0.1}},
+		{mgl32.Vec3{2.5, 0, 2}, mgl32.Vec3{0.6, 0, 0}},
+	} {
+		d := New(humanoid(), mgl32.Translate3D(c.at.X(), c.at.Y(), c.at.Z()))
+		d.Push(c.push, 0.6)
+		for i := range 200 {
+			d.Follow(float64(c.at.X()), float64(c.at.Y()), float64(c.at.Z()), 0.3)
+			d.Step(corner{})
+			for j := range d.pos {
+				if !d.fits(corner{}, j, d.pos[j]) {
+					t.Fatalf("at %v tick %d: joint %d in a block at %v", c.at, i, j, d.pos[j])
+				}
+			}
+			for _, l := range d.links {
+				if !l.minOnly && !d.boneFits(corner{}, l.a, l.b) {
+					t.Fatalf("at %v tick %d: bone %d-%d through a block", c.at, i, l.a, l.b)
+				}
+			}
+		}
+	}
+}

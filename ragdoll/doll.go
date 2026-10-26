@@ -68,8 +68,12 @@ type Doll struct {
 	bind      [numJoints]mgl32.Vec3 // the joints at rest, in the world
 	toWorld   mgl32.Mat4            // the model's placement at rest
 	links     []link
-	bones     []int // model bone -> part
-	rise      *rise // getting up (Rise)
+	bones     []int                 // model bone -> part
+	rise      *rise                 // getting up (Rise)
+	ok        [numJoints]mgl32.Vec3 // the last pose that kept out of the blocks (keepOut)
+	okClear   bool                  // ok is clear: made against a wall, a doll is not till unclip has it out
+	shift     mgl32.Vec3            // Follow's last shift
+	blocked   bool                  // keepOut took it back: Follow leaves the doll be till its body moves
 	held      [numJoints]bool
 	hold      [numJoints]mgl32.Vec3 // where held joints are pinned (Hold), for the next Step
 	still     int                   // Steps in a row it has barely moved; asleep from sleepTicks
@@ -98,7 +102,7 @@ func New(m *model.Model, toWorld mgl32.Mat4) *Doll {
 		p[0] *= mirror
 		d.bind[i] = mgl32.TransformCoordinate(p, toWorld)
 	}
-	d.pos, d.prev = d.bind, d.bind
+	d.pos, d.prev, d.ok = d.bind, d.bind, d.bind
 	torso := []int{Pelvis, Neck, ShoulderR, ShoulderL, HipR, HipL}
 	for i, a := range torso {
 		for _, b := range torso[i+1:] {
@@ -151,7 +155,7 @@ func (d *Doll) Push(v mgl32.Vec3, spin float32) {
 		k := 1 + spin*(d.pos[i].Y()-d.pos[Pelvis].Y())
 		d.prev[i] = d.prev[i].Sub(v.Mul(k))
 	}
-	d.still = 0
+	d.still, d.blocked = 0, false
 }
 
 // Follow drags the whole doll towards the body it stands for: its pelvis
@@ -169,12 +173,16 @@ func (d *Doll) Follow(x, y, z float64, k float32) {
 	if off.Len() > 1 {
 		shift = off.Mul(0.5)
 	}
+	if d.blocked && shift.Sub(d.shift).Len() < sleepMove { // a wall keeps it from its body, which stays put
+		return
+	}
 	if d.Asleep() {
 		if shift.Len() < sleepMove { // settled where its body is: stay put
 			return
 		}
 		d.still = 0
 	}
+	d.shift, d.blocked = shift, false
 	for i := range d.pos {
 		d.pos[i], d.prev[i] = d.pos[i].Add(shift), d.prev[i].Add(shift)
 	}
@@ -182,12 +190,14 @@ func (d *Doll) Follow(x, y, z float64, k float32) {
 
 // Hold pins joint j at p for the next Step: the rest of the doll hangs
 // from it (a body over a shoulder).
-func (d *Doll) Hold(j int, p mgl32.Vec3) { d.held[j], d.hold[j], d.still = true, p, 0 }
+func (d *Doll) Hold(j int, p mgl32.Vec3) {
+	d.held[j], d.hold[j], d.still, d.blocked = true, p, 0, false
+}
 
 // Pull draws joint j towards p by k of the way, as velocity.
 func (d *Doll) Pull(j int, p mgl32.Vec3, k float32) {
 	d.prev[j] = d.prev[j].Sub(p.Sub(d.pos[j]).Mul(k))
-	d.still = 0
+	d.still, d.blocked = 0, false
 }
 
 // followSlack is how far a doll's pelvis may lie from its body (Follow).
@@ -208,6 +218,9 @@ func (d *Doll) Step(w collide.Solids) {
 	if d.Asleep() {
 		d.prev = d.pos
 		return
+	}
+	if !d.okClear {
+		d.unclip(w)
 	}
 	before := d.pos
 	for i := range d.pos {
@@ -240,6 +253,7 @@ func (d *Doll) Step(w collide.Solids) {
 			}
 		}
 	}
+	d.keepOut(w)
 	d.held = [numJoints]bool{}
 	moved := float32(0)
 	for i := range d.pos {
@@ -252,15 +266,112 @@ func (d *Doll) Step(w collide.Solids) {
 	}
 }
 
+// keepOut keeps the limbs, not only the joints, out of the blocks.
+// move keeps each joint and its bones clear as it goes, but the links
+// pulling a joint after its neighbours can leave a bone through a corner
+// or past a wall's edge: then the whole doll goes back to where it last
+// lay clear and stops there (it comes to rest wedged, never in the wall).
+// Held joints are where they are held. Till a doll made with an arm in a
+// wall is out (unclip), there is no clear pose to go back to.
+func (d *Doll) keepOut(w collide.Solids) {
+	clear := d.clear(w)
+	if clear || !d.okClear {
+		d.ok, d.okClear = d.pos, clear
+		return
+	}
+	for j := range d.pos {
+		if !d.held[j] {
+			d.pos[j] = d.ok[j]
+		}
+		d.prev[j] = d.pos[j]
+	}
+	d.blocked = d.shift != mgl32.Vec3{}
+}
+
+// clear reports whether every joint and bone is out of the blocks.
+func (d *Doll) clear(w collide.Solids) bool {
+	for j := range d.pos {
+		if !d.held[j] && !d.fits(w, j, d.pos[j]) {
+			return false
+		}
+	}
+	for _, l := range d.links {
+		if !l.minOnly && !(d.held[l.a] && d.held[l.b]) && !d.boneFits(w, l.a, l.b) {
+			return false
+		}
+	}
+	return true
+}
+
+// unclip moves a doll made partly in the blocks (an arm through the wall
+// its body stood against) the least way out, all of it together: across,
+// then up.
+func (d *Doll) unclip(w collide.Solids) {
+	if d.clear(w) {
+		d.ok, d.okClear = d.pos, true
+		return
+	}
+	pos, prev := d.pos, d.prev
+	for r := float32(0.05); r <= 0.8; r += 0.05 {
+		for k := range 9 {
+			o := mgl32.Vec3{0, r, 0}
+			if k < 8 {
+				a := float64(k) * math.Pi / 4
+				o = mgl32.Vec3{r * float32(math.Cos(a)), 0, r * float32(math.Sin(a))}
+			}
+			for j := range d.pos {
+				if !d.held[j] {
+					d.pos[j], d.prev[j] = pos[j].Add(o), prev[j].Add(o)
+				}
+			}
+			if d.clear(w) {
+				d.ok, d.okClear = d.pos, true
+				return
+			}
+		}
+	}
+	d.pos, d.prev = pos, prev
+}
+
+// boneFits reports whether the bone between joints a and b, a limb's
+// thickness round it, is clear of the blocks.
+func (d *Doll) boneFits(w collide.Solids, a, b int) bool { return d.segFits(w, d.pos[a], d.pos[b]) }
+
+// placeFits reports whether joint j fits at p with its bones to where
+// their other joints are now.
+func (d *Doll) placeFits(w collide.Solids, j int, p mgl32.Vec3) bool {
+	if !d.fits(w, j, p) {
+		return false
+	}
+	for _, l := range d.links {
+		switch {
+		case l.minOnly:
+		case l.a == j && !d.segFits(w, p, d.pos[l.b]), l.b == j && !d.segFits(w, p, d.pos[l.a]):
+			return false
+		}
+	}
+	return true
+}
+
+func (d *Doll) segFits(w collide.Solids, p, q mgl32.Vec3) bool {
+	n := int(q.Sub(p).Len()/float32(jointRadius)) + 1
+	for i := 1; i < n; i++ {
+		if !d.fits(w, -1, lerp(p, q, float32(i)/float32(n))) { // a limb's thickness, the head's at its joint
+			return false
+		}
+	}
+	return true
+}
+
 // move takes a joint from p towards to, one axis at a time, stopping at
 // blocks; a joint that touches one drags (friction).
 func (d *Doll) move(w collide.Solids, j int, p, to mgl32.Vec3) mgl32.Vec3 {
-	if d.fits(w, j, to) {
+	if d.placeFits(w, j, to) {
 		return to
 	}
-	if !d.fits(w, j, p) { // pushed inside: up and out
+	if !d.placeFits(w, j, p) { // pushed inside: up and out
 		for up := float32(0.05); up <= 1; up += 0.05 {
-			if q := p.Add(mgl32.Vec3{0, up, 0}); d.fits(w, j, q) {
+			if q := p.Add(mgl32.Vec3{0, up, 0}); d.placeFits(w, j, q) {
 				return q
 			}
 		}
@@ -270,7 +381,7 @@ func (d *Doll) move(w collide.Solids, j int, p, to mgl32.Vec3) mgl32.Vec3 {
 	for _, a := range [3]int{1, 0, 2} {
 		c := q
 		c[a] = to[a]
-		if d.fits(w, j, c) {
+		if d.placeFits(w, j, c) {
 			q = c
 		}
 	}
@@ -387,7 +498,7 @@ func (d *Doll) RiseStep() {
 		d.aim(l[0], l[1], lerp(lerp(r.from[l[1]], push, ease(0, 0.25)), r.to[l[1]], ease(0.5, 1)))
 	}
 	if r.tick == r.ticks {
-		d.pos, d.prev = r.to, r.to
+		d.pos, d.prev, d.ok, d.okClear = r.to, r.to, r.to, false
 	}
 }
 
