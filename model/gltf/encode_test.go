@@ -3,9 +3,11 @@ package gltf
 import (
 	"image"
 	"image/color"
+	"path/filepath"
 	"testing"
 
 	"github.com/go-gl/mathgl/mgl32"
+	"github.com/memmaker/voxellib/importer/cuboid"
 	"github.com/memmaker/voxellib/model"
 )
 
@@ -53,5 +55,25 @@ func TestEncodeRoundTrip(t *testing.T) {
 		if !want[i].ApproxEqualThreshold(got[i], 1e-4) {
 			t.Fatalf("vertex %d at %v, want %v", i, got[i], want[i])
 		}
+	}
+}
+
+// A model built from boxes (importer/cuboid) is written and loads back.
+func TestWriteFileLoadsBack(t *testing.T) {
+	m, err := cuboid.Build(&cuboid.Geometry{Name: "cube", TexSize: [2]int{16, 16}, Render: []int{0}, Parts: []cuboid.Part{
+		{Name: "cube", Parent: -1, Boxes: []cuboid.Box{{Size: [3]int{4, 4, 4}, TexSize: [2]float32{16, 16}}}}}}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "sub", "cube.gltf")
+	if err := WriteFile(path, m); err != nil {
+		t.Fatal(err)
+	}
+	got, err := LoadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Name != "cube" || len(got.Meshes) != len(m.Meshes) || len(got.Meshes[0].Verts) != len(m.Meshes[0].Verts) {
+		t.Fatalf("loaded %q with %d meshes", got.Name, len(got.Meshes))
 	}
 }

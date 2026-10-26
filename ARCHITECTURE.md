@@ -19,6 +19,7 @@ app ─────────── game shell: window, input mapping, 20 Hz t
    ├── ui/basepack      the default GUI pack: font, buttons, menu background, English menu strings (cmd/genbasepack draws them)
    ├── audio            1.7.10-reference-style sound: mixer on oto, Ogg Vorbis, sounds.json events, music ticker
    ├── importer/roblox, importer/mcmodel → model (+ model/gltf), via importer/packfs
+   ├── importer/cuboid  ModelRenderer boxes → model; model/gltf.WriteFile saves any built model as a .gltf asset
    ├── items/extrude    sprite → mesh (pure)        items/sheet  sheet cutter (pure)
    ├── worldgen/...     terrain generators (implement worldgen.Generator)
    └── voxel/engine     streaming + threads

@@ -8,11 +8,34 @@ import (
 	"fmt"
 	"image/png"
 	"math"
+	"os"
+	"path/filepath"
 	"sort"
 
 	"github.com/go-gl/mathgl/mgl32"
 	"github.com/memmaker/voxellib/model"
 )
+
+// WriteFile writes m to path as a self-contained .gltf (Encode), making
+// its directory, and reads the file back (Load) so a model that would not
+// load again is never left on disk unreported: the canonical way a tool
+// turns a model built in code (importer/cuboid, cmd tools) into an asset.
+func WriteFile(path string, m *model.Model) error {
+	data, err := Encode(m)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		return err
+	}
+	if _, err := Load(data, nil); err != nil {
+		return fmt.Errorf("%s does not load back: %w", path, err)
+	}
+	return nil
+}
 
 // Encode writes m as a self-contained .gltf (buffer and PNG textures as
 // data URIs): its bones as nodes, one skin over all of them, a primitive
