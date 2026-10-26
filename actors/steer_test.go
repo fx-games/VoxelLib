@@ -121,3 +121,17 @@ func TestSteerStairJump(t *testing.T) {
 		}
 	}
 }
+
+type stepWorld struct{ step, air map[[3]int]bool }
+
+func (w stepWorld) StairOrSlab(x, y, z int) bool { return w.step[[3]int{x, y, z}] }
+func (w stepWorld) Air(x, y, z int) bool         { return w.air[[3]int{x, y, z}] }
+
+// No jumping from a stair or the air above one; anywhere else, and in a
+// world that knows no steps, jumping is allowed.
+func TestStepJumps(t *testing.T) {
+	w := stepWorld{step: map[[3]int]bool{{0, 0, 0}: true}, air: map[[3]int]bool{{0, 1, 0}: true, {1, 1, 0}: true}}
+	if StepJumps(w, 0, 0, 0) || StepJumps(w, 0, 1, 0) || !StepJumps(w, 1, 1, 0) || !StepJumps(struct{}{}, 0, 0, 0) {
+		t.Fatal("StepJumps")
+	}
+}

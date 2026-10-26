@@ -1,6 +1,10 @@
 package voxel
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/memmaker/voxellib/voxel/collide"
+)
 
 func same(a, b Box) bool { return a.Min == b.Min && a.Max == b.Max }
 
@@ -110,5 +114,71 @@ func TestRotShear(t *testing.T) {
 				break
 			}
 		}
+	}
+}
+
+// A client's own stairs: no full-cube collision, a Step the pathfinder
+// stands on, and a slab plus the step to walk up.
+func TestClientStairsAreSteps(t *testing.T) {
+	reg := NewRegistry()
+	reg.Register(Stairs("mossy_stairs", "block/mossy_cobblestone"))
+	w := NewWorld(reg, -64, 384)
+	c := w.NewChunk(ChunkPos{0, 0})
+	c.SetRaw(2, 0, 2, reg.Parse("mossy_stairs[facing=east,half=bottom]"))
+	w.AddChunk(c)
+	info := reg.Info(w.Block(2, 0, 2))
+	if info.Collides || !info.Step || !w.Footing(2, 0, 2) || w.Footing(2, 1, 2) {
+		t.Fatalf("collides %v step %v footing %v", info.Collides, info.Step, w.Footing(2, 0, 2))
+	}
+	top := 0.0
+	for _, b := range w.Boxes(collide.AABB{MinX: 2, MinY: 0, MinZ: 2, MaxX: 3, MaxY: 1, MaxZ: 3}, nil) {
+		if b.MaxY > 0.75 && b.MinX < 2.5 {
+			t.Fatalf("the high step is on the west: %+v", b)
+		}
+		top = max(top, b.MaxY)
+	}
+	if top != 1 {
+		t.Fatalf("stair top %v", top)
+	}
+}
+
+// A client's own ladder: a plate against the wall behind it that bodies
+// climb.
+func TestClientLadderClimbs(t *testing.T) {
+	reg := NewRegistry()
+	reg.Register(Ladder("rope_ladder", ""))
+	w := NewWorld(reg, -64, 384)
+	c := w.NewChunk(ChunkPos{0, 0})
+	c.SetRaw(2, 0, 2, reg.Parse("rope_ladder[facing=north]"))
+	c.SetRaw(2, 1, 2, reg.Parse("oak_stairs[facing=east,half=bottom]"))
+	w.AddChunk(c)
+	info := reg.Info(w.Block(2, 0, 2))
+	if !w.Climbable(2, 0, 2) || w.Climbable(2, 1, 2) || info.Collides || info.Tex[0] != reg.Info(reg.Parse("ladder[facing=north]")).Tex[0] {
+		t.Fatalf("climbable %v collides %v", w.Climbable(2, 0, 2), info.Collides)
+	}
+	for _, b := range w.Boxes(collide.AABB{MinX: 2, MinY: 0, MinZ: 2, MaxX: 3, MaxY: 1, MaxZ: 3}, nil) {
+		if b.MinY < 1 && b.MinZ < 2.9 {
+			t.Fatalf("facing north hugs the south side: %+v", b)
+		}
+	}
+	if !w.StairOrSlab(2, 1, 2) || !w.Air(2, 2, 2) || w.Air(2, 1, 2) {
+		t.Fatal("StepBlocks")
+	}
+}
+
+func TestSpikesPointOutOfTheWall(t *testing.T) {
+	for facing, axis := range map[string]int{"north": 2, "south": 2, "east": 0, "west": 0} {
+		bs := spikes(facing)
+		plate, point := bs[0], bs[1]
+		if plate.Max[axis]-plate.Min[axis] != 2 || point.Max[axis]-point.Min[axis] != 8 {
+			t.Fatalf("%s: plate %v point %v", facing, plate, point)
+		}
+		out := map[string]bool{"south": true, "east": true}[facing] // points toward +axis
+		if (point.Min[axis] > plate.Min[axis]) != out {
+			t.Fatalf("%s: points %v go the wrong way from plate %v", facing, point, plate)
+		}
+	}
+	if !IsSpikes("minecraft:iron_spikes[facing=east]") || IsSpikes("ladder") {
+		t.Fatal("IsSpikes")
 	}
 }

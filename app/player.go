@@ -20,8 +20,9 @@ import (
 // the world while it streams in.
 type Terrain struct {
 	eng *engine.Engine
-	// Climb, when set, marks the blocks a character climbs (ladders,
-	// vines): character.Climber.
+	// Climb, when set, marks the blocks a character climbs:
+	// character.Climber. Without it, the world's ladders and vines
+	// (World.Climbable).
 	Climb func(x, y, z int) bool
 	// StepBelow, when set, marks the blocks a step 0.2 under the feet
 	// falls through to (the reference's fences, walls and gates: render
@@ -39,8 +40,13 @@ func (t *Terrain) Slipperiness(x, y, z int) float64 {
 	return t.Slip(x, y, z)
 }
 
-// Climbable is Climb, false without one.
-func (t *Terrain) Climbable(x, y, z int) bool { return t.Climb != nil && t.Climb(x, y, z) }
+// Climbable is Climb, or the world's ladders and vines without one.
+func (t *Terrain) Climbable(x, y, z int) bool {
+	if t.Climb == nil {
+		return t.eng.World.Climbable(x, y, z)
+	}
+	return t.Climb(x, y, z)
+}
 
 func (t *Terrain) Solid(x, y, z int) bool {
 	w := t.eng.World

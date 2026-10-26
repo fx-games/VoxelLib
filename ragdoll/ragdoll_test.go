@@ -132,3 +132,30 @@ func TestDollTurnsToGetUp(t *testing.T) {
 		}
 	}
 }
+
+// corner: a floor at y < 0, walls at x >= 5 and z >= 5, and a step at
+// x >= 3 (y < 1) for an edge.
+type corner struct{}
+
+func (corner) Solid(x, y, z int) bool              { return y < 0 || x >= 5 || z >= 5 || x >= 3 && y < 1 }
+func (corner) Liquid(x, y, z int) character.Liquid { return character.LiquidNone }
+
+func TestDollComesToRestInCornerAndOnEdge(t *testing.T) {
+	for _, at := range []mgl32.Vec3{{4.6, 1, 4.6}, {3.1, 1, 2}} {
+		d := New(humanoid(), mgl32.Translate3D(at.X(), at.Y(), at.Z()))
+		d.Push(mgl32.Vec3{0.2, 0, 0.2}, 0.6)
+		for range 300 {
+			d.Follow(float64(at.X()), float64(at.Y()), float64(at.Z()), 0.3)
+			d.Step(corner{})
+		}
+		if !d.Asleep() {
+			t.Fatalf("doll at %v still moving after 300 ticks", at)
+		}
+		was := d.pos
+		d.Follow(float64(at.X()), float64(at.Y()), float64(at.Z()), 0.3)
+		d.Step(corner{})
+		if d.pos != was {
+			t.Fatalf("doll at %v moved while asleep", at)
+		}
+	}
+}

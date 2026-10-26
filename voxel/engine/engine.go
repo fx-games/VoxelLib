@@ -9,6 +9,7 @@ package engine
 
 import (
 	"bytes"
+	"cmp"
 	"compress/gzip"
 	"errors"
 	"fmt"
@@ -196,7 +197,7 @@ func New(cfg Config) (*Engine, error) {
 		loadReq: make(chan voxel.ChunkPos, 4096), loadRes: make(chan *voxel.Chunk, 4096),
 		worldOps: make(chan worldOp, 4096), litRes: make(chan voxel.ChunkPos, 1<<16),
 		lit: map[voxel.ChunkPos]bool{}, saveReq: make(chan *voxel.Chunk, 1024),
-		meshJobs: make(chan voxel.SectionPos, cfg.Workers*2), meshRes: make(chan *mesh.Mesh, 1024),
+		meshJobs: make(chan voxel.SectionPos, meshQueue), meshRes: make(chan *mesh.Mesh, 1024),
 		dirty: map[voxel.SectionPos]bool{}, inFlight: map[voxel.SectionPos]bool{}, redo: map[voxel.SectionPos]bool{},
 		staleMesh:  map[voxel.SectionPos]bool{},
 		mainMesher: mesh.NewMesher(), meshCfg: r.MeshConfig(), quit: make(chan struct{}),
@@ -744,6 +745,11 @@ type meshCand struct {
 	d float64
 }
 
+// meshQueue is how many mesh jobs wait for the workers. It is refilled
+// once a frame, so it must outlast one: a short queue starves the workers
+// between frames (Workers*2 meshed only 9 sections a frame at vsync).
+const meshQueue = 128
+
 // dispatch sends dirty, renderable sections to the workers, nearest first.
 func (e *Engine) dispatch() {
 	// Only as many jobs as the queue takes: a backlog of thousands must not
@@ -767,6 +773,10 @@ func (e *Engine) dispatch() {
 	// Partial selection: move the nearest candidates to the front. Dropped
 	// and in-flight entries consume picks, so take a few extra.
 	k := min(len(list), free*4)
+	if k > 32 { // a big refill (loading): a full sort is cheaper than k passes
+		slices.SortFunc(list, func(a, b meshCand) int { return cmp.Compare(a.d, b.d) })
+		k = 0
+	}
 	for i := 0; i < k; i++ {
 		m := i
 		for j := i + 1; j < len(list); j++ {
@@ -776,7 +786,7 @@ func (e *Engine) dispatch() {
 		}
 		list[i], list[m] = list[m], list[i]
 	}
-	for _, c := range list[:k] {
+	for _, c := range list[:min(len(list), free*4)] {
 		p := c.p
 		if !e.ChunkReady(p.Chunk()) {
 			// Dropped: lighting the last neighbour re-dirties it.

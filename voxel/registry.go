@@ -185,6 +185,12 @@ type StateInfo struct {
 	TintMask uint8
 	Opaque   bool
 	Collides bool
+	// Step is a stair or a slab: it collides as its boxes (World.Boxes),
+	// low enough to walk up without a jump, and a pathfinder stands on
+	// it as on a full block (World.Footing).
+	Step bool
+	// Climb is a ladder or vine: a body in it climbs (World.Climbable).
+	Climb    bool
 	Emission uint8
 	Opacity  uint8
 	CullSelf bool
@@ -391,6 +397,8 @@ func (r *Registry) bake(def *BlockDef, canon string, props map[string]string) St
 		Opacity: def.LightOpacity, CullSelf: def.CullSelf, Connects: def.Connects,
 		Collision: def.Collision, TintColor: def.TintColor, Level: def.Level,
 		NeighbourLight: def.NeighbourLight, PlantOffset: def.PlantOffset, Scatter: def.Scatter, UVRandom: def.UVRandom, UVSeed: def.UVSeed, UVRotate: def.UVRotate,
+		Step:  def.Shape == ShapeBoxes && (strings.HasSuffix(def.Name, "_stairs") || strings.HasSuffix(def.Name, "_slab")),
+		Climb: def.Shape == ShapeBoxes && isLadder(def.Name) || strings.HasSuffix(def.Name, "vine"),
 	}
 	for _, t := range def.Tags {
 		info.Tags = append(info.Tags, r.tagID(t))

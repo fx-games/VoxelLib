@@ -376,6 +376,23 @@ func (w *World) SolidAt(x, y, z int) bool {
 	return w.Reg.Info(w.Block(x, y, z)).Collides
 }
 
+// Footing reports whether a pathfinder treats the block at a position as
+// solid ground: a full collision box, or a Step (stairs, slabs), which
+// bodies walk onto through its boxes (Boxes).
+func (w *World) Footing(x, y, z int) bool {
+	i := w.Reg.Info(w.Block(x, y, z))
+	return i.Collides || i.Step
+}
+
+// Climbable reports whether a body in the block at a position climbs
+// (a ladder, a vine): character.Climber.
+func (w *World) Climbable(x, y, z int) bool { return w.Reg.Info(w.Block(x, y, z)).Climb }
+
+// StairOrSlab and Air are actors.StepBlocks: no jumping up from a step,
+// it is walked up (actors.StepJumps).
+func (w *World) StairOrSlab(x, y, z int) bool { return w.Reg.Info(w.Block(x, y, z)).Step }
+func (w *World) Air(x, y, z int) bool         { return w.Block(x, y, z) == Air }
+
 // PrecipitationHeight is the reference's World.getPrecipitationHeight: one
 // above the highest block that collides or is a liquid (rain and snow stop
 // there), or MinY for an empty or unloaded column.

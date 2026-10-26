@@ -72,7 +72,20 @@ type Doll struct {
 	rise      *rise // getting up (Rise)
 	held      [numJoints]bool
 	hold      [numJoints]mgl32.Vec3 // where held joints are pinned (Hold), for the next Step
+	still     int                   // Steps in a row it has barely moved; asleep from sleepTicks
 }
+
+// A doll that moves less than sleepMove a tick for sleepTicks ticks is
+// at rest and stops stepping until something moves it (Push, Pull, Hold,
+// Follow far enough, Rise): wedged in a corner or over an edge, the
+// solver would otherwise jitter it forever.
+const (
+	sleepMove  = 0.01
+	sleepTicks = 10
+)
+
+// Asleep reports whether the doll has come to rest.
+func (d *Doll) Asleep() bool { return d.still >= sleepTicks }
 
 // New stands a doll in m's bind pose where toWorld places the model.
 func New(m *model.Model, toWorld mgl32.Mat4) *Doll {
@@ -138,16 +151,29 @@ func (d *Doll) Push(v mgl32.Vec3, spin float32) {
 		k := 1 + spin*(d.pos[i].Y()-d.pos[Pelvis].Y())
 		d.prev[i] = d.prev[i].Sub(v.Mul(k))
 	}
+	d.still = 0
 }
 
 // Follow drags the whole doll towards the body it stands for: its pelvis
-// towards (x, y+0.6, z), by k of the way across, and all the way up or
-// down once it is more than a block off (picked up, carried).
+// to within followSlack of (x, y+0.6, z) across, by k of the rest of the
+// way, and all the way up or down once it is more than a block off
+// (picked up, carried). The slack lets a doll lie where it fell: a lying
+// body's pelvis is off its centre, and dragging it there each tick would
+// grind it into walls it then pushes back out of.
 func (d *Doll) Follow(x, y, z float64, k float32) {
 	off := mgl32.Vec3{float32(x), float32(y) + 0.6, float32(z)}.Sub(d.pos[Pelvis])
-	shift := mgl32.Vec3{off.X() * k, 0, off.Z() * k}
+	var shift mgl32.Vec3
+	if h := (mgl32.Vec3{off.X(), 0, off.Z()}); h.Len() > followSlack {
+		shift = h.Mul((1 - followSlack/h.Len()) * k)
+	}
 	if off.Len() > 1 {
 		shift = off.Mul(0.5)
+	}
+	if d.Asleep() {
+		if shift.Len() < sleepMove { // settled where its body is: stay put
+			return
+		}
+		d.still = 0
 	}
 	for i := range d.pos {
 		d.pos[i], d.prev[i] = d.pos[i].Add(shift), d.prev[i].Add(shift)
@@ -156,12 +182,16 @@ func (d *Doll) Follow(x, y, z float64, k float32) {
 
 // Hold pins joint j at p for the next Step: the rest of the doll hangs
 // from it (a body over a shoulder).
-func (d *Doll) Hold(j int, p mgl32.Vec3) { d.held[j], d.hold[j] = true, p }
+func (d *Doll) Hold(j int, p mgl32.Vec3) { d.held[j], d.hold[j], d.still = true, p, 0 }
 
 // Pull draws joint j towards p by k of the way, as velocity.
 func (d *Doll) Pull(j int, p mgl32.Vec3, k float32) {
 	d.prev[j] = d.prev[j].Sub(p.Sub(d.pos[j]).Mul(k))
+	d.still = 0
 }
+
+// followSlack is how far a doll's pelvis may lie from its body (Follow).
+const followSlack = 0.5
 
 const jointRadius = 2. / 16 // half a limb's thickness: joints are on the bones' centre lines
 
@@ -175,6 +205,11 @@ func (d *Doll) fits(w collide.Solids, j int, p mgl32.Vec3) bool {
 
 // Step moves the doll one tick through w.
 func (d *Doll) Step(w collide.Solids) {
+	if d.Asleep() {
+		d.prev = d.pos
+		return
+	}
+	before := d.pos
 	for i := range d.pos {
 		p, q := d.pos[i], d.prev[i]
 		v := p.Sub(q).Mul(float32(d.Drag))
@@ -206,6 +241,15 @@ func (d *Doll) Step(w collide.Solids) {
 		}
 	}
 	d.held = [numJoints]bool{}
+	moved := float32(0)
+	for i := range d.pos {
+		moved = max(moved, d.pos[i].Sub(before[i]).Len())
+	}
+	if moved < sleepMove {
+		d.still++
+	} else {
+		d.still = 0
+	}
 }
 
 // move takes a joint from p towards to, one axis at a time, stopping at
@@ -309,7 +353,7 @@ func (d *Doll) Rise(toWorld mgl32.Mat4, ticks int) {
 	lying, standing := mgl32.Mat4ToQuat(basis(d.pos).Mat4()), mgl32.Mat4ToQuat(basis(r.to).Mat4())
 	r.turn = lying.Mul(standing.Inverse())
 	r.ground = min(r.to[FootR].Y(), r.to[FootL].Y()) - jointRadius
-	d.rise = r
+	d.rise, d.still = r, 0
 }
 
 // Rising reports whether the doll is getting up (Rise, until RiseStep has

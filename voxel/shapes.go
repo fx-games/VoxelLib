@@ -237,6 +237,31 @@ func RotateFace(f Face, rots []Rot) Face {
 	return FaceCount
 }
 
+// spikes is a 2-pixel plate against the side opposite facing with a 3×3
+// grid of 1-pixel points sticking 8 pixels out of it toward facing.
+func spikes(facing string) []Box {
+	south := []Box{bx(0, 0, 0, 16, 16, 2)}
+	for _, x := range []float32{3, 7.5, 12} {
+		for _, y := range []float32{3, 7.5, 12} {
+			south = append(south, bx(x, y, 2, x+1, y+1, 10))
+		}
+	}
+	turn := map[string]func(x, z float32) (float32, float32){
+		"north": func(x, z float32) (float32, float32) { return 16 - x, 16 - z },
+		"east":  func(x, z float32) (float32, float32) { return z, x },
+		"west":  func(x, z float32) (float32, float32) { return 16 - z, x },
+	}[facing]
+	if turn == nil {
+		return south
+	}
+	for i, b := range south {
+		x0, z0 := turn(b.Min[0], b.Min[2])
+		x1, z1 := turn(b.Max[0], b.Max[2])
+		south[i] = bx(min(x0, x1), b.Min[1], min(z0, z1), max(x0, x1), b.Max[1], max(z0, z1))
+	}
+	return south
+}
+
 // thin is a d-pixel plate against the side opposite facing (doors, ladders):
 // facing=north hugs the south side, as in the reference game.
 func thin(facing string, d float32) Box {
@@ -336,8 +361,10 @@ func shapeVariants(name string, p map[string]string) map[string][]Box {
 		b := torch(bx(-1, 3.5, 7, 1, 13.5, 9))
 		b.Rot = []Rot{{Axis: 2, Deg: -22.5, Origin: [3]float32{0, 3.5, 8}}}
 		return one(rotY([]Box{b}, yRotFromEast[p["facing"]])...)
-	case n == "ladder":
+	case isLadder(n):
 		return one(thin(p["facing"], 1))
+	case IsSpikes(n):
+		return one(spikes(p["facing"])...)
 	case n == "snow":
 		h := float32(2)
 		if l, err := strconv.Atoi(p["layers"]); err == nil && l > 1 && l <= 8 {
@@ -817,6 +844,18 @@ func axisAligned(b Box) Box {
 
 // collidable: torches, plates, wire, signs, levers and thin snow are walked
 // through, as in the reference game.
+// isLadder reports a ladder block name: "ladder" or "<kind>_ladder".
+func isLadder(name string) bool {
+	n := name[strings.IndexByte(name, ':')+1:]
+	return n == "ladder" || strings.HasSuffix(n, "_ladder")
+}
+
+// IsSpikes reports a wall spikes block name: "<kind>_spikes".
+func IsSpikes(name string) bool {
+	n, _, _ := strings.Cut(name[strings.IndexByte(name, ':')+1:], "[")
+	return strings.HasSuffix(n, "_spikes")
+}
+
 func collidable(name string) bool {
 	n := name[strings.IndexByte(name, ':')+1:]
 	switch {

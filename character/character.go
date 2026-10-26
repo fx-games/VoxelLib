@@ -116,6 +116,11 @@ type Character struct {
 	Swimming            bool   // sprint-swimming underwater
 	Sprinting           bool   // sprinting this tick (Input.Sprint walking forward, no item in use)
 	OnLadder            bool   // in a Climber block this tick
+	// FallDistance is how far the body has dropped since it last stood,
+	// climbed, swam or flew (Entity.fallDistance). Landed is the distance
+	// of the fall that ended this tick, else 0: Minecraft hurts
+	// ceil(Landed-3).
+	FallDistance, Landed float64
 
 	// InWeb is set by the world when the body touches a web-like block
 	// (Entity.setInWeb): the next move goes ×0.25 sideways and ×0.05
@@ -411,6 +416,7 @@ func (c *Character) move(w World, in Input) {
 		}
 	}
 	c.OnGround = dy < 0 && my != dy
+	c.updateFall(my)
 	c.HorizontalCollision = mx != dx || mz != dz
 	if mx != dx {
 		c.VX = 0
@@ -422,6 +428,20 @@ func (c *Character) move(w World, in Input) {
 		c.VY = 0
 	}
 	c.X, c.Y, c.Z = c.X+mx, c.Y+my, c.Z+mz
+}
+
+// updateFall is Entity.updateFallState: a drop adds up until the body
+// lands; ladders, liquids and flying break the fall.
+func (c *Character) updateFall(my float64) {
+	c.Landed = 0
+	switch {
+	case c.OnLadder || c.InWater || c.InLava || c.Flying:
+		c.FallDistance = 0
+	case c.OnGround:
+		c.Landed, c.FallDistance = c.FallDistance, 0
+	case my < 0:
+		c.FallDistance -= my
+	}
 }
 
 func shrink(v, step float64) float64 {

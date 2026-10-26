@@ -113,12 +113,15 @@ type StepBlocks interface {
 	Air(x, y, z int) bool
 }
 
-// stepJumps is updateTask's flag: the feet cell is no stair or slab, and
-// it is not air above one.
-func (m *Manager) stepJumps(x, y, z int) bool {
-	sb, ok := m.W.(StepBlocks)
+// StepJumps is updateTask's flag: whether a body whose feet are in cell
+// x, y, z may jump up a step. Not from a stair or slab, nor from the air
+// above one: it walks up those. Worlds without StepBlocks always may.
+func StepJumps(w any, x, y, z int) bool {
+	sb, ok := w.(StepBlocks)
 	return !ok || !sb.StairOrSlab(x, y, z) && (!sb.Air(x, y, z) || !sb.StairOrSlab(x, y-1, z))
 }
+
+func (m *Manager) stepJumps(x, y, z int) bool { return StepJumps(m.W, x, y, z) }
 
 // cellsClear is PathFinder.func_82565_a's open (1) for a w*h*w point at
 // x, y, z, with the world's path cell test.

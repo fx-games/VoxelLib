@@ -27,6 +27,37 @@ func boxes(name string, tex [6]string) *BlockDef {
 	return &BlockDef{Name: name, Shape: ShapeBoxes, Layer: LayerCutout, Textures: tex}
 }
 
+// Stairs is a stair block of name (it must end in _stairs: its shape
+// follows from facing, half and the neighbouring stairs) with texture on
+// every face, e.g. Stairs("spruce_stairs", "block/spruce_planks"). It
+// collides as its boxes and is a Step, walked up without a jump.
+func Stairs(name, texture string) *BlockDef { return boxes(name, all6(texture)) }
+
+// Ladder is a ladder block of name (it must be "ladder" or end in
+// _ladder), a plate against the wall behind it by its facing, e.g.
+// Ladder("rope_ladder", "block/rope_ladder"). An empty texture is
+// block/ladder, which respack draws itself when a pack has none. Bodies
+// in it climb (StateInfo.Climb, World.Climbable).
+func Ladder(name, texture string) *BlockDef {
+	if texture == "" {
+		texture = "block/ladder"
+	}
+	return boxes(name, all6(texture))
+}
+
+// Spikes is a plate of iron points on a wall, pointing out by its facing
+// (name must end in _spikes), e.g. Spikes("iron_spikes", ""). An empty
+// texture is block/iron_spikes, which respack draws itself when a pack has
+// none. The points collide: what is thrown into them strikes them.
+func Spikes(name, texture string) *BlockDef {
+	if texture == "" {
+		texture = "block/iron_spikes"
+	}
+	d := boxes(name, all6(texture))
+	d.Collides = true
+	return d
+}
+
 func leaves(name string, tint Tint) *BlockDef {
 	return &BlockDef{Name: name, Shape: ShapeCube, Layer: LayerCutout, Textures: all6("block/" + name),
 		Tint: tint, Collides: true, LightOpacity: 1}
@@ -62,8 +93,9 @@ func builtinBlocks() []*BlockDef {
 		cube("smooth_stone", column("block/smooth_stone", "block/smooth_stone_slab_side")),
 		cube("jukebox", column("block/jukebox_top", "block/jukebox_side")),
 		boxes("smooth_stone_slab", column("block/smooth_stone", "block/smooth_stone_slab_side")),
-		boxes("oak_stairs", all6("block/oak_planks")), boxes("cobblestone_stairs", all6("block/cobblestone")),
-		boxes("oak_door", all6("block/oak_door_bottom")), boxes("ladder", all6("block/ladder")),
+		Stairs("oak_stairs", "block/oak_planks"), Stairs("cobblestone_stairs", "block/cobblestone"),
+		Stairs("spruce_stairs", "block/spruce_planks"), Stairs("stone_brick_stairs", "block/stone_bricks"),
+		boxes("oak_door", all6("block/oak_door_bottom")), Ladder("ladder", ""), Spikes("iron_spikes", ""),
 		boxes("snow", all6("block/snow")), boxes("lever", all6("block/cobblestone")),
 		boxes("farmland", bottomTop("block/dirt", "block/farmland", "block/dirt")),
 		boxes("stone_pressure_plate", all6("block/stone")), boxes("redstone_wire", all6("block/redstone_dust_dot")),

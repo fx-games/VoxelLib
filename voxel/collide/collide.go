@@ -118,38 +118,43 @@ func Fits(s Solids, box AABB) bool {
 	return true
 }
 
+// eps is how far a box may sink into another and still count as touching
+// it, not overlapping: a body's box rebuilt from its centre (Box) lands a
+// rounding error inside the face it was stopped against.
+const eps = 1e-7
+
 func clipY(b, a AABB, d float64) float64 {
-	if a.MaxX <= b.MinX || a.MinX >= b.MaxX || a.MaxZ <= b.MinZ || a.MinZ >= b.MaxZ {
+	if a.MaxX <= b.MinX+eps || a.MinX >= b.MaxX-eps || a.MaxZ <= b.MinZ+eps || a.MinZ >= b.MaxZ-eps {
 		return d
 	}
-	if d > 0 && a.MaxY <= b.MinY {
-		d = math.Min(d, b.MinY-a.MaxY)
-	} else if d < 0 && a.MinY >= b.MaxY {
-		d = math.Max(d, b.MaxY-a.MinY)
+	if d > 0 && a.MaxY <= b.MinY+eps {
+		d = math.Min(d, math.Max(0, b.MinY-a.MaxY))
+	} else if d < 0 && a.MinY >= b.MaxY-eps {
+		d = math.Max(d, math.Min(0, b.MaxY-a.MinY))
 	}
 	return d
 }
 
 func clipX(b, a AABB, d float64) float64 {
-	if a.MaxY <= b.MinY || a.MinY >= b.MaxY || a.MaxZ <= b.MinZ || a.MinZ >= b.MaxZ {
+	if a.MaxY <= b.MinY+eps || a.MinY >= b.MaxY-eps || a.MaxZ <= b.MinZ+eps || a.MinZ >= b.MaxZ-eps {
 		return d
 	}
-	if d > 0 && a.MaxX <= b.MinX {
-		d = math.Min(d, b.MinX-a.MaxX)
-	} else if d < 0 && a.MinX >= b.MaxX {
-		d = math.Max(d, b.MaxX-a.MinX)
+	if d > 0 && a.MaxX <= b.MinX+eps {
+		d = math.Min(d, math.Max(0, b.MinX-a.MaxX))
+	} else if d < 0 && a.MinX >= b.MaxX-eps {
+		d = math.Max(d, math.Min(0, b.MaxX-a.MinX))
 	}
 	return d
 }
 
 func clipZ(b, a AABB, d float64) float64 {
-	if a.MaxX <= b.MinX || a.MinX >= b.MaxX || a.MaxY <= b.MinY || a.MinY >= b.MaxY {
+	if a.MaxX <= b.MinX+eps || a.MinX >= b.MaxX-eps || a.MaxY <= b.MinY+eps || a.MinY >= b.MaxY-eps {
 		return d
 	}
-	if d > 0 && a.MaxZ <= b.MinZ {
-		d = math.Min(d, b.MinZ-a.MaxZ)
-	} else if d < 0 && a.MinZ >= b.MaxZ {
-		d = math.Max(d, b.MaxZ-a.MinZ)
+	if d > 0 && a.MaxZ <= b.MinZ+eps {
+		d = math.Min(d, math.Max(0, b.MinZ-a.MaxZ))
+	} else if d < 0 && a.MinZ >= b.MaxZ-eps {
+		d = math.Max(d, math.Min(0, b.MaxZ-a.MinZ))
 	}
 	return d
 }

@@ -17,6 +17,7 @@ import (
 	"io/fs"
 	"os"
 	"path"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -132,6 +133,9 @@ func (p *Pack) TextureFrames(name string) ([]image.Image, int, error) {
 	file := path.Join("assets", ns, "textures", rel+".png")
 	f, err := p.open(file)
 	if err != nil {
+		if b, ok := builtin[name]; ok { // the pack has none: ours
+			return []image.Image{b()}, 0, nil
+		}
 		return nil, 0, err
 	}
 	defer f.Close()
@@ -200,6 +204,96 @@ func Frames(img image.Image, mcmeta []byte) ([]image.Image, int) {
 		return strip, ft
 	}
 	return out, ft
+}
+
+// builtin are textures drawn here for packs without them, by name.
+var builtin = map[string]func() image.Image{
+	"block/ladder": LadderTexture, "minecraft:block/ladder": LadderTexture,
+	"block/iron_spikes": SpikesTexture,
+}
+
+func init() {
+	for i := range 10 {
+		builtin["block/destroy_stage_"+strconv.Itoa(i)] = func() image.Image { return DamageTexture(i) }
+	}
+}
+
+// DamageTextures are the pack's breaking cracks, block/destroy_stage_0..9
+// (ours where it has none), for render.Renderer.SetDamageTextures.
+func (p *Pack) DamageTextures() []image.Image {
+	out := make([]image.Image, 10)
+	for i := range out {
+		img, err := p.Texture("block/destroy_stage_" + strconv.Itoa(i))
+		if err != nil {
+			img = DamageTexture(i)
+		}
+		out[i] = img
+	}
+	return out
+}
+
+// DamageTexture is a 16-pixel crack pattern for breaking stage 0..9: the
+// same cracks grow from the middle, mid grey (no change under the 2*src*dst
+// blend) with dark lines, transparent elsewhere.
+func DamageTexture(stage int) image.Image {
+	img := image.NewNRGBA(image.Rect(0, 0, 16, 16))
+	// Cracks as walks from the centre; each stage walks further.
+	walks := [][]int{{0, 1, 0, 3, 0, 1, 1}, {2, 3, 2, 1, 2, 3, 3}, {1, 2, 1, 0, 1}, {3, 0, 3, 2, 3}, {0, 3, 3, 0, 3}, {2, 1, 1, 2, 1}}
+	dirs := [4][2]int{{1, 0}, {0, 1}, {-1, 0}, {0, -1}}
+	dark := color.NRGBA{40, 40, 40, 255}
+	for w, walk := range walks {
+		if w > stage {
+			break
+		}
+		x, y := 8, 8
+		for i, d := range walk {
+			if i > stage+1 {
+				break
+			}
+			for range 2 {
+				x, y = (x+dirs[d][0]+16)%16, (y+dirs[d][1]+16)%16
+				img.Set(x, y, dark)
+			}
+		}
+	}
+	return img
+}
+
+// LadderTexture is a 16-pixel ladder decal: two rails and four rungs in
+// oak brown, transparent between them, for a ladder against a wall.
+func LadderTexture() image.Image {
+	img := image.NewNRGBA(image.Rect(0, 0, 16, 16))
+	rail, edge := color.NRGBA{124, 90, 51, 255}, color.NRGBA{77, 53, 25, 255}
+	rung, under := color.NRGBA{156, 122, 74, 255}, color.NRGBA{98, 70, 38, 255}
+	for y := 0; y < 16; y++ {
+		for _, x := range []int{2, 12} {
+			img.Set(x, y, rail)
+			img.Set(x+1, y, edge)
+		}
+	}
+	for _, y := range []int{1, 5, 9, 13} {
+		for x := 4; x < 12; x++ {
+			img.Set(x, y, rung)
+			img.Set(x, y+1, under)
+		}
+	}
+	return img
+}
+
+// SpikesTexture is a 16-pixel dark iron texture, lighter along the top
+// edge of each row, for wall spikes.
+func SpikesTexture() image.Image {
+	img := image.NewNRGBA(image.Rect(0, 0, 16, 16))
+	for y := 0; y < 16; y++ {
+		for x := 0; x < 16; x++ {
+			v := uint8(70 + (x*7+y*13)%17)
+			if y%4 == 0 {
+				v += 50
+			}
+			img.Set(x, y, color.NRGBA{v, v, v + 6, 255})
+		}
+	}
+	return img
 }
 
 // MissingTexture returns the classic magenta/black checkerboard.

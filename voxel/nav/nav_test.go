@@ -1,6 +1,9 @@
 package nav
 
-import "testing"
+import (
+	"slices"
+	"testing"
+)
 
 type grid map[Pos]bool
 
@@ -392,5 +395,48 @@ func TestReuse(t *testing.T) {
 				t.Fatalf("search %d step %d: %v, fresh %v", i, j, got[j], want[j])
 			}
 		}
+	}
+}
+
+type stepWorld struct{ solid, step map[Pos]bool }
+
+func (w stepWorld) Solid(x, y, z int) bool {
+	return y < 0 || w.solid[Pos{x, y, z}] || w.step[Pos{x, y, z}]
+}
+
+// From a stair a walker climbs onto the next stair, never onto a full
+// block beside it (it would have to jump, and doesn't from a step).
+func TestNoClimbFromStepOntoBlock(t *testing.T) {
+	w := stepWorld{solid: map[Pos]bool{{1, 0, 0}: true, {1, 0, 1}: true, {1, 1, 1}: true}, step: map[Pos]bool{{0, 0, 0}: true, {1, 1, 0}: true}}
+	g := &Graph{W: w, Stairs: func(x, y, z int) bool { return w.step[Pos{x, y, z}] }}
+	got := map[Pos]bool{}
+	for _, n := range g.Neighbors(Pos{0, 1, 0}, nil) {
+		got[n] = true
+	}
+	if got[Pos{1, 2, 1}] || !got[Pos{1, 2, 0}] {
+		t.Fatalf("neighbours %v", got)
+	}
+}
+
+// A ladder up a wall onto its top: Ladders links the foot to the top of
+// the wall and back.
+func TestLadders(t *testing.T) {
+	m := floor()
+	for y := 1; y <= 4; y++ { // a wall at x=6, its top at y=4
+		for z := 3; z <= 7; z++ {
+			m[Pos{6, y, z}] = true
+			m[Pos{7, y, z}] = true
+		}
+	}
+	climb := func(x, y, z int) bool { return x == 5 && z == 5 && y >= 1 && y <= 4 }
+	g := &Graph{W: m}
+	g.Links = g.Ladders(climb)
+	foot, top := Pos{5, 1, 5}, Pos{6, 5, 5}
+	path, ok := g.Path(Pos{2, 1, 5}, top, 0)
+	if !ok || !slices.Contains(path, foot) {
+		t.Fatalf("up: %v ok=%v", path, ok)
+	}
+	if path, ok = g.Path(Pos{7, 5, 5}, Pos{2, 1, 5}, 0); !ok || !slices.Contains(path, foot) {
+		t.Fatalf("down: %v ok=%v", path, ok)
 	}
 }

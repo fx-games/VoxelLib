@@ -35,6 +35,11 @@ type Graph struct {
 	// of (PathNavigate.setAvoidsWater, PathFinder.func_82565_a's -1): no
 	// footprint cell may hold water, and a drop ends at none.
 	Dry func(x, y, z int) bool
+	// Stairs, if set, marks stairs and slabs (voxel.World.StairOrSlab).
+	// Walkers walk up those rather than jump (actors.StepJumps), so from
+	// one there is no climb onto a full block a whole block higher, only
+	// onto the next step.
+	Stairs func(x, y, z int) bool
 	// Cost, if set, adds a cost (10 = one straight step) for entering p,
 	// e.g. for cells other walkers stand in.
 	Cost func(p Pos) int
@@ -266,7 +271,7 @@ func (g *Graph) neighbors(p Pos, buf []Pos) (all []Pos, walk int) {
 					continue
 				}
 				to = Pos{tx, p.Y + 1, tz}
-				if !g.Walkable(to) {
+				if !g.Walkable(to) || g.Stairs != nil && g.Stairs(p.X, p.Y-1, p.Z) && !g.Stairs(tx, p.Y, tz) {
 					continue
 				}
 			case !g.clear(tx, p.Y+1, tz, ht-1): // low ceiling at target

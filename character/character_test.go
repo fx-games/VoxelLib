@@ -321,3 +321,16 @@ func TestMovedBeforeDrag(t *testing.T) {
 		t.Fatal(c.Moved, c.VX)
 	}
 }
+
+func TestFallDistance(t *testing.T) {
+	w := grid{}
+	c := New(0.5, 10, 0.5)
+	landed := 0.0
+	for i := 0; i < 100 && landed == 0; i++ {
+		c.Tick(w, Input{})
+		landed = c.Landed
+	}
+	if landed < 9.5 || landed > 10 || c.FallDistance != 0 {
+		t.Fatalf("landed %v after a 10-block drop, still falling %v", landed, c.FallDistance)
+	}
+}
