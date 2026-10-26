@@ -203,6 +203,7 @@ func (mr *ModelRenderer) Add(m *model.Model) (int, error) {
 	g := mr.upload(vb, ib, texs, m.Blur)
 	g.parts, g.bones = parts, max(len(m.Bones), 1)
 	lo, hi := m.Bounds()
+	g.lo, g.hi = lo, hi
 	for k := 0; k < 3; k++ {
 		g.radius = max(g.radius, float32(math.Abs(float64(lo[k]))), float32(math.Abs(float64(hi[k]))))
 	}
@@ -214,6 +215,15 @@ func (mr *ModelRenderer) Add(m *model.Model) (int, error) {
 	}
 	mr.models = append(mr.models, g)
 	return len(mr.models) - 1, nil
+}
+
+// Bounds returns a model's bind-pose bounds, e.g. to fit it into an icon
+// (IconView).
+func (mr *ModelRenderer) Bounds(handle int) (lo, hi mgl32.Vec3) {
+	if handle < 0 || handle >= len(mr.models) || mr.models[handle] == nil {
+		return
+	}
+	return mr.models[handle].lo, mr.models[handle].hi
 }
 
 // Remove frees a model's GPU buffers and textures; its handle may be

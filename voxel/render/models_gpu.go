@@ -14,8 +14,9 @@ type gpuModelRenderer struct {
 }
 
 type gpuModel struct {
-	radius   float32 // largest bind-pose extent from the origin
-	bones    int     // skinning matrices the vertices may use
+	radius   float32    // largest bind-pose extent from the origin
+	lo, hi   mgl32.Vec3 // bind-pose bounds
+	bones    int        // skinning matrices the vertices may use
 	vbo, ebo *wgpu.Buffer
 	parts    []gpuPart
 	textures []texture2D

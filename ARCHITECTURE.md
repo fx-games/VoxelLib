@@ -86,6 +86,10 @@ design is covered in README.md and the comments in engine.go and render/region.g
 - **Items.** `ItemRenderer` extrudes sprites with `items/extrude` into one VBO and one texture
   array. It draws world instances, and the first-person hand with its own projection after a
   depth clear.
+- **Icons.** `IconView` places a block, model or item at a screen point, sized to fit a cell
+  and turned to face the eye, for the hand draws (`DrawBlockHand`, `ModelRenderer.DrawHand`,
+  `ItemRenderer.DrawHandModel`); `ModelRenderer.Bounds` gives a model's extent to fit. Blocks
+  come from `mesh.Block`.
 
 ## Gameplay pieces
 - **`character`.** A reference-game movement model at 20 Hz: ground and air drag, sprint-jump,
