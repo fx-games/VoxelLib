@@ -49,8 +49,11 @@ struct VOut {
 ` + wgslLight + `
 @vertex
 fn vs(@location(0) d: vec4<u32>) -> VOut {
-	var shade = array<f32, 7>(0.5, 1.0, 0.8, 0.8, 0.6, 0.6, 1.0);
-	var ao = array<f32, 4>(0.45, 0.65, 0.82, 1.0);
+	// Vectors, not arrays: naga turns a runtime-indexed array into memory
+	// (a scratch spill on some drivers), a vector into a register select.
+	let shadeLo = vec4f(0.5, 1.0, 0.8, 0.8); // faces 0-3, then 4-6
+	let shadeHi = vec4f(0.6, 0.6, 1.0, 1.0);
+	let ao = vec4f(0.45, 0.65, 0.82, 1.0);
 	let w0 = d.x; let w1 = d.y; let w2 = d.z; let w3 = d.w;
 	// position: 1/128 block, biased by 8 blocks; high 10 bits in w0, low 2 in w1 (mesh.VertexWords)
 	let coarse = vec3f(f32(w0 & 1023u), f32((w0 >> 10u) & 1023u), f32((w0 >> 20u) & 1023u));
@@ -67,7 +70,7 @@ fn vs(@location(0) d: vec4<u32>) -> VOut {
 	let n = (w1 >> 22u) & 7u;
 	let tint = vec3f(f32(w2 & 255u), f32((w2 >> 8u) & 255u), f32((w2 >> 16u) & 255u)) * (1.0 / 255.0);
 	let wt = f32((w3 >> 16u) & 255u) * (1.0 / 255.0);
-	o.color = (tint + wt * u.dynTint.rgb) * shade[n] * ao[w0 >> 30u];
+	o.color = (tint + wt * u.dynTint.rgb) * select(shadeLo[n & 3u], shadeHi[n & 3u], n > 3u) * ao[w0 >> 30u];
 	// Light is level*16 (0..240); the reference samples (l + 8) / 256.
 	o.light = (vec2f(f32((w3 >> 8u) & 255u), f32(w3 & 255u)) + 8.0) * (1.0 / 256.0);
 	o.dist = length(pos.xz); // cylindrical fog like the reference game

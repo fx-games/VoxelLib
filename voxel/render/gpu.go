@@ -132,7 +132,9 @@ func Init(win *glfw.Window, vsync bool) error {
 		return fmt.Errorf("wgpu: adapter: %w", err)
 	}
 	var feats gputypes.Features
-	if dev.adapter.Features().Contains(gputypes.FeatureMultiDrawIndirect) {
+	// VOXELLIB_NO_MULTIDRAW draws terrain range by range even where the
+	// device has indirect multidraw (slower than direct draws on some drivers).
+	if dev.adapter.Features().Contains(gputypes.FeatureMultiDrawIndirect) && os.Getenv("VOXELLIB_NO_MULTIDRAW") == "" {
 		feats |= gputypes.Features(gputypes.FeatureMultiDrawIndirect)
 		dev.multiDraw = true
 	}

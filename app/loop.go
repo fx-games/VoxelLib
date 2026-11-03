@@ -70,10 +70,18 @@ func (a *App) loop() {
 	var benchMem runtime.MemStats // at the first measured frame
 	var benchTicks []time.Duration
 	gpuWait := dbg.Bench > 0 && os.Getenv("VOXELLIB_BENCH_GPU") != ""
-	warm := 3 * time.Second // bench: skip startup; VOXELLIB_BENCH_WARMUP=30s waits until meshing is done
+	// bench: skip startup (VOXELLIB_BENCH_WARMUP=30s: longer) and stop
+	// dbg.Bench after the start. VOXELLIB_BENCH_WARMUP=settled waits until
+	// no chunk or mesh has been pending for 3 s (at most 3 minutes), then
+	// measures for dbg.Bench: the same loaded world whatever the meshing speed.
+	warm, end := 3*time.Second, dbg.Bench
+	settle := os.Getenv("VOXELLIB_BENCH_WARMUP") == "settled"
 	if d, err := time.ParseDuration(os.Getenv("VOXELLIB_BENCH_WARMUP")); err == nil {
 		warm = d
+	} else if settle {
+		warm, end = math.MaxInt64/2, math.MaxInt64/2
 	}
+	var quiet time.Time // settle: streaming idle since
 	var stopProfile func()
 	var benchTickFrame []bool // bench: the frame ran a tick
 	// The ticks run on their own goroutine while the main thread presents
@@ -108,7 +116,19 @@ func (a *App) loop() {
 				time.Since(a.sessionStart).Round(time.Millisecond), a.Tick, time.Since(procStart).Round(time.Millisecond))
 		}
 		if dbg.Bench > 0 {
-			if el := time.Since(start); el > dbg.Bench {
+			el := time.Since(start)
+			if settle && el < warm {
+				if _, chunks, meshes := a.Eng.Progress(); chunks+meshes > 0 {
+					quiet = time.Time{}
+				} else if quiet.IsZero() {
+					quiet = time.Now()
+				}
+				if idle := !quiet.IsZero() && time.Since(quiet) > 3*time.Second; idle || el > 3*time.Minute {
+					warm, end = el, el+dbg.Bench
+					log.Printf("bench: measuring from %v (streaming idle: %v)", el.Round(time.Second), idle)
+				}
+			}
+			if el > end {
 				if stopProfile != nil {
 					stopProfile()
 				}
