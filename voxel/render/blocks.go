@@ -113,7 +113,7 @@ func (r *Renderer) DrawBlockHand(b *BlockMesh, aspect float32, model, lights mgl
 		return
 	}
 	clearHandDepth()
-	proj := mgl32.Perspective(mgl32.DegToRad(70), aspect, 0.05, 10)
+	proj := r.handProj(aspect)
 	l0 := lights.Mul4x1(itemLights[0].Vec4(0)).Vec3()
 	l1 := lights.Mul4x1(itemLights[1].Vec4(0)).Vec3()
 	r.drawBlock(b, proj.Mul4(model), model, r.LightColor(sky, block), lightCode(sky, block), Fog{Start: 1e6, End: 2e6}, l0, l1, -1)

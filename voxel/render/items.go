@@ -244,7 +244,7 @@ func (ir *ItemRenderer) DrawHandItem(aspect float32, it ItemPose) {
 		return
 	}
 	clearHandDepth()
-	proj := mgl32.Perspective(mgl32.DegToRad(70), aspect, 0.05, 10)
+	proj := ir.r.handProj(aspect)
 	ir.begin(Fog{Color: mgl32.Vec3{}, Start: 1e6, End: 2e6}) // no fog on the hand
 	ir.glints, ir.unlit = it.GlintPasses(), it.Unlit
 	ir.draw(it.Item, proj, it.M, it.Sky, it.Block)

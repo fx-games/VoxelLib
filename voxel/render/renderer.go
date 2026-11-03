@@ -188,6 +188,9 @@ type drawBatch struct {
 type Renderer struct {
 	Opt   Options
 	Stats Stats
+	// Icons makes the hand draws orthographic, for icons placed with
+	// IconView; unset, they see through the hand's 70° lens.
+	Icons bool
 
 	world      *voxel.World
 	src        TextureSource

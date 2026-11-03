@@ -351,7 +351,7 @@ func (mr *ModelRenderer) DrawHandSkinned(handle int, aspect float32, view mgl32.
 		return
 	}
 	clearHandDepth()
-	proj := mgl32.Perspective(mgl32.DegToRad(70), aspect, 0.05, 10)
+	proj := mr.r.handProj(aspect)
 	mr.begin(modelLight{proj, Fog{Start: 1e6, End: 2e6}, mr.r.Opt.Daylight, mr.r.Opt.BlockBrightness}) // no fog on the hand
 	mr.drawModel(mr.models[handle], view, skin, drawParams{sky: sky, block: block})
 	mr.end()
@@ -366,7 +366,7 @@ func (mr *ModelRenderer) DrawHandInstance(aspect float32, view mgl32.Mat4, in Mo
 		return
 	}
 	clearHandDepth()
-	proj := mgl32.Perspective(mgl32.DegToRad(70), aspect, 0.05, 10)
+	proj := mr.r.handProj(aspect)
 	mr.begin(modelLight{proj, Fog{Start: 1e6, End: 2e6}, mr.r.Opt.Daylight, mr.r.Opt.BlockBrightness})
 	mr.drawModel(mr.models[in.Model], view, in.Skin, in.params())
 	mr.end()
