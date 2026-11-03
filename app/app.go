@@ -46,8 +46,9 @@ const TickDur = time.Second / TickRate
 type Config struct {
 	Title         string
 	Width, Height int // window size, default 1280x720
-	// Fullscreen opens the window fullscreen on the primary monitor, in
-	// the video mode closest to Width x Height (no desktop compositing).
+	// Fullscreen opens the window fullscreen on the primary monitor in its
+	// desktop video mode (the panel's native resolution, so no mode switch
+	// and no scaling; no desktop compositing). Width and Height are ignored.
 	Fullscreen bool
 	VSync      string // "on" (default), "limit" (sleep to max(display, 120 Hz)), "off"
 	Engine     engine.Config
@@ -256,7 +257,9 @@ func New(cfg Config) (*App, error) {
 	var mon *glfw.Monitor
 	if cfg.Fullscreen {
 		if mon = glfw.GetPrimaryMonitor(); mon != nil {
-			glfw.WindowHint(glfw.RefreshRate, mon.GetVideoMode().RefreshRate)
+			m := mon.GetVideoMode()
+			cfg.Width, cfg.Height = m.Width, m.Height
+			glfw.WindowHint(glfw.RefreshRate, m.RefreshRate)
 			glfw.WindowHint(glfw.AutoIconify, glfw.False) // automated runs stay unfocused
 		}
 	}
