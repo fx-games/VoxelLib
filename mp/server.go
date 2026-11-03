@@ -5,6 +5,7 @@ import (
 	"log"
 	"math"
 	"net"
+	"runtime"
 	"slices"
 	"sync"
 	"sync/atomic"
@@ -27,6 +28,9 @@ const (
 	historyTicks = 32
 	// maxLag caps how far back a shooter's view is rewound (ticks).
 	maxLag = 10
+	// stallLimit is how long a server frame may run before the watchdog
+	// logs the stacks.
+	stallLimit = 3 * time.Second
 	// spawnSpread scatters spawn points around the world spawn (blocks).
 	spawnSpread = 24
 	// maxArrows in the world; the oldest stuck one goes first.
@@ -219,12 +223,39 @@ func (s *Server) run() {
 	defer close(s.done)
 	t := time.NewTicker(time.Second / TickRate)
 	defer t.Stop()
+	var frameStart atomic.Int64 // unix ns; 0 between frames
+	go s.watchdog(&frameStart)
 	for {
 		select {
 		case <-s.stop:
 			return
 		case <-t.C:
+			frameStart.Store(time.Now().UnixNano())
 			s.frame()
+			frameStart.Store(0)
+		}
+	}
+}
+
+// watchdog logs every goroutine's stack once when a frame runs longer than
+// stallLimit: clients time out on a stalled server, and the stacks say why.
+func (s *Server) watchdog(frameStart *atomic.Int64) {
+	t := time.NewTicker(500 * time.Millisecond)
+	defer t.Stop()
+	var reported int64
+	for {
+		select {
+		case <-s.done:
+			return
+		case <-t.C:
+			st := frameStart.Load()
+			if st == 0 || st == reported || time.Since(time.Unix(0, st)) < stallLimit {
+				continue
+			}
+			reported = st
+			buf := make([]byte, 1<<20)
+			buf = buf[:runtime.Stack(buf, true)]
+			s.cfg.Logf("mp: server frame stalled for %v:\n%s", time.Since(time.Unix(0, st)).Round(time.Millisecond), buf)
 		}
 	}
 }

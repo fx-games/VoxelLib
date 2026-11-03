@@ -23,14 +23,25 @@ import (
 )
 
 func main() {
-	addr := flag.String("connect", "127.0.0.1", "server address (host[:port])")
+	addr := flag.String("connect", "127.0.0.1", "server address (host[:port]); '': the first LAN game found")
 	name := flag.String("name", "Bot", "player name")
 	skinPath := flag.String("skin", "", "skin PNG to send")
 	dist := flag.Float64("dist", 4, "distance to keep in front of the target")
 	angle := flag.Float64("angle", 0, "stand this many degrees round from the target's look (90: to their right)")
+	target := flag.String("target", "", "only go for the player with this name ('' = the nearest)")
 	shoot := flag.Bool("shoot", false, "shoot at the target's head once in place")
 	limit := flag.Duration("time", time.Minute, "leave after this long")
 	flag.Parse()
+	if *addr == "" {
+		found := mp.Discover(time.Second)
+		if len(found) == 0 {
+			log.Fatal("no LAN game found")
+		}
+		for _, f := range found {
+			log.Printf("found %q at %s (%d/%d, %v)", f.Name, f.Addr, f.Players, f.Max, f.Ping)
+		}
+		*addr = found[0].Addr
+	}
 	if !strings.Contains(*addr, ":") {
 		*addr = fmt.Sprintf("%s:%d", *addr, mp.DefaultPort)
 	}
@@ -72,7 +83,7 @@ func main() {
 		c.Reconcile(ch, w)
 		in := character.Input{Yaw: yaw, Pitch: pitch}
 		attack := false
-		if t, ok := nearest(c, ch); ok {
+		if t, ok := nearest(c, ch, *target); ok {
 			// The spot -dist in front of the target, -angle round from their look.
 			a := t.Yaw + *angle*math.Pi/180
 			gx, gz := t.X+math.Sin(a)**dist, t.Z-math.Cos(a)**dist
@@ -106,10 +117,13 @@ func main() {
 	}
 }
 
-func nearest(c *mp.Client, ch *character.Character) (mp.PlayerView, bool) {
+func nearest(c *mp.Client, ch *character.Character, name string) (mp.PlayerView, bool) {
 	var best mp.PlayerView
 	bd := math.Inf(1)
 	for _, v := range c.Players() {
+		if name != "" && c.Info[v.Slot].Name != name {
+			continue
+		}
 		if d := math.Hypot(v.X-ch.X, v.Z-ch.Z); !v.Dead && d < bd {
 			best, bd = v, d
 		}

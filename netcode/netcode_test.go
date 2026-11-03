@@ -190,6 +190,27 @@ func TestTimeout(t *testing.T) {
 	t.Fatal("client never timed out")
 }
 
+// A client whose game stops polling (a long frame, a world loading on a
+// slow machine) stays connected: keepalives go out without Poll.
+func TestNoPollStaysConnected(t *testing.T) {
+	cfg := Config{Protocol: testProtocol, Timeout: 300 * time.Millisecond}
+	srv, cl := pair(t, cfg)
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		for _, e := range srv.Poll() { // the server keeps running
+			if e.Kind == Disconnected {
+				t.Fatalf("server dropped the silent client: %s", e.Reason)
+			}
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	for _, e := range cl.Poll() {
+		if e.Kind == Disconnected {
+			t.Fatalf("client disconnected: %s", e.Reason)
+		}
+	}
+}
+
 func TestDiscover(t *testing.T) {
 	srv, err := Listen(":0", Config{Protocol: testProtocol}, nil)
 	if err != nil {

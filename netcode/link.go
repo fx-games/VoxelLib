@@ -14,7 +14,9 @@ type Config struct {
 	// Protocol identifies the game and its version; peers with a different
 	// one are refused and do not answer discovery.
 	Protocol uint32
-	// Timeout drops a peer that sent nothing for this long (default 5s).
+	// Timeout drops a peer that sent nothing for this long (default 20s,
+	// so a peer whose game hitches, loading a world on a slow machine,
+	// stays connected; a peer that leaves says so at once).
 	Timeout time.Duration
 	// MaxClients is the number of client slots on a server (default 4).
 	MaxClients int
@@ -27,11 +29,15 @@ type Config struct {
 	Jitter  time.Duration
 }
 
+// keepalive is how long a link may stay quiet: a quarter of the timeout, at
+// most a second.
+func (c Config) keepalive() time.Duration { return min(c.timeout()/4, time.Second) }
+
 func (c Config) timeout() time.Duration {
 	if c.Timeout > 0 {
 		return c.Timeout
 	}
-	return 5 * time.Second
+	return 20 * time.Second
 }
 
 // EventKind says what an Event reports.
@@ -181,9 +187,9 @@ func (l *link) receive(p []byte, now time.Time, client int, evs []Event) ([]Even
 // keepalive sends an empty packet when reliable messages wait for an
 // acknowledgement and nothing went out lately, or when the link is idle, so
 // acknowledgements flow and the peer does not time out.
-func (l *link) keepalive(s *socket, now time.Time) {
+func (l *link) keepalive(s *socket, now time.Time, every time.Duration) {
 	idle := now.Sub(l.lastSend)
-	if (len(l.ch.relOut) > 0 && idle >= 50*time.Millisecond) || idle >= time.Second {
+	if (len(l.ch.relOut) > 0 && idle >= 50*time.Millisecond) || idle >= every {
 		l.send(s, nil, now)
 	}
 }

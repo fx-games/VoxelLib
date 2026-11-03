@@ -197,7 +197,7 @@ func (s *Server) Poll() []Event {
 			s.drop(slot, "timed out")
 			continue
 		}
-		c.keepalive(s.sock, now)
+		c.keepalive(s.sock, now, s.cfg.keepalive())
 	}
 	evs := s.events
 	s.events = nil

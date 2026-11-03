@@ -63,6 +63,7 @@ func Dial(addr string, cfg Config, hello []byte) (*Client, []byte, error) {
 			c.slot = r.slot
 			c.link.lastRecv = time.Now()
 			c.mu.Unlock()
+			go c.keepalive()
 			return c, r.reply, nil
 		case <-tick.C:
 		case <-deadline:
@@ -139,22 +140,45 @@ func (c *Client) disconnect(reason string) {
 	}
 }
 
-// Poll returns what arrived since the last call and sends a keepalive when
-// needed. A Disconnected event ends the connection; Close it afterwards.
+// Poll returns what arrived since the last call. A Disconnected event ends
+// the connection; Close it afterwards.
 func (c *Client) Poll() []Event {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	now := time.Now()
-	if !c.gone {
-		if now.Sub(c.link.lastRecv) > c.cfg.timeout() {
-			c.disconnect("timed out")
-		} else {
-			c.link.keepalive(c.sock, now)
-		}
-	}
+	c.check(time.Now())
 	evs := c.events
 	c.events = nil
 	return evs
+}
+
+// keepalive keeps the link alive from its own goroutine, so a game that
+// polls late (a long frame) neither goes silent nor misses acknowledgements.
+func (c *Client) keepalive() {
+	t := time.NewTicker(50 * time.Millisecond)
+	defer t.Stop()
+	for {
+		select {
+		case <-c.done:
+			return
+		case now := <-t.C:
+			c.mu.Lock()
+			c.check(now)
+			c.mu.Unlock()
+		}
+	}
+}
+
+// check times the server out or sends a keepalive when one is due. Must be
+// called with c.mu held.
+func (c *Client) check(now time.Time) {
+	if c.gone {
+		return
+	}
+	if now.Sub(c.link.lastRecv) > c.cfg.timeout() {
+		c.disconnect("timed out")
+	} else {
+		c.link.keepalive(c.sock, now, c.cfg.keepalive())
+	}
 }
 
 var errGone = errors.New("netcode: disconnected")
