@@ -75,7 +75,8 @@ design is covered in README.md and the comments in engine.go and render/region.g
 
 ## Rendering (`voxel/render`)
 - **Profiles.** A `Profile` (profile.go) holds the renderer's choices for one class of
-  system: preferred backend, multidraw, terrain shader variant. `Init` picks the first profile
+  system: preferred backend, multidraw, terrain shader variant (engine and shader-pack
+  terrain), and backend knobs it needs (`Env`, e.g. a driver workaround). `Init` picks the first profile
   whose match takes the adapter (`default` matches everything) and switches to its backend
   when that works. Variants sit side by side, so tuning old hardware never changes what
   modern hardware runs, and every variant must render the same pixels.

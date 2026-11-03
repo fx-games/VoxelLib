@@ -198,6 +198,7 @@ func Init(win *glfw.Window, vsync bool) error {
 		}
 	}
 	dev.profile = p
+	p.setEnv()
 	var feats gputypes.Features
 	if dev.adapter.Features().Contains(gputypes.FeatureMultiDrawIndirect) && dev.profile.MultiDraw {
 		feats |= gputypes.Features(gputypes.FeatureMultiDrawIndirect)

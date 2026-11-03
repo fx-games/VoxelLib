@@ -168,7 +168,7 @@ func (pk *packGPU) module(label, src string) *wgpu.ShaderModule {
 	if m := pk.modules[src]; m != nil {
 		return m
 	}
-	m, err := dev.device.CreateShaderModule(&wgpu.ShaderModuleDescriptor{Label: label, WGSL: packStore(pk.q.wgsl(src), "")})
+	m, err := dev.device.CreateShaderModule(&wgpu.ShaderModuleDescriptor{Label: label, WGSL: packStore(pk.q.wgsl(terrainSource(src, dev.profile)), "")})
 	if err != nil {
 		panic(err)
 	}

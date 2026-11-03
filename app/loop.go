@@ -427,6 +427,7 @@ func ms(d time.Duration) float64 { return float64(d.Microseconds()) / 1000 }
 // printBench reports Debug.Bench: frame interval and CPU cost (frame start
 // to EndFrame, without the drawable wait), mean, 99th percentile and median.
 func printBench(frames, cpu []time.Duration, m0 *runtime.MemStats) {
+	fmt.Printf("bench: %s on %s, profile %v\n", render.Backend, render.AdapterName(), render.CurrentProfile())
 	if len(frames) == 0 || len(cpu) == 0 {
 		return
 	}
@@ -440,7 +441,6 @@ func printBench(frames, cpu []time.Duration, m0 *runtime.MemStats) {
 	}
 	fm, fp, f50 := stat(frames)
 	cm, cp, c50 := stat(cpu)
-	fmt.Printf("bench: %s on %s, profile %v\n", render.Backend, render.AdapterName(), render.CurrentProfile())
 	fmt.Printf("bench %s: %d frames, %.0f fps, interval mean %.2fms p99 %.2fms, cpu mean %.2fms p99 %.2fms, p50 interval %.2fms cpu %.2fms\n",
 		render.Backend, len(frames), float64(time.Second)/float64(fm), ms(fm), ms(fp), ms(cm), ms(cp), ms(f50), ms(c50))
 	var m1 runtime.MemStats

@@ -89,8 +89,9 @@ fn fs(i: VOut) -> @location(0) vec4f {
 // pixels 1/255 apart; the cutout layer keeps terrainWGSL.
 var terrainSolidWGSL = strings.Replace(terrainWGSL, "\tif (c.a < u.params.z) { discard; }\n", "", 1)
 
-// terrainLUTs are terrainWGSL's face shade and AO tables as arrays and,
-// for Profile.SelectLUT, as select chains: naga's SPIR-V keeps a runtime-
+// terrainLUTs are the terrain decoders' face shade and AO tables
+// (terrainWGSL's and packTerrainDecodeWGSL's) as arrays and, for
+// Profile.SelectLUT, as select chains: naga's SPIR-V keeps a runtime-
 // indexed array in memory (a scratch spill on older drivers), a select in
 // registers. Each chain is a let of its own and indexes nothing: naga's
 // MSL writes select and a bounds-checked vector index as bare ternaries,
@@ -98,14 +99,21 @@ var terrainSolidWGSL = strings.Replace(terrainWGSL, "\tif (c.a < u.params.z) { d
 var terrainLUTs = [][2]string{
 	{"\tvar shade = array<f32, 7>(0.5, 1.0, 0.8, 0.8, 0.6, 0.6, 1.0);\n\tvar ao = array<f32, 4>(0.45, 0.65, 0.82, 1.0);\n", ""},
 	{"\to.color = (tint + wt * u.dynTint.rgb) * shade[n] * ao[w0 >> 30u];",
-		"\tlet a = w0 >> 30u;\n" +
-			"\tlet shade = select(select(select(0.5, 1.0, n == 1u), 0.8, n > 1u), select(0.6, 1.0, n > 5u), n > 3u);\n" +
-			"\tlet ao = select(select(0.45, 0.65, a == 1u), select(0.82, 1.0, a == 3u), a > 1u);\n" +
-			"\to.color = (tint + wt * u.dynTint.rgb) * shade * ao;"},
+		"\tlet shade = " + shadeSelect + ";\n" + aoSelectWGSL + "\to.color = (tint + wt * u.dynTint.rgb) * shade * ao;"},
+	{"\tvar ao = array<f32, 4>(0.45, 0.65, 0.82, 1.0);\n", ""},
+	{"\tt.color = (tint + wt * u.dynTint.rgb) * ao[w0 >> 30u];",
+		aoSelectWGSL + "\tt.color = (tint + wt * u.dynTint.rgb) * ao;"},
 }
 
-// terrainSource is a terrain program (terrainWGSL or terrainSolidWGSL)
-// in p's variant.
+// shadeSelect is the face shade by face n (0-6); aoSelectWGSL binds ao
+// to the AO by level (w0's top two bits).
+const (
+	shadeSelect  = "select(select(select(0.5, 1.0, n == 1u), 0.8, n > 1u), select(0.6, 1.0, n > 5u), n > 3u)"
+	aoSelectWGSL = "\tlet aoLevel = w0 >> 30u;\n\tlet ao = select(select(0.45, 0.65, aoLevel == 1u), select(0.82, 1.0, aoLevel == 3u), aoLevel > 1u);\n"
+)
+
+// terrainSource is a program in p's variant: a terrain decoder's tables
+// as p asks for them; other programs as they are.
 func terrainSource(src string, p Profile) string {
 	if p.SelectLUT {
 		for _, r := range terrainLUTs {

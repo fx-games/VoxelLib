@@ -1,6 +1,7 @@
 package render
 
 import (
+	"os"
 	"strings"
 	"testing"
 
@@ -49,28 +50,24 @@ func TestPickProfile(t *testing.T) {
 	}
 }
 
-// TestTerrainSelectLUT: the select variant replaces both tables and their
-// lookup in every terrain program, keeps their values, and compiles in
-// every profile (as Metal compiles it).
+// TestTerrainSelectLUT: the select variant replaces the tables and their
+// lookups in every terrain decoder (engine and pack), keeps their values,
+// and every profile's programs compile (as Metal compiles them).
 func TestTerrainSelectLUT(t *testing.T) {
-	for _, src := range []string{terrainWGSL, terrainSolidWGSL} {
-		for _, r := range terrainLUTs {
-			if strings.Count(src, r[0]) != 1 {
-				t.Fatalf("terrain program lacks %q", r[0])
-			}
-		}
+	progs := map[string]string{"terrain": terrainWGSL, "terrain solid": terrainSolidWGSL,
+		"pack terrain": packTerrainWGSL, "pack terrain solid": packTerrainSolidWGSL, "pack water": packWaterWGSL,
+		"pack shadow": packShadowWGSL, "pack shadow solid": packShadowSolidWGSL}
+	for name, src := range progs {
 		if terrainSource(src, Profile{}) != src {
-			t.Error("the array variant changed the program")
+			t.Errorf("%s: the array variant changed the program", name)
 		}
 		v := terrainSource(src, Profile{SelectLUT: true})
-		if strings.Contains(v, "= array<") {
-			t.Error("the select variant keeps an array")
+		if v == src || strings.Contains(v, "ao[") || strings.Contains(v, "shade[") || strings.Contains(v, "array<f32, 4>(0.45") {
+			t.Errorf("%s: the select variant keeps a table", name)
 		}
-		validWGSL(t, v)
-	}
-	for _, p := range profiles {
-		checkMSL(t, p.Name+" terrain", terrainSource(terrainWGSL, p))
-		checkMSL(t, p.Name+" terrain solid", terrainSource(terrainSolidWGSL, p))
+		for _, p := range profiles {
+			checkMSL(t, p.Name+" "+name, packStore(terrainSource(src, p), ""))
+		}
 	}
 	// The chains give the arrays' values: shade by face 0-6, AO by level 0-3.
 	sel := func(c bool, t, f float32) float32 {
@@ -80,7 +77,7 @@ func TestTerrainSelectLUT(t *testing.T) {
 		return f
 	}
 	for n, want := range []float32{0.5, 1.0, 0.8, 0.8, 0.6, 0.6, 1.0} {
-		u := uint32(n) // the chain in terrainLUTs, select(f, t, c) as sel(c, t, f)
+		u := uint32(n) // shadeSelect, select(f, t, c) as sel(c, t, f)
 		if got := sel(u > 3, sel(u > 5, 1.0, 0.6), sel(u > 1, 0.8, sel(u == 1, 1.0, 0.5))); got != want {
 			t.Errorf("shade %d: %v, want %v", n, got, want)
 		}
@@ -92,9 +89,24 @@ func TestTerrainSelectLUT(t *testing.T) {
 		}
 	}
 	for _, c := range []string{"select(select(select(0.5, 1.0, n == 1u), 0.8, n > 1u), select(0.6, 1.0, n > 5u), n > 3u)",
-		"select(select(0.45, 0.65, a == 1u), select(0.82, 1.0, a == 3u), a > 1u)"} {
-		if !strings.Contains(terrainLUTs[1][1], c) {
+		"select(select(0.45, 0.65, aoLevel == 1u), select(0.82, 1.0, aoLevel == 3u), aoLevel > 1u)"} {
+		if !strings.Contains(shadeSelect+aoSelectWGSL, c) {
 			t.Errorf("the test's chain %s is not the shader's", c)
 		}
+	}
+}
+
+// TestProfileEnv: a profile sets its backend knobs, but never over a value
+// the environment already has.
+func TestProfileEnv(t *testing.T) {
+	t.Setenv("VOXELLIB_TEST_SET", "user")
+	t.Setenv("VOXELLIB_TEST_UNSET", "")
+	os.Unsetenv("VOXELLIB_TEST_UNSET")
+	Profile{Env: map[string]string{"VOXELLIB_TEST_SET": "profile", "VOXELLIB_TEST_UNSET": "profile"}}.setEnv()
+	if a, b := os.Getenv("VOXELLIB_TEST_SET"), os.Getenv("VOXELLIB_TEST_UNSET"); a != "user" || b != "profile" {
+		t.Errorf("set %q, unset %q", a, b)
+	}
+	if p := profiles[0]; p.Name != "legacy-radeon" || p.Env["GOGPU_VK_NO_TIMELINE"] != "1" || !strings.Contains(p.String(), "GOGPU_VK_NO_TIMELINE=1") {
+		t.Errorf("legacy-radeon: %v", p)
 	}
 }

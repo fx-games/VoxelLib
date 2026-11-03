@@ -2,6 +2,8 @@ package render
 
 import (
 	"fmt"
+	"maps"
+	"os"
 	"regexp"
 	"slices"
 	"strings"
@@ -27,6 +29,9 @@ type Profile struct {
 	// rather than runtime-indexed arrays, which naga's SPIR-V keeps in
 	// memory (a scratch spill on older drivers).
 	SelectLUT bool
+	// Env sets the backend's own knobs (the wgpu fork's GOGPU_* settings)
+	// before the device opens; a variable already set wins.
+	Env map[string]string
 	// match reports whether the profile suits an adapter; profiles are
 	// tried in order and the last matches everything.
 	match func(gputypes.AdapterInfo) bool
@@ -43,6 +48,8 @@ var profiles = []Profile{
 		// Radeon HD 8280E, Windows 7, driver 19.50: GL ran at 108 fps where
 		// Vulkan ran at 59 (terrain GPU time twice GL's).
 		Name: "legacy-radeon", Backend: gputypes.BackendGL, MultiDraw: true, SelectLUT: true,
+		// On Vulkan, driver 19.50 hangs waiting on timeline semaphores.
+		Env: map[string]string{"GOGPU_VK_NO_TIMELINE": "1"},
 		match: func(a gputypes.AdapterInfo) bool {
 			return (a.VendorID == 0x1002 || strings.Contains(a.Vendor, "AMD") || strings.HasPrefix(a.Vendor, "ATI")) &&
 				legacyRadeon.MatchString(a.Name)
@@ -100,11 +107,24 @@ func pickProfile(a gputypes.AdapterInfo, getenv func(string) string) (Profile, e
 	return p, nil
 }
 
+// setEnv sets p.Env's variables that are not set yet.
+func (p Profile) setEnv() {
+	for k, v := range p.Env {
+		if _, ok := os.LookupEnv(k); !ok {
+			os.Setenv(k, v)
+		}
+	}
+}
+
 // String is the profile's name and choices, for logs and bench output.
 func (p Profile) String() string {
 	lut := "array"
 	if p.SelectLUT {
 		lut = "select"
 	}
-	return fmt.Sprintf("%s (multidraw %v, terrain lut %s)", p.Name, p.MultiDraw, lut)
+	env := ""
+	for _, k := range slices.Sorted(maps.Keys(p.Env)) {
+		env += ", " + k + "=" + p.Env[k]
+	}
+	return fmt.Sprintf("%s (multidraw %v, terrain lut %s%s)", p.Name, p.MultiDraw, lut, env)
 }
