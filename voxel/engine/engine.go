@@ -46,6 +46,10 @@ type Config struct {
 	Generator      Generator       // used for chunks not on disk (nil: void)
 	WorldDir       string          // world folder (Anvil regions) to load/save ("" = memory only)
 	ReadOnly       bool            // never write to WorldDir or SaveDir
+	// ManualSave writes WorldDir only on Flush (an editor's explicit
+	// save): edited chunks stay loaded instead of saving as they stream
+	// out, and Close and Regenerate discard unflushed edits.
+	ManualSave bool
 	// Map, when set, streams dimension Dimension of a VoxelMap instead of
 	// WorldDir. Per chunk, the save slot's changes win over the map's
 	// regions, which win over the generator. Without a Generator, the one
@@ -317,7 +321,7 @@ func (e *Engine) lightWorker() {
 				e.stageMu.Unlock()
 			} else if len(op.remove) > 0 {
 				for _, c := range e.World.RemoveChunks(op.remove) {
-					if c.Modified && e.worldSrc.store != nil {
+					if c.Modified && e.worldSrc.store != nil && !e.cfg.ManualSave {
 						select {
 						case e.saveReq <- c:
 						case <-e.quit:
@@ -582,6 +586,11 @@ func (e *Engine) unloadFar(r int) {
 	var far []voxel.ChunkPos
 	for p := range e.loaded {
 		if !e.inRange(p, r) {
+			if e.cfg.ManualSave {
+				if c := e.World.Chunk(p); c != nil && c.Modified {
+					continue // kept until Flush
+				}
+			}
 			far = append(far, p)
 		}
 	}
@@ -950,7 +959,7 @@ func (e *Engine) Close() {
 		}
 		break
 	}
-	if !e.cfg.ReadOnly && !e.delta {
+	if !e.cfg.ReadOnly && !e.delta && !e.cfg.ManualSave {
 		// Includes chunks whose unload op was still queued.
 		for _, p := range e.World.Chunks() {
 			if c := e.World.Chunk(p); c != nil && c.Modified {
