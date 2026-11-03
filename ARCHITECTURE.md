@@ -74,6 +74,14 @@ The main thread never takes the world write lock, except for player `SetBlock`. 
 design is covered in README.md and the comments in engine.go and render/region.go.
 
 ## Rendering (`voxel/render`)
+- **Profiles.** A `Profile` (profile.go) holds the renderer's choices for one class of
+  system: preferred backend, multidraw, terrain shader variant. `Init` picks the first profile
+  whose match takes the adapter (`default` matches everything) and switches to its backend
+  when that works. Variants sit side by side, so tuning old hardware never changes what
+  modern hardware runs, and every variant must render the same pixels.
+  `VOXELLIB_RENDER_PROFILE` forces a profile; `VOXELLIB_NO_MULTIDRAW` and
+  `VOXELLIB_TERRAIN_LUT` (array, select) override single choices for A/B benches, which print
+  the profile in use.
 - **Texture array.** It holds one layer per block texture. Animated textures (`.png.mcmeta`)
   store extra frames as extra layers. A 1-row `R16UI` layer map, updated at 20 Hz, redirects
   each base layer to its current frame in the vertex shader.

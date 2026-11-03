@@ -49,11 +49,8 @@ struct VOut {
 ` + wgslLight + `
 @vertex
 fn vs(@location(0) d: vec4<u32>) -> VOut {
-	// Vectors, not arrays: naga turns a runtime-indexed array into memory
-	// (a scratch spill on some drivers), a vector into a register select.
-	let shadeLo = vec4f(0.5, 1.0, 0.8, 0.8); // faces 0-3, then 4-6
-	let shadeHi = vec4f(0.6, 0.6, 1.0, 1.0);
-	let ao = vec4f(0.45, 0.65, 0.82, 1.0);
+	var shade = array<f32, 7>(0.5, 1.0, 0.8, 0.8, 0.6, 0.6, 1.0);
+	var ao = array<f32, 4>(0.45, 0.65, 0.82, 1.0);
 	let w0 = d.x; let w1 = d.y; let w2 = d.z; let w3 = d.w;
 	// position: 1/128 block, biased by 8 blocks; high 10 bits in w0, low 2 in w1 (mesh.VertexWords)
 	let coarse = vec3f(f32(w0 & 1023u), f32((w0 >> 10u) & 1023u), f32((w0 >> 20u) & 1023u));
@@ -70,7 +67,7 @@ fn vs(@location(0) d: vec4<u32>) -> VOut {
 	let n = (w1 >> 22u) & 7u;
 	let tint = vec3f(f32(w2 & 255u), f32((w2 >> 8u) & 255u), f32((w2 >> 16u) & 255u)) * (1.0 / 255.0);
 	let wt = f32((w3 >> 16u) & 255u) * (1.0 / 255.0);
-	o.color = (tint + wt * u.dynTint.rgb) * select(shadeLo[n & 3u], shadeHi[n & 3u], n > 3u) * ao[w0 >> 30u];
+	o.color = (tint + wt * u.dynTint.rgb) * shade[n] * ao[w0 >> 30u];
 	// Light is level*16 (0..240); the reference samples (l + 8) / 256.
 	o.light = (vec2f(f32((w3 >> 8u) & 255u), f32(w3 & 255u)) + 8.0) * (1.0 / 256.0);
 	o.dist = length(pos.xz); // cylindrical fog like the reference game
@@ -91,6 +88,32 @@ fn fs(i: VOut) -> @location(0) vec4f {
 // the GPU's early depth test. Apple's compiler then rounds ~15 % of the
 // pixels 1/255 apart; the cutout layer keeps terrainWGSL.
 var terrainSolidWGSL = strings.Replace(terrainWGSL, "\tif (c.a < u.params.z) { discard; }\n", "", 1)
+
+// terrainLUTs are terrainWGSL's face shade and AO tables as arrays and,
+// for Profile.SelectLUT, as select chains: naga's SPIR-V keeps a runtime-
+// indexed array in memory (a scratch spill on older drivers), a select in
+// registers. Each chain is a let of its own and indexes nothing: naga's
+// MSL writes select and a bounds-checked vector index as bare ternaries,
+// which bind wrong inside a product.
+var terrainLUTs = [][2]string{
+	{"\tvar shade = array<f32, 7>(0.5, 1.0, 0.8, 0.8, 0.6, 0.6, 1.0);\n\tvar ao = array<f32, 4>(0.45, 0.65, 0.82, 1.0);\n", ""},
+	{"\to.color = (tint + wt * u.dynTint.rgb) * shade[n] * ao[w0 >> 30u];",
+		"\tlet a = w0 >> 30u;\n" +
+			"\tlet shade = select(select(select(0.5, 1.0, n == 1u), 0.8, n > 1u), select(0.6, 1.0, n > 5u), n > 3u);\n" +
+			"\tlet ao = select(select(0.45, 0.65, a == 1u), select(0.82, 1.0, a == 3u), a > 1u);\n" +
+			"\to.color = (tint + wt * u.dynTint.rgb) * shade * ao;"},
+}
+
+// terrainSource is a terrain program (terrainWGSL or terrainSolidWGSL)
+// in p's variant.
+func terrainSource(src string, p Profile) string {
+	if p.SelectLUT {
+		for _, r := range terrainLUTs {
+			src = strings.Replace(src, r[0], r[1], 1)
+		}
+	}
+	return src
+}
 
 const skyWGSL = `
 struct U {
@@ -548,9 +571,9 @@ func (ps *pipelines) init() error {
 		dst  **wgpu.RenderPipeline
 		spec pipeSpec
 	}{
-		{&ps.terrainOpaque, pipeSpec{"terrain", terrainWGSL, ps.terrainTex, terrainBuf, tri, back, nil, true, true, false}},
-		{&ps.terrainSolid, pipeSpec{"terrain solid", terrainSolidWGSL, ps.terrainTex, terrainBuf, tri, back, nil, true, true, false}},
-		{&ps.terrainTrans, pipeSpec{"terrain translucent", terrainWGSL, ps.terrainTex, terrainBuf, tri, back, blendAlpha, true, false, false}},
+		{&ps.terrainOpaque, pipeSpec{"terrain", terrainSource(terrainWGSL, dev.profile), ps.terrainTex, terrainBuf, tri, back, nil, true, true, false}},
+		{&ps.terrainSolid, pipeSpec{"terrain solid", terrainSource(terrainSolidWGSL, dev.profile), ps.terrainTex, terrainBuf, tri, back, nil, true, true, false}},
+		{&ps.terrainTrans, pipeSpec{"terrain translucent", terrainSource(terrainWGSL, dev.profile), ps.terrainTex, terrainBuf, tri, back, blendAlpha, true, false, false}},
 		{&ps.sky, pipeSpec{"sky", skyWGSL, nil, nil, tri, back, nil, true, false, false}},
 		{&ps.skyAlpha, pipeSpec{"sky list", skyListWGSL, ps.tex2D, skyBuf, tri, none, blendAlpha, true, false, false}},
 		{&ps.skyAdd, pipeSpec{"sky list additive", skyListWGSL, ps.tex2D, skyBuf, tri, none, blendSrcAlphaOne, true, false, false}},

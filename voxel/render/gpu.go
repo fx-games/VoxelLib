@@ -86,6 +86,7 @@ var dev struct {
 	nearestClp *wgpu.Sampler         // sprites, models, HUD
 	linearClp  *wgpu.Sampler         // lightmap
 	pipes      pipelines
+	profile    Profile  // the renderer's choices for this system (profile.go)
 	pk         *packGPU // the shader pack frame in progress (pack_gpu.go)
 }
 
@@ -99,23 +100,22 @@ func WindowHints() {
 	glfw.WindowHint(glfw.ClientAPI, glfw.NoAPI)
 }
 
-// Init creates the device and a surface for win; call before New.
-func Init(win *glfw.Window, vsync bool) error {
-	// VOXELLIB_WGPU_BACKEND (vulkan, gl, dx12, metal) picks one backend
-	// instead of the first that works.
+// backends are the wgpu backends by the name VOXELLIB_WGPU_BACKEND takes.
+var backends = []struct {
+	name string
+	b    gputypes.Backend
+	set  gputypes.Backends
+}{
+	{"vulkan", gputypes.BackendVulkan, gputypes.BackendsVulkan}, {"gl", gputypes.BackendGL, gputypes.BackendsGL},
+	{"dx12", gputypes.BackendDX12, gputypes.BackendsDX12}, {"metal", gputypes.BackendMetal, gputypes.BackendsMetal},
+}
+
+// openAdapter creates the instance, win's surface and the adapter, from
+// the backends in only (0: all, the first that works).
+func openAdapter(win *glfw.Window, only gputypes.Backends) error {
 	var desc *wgpu.InstanceDescriptor
-	if b, ok := map[string]gputypes.Backends{"vulkan": gputypes.BackendsVulkan, "gl": gputypes.BackendsGL,
-		"dx12": gputypes.BackendsDX12, "metal": gputypes.BackendsMetal}[os.Getenv("VOXELLIB_WGPU_BACKEND")]; ok {
-		desc = &wgpu.InstanceDescriptor{Backends: b}
-	}
-	// VOXELLIB_WGPU_DEBUG logs the backend's own warnings (timeouts,
-	// fallbacks); "verbose" adds its debug checks (a GL error per command).
-	if os.Getenv("VOXELLIB_WGPU_DEBUG") != "" {
-		lg := slog.Default()
-		if os.Getenv("VOXELLIB_WGPU_DEBUG") == "verbose" {
-			lg = slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug}))
-		}
-		wgpu.SetLogger(lg)
+	if only != 0 {
+		desc = &wgpu.InstanceDescriptor{Backends: only}
 	}
 	inst, err := wgpu.CreateInstance(desc)
 	if err != nil {
@@ -131,10 +131,75 @@ func Init(win *glfw.Window, vsync bool) error {
 	}); err != nil {
 		return fmt.Errorf("wgpu: adapter: %w", err)
 	}
+	return nil
+}
+
+// closeAdapter releases what openAdapter made, before Init tries another
+// backend on the same window.
+func closeAdapter() {
+	if dev.adapter != nil {
+		dev.adapter.Release()
+	}
+	if dev.surface != nil {
+		dev.surface.Release()
+	}
+	if dev.instance != nil {
+		dev.instance.Release()
+	}
+	dev.instance, dev.surface, dev.adapter = nil, nil, nil
+}
+
+// Init creates the device and a surface for win; call before New.
+func Init(win *glfw.Window, vsync bool) error {
+	// VOXELLIB_WGPU_DEBUG logs the backend's own warnings (timeouts,
+	// fallbacks); "verbose" adds its debug checks (a GL error per command).
+	if os.Getenv("VOXELLIB_WGPU_DEBUG") != "" {
+		lg := slog.Default()
+		if os.Getenv("VOXELLIB_WGPU_DEBUG") == "verbose" {
+			lg = slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug}))
+		}
+		wgpu.SetLogger(lg)
+	}
+	// VOXELLIB_WGPU_BACKEND (vulkan, gl, dx12, metal) picks one backend
+	// instead of the first that works, and of the profile's.
+	named := os.Getenv("VOXELLIB_WGPU_BACKEND")
+	var only gputypes.Backends
+	for _, b := range backends {
+		if b.name == named {
+			only = b.set
+		}
+	}
+	if err := openAdapter(win, only); err != nil {
+		return err
+	}
+	p, err := pickProfile(dev.adapter.Info(), os.Getenv)
+	if err != nil {
+		return err
+	}
+	if first := dev.adapter.Info().Backend; only == 0 && p.Backend != gputypes.BackendEmpty && p.Backend != first {
+		closeAdapter()
+		var set gputypes.Backends
+		for _, b := range backends {
+			if b.b == p.Backend {
+				set = b.set
+			}
+		}
+		// Without the backend wgpu hands out its software adapter (Empty).
+		err := openAdapter(win, set)
+		if err == nil && dev.adapter.Info().Backend != p.Backend {
+			err = fmt.Errorf("not available")
+		}
+		if err != nil {
+			log.Printf("wgpu: profile %s's backend %v: %v; staying on %v", p.Name, p.Backend, err, first)
+			closeAdapter()
+			if err := openAdapter(win, 0); err != nil {
+				return err
+			}
+		}
+	}
+	dev.profile = p
 	var feats gputypes.Features
-	// VOXELLIB_NO_MULTIDRAW draws terrain range by range even where the
-	// device has indirect multidraw (slower than direct draws on some drivers).
-	if dev.adapter.Features().Contains(gputypes.FeatureMultiDrawIndirect) && os.Getenv("VOXELLIB_NO_MULTIDRAW") == "" {
+	if dev.adapter.Features().Contains(gputypes.FeatureMultiDrawIndirect) && dev.profile.MultiDraw {
 		feats |= gputypes.Features(gputypes.FeatureMultiDrawIndirect)
 		dev.multiDraw = true
 	}
@@ -155,7 +220,7 @@ func Init(win *glfw.Window, vsync bool) error {
 	dev.queue = dev.device.Queue()
 	if os.Getenv("VOXELLIB_WGPU_DEBUG") != "" {
 		info := dev.adapter.Info()
-		log.Printf("wgpu: %s (%v), multidraw %v, rg11b10 targets %v", info.Name, info.Backend, dev.multiDraw, dev.rg11)
+		log.Printf("wgpu: %s (%v), profile %v, multidraw %v, rg11b10 targets %v", info.Name, info.Backend, dev.profile, dev.multiDraw, dev.rg11)
 		dev.debug = true
 	}
 
