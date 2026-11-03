@@ -450,6 +450,8 @@ const (
 	Samples        Hint      = 0x2100D
 	Focused        Hint      = 0x20001
 	FocusOnShow    Hint      = 0x2000C
+	AutoIconify    Hint      = 0x20006
+	RefreshRate    Hint      = 0x2100F
 )
 
 func RawMouseMotionSupported() bool { return true }

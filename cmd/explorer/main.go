@@ -98,6 +98,7 @@ func main() {
 	flag.StringVar(&o.species, "species", "", "debug: only spawn species whose name contains this")
 	flag.StringVar(&o.anim, "anim", "", "debug: force this clip on lined-up creatures")
 	flag.BoolVar(&o.help, "help-screen", false, "start with the F1 help screen open")
+	flag.BoolVar(&cfg.Fullscreen, "fullscreen", false, "fullscreen on the primary monitor, in the video mode closest to the window size")
 	flag.StringVar(&cfg.VSync, "vsync", "on", "frame pacing: on (vsync), limit (no vsync, sleep to max(display rate, 120Hz)), off (unlimited)")
 	flag.Parse()
 

@@ -45,9 +45,12 @@ const TickDur = time.Second / TickRate
 // Config sets up an App.
 type Config struct {
 	Title         string
-	Width, Height int    // window size, default 1280x720
-	VSync         string // "on" (default), "limit" (sleep to max(display, 120 Hz)), "off"
-	Engine        engine.Config
+	Width, Height int // window size, default 1280x720
+	// Fullscreen opens the window fullscreen on the primary monitor, in
+	// the video mode closest to Width x Height (no desktop compositing).
+	Fullscreen bool
+	VSync      string // "on" (default), "limit" (sleep to max(display, 120 Hz)), "off"
+	Engine     engine.Config
 	// Start, when set, is where a new game starts (else the world's spawn,
 	// else the generator's FindLand near 0,0).
 	Start *[3]float64
@@ -250,10 +253,21 @@ func New(cfg Config) (*App, error) {
 		// On top but unfocused: macOS throttles occluded Metal windows.
 		glfw.WindowHint(glfw.Floating, glfw.True)
 	}
-	win, err := glfw.CreateWindow(cfg.Width, cfg.Height, cfg.Title, nil, nil)
+	var mon *glfw.Monitor
+	if cfg.Fullscreen {
+		if mon = glfw.GetPrimaryMonitor(); mon != nil {
+			glfw.WindowHint(glfw.RefreshRate, mon.GetVideoMode().RefreshRate)
+			glfw.WindowHint(glfw.AutoIconify, glfw.False) // automated runs stay unfocused
+		}
+	}
+	win, err := glfw.CreateWindow(cfg.Width, cfg.Height, cfg.Title, mon, nil)
 	if err != nil {
 		glfw.Terminate()
 		return nil, err
+	}
+	if mon != nil {
+		m := mon.GetVideoMode()
+		log.Printf("fullscreen: %dx%d at %d Hz", m.Width, m.Height, m.RefreshRate)
 	}
 	if err := render.Init(win, cfg.VSync == "on"); err != nil {
 		glfw.Terminate()

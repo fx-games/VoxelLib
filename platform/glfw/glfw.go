@@ -141,6 +141,8 @@ const (
 	Focused           = glfw.Focused
 	FocusOnShow       = glfw.FocusOnShow
 	Floating          = glfw.Floating
+	AutoIconify       = glfw.AutoIconify
+	RefreshRate       = glfw.RefreshRate
 	ClientAPI         = glfw.ClientAPI
 	NoAPI             = glfw.NoAPI
 )
