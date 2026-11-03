@@ -256,6 +256,18 @@ func (s *Server) Acked(slot int) uint32 {
 	return 0
 }
 
+// Pending is the number of reliable messages queued for the client that it
+// has not acknowledged yet; a server streaming bulk data (a level, an edit
+// log) queues the next part when this runs low.
+func (s *Server) Pending(slot int) int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if c := s.client(slot); c != nil {
+		return len(c.ch.relOut)
+	}
+	return 0
+}
+
 // Stats describes a client's connection.
 func (s *Server) Stats(slot int) Stats {
 	s.mu.Lock()
