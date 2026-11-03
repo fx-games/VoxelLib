@@ -77,6 +77,7 @@ func main() {
 		mapDir   = flag.String("map", "", "VoxelMap directory to walk (instead of -world)")
 		mapDim   = flag.Int("dim", math.MinInt, "VoxelMap dimension id (default: the map's spawn dimension)")
 		slot     = flag.String("slot", "", "save slot for -map: only your changes are stored there ('' = not saved)")
+		scale    = flag.Float64("scale", 1, "render the world at this fraction of the window resolution (HUD stays sharp)")
 	)
 	flag.StringVar(&o.signFont, "signfont", "", "pixel TTF for sign text ('' = built-in font, 'none' = no sign text)")
 	flag.StringVar(&o.itemDir, "items", "assets/items", "directory of item sprite PNGs ('' = no items)")
@@ -169,6 +170,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	a.RenderScale = *scale
 	g := &game{App: a, opt: o}
 	for _, n := range hotbar {
 		if m := cfg.Engine.Map; m != nil {

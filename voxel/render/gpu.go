@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"image"
 	"log"
+	"log/slog"
 	"math"
 	"os"
 	"time"
@@ -100,7 +101,23 @@ func WindowHints() {
 
 // Init creates the device and a surface for win; call before New.
 func Init(win *glfw.Window, vsync bool) error {
-	inst, err := wgpu.CreateInstance(nil)
+	// VOXELLIB_WGPU_BACKEND (vulkan, gl, dx12, metal) picks one backend
+	// instead of the first that works.
+	var desc *wgpu.InstanceDescriptor
+	if b, ok := map[string]gputypes.Backends{"vulkan": gputypes.BackendsVulkan, "gl": gputypes.BackendsGL,
+		"dx12": gputypes.BackendsDX12, "metal": gputypes.BackendsMetal}[os.Getenv("VOXELLIB_WGPU_BACKEND")]; ok {
+		desc = &wgpu.InstanceDescriptor{Backends: b}
+	}
+	// VOXELLIB_WGPU_DEBUG logs the backend's own warnings (timeouts,
+	// fallbacks); "verbose" adds its debug checks (a GL error per command).
+	if os.Getenv("VOXELLIB_WGPU_DEBUG") != "" {
+		lg := slog.Default()
+		if os.Getenv("VOXELLIB_WGPU_DEBUG") == "verbose" {
+			lg = slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug}))
+		}
+		wgpu.SetLogger(lg)
+	}
+	inst, err := wgpu.CreateInstance(desc)
 	if err != nil {
 		return fmt.Errorf("wgpu: instance: %w", err)
 	}

@@ -195,6 +195,10 @@ type App struct {
 	// over content scale), as a non-HiDPI window does, upscaled to the
 	// framebuffer; HUD and screens stay at framebuffer resolution.
 	PointSize bool
+	// RenderScale renders the world at this fraction of the framebuffer
+	// (0 or 1: full), upscaled, for GPUs that can't fill the window at
+	// frame rate; HUD and screens stay at full resolution.
+	RenderScale float64
 
 	quit, restart bool
 	shotReq       bool

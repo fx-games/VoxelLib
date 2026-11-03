@@ -200,6 +200,9 @@ func (a *App) loop() {
 		if a.PointSize {
 			render.SetWorldSize(a.Win.GetSize())
 		}
+		if sc := a.RenderScale; sc > 0 && sc < 1 {
+			render.SetWorldSize(max(1, int(float64(fw)*sc)), max(1, int(float64(fh)*sc)))
+		}
 		shot := dbg.Shot != "" && a.Tick >= dbg.ShotAt
 		if a.shotReq || shot {
 			render.CaptureNextFrame()
