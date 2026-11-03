@@ -5,6 +5,7 @@ import (
 	"log"
 	"math"
 	"net"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -199,7 +200,19 @@ func Discover(wait time.Duration) []ServerInfo {
 			out = append(out, si)
 		}
 	}
-	return out
+	// A server on this machine answers on loopback and on the LAN: list
+	// it once, at its LAN address.
+	return slices.DeleteFunc(out, func(si ServerInfo) bool {
+		h, port, _ := net.SplitHostPort(si.Addr)
+		if ip := net.ParseIP(h); ip == nil || !ip.IsLoopback() {
+			return false
+		}
+		return slices.ContainsFunc(out, func(o ServerInfo) bool {
+			oh, oport, _ := net.SplitHostPort(o.Addr)
+			ip := net.ParseIP(oh)
+			return ip != nil && !ip.IsLoopback() && oport == port && o.Name == si.Name
+		})
+	})
 }
 
 func (s *Server) run() {
@@ -304,7 +317,7 @@ func (s *Server) reliable(p *sPlayer, msg []byte) {
 		s.broadcast(PlayerInfo{Slot: p.slot, Joined: true, Name: p.name, Skin: p.skin}.encode())
 	case msgSetBlock:
 		e := decodeBlockEdit(&r)
-		if r.err != nil || s.cfg.Reg.Parse(e.State) == voxel.Air && e.State != s.cfg.Reg.Info(voxel.Air).Name {
+		if r.err != nil || s.cfg.Reg.Parse(e.State) == voxel.Air && e.State != s.cfg.Reg.StateString(voxel.Air) {
 			return // unknown state
 		}
 		if !s.world.SetBlock(e.X, e.Y, e.Z, s.cfg.Reg.Parse(e.State)) {
@@ -354,10 +367,20 @@ func (s *Server) respawn(p *sPlayer) {
 	if s.cfg.Spawn != nil {
 		*p.ch = *character.New(s.cfg.Spawn(p.slot, s.world))
 	} else {
+		// Round the world spawn, on the ground (not on a tree or in water)
+		// where there is some.
 		a := float64(p.slot)*math.Pi/2 + float64(atomic.LoadUint32(&s.tick)%97)
-		x := int(math.Floor(s.spawn[0] + math.Cos(a)*spawnSpread*0.5))
-		z := int(math.Floor(s.spawn[2] + math.Sin(a)*spawnSpread*0.5))
-		*p.ch = *character.New(float64(x)+0.5, float64(s.world.Surface(x, z)), float64(z)+0.5)
+		var x, y, z int
+		for i := range 16 {
+			r := spawnSpread * (0.5 + float64(i%4)/8)
+			x = int(math.Floor(s.spawn[0] + math.Cos(a+float64(i)*0.9)*r))
+			z = int(math.Floor(s.spawn[2] + math.Sin(a+float64(i)*0.9)*r))
+			var ok bool
+			if y, ok = s.world.Ground(x, z); ok {
+				break
+			}
+		}
+		*p.ch = *character.New(float64(x)+0.5, float64(y), float64(z)+0.5)
 	}
 	p.health, p.dead, p.reload = MaxHealth, 0, 0
 	p.anim = Anim{}

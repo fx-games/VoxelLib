@@ -58,6 +58,18 @@ func (a *Anim) Walk(dx, dz float64) {
 	a.LimbSwing += a.LimbAmount
 }
 
+// Advance runs the walk cycle over a frame of ticks (fractional) in which
+// the body moved dx, dz: Walk at frame rate, for bodies drawn from
+// interpolated positions.
+func (a *Anim) Advance(dx, dz, ticks float64) {
+	if ticks <= 0 {
+		return
+	}
+	d := math.Min(1, math.Hypot(dx, dz)/ticks*4)
+	a.LimbAmount += (d - a.LimbAmount) * math.Min(1, 0.4*ticks)
+	a.LimbSwing += a.LimbAmount * ticks
+}
+
 // Lerp blends two animation states (the previous and current tick).
 func (a Anim) Lerp(b Anim, t float64) Anim {
 	return Anim{Pitch: a.Pitch + (b.Pitch-a.Pitch)*t, LimbSwing: a.LimbSwing + (b.LimbSwing-a.LimbSwing)*t,
@@ -109,6 +121,16 @@ func (b *Body) Skin(a Anim, dst []mgl32.Mat4) []mgl32.Mat4 {
 }
 
 func cos(x float32) float32 { return float32(math.Cos(float64(x))) }
+
+// Hand is the right hand's position in model space (the bottom of the
+// right arm) in the pose skin, where a held item goes.
+func (b *Body) Hand(skin []mgl32.Mat4) mgl32.Vec3 {
+	arm := b.Model.Bones[partRightArm].InvBind.Inv()
+	if partRightArm < len(skin) {
+		arm = skin[partRightArm].Mul4(arm)
+	}
+	return mgl32.TransformCoordinate(mgl32.Vec3{-1, 10, 0}, arm)
+}
 
 // IsHead reports whether a bone (Model part) is the head or the hat.
 func IsHead(bone int) bool { return bone == partHead || bone == partHead+1 }

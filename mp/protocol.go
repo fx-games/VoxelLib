@@ -372,7 +372,7 @@ const (
 // BlockEdit is one block change.
 type BlockEdit struct {
 	X, Y, Z int
-	State   string // the state's name in the registry ("minecraft:stone")
+	State   string // voxel.Registry.StateString of the new state
 }
 
 func (e BlockEdit) encode(typ uint8) []byte {

@@ -119,18 +119,17 @@ func startServer(t *testing.T, spawn func(slot int, w *World) (x, y, z float64))
 
 func TestSnipeAndEdits(t *testing.T) {
 	const range_ = 120.0
-	var ground float64
 	srv := startServer(t, func(slot int, w *World) (float64, float64, float64) {
-		ground = float64(w.Surface(0, 0))
-		return 0.5, ground, 0.5 - float64(slot)*range_ // slot 1 stands 120 blocks north
+		return 0.5, float64(w.Surface(0, 0)), 0.5 - float64(slot)*range_ // slot 1 stands 120 blocks north
 	})
 	cfg := netcode.Config{Latency: 3 * time.Millisecond, Jitter: 2 * time.Millisecond, Drop: 0.05}
 	a := newBot(t, srv.Addr().String(), "Archer", cfg)
 	b := newBot(t, srv.Addr().String(), "Target", cfg)
 	bots := []*bot{a, b}
+	ground := a.w.Surface(0, 0) // the same generator as the server's
 
 	// Archer places a block; the target sees it and so does a late joiner.
-	edit := BlockEdit{X: 3, Y: int(ground), Z: 3, State: a.w.W.Reg.Info(a.w.W.Reg.Parse("stone")).Name}
+	edit := BlockEdit{X: 3, Y: ground, Z: 3, State: a.w.W.Reg.StateString(a.w.W.Reg.Parse("stone"))}
 	a.c.SendEdit(edit)
 	run(t, 3*time.Second, bots, func(int) bool {
 		for _, bt := range bots {
@@ -138,7 +137,7 @@ func TestSnipeAndEdits(t *testing.T) {
 		}
 		return len(b.edits) > 0 && a.c.Ready() && b.c.Ready()
 	})
-	if b.edits[0] != edit || b.w.Block(3, int(ground), 3) == voxel.Air {
+	if b.edits[0] != edit || b.w.Block(3, ground, 3) == voxel.Air {
 		t.Fatalf("target got edit %+v", b.edits)
 	}
 

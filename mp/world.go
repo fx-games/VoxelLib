@@ -120,6 +120,14 @@ func (w *World) Surface(x, z int) int {
 	return w.W.MinY
 }
 
+// Ground is Surface for a place to stand: false when the top block is
+// leaves (a tree top) or there is liquid above it.
+func (w *World) Ground(x, z int) (int, bool) {
+	y := w.Surface(x, z)
+	top := w.W.Reg.Info(w.Block(x, y-1, z)).Name
+	return y, !strings.HasSuffix(top, "_leaves") && !strings.HasSuffix(top, ":leaves") && w.Liquid(x, y, z) == character.LiquidNone
+}
+
 // SpawnPoint picks a dry place to stand near the generator's land
 // around x,z, at least on solid ground.
 func (w *World) SpawnPoint(x, z int) (float64, float64, float64) {

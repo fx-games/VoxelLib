@@ -27,6 +27,14 @@ func (g *game) action(name string, pressed bool) bool {
 		return false
 	}
 	p := g.Player
+	if g.net != nil {
+		switch name {
+		case app.ActAttack:
+			return g.crossbowOn() // fired by the server from the command
+		case "fly", "noclip", "respawn", "daynight", "drop", "anim":
+			return true // not in multiplayer
+		}
+	}
 	switch name {
 	case app.ActAttack:
 		if !g.crossbowOn() {

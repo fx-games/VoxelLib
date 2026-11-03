@@ -29,6 +29,7 @@ func (g *game) toggleDoor(p voxel.BlockPos) bool {
 		pr := reg.StateProps(id)
 		pr["open"] = open
 		g.Eng.SetBlock(p.X, y, p.Z, reg.State(info.Name, pr))
+		g.sendEdit(voxel.BlockPos{X: p.X, Y: y, Z: p.Z})
 	}
 	return true
 }

@@ -32,7 +32,9 @@ import (
 	"strings"
 
 	"github.com/memmaker/voxellib/app"
+	"github.com/memmaker/voxellib/mp"
 	"github.com/memmaker/voxellib/resloc"
+	"github.com/memmaker/voxellib/ui/uiapp"
 	"github.com/memmaker/voxellib/voxel"
 	"github.com/memmaker/voxellib/voxel/engine"
 	"github.com/memmaker/voxellib/voxel/physics"
@@ -98,6 +100,14 @@ func main() {
 	flag.StringVar(&o.species, "species", "", "debug: only spawn species whose name contains this")
 	flag.StringVar(&o.anim, "anim", "", "debug: force this clip on lined-up creatures")
 	flag.BoolVar(&o.help, "help-screen", false, "start with the F1 help screen open")
+	var (
+		host    = flag.Bool("host", false, "host a LAN multiplayer game at once")
+		connect = flag.String("connect", "", "join the LAN multiplayer game at this address (host[:port]) at once")
+		name    = flag.String("name", "", "player name in multiplayer (default: the user name)")
+		skinDir = flag.String("skins", "skins", "directory of 64x64 player skin PNGs (cmd/fetchskins)")
+		skinSel = flag.String("skin", "", "multiplayer skin (a file name in -skins without .png)")
+		menu    = flag.Bool("menu", true, "open the main menu at start (default not with -shot or -bench; never with -host or -connect)")
+	)
 	flag.BoolVar(&cfg.Fullscreen, "fullscreen", false, "fullscreen on the primary monitor at its desktop (native) resolution")
 	flag.StringVar(&cfg.VSync, "vsync", "on", "frame pacing: on (vsync), limit (no vsync, sleep to max(display rate, 120Hz)), off (unlimited)")
 	flag.Parse()
@@ -172,7 +182,15 @@ func main() {
 		log.Fatal(err)
 	}
 	a.RenderScale = *scale
-	g := &game{App: a, opt: o}
+	g := &game{App: a, opt: o, playerName: *name, skins: loadSkins(*skinDir)}
+	if g.playerName == "" {
+		g.playerName = defaultName()
+	}
+	for i, s := range g.skins {
+		if s.name == *skinSel {
+			g.skinIdx = i
+		}
+	}
 	for _, n := range hotbar {
 		if m := cfg.Engine.Map; m != nil {
 			g.hotbar = append(g.hotbar, m.State(n))
@@ -190,8 +208,28 @@ func main() {
 		BreakStrength: g.breakStrength,
 		HeldBlock:     func() voxel.StateID { return g.hotbar[min(a.Player.Selected, len(g.hotbar)-1)] },
 		Status:        g.status,
+		Ride:          g.ride,
+		BlockBroken:   g.blockBroken,
+		BlockPlaced:   g.blockPlaced,
 	}
 	a.HUD = g
+	g.setupUI()
+	if g.ui != nil {
+		a.HUD = hudStack{g, g.ui}
+		g.registerSkins()
+	}
+	switch {
+	case *host:
+		g.autoNet = func() error { return g.hostGame() }
+	case *connect != "":
+		addr := *connect
+		if !strings.Contains(addr, ":") {
+			addr = fmt.Sprintf("%s:%d", addr, mp.DefaultPort)
+		}
+		g.autoNet = func() error { return g.joinGame(addr) }
+	case *menu && (cfg.Debug.Shot == "" && cfg.Debug.Bench == 0 || flagSet("menu")):
+		g.menuAtStart = true
+	}
 	g.bindKeys()
 	if err := a.Run(); err != nil {
 		log.Fatal(err)
@@ -213,6 +251,36 @@ type game struct {
 	help     *render.Overlay // F1 help screen
 	showHelp bool
 	debugMsg string // shown in the title (K animation preview)
+
+	// Multiplayer (multiplayer.go, menu.go).
+	ui          *uiapp.UI
+	net         *netGame // nil: single player
+	sp          *spWorld // the single-player world to return to
+	playerName  string
+	skins       []skin
+	skinIdx     int
+	pendingNote string       // why the last game ended, for the main menu
+	autoNet     func() error // -host / -connect, run in the first session
+	menuAtStart bool
+}
+
+// flagSet reports whether the flag was given on the command line.
+func flagSet(name string) bool {
+	set := false
+	flag.Visit(func(f *flag.Flag) { set = set || f.Name == name })
+	return set
+}
+
+// defaultName is the login name, trimmed to a player name's 16 characters.
+func defaultName() string {
+	n := os.Getenv("USER")
+	if n == "" {
+		n = os.Getenv("USERNAME")
+	}
+	if n == "" {
+		n = "Player"
+	}
+	return n[:min(len(n), 16)]
 }
 
 // start sets up a session: items, creatures, weapons (the app calls it
@@ -221,6 +289,9 @@ func (g *game) start() {
 	o := &g.opt
 	g.Player.Flying = o.fly
 	g.Player.HotbarSize = len(g.hotbar)
+	if g.net != nil {
+		o = &options{hold: "", signFont: o.signFont, modelPack: o.modelPack} // no items, creatures or pets
+	}
 	if o.night {
 		g.Eng.Renderer.Opt.Daylight = 0.2
 	}
@@ -251,9 +322,30 @@ func (g *game) start() {
 	if o.help && !g.showHelp {
 		g.toggleHelp()
 	}
+	switch {
+	case g.net != nil:
+		g.netStart()
+	case g.autoNet != nil:
+		f := g.autoNet
+		g.autoNet = nil
+		if err := f(); err != nil {
+			log.Printf("mp: %v", err)
+			g.pendingNote = err.Error()
+			g.openMainMenu()
+		}
+	case g.menuAtStart || g.pendingNote != "":
+		g.menuAtStart = false
+		g.openMainMenu()
+	}
 }
 
 func (g *game) tick() {
+	if g.net != nil {
+		g.tickItems()
+		g.tickTorches()
+		g.tickNet()
+		return
+	}
 	if g.crossbowOn() && g.Input.Down(app.ActAttack) {
 		g.fire() // held down: repeat at the reload rate
 	}
@@ -264,14 +356,23 @@ func (g *game) tick() {
 	g.tickPlayerHealth()
 }
 
-func (g *game) render(alpha float64, _ *render.Options) { g.animStep() }
+func (g *game) render(alpha float64, _ *render.Options) {
+	g.animStep()
+	if g.net != nil {
+		g.netFrame()
+	}
+}
 
 // draw adds the explorer's world passes after the terrain and creatures;
 // the held item (which clears depth) comes last.
 func (g *game) draw(alpha float64) {
 	g.drawSigns()
 	g.drawWeapons()
-	g.drawArrows(alpha)
+	if g.net != nil {
+		g.drawNet(alpha)
+	} else {
+		g.drawArrows(alpha)
+	}
 	g.drawTorches(alpha)
 	g.drawItems(alpha)
 }

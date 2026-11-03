@@ -34,6 +34,8 @@ Agents should also read [AGENTS.md](AGENTS.md).
 | `importer/mcmodel` | Vanilla-style assets: Blockbench .bbmodel, Bedrock .geo.json, Bedrock/GeckoLib animations with Molang and easings, shared animation libraries, item PNGs |
 | `mobs` | Ambient creature behaviour (walkers, flyers) reporting Idle/Walk/Run/Jump/Trick states |
 | `items/sheet` | Automatic sprite-sheet cutter (grid cells, divider lines, label text rejection) |
+| `netcode` | Own module, stdlib only: Quake 3-style UDP netchan (sequencing, fragments, piggybacked reliables), connect handshake, LAN discovery, delta-compressed snapshots |
+| `mp` | LAN multiplayer game layer on netcode: authoritative 20 Hz server, client prediction, interpolated players, real-physics arrows with unlagged hit tests, block edits kept in sync |
 
 ## Demo
     ./run.sh                                  # world saved to saves/demo
@@ -56,6 +58,14 @@ Half of the `-item-count` scattered items come from the pack. Armor-only sets (e
 each other apart, and the player pushes them aside.
 Debugging models: `-lineup -species NAME -anim CLIP` stands one creature per matching species
 in front of you, playing CLIP (`bind` shows the rest pose).
+
+**Multiplayer** (LAN, up to 4 players): the main menu's Multiplayer screen sets your name and skin,
+hosts a game, lists the games found on the LAN and joins one by address. `-host` and
+`-connect HOST[:PORT]` skip the menu; `-name` and `-skin NAME` preset the choice. Skins are the
+64x64 PNGs in `-skins` (default `skins/`, filled by `go run ./cmd/fetchskins`, not in git).
+Everyone carries the crossbow; a head shot kills. Placed and broken blocks (and doors) sync to
+everyone, late joiners included. The server uses UDP port 28960 (allow it in the firewall).
+`go run ./cmd/mpbot -connect HOST` adds a headless test player that walks up to you (`-shoot` to fire).
 
 **Controls**
 - WASD and the mouse move and look. Space jumps (and swims up). Shift sneaks or descends. Ctrl sprints, or dives while in water.
