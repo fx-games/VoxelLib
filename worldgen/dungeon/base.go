@@ -3,6 +3,7 @@ package dungeon
 import (
 	"fmt"
 	"github.com/memmaker/voxellib/grid"
+	"github.com/memmaker/voxellib/voxel/nav"
 	"math"
 	"math/rand"
 )
@@ -23,7 +24,7 @@ type DungeonMap struct {
 	height     int
 	tiles      []DungeonTile
 	rooms      []*DungeonRoom
-	pathfinder *grid.PathRange
+	pathfinder *nav.Graph
 	firstRoom  *DungeonRoom
 	lastRoom   *DungeonRoom
 	stairsUp   grid.Point
@@ -34,8 +35,27 @@ func (m *DungeonMap) GetJPSPath(start grid.Point, end grid.Point) []grid.Point {
 	if !m.IsWalkable(end) || !m.IsWalkable(start) {
 		return []grid.Point{}
 	}
-	//println(fmt.Sprintf("JPS from %v to %v", start, end))
-	return m.pathfinder.JPSPath([]grid.Point{}, start, end, m.IsWalkable, false)
+	path, _ := m.pathfinder.Path(nav.Pos{X: start.X, Y: 1, Z: start.Y}, nav.Pos{X: end.X, Y: 1, Z: end.Y}, len(m.tiles)+1)
+	points := make([]grid.Point, len(path))
+	for i, p := range path {
+		points[i] = grid.Point{X: p.X, Y: p.Z}
+	}
+	return points
+}
+
+// flatMap is the map as a nav.World one cell high: a floor at y 0, walls
+// (and outside) as solid columns.
+type flatMap struct{ m *DungeonMap }
+
+func (f flatMap) Solid(x, y, z int) bool {
+	return y <= 0 || !f.m.IsWalkable(grid.Point{X: x, Y: z})
+}
+
+// newPathfinder walks the map in straight steps only (as JPS without
+// diagonals did), one cell high.
+func newPathfinder(m *DungeonMap) *nav.Graph {
+	return &nav.Graph{W: flatMap{m}, Size: [2]int{1, 1}, MaxDrop: 1,
+		Passable: func(a, b nav.Pos) bool { return a.X == b.X || a.Z == b.Z }}
 }
 func (m *DungeonMap) AddRoomAndSetTiles(room *DungeonRoom) {
 	m.rooms = append(m.rooms, room)
@@ -733,11 +753,12 @@ func (m *DungeonMap) SetStairsDown(down grid.Point) {
 }
 
 func NewDungeonMap(width, height int) *DungeonMap {
-	return &DungeonMap{
-		width:      width,
-		height:     height,
-		tiles:      make([]DungeonTile, width*height),
-		rooms:      make([]*DungeonRoom, 0),
-		pathfinder: grid.NewPathRange(grid.NewRect(0, 0, width, height)),
+	m := &DungeonMap{
+		width:  width,
+		height: height,
+		tiles:  make([]DungeonTile, width*height),
+		rooms:  make([]*DungeonRoom, 0),
 	}
+	m.pathfinder = newPathfinder(m)
+	return m
 }
