@@ -1,0 +1,22 @@
+{
+    "variants": {
+        "type=bottom": [
+			{ "model": "block/packed_ice_brick_slab" },
+			{ "model": "block/packed_ice_bricks/slab/l1" },
+			{ "model": "block/packed_ice_bricks/slab/l2" },
+			{ "model": "block/packed_ice_bricks/slab/l3" }
+		],
+        "type=top": [
+			{ "model": "block/packed_ice_brick_slab_top" },
+			{ "model": "block/packed_ice_bricks/slab/u1" },
+			{ "model": "block/packed_ice_bricks/slab/u2" },
+			{ "model": "block/packed_ice_bricks/slab/u3" }
+		],
+        "type=double": [
+			{ "model": "block/packed_ice_bricks" },
+			{ "model": "block/packed_ice_bricks/1" },
+			{ "model": "block/packed_ice_bricks/2" },
+			{ "model": "block/packed_ice_bricks/3" }
+		]
+    }
+}

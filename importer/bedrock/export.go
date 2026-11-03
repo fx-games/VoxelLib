@@ -11,19 +11,23 @@ import (
 	"strings"
 
 	"github.com/memmaker/voxellib/voxel/anvil"
+	"github.com/memmaker/voxellib/voxel/vanillapack"
 )
 
 // ExportOptions configures Export.
 type ExportOptions struct {
-	Jar  string // Java client jar: blockstates, models and textures
-	Out  string // VoxelMap directory to write
-	Name string // the map's name ("" = the world's, formatting codes removed)
-	Logf func(format string, args ...any)
+	Jar string // Java client jar: blockstates, models and textures ('' = vanillapack)
+	// Textures is the texture pack vanillapack draws with when Jar is ''
+	// ('' = vanillapack.DefaultTextures).
+	Textures string
+	Out      string // VoxelMap directory to write
+	Name     string // the map's name ("" = the world's, formatting codes removed)
+	Logf     func(format string, args ...any)
 }
 
 // Export converts the overworld of a Bedrock world into a VoxelMap (see
 // voxel/voxelmap): each Bedrock block becomes the Java Edition state that
-// looks the same, drawn with the jar's models and textures, which are
+// looks the same, drawn with the jar's models and textures (or vanillapack's), which are
 // copied into the map. Blocks the Java client draws as block entities
 // (chests, shulker boxes, banners, skulls) get generated models. Chunks
 // past the world's edge come from the "minecraft:flat" generator
@@ -34,7 +38,7 @@ func Export(w *World, o ExportOptions) error {
 	if o.Logf == nil {
 		o.Logf = func(string, ...any) {}
 	}
-	j, err := OpenJar(o.Jar)
+	j, err := o.jar()
 	if err != nil {
 		return err
 	}
@@ -60,6 +64,20 @@ func Export(w *World, o ExportOptions) error {
 		return err
 	}
 	return e.mapJSON()
+}
+
+func (o ExportOptions) jar() (*Jar, error) {
+	if o.Jar != "" {
+		return OpenJar(o.Jar)
+	}
+	tex := o.Textures
+	if tex == "" {
+		tex = vanillapack.DefaultTextures
+	}
+	if _, err := os.Stat(tex); err != nil {
+		return nil, err
+	}
+	return NewJar(vanillapack.New(os.DirFS(tex))), nil
 }
 
 type exporter struct {

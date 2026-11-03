@@ -7,16 +7,16 @@ import (
 	"fmt"
 	"image"
 	_ "image/png" // jar textures
-	"io"
+	"io/fs"
 	"sort"
 	"strings"
 )
 
 // Jar reads blockstates, block models and textures from a Java Edition
-// client jar (or anything laid out like one).
+// client jar, or anything laid out like one (vanillapack.Pack).
 type Jar struct {
-	z      *zip.ReadCloser
-	files  map[string]*zip.File
+	fsys   fs.FS
+	close  func() error
 	models map[string]*jmodel
 	alpha  map[string]alphaKind
 	sizes  map[string]image.Point
@@ -31,33 +31,31 @@ func OpenJar(file string) (*Jar, error) {
 	if err != nil {
 		return nil, err
 	}
-	j := &Jar{z: z, files: map[string]*zip.File{}, models: map[string]*jmodel{}, alpha: map[string]alphaKind{},
-		sizes: map[string]image.Point{}, Used: map[string]bool{}}
-	for _, f := range z.File {
-		j.files[f.Name] = f
-	}
+	j := NewJar(z)
+	j.close = z.Close
 	return j, nil
 }
 
+// NewJar reads the assets from fsys, laid out like a client jar.
+func NewJar(fsys fs.FS) *Jar {
+	return &Jar{fsys: fsys, close: func() error { return nil }, models: map[string]*jmodel{},
+		alpha: map[string]alphaKind{}, sizes: map[string]image.Point{}, Used: map[string]bool{}}
+}
+
 // Close closes the jar.
-func (j *Jar) Close() error { return j.z.Close() }
+func (j *Jar) Close() error { return j.close() }
 
 // Read returns a file of the jar.
 func (j *Jar) Read(name string) ([]byte, error) {
-	f, ok := j.files[name]
-	if !ok {
+	data, err := fs.ReadFile(j.fsys, name)
+	if err != nil {
 		return nil, fmt.Errorf("jar: no %s", name)
 	}
-	r, err := f.Open()
-	if err != nil {
-		return nil, err
-	}
-	defer r.Close()
-	return io.ReadAll(r)
+	return data, nil
 }
 
 // Has reports whether the jar holds a file.
-func (j *Jar) Has(name string) bool { _, ok := j.files[name]; return ok }
+func (j *Jar) Has(name string) bool { _, err := fs.Stat(j.fsys, name); return err == nil }
 
 // HasBlock reports whether the jar has a blockstate for a Java block name.
 func (j *Jar) HasBlock(name string) bool {
@@ -192,6 +190,14 @@ func whenHolds(raw json.RawMessage, props map[string]string) bool {
 // firstApply reads a variant: one Apply or a weighted list (the first
 // is taken).
 func firstApply(raw json.RawMessage) (Apply, error) {
+	a, err := firstApplyRaw(raw)
+	if err == nil && !strings.Contains(a.Model, ":") {
+		a.Model = "minecraft:" + a.Model // ids without a namespace (resource packs)
+	}
+	return a, err
+}
+
+func firstApplyRaw(raw json.RawMessage) (Apply, error) {
 	var a Apply
 	if len(raw) > 0 && raw[0] == '[' {
 		var as []Apply

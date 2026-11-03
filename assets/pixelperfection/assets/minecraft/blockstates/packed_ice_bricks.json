@@ -1,0 +1,10 @@
+{
+    "variants": {
+        "": [
+			{ "model": "block/packed_ice_bricks", "weight": 30 },
+			{ "model": "block/packed_ice_bricks/1", "weight": 15 },
+            { "model": "block/packed_ice_bricks/2", "weight": 15 },
+            { "model": "block/packed_ice_bricks/3", "weight": 10 }
+		]
+    }
+}

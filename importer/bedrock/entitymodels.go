@@ -117,9 +117,15 @@ func entityModel(s JavaState, size func(tex string) [2]float32) (id string, m em
 		// The renderer draws the banner at 2/3 scale: a 20x40 flag under a
 		// 20x2 bar, on a 42-high pole when standing.
 		const k = 2.0 / 3
-		m.textures = map[string]string{"flag": "minecraft:entity/banner/base", "wood": "minecraft:entity/banner/banner_base",
+		// Packs without banner_base (Pixel Perfection) have the pole and bar
+		// in base, laid out the same.
+		wood := "minecraft:entity/banner/banner_base"
+		if size(wood)[0] == 0 {
+			wood = "minecraft:entity/banner/base"
+		}
+		m.textures = map[string]string{"flag": "minecraft:entity/banner/base", "wood": wood,
 			"particle": "minecraft:block/oak_planks"}
-		m.size = map[string][2]float32{"flag": size("minecraft:entity/banner/base"), "wood": size("minecraft:entity/banner/banner_base")}
+		m.size = map[string][2]float32{"flag": size("minecraft:entity/banner/base"), "wood": size(wood)}
 		x0, x1 := float32(8-10*k), float32(8+10*k)
 		if strings.HasSuffix(name, "_wall_banner") {
 			// Against the south wall, hanging into the block below.

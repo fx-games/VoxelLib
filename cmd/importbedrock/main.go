@@ -1,11 +1,12 @@
 // Command importbedrock converts a Minecraft Bedrock Edition world (a
 // .mcworld or .zip, or its unpacked folder) into a VoxelMap, with the
-// models and textures of a Java Edition client jar:
+// block models of vanillapack and the textures of Pixel Perfection:
 //
-//	importbedrock -in world.zip -jar client.jar -out maps/minecity
+//	importbedrock -in world.zip -out maps/minecity
 //
-// The map holds the jar's assets, so keep it to yourself (maps/ is
-// ignored by git): every player imports it from the same world.
+// -jar draws it with a Java Edition client jar's models and textures
+// instead; that map holds Mojang's assets, so keep it to yourself (maps/
+// is ignored by git).
 package main
 
 import (
@@ -23,11 +24,12 @@ import (
 
 func main() {
 	in := flag.String("in", "", "Bedrock world: .mcworld, .zip or folder")
-	jar := flag.String("jar", "", "Java Edition client jar (models and textures)")
+	jar := flag.String("jar", "", "Java Edition client jar (default: vanillapack with -textures)")
+	textures := flag.String("textures", "", "texture pack for vanillapack (default assets/pixelperfection)")
 	out := flag.String("out", "", "VoxelMap directory to write (e.g. maps/minecity)")
 	name := flag.String("name", "", "map name (default: the world's)")
 	flag.Parse()
-	if *in == "" || *jar == "" || *out == "" {
+	if *in == "" || *out == "" {
 		flag.Usage()
 		os.Exit(2)
 	}
@@ -51,7 +53,7 @@ func main() {
 		log.Fatal(err)
 	}
 	log.Printf("%s: %d keys", w.Name, w.DB.Len())
-	if err := bedrock.Export(w, bedrock.ExportOptions{Jar: *jar, Out: *out, Name: *name, Logf: log.Printf}); err != nil {
+	if err := bedrock.Export(w, bedrock.ExportOptions{Jar: *jar, Textures: *textures, Out: *out, Name: *name, Logf: log.Printf}); err != nil {
 		log.Fatal(err)
 	}
 	fmt.Println("wrote", *out)

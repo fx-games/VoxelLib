@@ -1,0 +1,9 @@
+Textures: Pixel Perfection by XSSheep, continued as Pixel Perfection Legacy by Nova Wostra
+(version 26.3-97.2, https://modrinth.com/resourcepack/pixel-perfection-legacy).
+License: CC BY-SA 4.0 (see LICENSE.txt). XSSheep: "Feel free to use these textures in any
+mixpack, project, game or whatever you want (paid or unpaid). However, I'd appreciate it if I
+was credited for all the hard work I've put into these textures."
+
+Taken unchanged: the block textures (without the OptiFine emissive/specular extras and the
+connected-texture sets), the grass and foliage colour maps, and the entity textures of the
+blocks drawn from entity models (beds, signs, banners, chests, shulker boxes, the bell, skulls).
