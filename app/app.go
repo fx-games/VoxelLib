@@ -205,6 +205,7 @@ type App struct {
 	RenderScale float64
 
 	quit, restart bool
+	keep          bool // Switch: the restart saves and keeps the slot
 	shotReq       bool
 	frameLimit    time.Duration
 	stats         frameStats
@@ -314,17 +315,17 @@ func (a *App) Run() error {
 			return err
 		}
 		a.loop()
-		restart := a.restart
-		a.endSession(!restart)
+		restart, keep := a.restart, a.keep
+		a.endSession(!restart || keep)
 		if !restart {
 			return nil
 		}
-		if dir := a.Config.Engine.SaveDir; dir != "" && !a.Config.Engine.ReadOnly {
+		if dir := a.Config.Engine.SaveDir; dir != "" && !a.Config.Engine.ReadOnly && !keep {
 			if err := engine.NewGame(dir); err != nil {
 				return err
 			}
 		}
-		a.restart, a.quit = false, false
+		a.restart, a.keep, a.quit = false, false, false
 	}
 }
 
@@ -334,6 +335,12 @@ func (a *App) Quit() { a.quit = true }
 // NewGame ends the session without saving, empties the save slot and
 // starts over (Hooks.Start, then Hooks.Load(nil)).
 func (a *App) NewGame() { a.restart = true }
+
+// Switch ends the session after this frame, saving it, and starts a new
+// one with the Config as it is then: change Config (the world, the
+// generator, the start position) before or after calling it, e.g. to
+// leave a single-player world for a multiplayer one.
+func (a *App) Switch() { a.restart, a.keep = true, true }
 
 func (a *App) startSession() error {
 	a.sessionStart, a.readyLogged = time.Now(), false
