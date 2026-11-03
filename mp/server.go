@@ -43,7 +43,7 @@ type ServerConfig struct {
 	// Spawn, when set, picks where a player (re)spawns: feet position.
 	// Without it players spawn around the world spawn.
 	Spawn func(slot int, w *World) (x, y, z float64)
-	Logf      func(format string, args ...any)
+	Logf  func(format string, args ...any)
 }
 
 // Server is the authoritative simulation (Q3's server game): it runs every
