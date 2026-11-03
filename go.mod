@@ -30,7 +30,10 @@ require (
 	github.com/gogpu/naga v0.19.0
 	github.com/jfreymuth/oggvorbis v1.0.5
 	github.com/jfreymuth/vorbis v1.0.2 // indirect
+	github.com/memmaker/voxellib/netcode v0.0.0
 	golang.org/x/text v0.21.0 // indirect
 )
 
 replace github.com/gogpu/wgpu => ../gogpu-wgpu
+
+replace github.com/memmaker/voxellib/netcode => ./netcode
