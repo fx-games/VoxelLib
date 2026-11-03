@@ -176,3 +176,22 @@ func (mr *ModelRenderer) drawGlint(p *wgpu.RenderPassEncoder, g *gpuModel, model
 		}
 	}
 }
+
+// Destroy frees the models' and textures' GPU objects at once (call it
+// with no frame in flight, e.g. after Renderer.Destroy): left to the
+// garbage collector, they are released at any time later, while the next
+// renderer is drawing.
+func (mr *ModelRenderer) Destroy() {
+	for _, g := range mr.models {
+		if g != nil {
+			g.delete()
+		}
+	}
+	for _, s := range mr.skins {
+		if s != nil {
+			s.group.Release()
+			s.tex.release()
+		}
+	}
+	mr.models, mr.skins = nil, nil
+}

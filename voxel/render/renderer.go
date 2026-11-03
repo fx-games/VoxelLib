@@ -839,6 +839,8 @@ func (r *Renderer) VisibleSections() []voxel.SectionPos {
 
 // Destroy frees all GPU resources.
 func (r *Renderer) Destroy() {
+	// frames in flight may still read these buffers and textures
+	FinishGPU()
 	for _, pages := range r.regions {
 		for _, reg := range pages {
 			reg.destroy()

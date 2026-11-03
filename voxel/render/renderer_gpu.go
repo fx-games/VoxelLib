@@ -213,6 +213,10 @@ func (r *Renderer) drawLines(pl *wgpu.RenderPipeline, first, n uint32, mvp mgl32
 }
 
 func (r *Renderer) destroyGPU() {
+	if r.gpu.texBG != nil {
+		r.gpu.texBG.Release() // it holds the texture array
+		r.gpu.texBG = nil
+	}
 	r.gpu.ebo.Release()
 	r.gpu.lineVBO.Release()
 	r.gpu.lightTex.release()

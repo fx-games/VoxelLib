@@ -67,6 +67,9 @@ type Debug struct {
 	ShotAt  int           // tick for Shot
 	Bench   time.Duration // quit after this long and print frame times (runs unfocused)
 	AutoFly float64       // fly forward at this many blocks/s (streaming stress test)
+	// AutoTurn: stand and turn round from this long into the session on
+	// (a benchmark under real conditions)
+	AutoTurn time.Duration
 	Verbose bool          // print frame stats to stdout
 	// Edits: "dx,dy,dz,block;..." block edits relative to the player,
 	// applied once the terrain under the player is ready.
@@ -295,8 +298,11 @@ func New(cfg Config) (*App, error) {
 }
 
 func (c *Config) automated() bool {
-	return c.Debug.Shot != "" || c.Debug.AutoFly > 0 || c.Debug.Bench > 0
+	return c.Debug.Shot != "" || c.Debug.AutoFly > 0 || c.Debug.AutoTurn > 0 || c.Debug.Bench > 0
 }
+
+// AutoTurnTick is the session tick Debug.AutoTurn starts turning at.
+func (a *App) AutoTurnTick() int { return int(a.Config.Debug.AutoTurn.Seconds() * TickRate) }
 
 // Run runs sessions until the window closes: each starts the engine, the
 // player and the game (Hooks.Start, Hooks.Load), runs the loop, and saves
@@ -393,7 +399,10 @@ func (a *App) endSession(save bool) {
 			log.Printf("save: %v", err)
 		}
 	}
-	a.Eng.Close() // ponytail: game-owned GPU objects of the old renderer are left to the GC
+	a.Eng.Close() // waits for the GPU
+	if a.Models != nil {
+		a.Models.Destroy()
+	}
 	a.Eng, a.Models = nil, nil
 }
 

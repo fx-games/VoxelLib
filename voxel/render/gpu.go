@@ -922,6 +922,14 @@ func acquireLoop() {
 // FrameDraws is the number of draw commands of the last finished frame.
 func FrameDraws() int { return dev.lastDraws }
 
-// FinishGPU blocks until the GPU has finished all submitted work. For
-// benchmarks only (it serialises CPU and GPU).
-func FinishGPU() { dev.device.WaitIdle() }
+// FinishGPU blocks until the GPU has finished all submitted work: for
+// benchmarks, and before GPU objects in use are destroyed (it serialises
+// CPU and GPU). It submits the queued buffer and texture writes first: a
+// session that never drew a frame would otherwise leave copies into its
+// textures for the next one to submit after they are destroyed.
+func FinishGPU() {
+	if _, err := dev.queue.Submit(); err != nil {
+		log.Printf("wgpu: finish: %v", err)
+	}
+	dev.device.WaitIdle()
+}

@@ -76,3 +76,19 @@ func (pr *ParticleRenderer) drawPass(pf *particleFrame, additive bool, sheet int
 }
 
 func (pr *ParticleRenderer) end() {}
+
+// Destroy frees the renderer's GPU objects (see ModelRenderer.Destroy).
+func (pr *ParticleRenderer) Destroy() {
+	g := &pr.gpu
+	if g.quad != nil {
+		g.quad.Release()
+		g.quad = nil
+	}
+	for _, s := range append(g.sheets, g.atlas) {
+		if s != nil && s != skyWhite {
+			s.bg.Release()
+			s.tex.release()
+		}
+	}
+	g.sheets, g.atlas = nil, nil
+}

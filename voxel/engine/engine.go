@@ -69,6 +69,10 @@ type Config struct {
 	// runs on the load workers, concurrently, and again each time the
 	// chunk streams back in.
 	OnMapChunk func(p voxel.ChunkPos, level anvil.Compound)
+	// Patch, when set, changes every chunk once it is read or generated,
+	// before it is lit and drawn (a multiplayer game's edits). It runs on the
+	// load workers, concurrently.
+	Patch func(w *voxel.World, c *voxel.Chunk)
 	// Bounds, when set, limits the world to these chunks (inclusive
 	// corners): nothing outside is loaded, generated or drawn, e.g. a
 	// hand-built level.
@@ -243,6 +247,9 @@ func (e *Engine) loadWorker() {
 			return
 		case p := <-e.loadReq:
 			c := e.produce(p)
+			if e.cfg.Patch != nil && c != nil {
+				e.cfg.Patch(e.World, c)
+			}
 			select {
 			case e.loadRes <- c:
 			case <-e.quit:

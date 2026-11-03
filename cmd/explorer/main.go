@@ -94,6 +94,7 @@ func main() {
 	flag.BoolVar(&o.fly, "fly", false, "start flying")
 	flag.StringVar(&o.hold, "hold", "sword_01", "item held at start")
 	flag.StringVar(&cfg.Debug.Edits, "edits", "", "debug: 'dx,dy,dz,block;...' edits relative to the player, applied once terrain is ready")
+	flag.DurationVar(&cfg.Debug.AutoTurn, "autoturn", 0, "debug: stand and turn round from this long into the game on, firing after 5 and 15 s (benchmark under real conditions)")
 	flag.Float64Var(&cfg.Debug.AutoFly, "autofly", 0, "debug: fly forward automatically at this many blocks/s (streaming stress test)")
 	flag.BoolVar(&cfg.Debug.Verbose, "verbose", false, "print frame stats to stdout")
 	flag.DurationVar(&cfg.Debug.Bench, "bench", 0, "quit after this long and print the mean frame time (runs unfocused, mouse free)")
@@ -103,6 +104,7 @@ func main() {
 	flag.BoolVar(&o.help, "help-screen", false, "start with the F1 help screen open")
 	var (
 		host    = flag.Bool("host", false, "host a LAN multiplayer game at once")
+		hostGen = flag.String("host-gen", "overworld", "world of the -host game: overworld | flat | map:<name>")
 		connect = flag.String("connect", "", "join the LAN multiplayer game at this address (host[:port]) at once")
 		name    = flag.String("name", "", "player name in multiplayer (default: the user name)")
 		skinDir = flag.String("skins", "skins", "directory of 64x64 player skin PNGs (cmd/fetchskins)")
@@ -222,7 +224,7 @@ func main() {
 	}
 	switch {
 	case *host:
-		g.autoNet = func() error { return g.hostGame("", 0, "overworld", mp.Deathmatch) }
+		g.autoNet = func() error { return g.hostGame("", 0, *hostGen, mp.Deathmatch) }
 	case *connect != "":
 		addr := *connect
 		if !strings.Contains(addr, ":") {
@@ -296,6 +298,14 @@ func (g *game) start() {
 	if g.net != nil {
 		o = &options{hold: "", signFont: o.signFont, modelPack: o.modelPack} // no items, creatures or pets
 	}
+	// the last session's renderers, freed now rather than by the garbage
+	// collector while this one draws
+	if g.itemRend != nil {
+		g.itemRend.Destroy()
+	}
+	if g.torches.rend != nil {
+		g.torches.rend.Destroy()
+	}
 	g.Eng.Renderer.Opt.Daylight = 1 // after a multiplayer game's
 	if o.night {
 		g.Eng.Renderer.Opt.Daylight = 0.2
@@ -344,7 +354,20 @@ func (g *game) start() {
 	}
 }
 
+// autoShot reports whether -autoturn fires this tick: 5 and 15 s into
+// the turning.
+func (g *game) autoShot() bool {
+	if g.Config.Debug.AutoTurn <= 0 {
+		return false
+	}
+	t := g.Tick - g.AutoTurnTick()
+	return t == 5*app.TickRate || t == 15*app.TickRate
+}
+
 func (g *game) tick() {
+	if g.net == nil && g.autoShot() {
+		g.fire()
+	}
 	if g.net != nil {
 		g.tickItems()
 		g.tickTorches()

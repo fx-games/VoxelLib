@@ -127,6 +127,7 @@ type remoteAnim struct {
 type spWorld struct {
 	engine engine.Config
 	start  *[3]float64
+	hotbar []voxel.StateID
 }
 
 // hostGame starts a server in this process and joins it.
@@ -157,28 +158,41 @@ func (g *game) joinGame(addr string) error {
 		return err
 	}
 	w := cl.Welcome
-	reg := g.Config.Engine.Registry
+	if g.net == nil {
+		g.sp = &spWorld{engine: g.Config.Engine, start: g.Config.Start, hotbar: g.hotbar}
+	}
+	reg := g.sp.engine.Registry
+	if mp.MapName(w.Generator) != "" {
+		reg = voxel.NewRegistry() // the map's blocks only, as single player opens it
+	}
 	gen, err := mp.NewGenerator(reg, w.Generator, w.Seed)
 	if err != nil {
 		cl.Close()
 		return err
 	}
-	if g.net == nil {
-		g.sp = &spWorld{engine: g.Config.Engine, start: g.Config.Start}
-	}
 	c := &g.Config.Engine
-	c.Generator, c.WorldDir, c.SaveDir, c.Map, c.ReadOnly = cl.Edits.Wrap(gen), "", "", nil, true
+	c.WorldDir, c.SaveDir, c.ReadOnly = "", "", true
 	c.MinY, c.Height = mp.Heights(w.Generator)
-	c.Textures = g.sp.engine.Textures
-	if c.Textures == nil {
-		c.Textures = g.sp.engine.Map
-	}
-	if mg, ok := gen.(*mp.MapGen); ok { // the map's block textures first
-		c.Textures = stackedTextures{mg.Map, c.Textures}
+	c.Patch = func(w *voxel.World, ch *voxel.Chunk) { cl.Edits.Apply(w.Reg, ch) }
+	if mg, ok := gen.(*mp.MapGen); ok {
+		// a map game is the map, as single player walks it
+		c.Map, c.Dimension, c.Generator, c.Textures = mg.Map, mg.Map.Spawn.Dim, nil, nil
+		c.Registry = reg
+		g.hotbar = nil
+		for _, n := range mapHotbar {
+			g.hotbar = append(g.hotbar, mg.Map.State(n))
+		}
+	} else {
+		c.Map, c.Generator, c.Textures = nil, gen, g.sp.engine.Textures
+		c.Registry, c.Dimension = reg, g.sp.engine.Dimension
+		g.hotbar = g.sp.hotbar
+		if c.Textures == nil {
+			c.Textures = g.sp.engine.Map
+		}
 	}
 	g.Config.Start = &[3]float64{w.SpawnX, w.SpawnY, w.SpawnZ}
 	g.net = &netGame{cl: cl, bodyModel: -1}
-	log.Printf("mp: joined %s as slot %d (seed %d)", addr, w.Slot, w.Seed)
+	log.Printf("mp: joined %s as slot %d (seed %d) at %.1f,%.1f,%.1f", addr, w.Slot, w.Seed, w.SpawnX, w.SpawnY, w.SpawnZ)
 	g.Switch()
 	return nil
 }
@@ -197,6 +211,7 @@ func (g *game) leaveGame(reason string) {
 	g.net = nil
 	if g.sp != nil {
 		g.Config.Engine, g.Config.Start = g.sp.engine, g.sp.start
+		g.hotbar = g.sp.hotbar
 	}
 	if reason != "" {
 		log.Printf("mp: %s", reason)
@@ -269,7 +284,7 @@ func (g *game) ride(in character.Input) bool {
 	if n.cl.Own().Dead {
 		return true
 	}
-	attack := g.crossbowOn() && g.Input.Down(app.ActAttack) && !g.ScreenOpen()
+	attack := g.crossbowOn() && (g.Input.Down(app.ActAttack) && !g.ScreenOpen() || g.autoShot())
 	n.cmd, n.haveCmd = n.cl.Command(in, attack), true
 	return false
 }
@@ -428,37 +443,3 @@ func (g *game) sendEdit(pos voxel.BlockPos) {
 
 func (g *game) blockBroken(pos voxel.BlockPos, _ voxel.StateID) { g.sendEdit(pos) }
 func (g *game) blockPlaced(pos voxel.BlockPos, _ voxel.StateID) { g.sendEdit(pos) }
-
-// stackedTextures looks a texture up in each source in turn.
-type stackedTextures []render.TextureSource
-
-func (s stackedTextures) Texture(name string) (image.Image, error) {
-	var err error
-	for _, t := range s {
-		var img image.Image
-		if img, err = t.Texture(name); err == nil {
-			return img, nil
-		}
-	}
-	return nil, err
-}
-
-func (s stackedTextures) TextureFrames(name string) ([]image.Image, int, error) {
-	var err error
-	for _, t := range s {
-		if a, ok := t.(render.AnimatedTextureSource); ok {
-			fs, ticks, e := a.TextureFrames(name)
-			if e == nil {
-				return fs, ticks, nil
-			}
-			err = e
-			continue
-		}
-		img, e := t.Texture(name)
-		if e == nil {
-			return []image.Image{img}, 0, nil
-		}
-		err = e
-	}
-	return nil, 0, err
-}

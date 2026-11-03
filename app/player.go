@@ -200,6 +200,9 @@ func (p *Player) tick() {
 		Forward: axis(in.Down(ActForward), in.Down(ActBack)),
 		Strafe:  axis(in.Down(ActRight), in.Down(ActLeft)),
 		Jump:    in.Down(ActJump), Sneak: in.Down(ActSneak), Sprint: in.Down(ActSprint)}
+	if t := a.Tick - a.AutoTurnTick(); a.Config.Debug.AutoTurn > 0 && t >= 0 && t < 20*TickRate {
+		a.Cam.Yaw += 2 * math.Pi / (8 * TickRate) // a turn every 8 s, for 20 s
+	}
 	ci.Using = a.Hooks.UsingItem != nil && a.Hooks.UsingItem()
 	if a.Hooks.Ride != nil && a.Hooks.Ride(ci) {
 		p.bobTick(a.Cam.Yaw, a.Cam.Pitch, false, true)

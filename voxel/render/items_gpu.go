@@ -80,3 +80,14 @@ func (ir *ItemRenderer) Delete() {
 	ir.gpu.tex.release()
 	ir.gpu.vbo.Release()
 }
+
+// Destroy frees the renderer's GPU objects (see ModelRenderer.Destroy).
+func (ir *ItemRenderer) Destroy() {
+	g := &ir.gpu
+	if g.vbo != nil {
+		g.vbo.Release()
+		g.bg.Release()
+		g.tex.release()
+		g.vbo = nil
+	}
+}
