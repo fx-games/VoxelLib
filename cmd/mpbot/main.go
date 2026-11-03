@@ -83,7 +83,14 @@ func main() {
 		c.Reconcile(ch, w)
 		in := character.Input{Yaw: yaw, Pitch: pitch}
 		attack := false
-		if t, ok := nearest(c, ch, *target); ok {
+		r := c.Round()
+		z := r.Zone
+		if r.Mode == mp.BattleRoyale && r.Phase == mp.PhasePlaying && z.Touches(ch.X, ch.Z, math.Min(6, z.Side()/4)) {
+			// Away from the wall: to the middle.
+			dx, dz := (z.MinX+z.MaxX)/2-ch.X, (z.MinZ+z.MaxZ)/2-ch.Z
+			in.Yaw, in.Forward, in.Sprint = math.Atan2(dx, -dz), 1, true
+			in.Jump = ch.HorizontalCollision
+		} else if t, ok := nearest(c, ch, *target); ok {
 			// The spot -dist in front of the target, -angle round from their look.
 			a := t.Yaw + *angle*math.Pi/180
 			gx, gz := t.X+math.Sin(a)**dist, t.Z-math.Cos(a)**dist
@@ -123,6 +130,9 @@ func nearest(c *mp.Client, ch *character.Character, name string) (mp.PlayerView,
 	for _, v := range c.Players() {
 		if name != "" && c.Info[v.Slot].Name != name {
 			continue
+		}
+		if team := c.Info[c.Slot()].Team; team != 0 && c.Info[v.Slot].Team == team {
+			continue // a teammate
 		}
 		if d := math.Hypot(v.X-ch.X, v.Z-ch.Z); !v.Dead && !v.Protected && d < bd {
 			best, bd = v, d

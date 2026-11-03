@@ -131,14 +131,14 @@ type spWorld struct {
 
 // hostGame starts a server in this process and joins it.
 // An empty name is the player's, a zero seed random.
-func (g *game) hostGame(name string, seed int64, gen string) error {
+func (g *game) hostGame(name string, seed int64, gen string, mode mp.Mode) error {
 	if name == "" {
 		name = g.playerName + "'s game"
 	}
 	if seed == 0 {
 		seed = time.Now().UnixNano() & 0xFFFFFFF
 	}
-	srv, err := mp.StartServer(mp.ServerConfig{Name: name, Seed: seed, Generator: gen, Reg: voxel.NewRegistry()})
+	srv, err := mp.StartServer(mp.ServerConfig{Name: name, Seed: seed, Generator: gen, Mode: mode, Reg: voxel.NewRegistry()})
 	if err != nil {
 		return err
 	}
@@ -288,7 +288,11 @@ func (g *game) tickNet() {
 	g.Player.Dead = own.Dead
 	if own.Dead && !n.dead {
 		n.mu.Lock()
-		n.lines = append(n.lines, "§cYou died - respawning...")
+		if r := n.cl.Round(); r.Mode == mp.BattleRoyale && r.Phase == mp.PhasePlaying {
+			n.lines = append(n.lines, "§cYou are out - watching until the next round")
+		} else {
+			n.lines = append(n.lines, "§cYou died - respawning...")
+		}
 		n.mu.Unlock()
 	}
 	n.dead = own.Dead
@@ -382,6 +386,9 @@ func (g *game) drawNet(alpha float64) {
 	}
 	if len(n.bows) > 0 {
 		g.Models.Draw(&g.Cam, n.bows)
+	}
+	if r := n.cl.Round(); r.Mode == mp.BattleRoyale && r.Phase == mp.PhasePlaying {
+		g.drawWall(r.Zone, r.Shrinking)
 	}
 	if g.arrowModel < 0 {
 		return

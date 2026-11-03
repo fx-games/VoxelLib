@@ -11,7 +11,7 @@ import (
 // Protocol is the netcode protocol id: "VLMP" plus a version byte. Bump the
 // version on any wire change; older peers are refused and stay invisible to
 // discovery.
-const Protocol = 0x564C4D00 | 3
+const Protocol = 0x564C4D00 | 4
 
 // DefaultPort is the server's UDP port.
 const DefaultPort = 28960
@@ -91,6 +91,7 @@ type Welcome struct {
 	Slot      int
 	Seed      int64
 	Generator string // "overworld" or "flat"
+	Mode      Mode
 	Tick      uint32
 	SpawnX    float64
 	SpawnY    float64
@@ -107,6 +108,7 @@ func (w Welcome) encode() []byte {
 	b.f64(w.SpawnX)
 	b.f64(w.SpawnY)
 	b.f64(w.SpawnZ)
+	b.u8(uint8(w.Mode))
 	return b
 }
 
@@ -117,6 +119,7 @@ func decodeWelcome(p []byte) (Welcome, error) {
 	w.Seed = int64(uint64(hi)<<32 | uint64(lo))
 	w.Generator, w.Tick = r.str(), r.u32()
 	w.SpawnX, w.SpawnY, w.SpawnZ = r.f64(), r.f64(), r.f64()
+	w.Mode = Mode(r.u8())
 	return w, r.err
 }
 
@@ -419,6 +422,7 @@ func decodeHit(r *rbuf) Hit {
 type Score struct {
 	Slot          int
 	Kills, Deaths int
+	Wins          int // battle royale rounds won
 }
 
 func (s Score) encode() []byte {
@@ -426,11 +430,12 @@ func (s Score) encode() []byte {
 	b.u8(uint8(s.Slot))
 	b.u16(uint16(s.Kills))
 	b.u16(uint16(s.Deaths))
+	b.u16(uint16(s.Wins))
 	return b
 }
 
 func decodeScore(r *rbuf) Score {
-	return Score{Slot: int(r.u8()), Kills: int(r.u16()), Deaths: int(r.u16())}
+	return Score{Slot: int(r.u8()), Kills: int(r.u16()), Deaths: int(r.u16()), Wins: int(r.u16())}
 }
 
 // PlayerInfo is who is in a slot.
@@ -439,6 +444,7 @@ type PlayerInfo struct {
 	Joined bool // false: the slot was freed
 	Name   string
 	Skin   []byte // png, nil for the default
+	Team   int    // TeamRed, TeamBlue or 0
 }
 
 func (p PlayerInfo) encode() []byte {
@@ -447,9 +453,10 @@ func (p PlayerInfo) encode() []byte {
 	b.u8(flag(p.Joined, 1))
 	b.str(p.Name)
 	b.bytes(p.Skin)
+	b.u8(uint8(p.Team))
 	return b
 }
 
 func decodePlayerInfo(r *rbuf) PlayerInfo {
-	return PlayerInfo{Slot: int(r.u8()), Joined: r.u8()&1 != 0, Name: r.str(), Skin: r.bytes()}
+	return PlayerInfo{Slot: int(r.u8()), Joined: r.u8()&1 != 0, Name: r.str(), Skin: r.bytes(), Team: int(r.u8())}
 }

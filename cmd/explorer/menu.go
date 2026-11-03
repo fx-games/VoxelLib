@@ -37,7 +37,7 @@ func (g *game) setupUI() {
 	}
 	u.HUD.State.Hidden = true // the explorer draws its own HUD; this one shows chat
 	g.ui = u
-	u.Top = g.drawScores
+	u.Top = g.drawMatch
 	g.Hooks.PauseScreen = func() app.Screen { return g.ui.Screen(g.pauseMenu()) }
 }
 
@@ -254,6 +254,7 @@ type createScreen struct {
 	g          *game
 	name, seed *ui.TextField
 	flat       bool
+	mode       mp.Mode
 	status     string
 }
 
@@ -277,6 +278,10 @@ func (s *createScreen) Init(ctx *ui.Context) {
 		world = "World type: Flat"
 	}
 	s.Add(ui.NewButton(x, 120, 200, world, func() { s.flat = !s.flat; s.Init(ctx) }))
+	s.Add(ui.NewButton(x, 144, 200, "Mode: "+s.mode.String(), func() {
+		s.mode = (s.mode + 1) % (mp.BattleRoyale + 1)
+		s.Init(ctx)
+	}))
 	s.Add(ui.NewButton(x, ctx.H-28, 98, "Create game", func() { s.create(ctx) }))
 	s.Add(ui.NewButton(x+102, ctx.H-28, 98, ctx.T("gui.cancel"), func() { ctx.Screens.Back() }))
 }
@@ -286,11 +291,18 @@ func (s *createScreen) create(ctx *ui.Context) {
 	if s.flat {
 		gen = "flat"
 	}
-	if err := s.g.hostGame(strings.TrimSpace(s.name.Text), seedOf(s.seed.Text), gen); err != nil {
+	if err := s.g.hostGame(strings.TrimSpace(s.name.Text), seedOf(s.seed.Text), gen, s.mode); err != nil {
 		s.status = "§c" + err.Error()
 		return
 	}
 	ctx.Screens.CloseAll()
+}
+
+// modeHelp says what each mode is.
+var modeHelp = map[mp.Mode]string{
+	mp.Deathmatch:     "Everyone against everyone; the most kills lead",
+	mp.TeamDeathmatch: "Red against Blue; the team's kills add up",
+	mp.BattleRoyale:   "One life a round; the energy wall closes in every 5 minutes",
 }
 
 // seedOf is the reference's seed field: a number as is, other text by its
@@ -317,7 +329,8 @@ func (s *createScreen) Draw(ctx *ui.Context, mx, my int, partial float32) {
 	f.DrawCentered(ctx.Canvas, "Create a LAN game", ctx.W/2, 12, 0xFFFFFF)
 	f.Draw(ctx.Canvas, "Game name", x, 41, 0xA0A0A0, false)
 	f.Draw(ctx.Canvas, "Seed (blank for random)", x, 81, 0xA0A0A0, false)
-	f.DrawCentered(ctx.Canvas, fmt.Sprintf("Up to 4 players on UDP port %d", mp.DefaultPort), ctx.W/2, 150, 0xA0A0A0)
+	f.DrawCentered(ctx.Canvas, modeHelp[s.mode], ctx.W/2, 170, 0xA0A0A0)
+	f.DrawCentered(ctx.Canvas, fmt.Sprintf("Up to 4 players on UDP port %d", mp.DefaultPort), ctx.W/2, 182, 0xA0A0A0)
 	if s.status != "" {
 		f.DrawCentered(ctx.Canvas, s.status, ctx.W/2, ctx.H-39, 0xFFFFFF)
 	}

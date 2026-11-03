@@ -28,7 +28,14 @@ func main() {
 	name := flag.String("name", "", "game name shown in the LAN list (default: the host name)")
 	seed := flag.Int64("seed", 0, "world seed (0: random)")
 	gen := flag.String("gen", "overworld", "world generator: overworld or flat")
+	modeName := flag.String("mode", "dm", "game mode: dm (deathmatch), tdm (team deathmatch) or br (battle royale)")
+	interval := flag.Duration("zone-interval", mp.DefaultZoneInterval, "battle royale: how long the energy wall stands before closing in")
+	shrink := flag.Duration("zone-shrink", mp.DefaultShrinkTime, "battle royale: how long the wall takes to close in")
 	flag.Parse()
+	mode, err := mp.ParseMode(*modeName)
+	if err != nil {
+		log.Fatal(err)
+	}
 	if *name == "" {
 		h, _ := os.Hostname()
 		h, _, _ = strings.Cut(h, ".")
@@ -37,9 +44,9 @@ func main() {
 	if *seed == 0 {
 		*seed = time.Now().UnixNano() & 0xFFFFFFF
 	}
-	log.Printf("generating the %s world (seed %d)...", *gen, *seed)
+	log.Printf("generating the %s world (seed %d) for %s...", *gen, *seed, mode)
 	srv, err := mp.StartServer(mp.ServerConfig{Addr: *addr, Name: *name, Seed: *seed, Generator: *gen,
-		Reg: voxel.NewRegistry()})
+		Mode: mode, ZoneInterval: *interval, ShrinkTime: *shrink, Reg: voxel.NewRegistry()})
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -96,16 +103,20 @@ func command(srv *mp.Server, line string) bool {
 	case "status":
 		cfg := srv.Config()
 		ps := srv.Ranking()
-		fmt.Printf("%s on %s, %s seed %d, %d player(s)\n", cfg.Name, srv.Addr(), cfg.Generator, cfg.Seed, len(ps))
+		fmt.Printf("%s on %s: %s, %s seed %d, %d player(s)\n", cfg.Name, srv.Addr(), cfg.Mode, cfg.Generator, cfg.Seed, len(ps))
+		fmt.Println(roundLine(srv.Round()))
 		if len(ps) > 0 {
-			fmt.Printf("%-4s %-16s %6s %5s %6s %6s\n", "slot", "name", "health", "kills", "deaths", "ping")
+			fmt.Printf("%-4s %-16s %-5s %6s %5s %6s %4s %6s\n", "slot", "name", "team", "health", "kills", "deaths", "wins", "ping")
 		}
 		for _, p := range ps {
 			h := strconv.Itoa(p.Health)
-			if p.Dead {
+			switch {
+			case p.Out:
+				h = "out"
+			case p.Dead:
 				h = "dead"
 			}
-			fmt.Printf("%-4d %-16s %6s %5d %6d %4dms\n", p.Slot, p.Name, h, p.Kills, p.Deaths, p.Ping.Milliseconds())
+			fmt.Printf("%-4d %-16s %-5s %6s %5d %6d %4d %4dms\n", p.Slot, p.Name, mp.TeamName(p.Team), h, p.Kills, p.Deaths, p.Wins, p.Ping.Milliseconds())
 		}
 	case "say":
 		if arg != "" {
@@ -132,6 +143,31 @@ func command(srv *mp.Server, line string) bool {
 		fmt.Printf("unknown command %q (try help)\n", cmd)
 	}
 	return true
+}
+
+// roundLine describes the match state.
+func roundLine(r mp.Round) string {
+	secs := func(t int) string { return (time.Duration(t) * time.Second / mp.TickRate).String() }
+	switch r.Mode {
+	case mp.TeamDeathmatch:
+		return fmt.Sprintf("Red %d : %d Blue", r.RedKills, r.BlueKills)
+	case mp.BattleRoyale:
+		switch r.Phase {
+		case mp.PhaseWaiting:
+			return "waiting for a second player"
+		case mp.PhaseCountdown:
+			return "the round starts in " + secs(r.Ticks)
+		case mp.PhaseOver:
+			return "round over"
+		}
+		z := r.Zone
+		state := "closes in " + secs(r.Ticks)
+		if r.Shrinking {
+			state = "closing, " + secs(r.Ticks) + " to go"
+		}
+		return fmt.Sprintf("%d alive; zone %.0f blocks at %.0f,%.0f, %s", r.Alive, z.Side(), (z.MinX+z.MaxX)/2, (z.MinZ+z.MaxZ)/2, state)
+	}
+	return ""
 }
 
 // timeCommand is the reference's /time (and doDaylightCycle as stop/run).

@@ -61,7 +61,11 @@ in front of you, playing CLIP (`bind` shows the rest pose).
 
 **Multiplayer** (LAN, up to 4 players): the main menu's Multiplayer screen sets your name and skin,
 lists the games found on the LAN, joins one by address and creates a game (name, seed, world
-type) hosted in the game itself. `-host` and
+type, mode) hosted in the game itself. Modes: deathmatch; team deathmatch (Red against Blue,
+joiners fill the smaller team, no friendly fire); battle royale (rounds of one life each; the
+playing field is a square round all players at the start, bounded by a translucent energy wall
+that kills on touch and closes in to a smaller square every 5 minutes; the last one standing
+wins the round). `-host` and
 `-connect HOST[:PORT]` skip the menu; `-name` and `-skin NAME` preset the choice. Skins are the
 64x64 PNGs in `-skins` (default `skins/`, filled by `go run ./cmd/fetchskins`, not in git).
 Everyone carries the crossbow; a head shot kills. After (re)spawning a player is protected for
@@ -70,7 +74,8 @@ while dead. The time of day is the server's. Placed and broken blocks (and doors
 everyone, late joiners included. The server uses UDP port 28960 (allow it in the firewall).
 
 `go run ./cmd/voxserver` is the dedicated server: no window or GPU (it builds with
-`CGO_ENABLED=0`), flags `-addr`, `-name`, `-seed`, `-gen overworld|flat`, and a console on
+`CGO_ENABLED=0`), flags `-addr`, `-name`, `-seed`, `-gen overworld|flat`, `-mode dm|tdm|br`,
+`-zone-interval`, `-zone-shrink`, and a console on
 stdin: `status` (the ranking with health and ping), `say TEXT`, `kick SLOT|NAME`,
 `time [set day|noon|night|midnight|N | add N | stop | run]`, `quit`.
 `go run ./cmd/mpbot -connect HOST` adds a headless test player that walks up to you (`-shoot` to fire).

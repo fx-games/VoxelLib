@@ -112,7 +112,7 @@ func (s *Server) tickArrows(tick uint32) {
 		for _, o := range s.players {
 			// The dead and the protected have no body for arrows: they
 			// fly through.
-			if o == nil || o == p || o.dead > 0 || o.protect > 0 {
+			if o == nil || !enemies(p, o) || o.dead > 0 || o.protect > 0 {
 				continue
 			}
 			if r, ok := s.rewind(o, tick, p.lag); ok {
@@ -172,21 +172,13 @@ func (s *Server) hit(shooter, victim *sPlayer, a *projectile.Arrow) {
 		victim.ch.VY = math.Max(victim.ch.VY, 0.3)
 	}
 	if victim.health <= 0 {
-		victim.health, victim.dead, h.Killed = 0, RespawnTicks, true
-		victim.deaths++
-		if shooter != victim {
-			shooter.kills++
-			s.broadcast(shooter.score().encode())
-		}
-		s.broadcast(victim.score().encode())
+		h.Killed = true
 		how := "shot"
 		if h.Head {
 			how = "head-shot"
 		}
 		dist := math.Sqrt(sq(victim.ch.X-shooter.ch.X) + sq(victim.ch.Y-shooter.ch.Y) + sq(victim.ch.Z-shooter.ch.Z))
-		feed := fmt.Sprintf("%s %s %s (%.0f m)", shooter.name, how, victim.name, dist)
-		s.broadcastText(feed)
-		s.cfg.Logf("mp: %s", feed)
+		s.kill(victim, shooter, how, fmt.Sprintf(" (%.0f m)", dist))
 	}
 	s.broadcast(h.encode())
 }
@@ -213,6 +205,7 @@ func (s *Server) sendSnapshot(p *sPlayer, tick uint32) {
 	b.u32(p.last.Num)
 	b.f64(float64(s.time))
 	b.u8(flag(s.frozen, 1))
+	s.m.round.encode(&b)
 	st := stateOf(p.ch)
 	st.Health, st.Dead, st.Reload, st.Shots = p.health, p.dead > 0, p.reload, p.shots
 	st.Protected = p.protect > 0

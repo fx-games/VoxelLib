@@ -220,7 +220,7 @@ func main() {
 	}
 	switch {
 	case *host:
-		g.autoNet = func() error { return g.hostGame("", 0, "overworld") }
+		g.autoNet = func() error { return g.hostGame("", 0, "overworld", mp.Deathmatch) }
 	case *connect != "":
 		addr := *connect
 		if !strings.Contains(addr, ":") {
@@ -263,6 +263,7 @@ type game struct {
 	autoNet     func() error // -host / -connect, run in the first session
 	menuAtStart bool
 	showScores  bool // Tab held in multiplayer
+	wallDraw    [1]render.SkyDraw
 }
 
 // flagSet reports whether the flag was given on the command line.

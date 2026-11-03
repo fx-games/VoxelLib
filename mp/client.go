@@ -79,6 +79,7 @@ type snapshot struct {
 	tick    uint32
 	players map[int]PlayerView
 	arrows  []ArrowView
+	round   Round
 }
 
 // mineArrow is an arrow the local player fired that the server has not
@@ -205,6 +206,7 @@ func (c *Client) snapshot(seq uint32, data []byte) {
 	r := rbuf{p: data}
 	tick, ack := r.u32(), r.u32()
 	wt, wf := int64(r.f64()), r.u8()&1 != 0
+	round := decodeRound(&r)
 	own := decodePlayerState(&r)
 	if r.err != nil {
 		return
@@ -213,7 +215,7 @@ func (c *Client) snapshot(seq uint32, data []byte) {
 	if err != nil {
 		return // a delta against a frame we lost: the next one will do
 	}
-	s := snapshot{tick: tick, players: map[int]PlayerView{}}
+	s := snapshot{tick: tick, players: map[int]PlayerView{}, round: round}
 	for id, st := range snap {
 		if id >= arrowBase {
 			if a, ok := decodeArrowView(id, st); ok {
@@ -343,24 +345,47 @@ func (c *Client) RenderTime() float64 { return c.serverTime - interpDelay }
 type Rank struct {
 	Score
 	Name string
+	Team int
 }
 
-// Ranking lists the players in the game (this one too) by kills, most
-// first, then by fewest deaths.
+// Ranking lists the players in the game (this one too): by rounds won
+// (battle royale), kills, most first, then by fewest deaths.
 func (c *Client) Ranking() []Rank {
 	var out []Rank
 	for i, p := range c.Info {
 		if p.Joined {
-			out = append(out, Rank{Score: c.Scores[i], Name: p.Name})
+			out = append(out, Rank{Score: c.Scores[i], Name: p.Name, Team: p.Team})
 		}
 	}
 	slices.SortStableFunc(out, func(a, b Rank) int {
+		if a.Wins != b.Wins {
+			return b.Wins - a.Wins
+		}
 		if a.Kills != b.Kills {
 			return b.Kills - a.Kills
 		}
 		return a.Deaths - b.Deaths
 	})
 	return out
+}
+
+// Round is the match state in the newest snapshot, its zone where it
+// stands at the render time (a closing wall moves smoothly).
+func (c *Client) Round() Round {
+	if len(c.snaps) == 0 {
+		return Round{Mode: c.Welcome.Mode}
+	}
+	r := c.newest().round
+	t := c.RenderTime()
+	for i := len(c.snaps) - 1; i > 0; i-- {
+		a, b := &c.snaps[i-1], &c.snaps[i]
+		if float64(a.tick) <= t && b.tick > a.tick && a.round.Phase == PhasePlaying && b.round.Phase == PhasePlaying {
+			f := math.Min(1, (t-float64(a.tick))/float64(b.tick-a.tick))
+			r.Zone = a.round.Zone.Lerp(b.round.Zone, f)
+			break
+		}
+	}
+	return r
 }
 
 // WorldTime is the server's world time now (see DayLength), whole ticks

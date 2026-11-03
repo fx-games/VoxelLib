@@ -46,8 +46,15 @@ type ServerConfig struct {
 	Name      string // shown in discovery
 	Seed      int64
 	Generator string // "overworld" or "flat"
-	Reg       *voxel.Registry
-	Net       netcode.Config // Protocol is set by the server
+	Mode      Mode
+	// ZoneInterval is how long a battle royale wall stands before it
+	// closes in (0: DefaultZoneInterval).
+	ZoneInterval time.Duration
+	// ShrinkTime is how long the wall takes to close in (0:
+	// DefaultShrinkTime).
+	ShrinkTime time.Duration
+	Reg        *voxel.Registry
+	Net        netcode.Config // Protocol is set by the server
 	// Spawn, when set, picks where a player (re)spawns: feet position.
 	// Without it players spawn around the world spawn.
 	Spawn func(slot int, w *World) (x, y, z float64)
@@ -72,6 +79,7 @@ type Server struct {
 	players [4]*sPlayer
 	arrows  map[*projectile.Arrow]arrowMeta
 	nextID  uint32
+	m       match
 
 	calls chan func() // run on the server goroutine (the console)
 	stop  chan struct{}
@@ -97,6 +105,9 @@ type sPlayer struct {
 	shots   uint16
 	kills   int
 	deaths  int
+	wins    int     // battle royale rounds won
+	team    int     // TeamRed, TeamBlue or 0
+	out     bool    // out of the battle royale round: watching until the next
 	lag     float64 // smoothed ticks between the server's time and what the player saw
 
 	hist   [historyTicks]pose
@@ -133,12 +144,20 @@ func StartServer(cfg ServerConfig) (*Server, error) {
 	if cfg.Generator == "" {
 		cfg.Generator = "overworld"
 	}
+	if cfg.ZoneInterval <= 0 {
+		cfg.ZoneInterval = DefaultZoneInterval
+	}
+	if cfg.ShrinkTime <= 0 {
+		cfg.ShrinkTime = DefaultShrinkTime
+	}
 	gen, err := NewGenerator(cfg.Reg, cfg.Generator, cfg.Seed)
 	if err != nil {
 		return nil, err
 	}
 	s := &Server{cfg: cfg, edits: NewEditLog(), body: NewBody(), arrows: map[*projectile.Arrow]arrowMeta{},
 		time: TimeDay, calls: make(chan func()), stop: make(chan struct{}), done: make(chan struct{})}
+	s.m.interval = max(1, int(cfg.ZoneInterval*TickRate/time.Second))
+	s.m.shrinkTicks = max(1, int(cfg.ShrinkTime*TickRate/time.Second))
 	s.world = NewWorld(cfg.Reg, s.edits.Wrap(gen))
 	x, y, z := s.world.SpawnPoint(0, 0)
 	s.spawn = [3]float64{x, y, z}
@@ -168,12 +187,21 @@ func (s *Server) Close() {
 	})
 }
 
-func (p *sPlayer) score() Score { return Score{Slot: p.slot, Kills: p.kills, Deaths: p.deaths} }
+func (p *sPlayer) score() Score {
+	return Score{Slot: p.slot, Kills: p.kills, Deaths: p.deaths, Wins: p.wins}
+}
+
+func (p *sPlayer) info() PlayerInfo {
+	return PlayerInfo{Slot: p.slot, Joined: true, Name: p.name, Skin: p.skin, Team: p.team}
+}
 
 // Ranking is the players by kills, most first, then by fewest deaths.
 func (s *Server) Ranking() []PlayerStatus {
 	ps := s.Status()
 	slices.SortStableFunc(ps, func(a, b PlayerStatus) int {
+		if a.Wins != b.Wins {
+			return b.Wins - a.Wins
+		}
 		if a.Kills != b.Kills {
 			return b.Kills - a.Kills
 		}
@@ -202,6 +230,9 @@ type PlayerStatus struct {
 	Health        int
 	Dead          bool
 	Kills, Deaths int
+	Wins          int  // battle royale
+	Team          int  // team deathmatch
+	Out           bool // out of the battle royale round
 	Ping          time.Duration
 }
 
@@ -212,7 +243,7 @@ func (s *Server) Status() []PlayerStatus {
 		for _, p := range s.players {
 			if p != nil {
 				out = append(out, PlayerStatus{Slot: p.slot, Name: p.name, Health: p.health, Dead: p.dead > 0,
-					Kills: p.kills, Deaths: p.deaths, Ping: s.net.Stats(p.slot).RTT})
+					Kills: p.kills, Deaths: p.deaths, Wins: p.wins, Team: p.team, Out: p.out, Ping: s.net.Stats(p.slot).RTT})
 			}
 		}
 	})
@@ -246,6 +277,13 @@ func (s *Server) SetTime(t int64, frozen bool) {
 	s.call(func() { s.time, s.frozen = max(t, 0), frozen })
 }
 
+// Round is the match state (mode, battle royale phase and zone, team
+// scores).
+func (s *Server) Round() (r Round) {
+	s.call(func() { r = s.m.round })
+	return
+}
+
 // Config is what the server was started with.
 func (s *Server) Config() ServerConfig { return s.cfg }
 
@@ -254,7 +292,7 @@ func (s *Server) accept(slot int, _ net.Addr, hello []byte) ([]byte, error) {
 	if _, err := decodeHello(hello); err != nil {
 		return nil, err
 	}
-	return Welcome{Slot: slot, Seed: s.cfg.Seed, Generator: s.cfg.Generator, Tick: atomic.LoadUint32(&s.tick),
+	return Welcome{Slot: slot, Seed: s.cfg.Seed, Generator: s.cfg.Generator, Mode: s.cfg.Mode, Tick: atomic.LoadUint32(&s.tick),
 		SpawnX: s.spawn[0], SpawnY: s.spawn[1], SpawnZ: s.spawn[2]}.encode(), nil
 }
 
@@ -366,7 +404,7 @@ func (s *Server) frame() {
 		if p == nil {
 			continue
 		}
-		if p.dead > 0 {
+		if p.dead > 0 && !p.out {
 			if p.dead--; p.dead == 0 {
 				s.respawn(p)
 			}
@@ -376,6 +414,7 @@ func (s *Server) frame() {
 		p.hist[tick%historyTicks] = pose{tick: tick, x: p.ch.X, y: p.ch.Y, z: p.ch.Z, yaw: p.yaw, anim: p.anim,
 			alive: p.dead == 0}
 	}
+	s.tickMatch()
 	s.tickArrows(tick)
 	s.streamEdits()
 	for _, p := range s.players {
@@ -393,16 +432,24 @@ func (s *Server) handle(e netcode.Event) {
 		if p.name == "" {
 			p.name = fmt.Sprintf("Player %d", e.Client+1)
 		}
+		if s.cfg.Mode == TeamDeathmatch {
+			p.team = s.pickTeam()
+		}
 		s.players[e.Client] = p
 		s.respawn(p)
+		s.joinedLate(p)
 		for _, o := range s.players {
 			if o != nil && o != p {
-				s.net.SendReliable(p.slot, PlayerInfo{Slot: o.slot, Joined: true, Name: o.name, Skin: o.skin}.encode())
+				s.net.SendReliable(p.slot, o.info().encode())
 				s.net.SendReliable(p.slot, o.score().encode())
 			}
 		}
-		s.broadcast(PlayerInfo{Slot: p.slot, Joined: true, Name: p.name}.encode())
-		s.broadcastText(p.name + " joined the game")
+		s.broadcast(p.info().encode())
+		joined := p.colored() + " joined the game"
+		if p.team != 0 {
+			joined += " on team " + TeamColor(p.team) + TeamName(p.team)
+		}
+		s.broadcastText(joined)
 		s.setInfo()
 		s.cfg.Logf("mp: %s joined (slot %d)", p.name, p.slot)
 	case netcode.Disconnected:
@@ -443,7 +490,7 @@ func (s *Server) reliable(p *sPlayer, msg []byte) {
 	switch msg[0] {
 	case msgSkin:
 		p.skin = append([]byte(nil), msg[1:]...)
-		s.broadcast(PlayerInfo{Slot: p.slot, Joined: true, Name: p.name, Skin: p.skin}.encode())
+		s.broadcast(p.info().encode())
 	case msgSetBlock:
 		e := decodeBlockEdit(&r)
 		if r.err != nil || s.cfg.Reg.Parse(e.State) == voxel.Air && e.State != s.cfg.Reg.StateString(voxel.Air) {
@@ -497,13 +544,17 @@ func (s *Server) respawn(p *sPlayer) {
 		*p.ch = *character.New(s.cfg.Spawn(p.slot, s.world))
 	} else {
 		// Round the world spawn, on the ground (not on a tree or in water)
-		// where there is some.
-		a := float64(p.slot)*math.Pi/2 + float64(atomic.LoadUint32(&s.tick)%97)
+		// where there is some; a team on its own side (Red west, Blue
+		// east).
+		a, step := float64(p.slot)*math.Pi/2+float64(atomic.LoadUint32(&s.tick)%97), 0.9
+		if p.team != 0 {
+			a, step = math.Pi*float64(p.team-1)+float64(atomic.LoadUint32(&s.tick)%7)*0.1-0.3, 0.15
+		}
 		var x, y, z int
 		for i := range 16 {
 			r := spawnSpread * (0.5 + float64(i%4)/8)
-			x = int(math.Floor(s.spawn[0] + math.Cos(a+float64(i)*0.9)*r))
-			z = int(math.Floor(s.spawn[2] + math.Sin(a+float64(i)*0.9)*r))
+			x = int(math.Floor(s.spawn[0] - math.Cos(a+float64(i)*step)*r))
+			z = int(math.Floor(s.spawn[2] + math.Sin(a+float64(i)*step)*r))
 			var ok bool
 			if y, ok = s.world.Ground(x, z); ok {
 				break

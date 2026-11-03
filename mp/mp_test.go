@@ -230,3 +230,93 @@ func TestNoHitDeadOrProtected(t *testing.T) {
 		t.Fatalf("respawned: health %d, protected %v", h, p)
 	}
 }
+
+// TestBattleRoyale plays a round with a fast wall: it starts round
+// everyone, kills whoever it reaches, the last one standing wins, and
+// everyone is back for the next round.
+func TestBattleRoyale(t *testing.T) {
+	srv, err := StartServer(ServerConfig{Addr: "127.0.0.1:0", Name: "br", Seed: 7, Generator: "flat",
+		Reg: voxel.NewRegistry(), Mode: BattleRoyale, ZoneInterval: time.Second, ShrinkTime: time.Second, Logf: t.Logf})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(srv.Close)
+	var bots []*bot
+	for _, n := range []string{"A", "B", "C"} {
+		bots = append(bots, newBot(t, srv.Addr().String(), n, netcode.Config{}))
+	}
+	step := func() {
+		for _, b := range bots {
+			b.step(0, 0, false)
+		}
+	}
+	phase := func(p Phase) func(int) bool {
+		return func(int) bool { step(); return bots[0].c.Round().Phase == p }
+	}
+	run(t, 3*time.Second, bots, phase(PhaseCountdown))
+	srv.call(func() { srv.m.round.Ticks = 1 }) // skip the countdown
+	run(t, 2*time.Second, bots, phase(PhasePlaying))
+	r := srv.Round()
+	for _, p := range srv.Status() {
+		if p.Dead || p.Out {
+			t.Fatalf("round started with %+v", p)
+		}
+	}
+	for _, b := range bots {
+		if r.Zone.Touches(b.ch.X, b.ch.Z, PlayerHalfWidth) {
+			t.Fatalf("%s at %.1f,%.1f outside the zone %+v", b.c.Info[b.c.Slot()].Name, b.ch.X, b.ch.Z, r.Zone)
+		}
+	}
+	run(t, 20*time.Second, bots, phase(PhaseOver))
+	wins, outs := 0, 0
+	for _, p := range srv.Status() {
+		wins += p.Wins
+		if p.Out {
+			outs++
+		}
+	}
+	if wins > 1 || outs < 2 || wins+outs != 3 {
+		t.Fatalf("round over with %d wins, %d out: %+v", wins, outs, srv.Status())
+	}
+	t.Logf("texts: %q", bots[0].texts)
+	srv.call(func() { srv.m.round.Ticks = 1 }) // skip the winner's moment
+	run(t, 3*time.Second, bots, phase(PhaseCountdown))
+	for _, p := range srv.Status() {
+		if p.Out || p.Dead {
+			t.Fatalf("next round: %+v", p)
+		}
+	}
+}
+
+// TestTeams: joiners fill the smaller team; teammates can't hurt each
+// other.
+func TestTeams(t *testing.T) {
+	srv, err := StartServer(ServerConfig{Addr: "127.0.0.1:0", Name: "tdm", Seed: 7, Generator: "flat",
+		Reg: voxel.NewRegistry(), Mode: TeamDeathmatch, Logf: t.Logf})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(srv.Close)
+	var bots []*bot
+	for _, n := range []string{"A", "B", "C"} {
+		bots = append(bots, newBot(t, srv.Addr().String(), n, netcode.Config{}))
+	}
+	run(t, 3*time.Second, bots, func(int) bool {
+		for _, b := range bots {
+			b.step(0, 0, false)
+		}
+		return bots[0].c.Info[bots[2].c.Slot()].Team != 0
+	})
+	want := []int{TeamRed, TeamBlue, TeamRed}
+	for i, b := range bots {
+		if got := bots[0].c.Info[b.c.Slot()].Team; got != want[i] {
+			t.Errorf("%d joined on team %d, want %d", i, got, want[i])
+		}
+	}
+	srv.call(func() {
+		a, b, c := srv.players[bots[0].c.Slot()], srv.players[bots[1].c.Slot()], srv.players[bots[2].c.Slot()]
+		if enemies(a, c) || !enemies(a, b) || !enemies(b, c) {
+			t.Error("teammates are enemies or enemies aren't")
+		}
+	})
+}
