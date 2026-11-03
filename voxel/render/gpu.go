@@ -874,6 +874,9 @@ func bindGroup(label string, layout *wgpu.BindGroupLayout, entries ...wgpu.BindG
 func nextDrawable() *wgpu.SurfaceTexture {
 	st, _, err := dev.surface.GetCurrentTexture()
 	if err != nil {
+		if dev.debug {
+			log.Printf("wgpu: acquire: %v", err)
+		}
 		return nil
 	}
 	return st
@@ -897,6 +900,9 @@ func present() {
 		return
 	}
 	if err := dev.surface.Present(dev.surfTex); err != nil {
+		if dev.debug {
+			log.Printf("wgpu: present: %v", err)
+		}
 		dev.w = 0
 	}
 	dev.target.Release()
