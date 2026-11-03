@@ -130,9 +130,15 @@ type spWorld struct {
 }
 
 // hostGame starts a server in this process and joins it.
-func (g *game) hostGame() error {
-	srv, err := mp.StartServer(mp.ServerConfig{Name: g.playerName + "'s game", Seed: time.Now().UnixNano() & 0xFFFFFFF,
-		Generator: "overworld", Reg: voxel.NewRegistry()})
+// An empty name is the player's, a zero seed random.
+func (g *game) hostGame(name string, seed int64, gen string) error {
+	if name == "" {
+		name = g.playerName + "'s game"
+	}
+	if seed == 0 {
+		seed = time.Now().UnixNano() & 0xFFFFFFF
+	}
+	srv, err := mp.StartServer(mp.ServerConfig{Name: name, Seed: seed, Generator: gen, Reg: voxel.NewRegistry()})
 	if err != nil {
 		return err
 	}
@@ -299,6 +305,10 @@ func (g *game) netFrame() {
 		n.frameTicks = math.Min(dt.Seconds()*mp.TickRate, 2)
 	}
 	n.lastFrame = now
+	if n.cl.Ready() { // the day is the server's
+		t, f := n.cl.WorldTime()
+		g.Eng.Renderer.Opt.Daylight = mp.Daylight(t, f)
+	}
 	n.mu.Lock()
 	for slot := range n.skinNew {
 		if !n.skinSet[slot] {
@@ -341,6 +351,9 @@ func (g *game) drawNet(alpha float64) {
 		ra.Advance(v.X-ra.x, v.Z-ra.z, n.frameTicks)
 		ra.x, ra.z = v.X, v.Z
 		ra.Pitch, ra.Sneak = v.Pitch, v.Sneak
+		if v.Protected && time.Now().UnixMilli()/150%2 == 0 {
+			continue // blinks while spawn-protected (the walk cycle runs on)
+		}
 		n.skins[i] = n.body.Skin(ra.Anim, n.skins[i])
 		tex := n.tex[v.Slot]
 		if tex == 0 {

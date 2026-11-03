@@ -60,11 +60,19 @@ Debugging models: `-lineup -species NAME -anim CLIP` stands one creature per mat
 in front of you, playing CLIP (`bind` shows the rest pose).
 
 **Multiplayer** (LAN, up to 4 players): the main menu's Multiplayer screen sets your name and skin,
-hosts a game, lists the games found on the LAN and joins one by address. `-host` and
+lists the games found on the LAN, joins one by address and creates a game (name, seed, world
+type) hosted in the game itself. `-host` and
 `-connect HOST[:PORT]` skip the menu; `-name` and `-skin NAME` preset the choice. Skins are the
 64x64 PNGs in `-skins` (default `skins/`, filled by `go run ./cmd/fetchskins`, not in git).
-Everyone carries the crossbow; a head shot kills. Placed and broken blocks (and doors) sync to
+Everyone carries the crossbow; a head shot kills. After (re)spawning a player is protected for
+3 seconds (blinking; arrows fly through). Hold Tab for the ranking (kills, deaths); it also shows
+while dead. The time of day is the server's. Placed and broken blocks (and doors) sync to
 everyone, late joiners included. The server uses UDP port 28960 (allow it in the firewall).
+
+`go run ./cmd/voxserver` is the dedicated server: no window or GPU (it builds with
+`CGO_ENABLED=0`), flags `-addr`, `-name`, `-seed`, `-gen overworld|flat`, and a console on
+stdin: `status` (the ranking with health and ping), `say TEXT`, `kick SLOT|NAME`,
+`time [set day|noon|night|midnight|N | add N | stop | run]`, `quit`.
 `go run ./cmd/mpbot -connect HOST` adds a headless test player that walks up to you (`-shoot` to fire).
 
 **Controls**
@@ -79,10 +87,11 @@ everyone, late joiners included. The server uses UDP port 28960 (allow it in the
 | F1 | help screen with all controls |
 | F or double Space | toggle flying |
 | G | toggle no-clip |
-| N | day/night |
+| N | day/night (single player) |
 | R | respawn |
 | Q | throw held item |
 | K | preview the nearest creature's animations one by one (name in the title) |
+| Tab (hold) | multiplayer ranking |
 | C | take out / put away the crossbow (from an imported pack); left click shoots arrows that arc and stick; a head shot kills; humanoids you wound fight back (crossbow carriers shoot, the rest swing a sword), and you have 10 hearts |
 | F2 | screenshot to `screenshots/<timestamp>.png`, plus a `.txt` with position, look and a command to restore the view |
 | F3 | frame stats to stdout |

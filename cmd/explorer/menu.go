@@ -2,14 +2,17 @@ package main
 
 // Menus on package ui (through uiapp, drawn over the live world): the main
 // menu (single player, multiplayer, quit), the multiplayer screen (name,
-// skin, host a LAN game, join a found or typed server) and the pause menu.
+// skin, join a found or typed server, create a game) with its create-game
+// screen, and the pause menu.
 
 import (
 	"fmt"
 	"log"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf16"
 
 	"github.com/memmaker/voxellib/app"
 	"github.com/memmaker/voxellib/i18n"
@@ -34,6 +37,7 @@ func (g *game) setupUI() {
 	}
 	u.HUD.State.Hidden = true // the explorer draws its own HUD; this one shows chat
 	g.ui = u
+	u.Top = g.drawScores
 	g.Hooks.PauseScreen = func() app.Screen { return g.ui.Screen(g.pauseMenu()) }
 }
 
@@ -152,33 +156,28 @@ func (s *mpScreen) Init(ctx *ui.Context) {
 	s.Widgets = nil
 	x := ctx.W/2 - 100
 	if s.name == nil {
-		s.name = ui.NewTextField(x, 42, 200, 20)
+		s.name = ui.NewTextField(x, 0, 200, 20)
 		s.name.MaxLen = 16
 		s.name.SetText(g.playerName)
 		s.name.OnChange = func(t string) { g.playerName = strings.TrimSpace(t) }
 		s.addr = ui.NewTextField(x, 0, 148, 20)
 		s.addr.MaxLen = 64
+		s.addr.OnEnter = func(t string) { s.join(ctx, strings.TrimSpace(t)) }
 	}
-	s.name.X = x
+	// You: name and skin.
+	s.name.X, s.name.Y = x, 42
 	s.Add(s.name)
 	s.Add(ui.NewButton(x, 66, 200, "Skin: "+g.skins[g.skinIdx].name, func() {
 		g.skinIdx = (g.skinIdx + 1) % len(g.skins)
 		s.Init(ctx)
 	}))
-	s.Add(ui.NewButton(x, 90, 200, "Host LAN game", func() {
-		s.status = "Starting server..."
-		if err := g.hostGame(); err != nil {
-			s.status = "§c" + err.Error()
-			return
-		}
-		ctx.Screens.CloseAll()
-	}))
+	// Join: the LAN games, filling the room down to the address row, and
+	// an address.
 	s.mu.Lock()
 	found := s.found
 	s.mu.Unlock()
-	// The list fills the room between "LAN games:" and the address row.
-	y := 128
-	for _, f := range found[:min(len(found), max(0, (ctx.H-28-12-24-y)/22))] {
+	y := mpListY
+	for _, f := range found[:min(len(found), max(0, (ctx.H-52-12-24-y)/22))] {
 		addr := f.Addr
 		label := fmt.Sprintf("%s (%d/%d)", f.Name, f.Players, f.Max)
 		s.Add(ui.NewButton(x, y, 200, label, func() { s.join(ctx, addr) }))
@@ -187,9 +186,14 @@ func (s *mpScreen) Init(ctx *ui.Context) {
 	s.addr.X, s.addr.Y = x, y+2
 	s.Add(s.addr)
 	s.Add(ui.NewButton(x+152, y+2, 48, "Join", func() { s.join(ctx, strings.TrimSpace(s.addr.Text)) }))
+	// Create, and leave.
+	s.Add(ui.NewButton(x, ctx.H-52, 200, "Create a game...", func() { ctx.Screens.Open(g.createScreen()) }))
 	s.Add(ui.NewButton(x, ctx.H-28, 98, "Refresh", func() { s.scan() }))
 	s.Add(ui.NewButton(x+102, ctx.H-28, 98, ctx.T("gui.back"), func() { ctx.Screens.Back() }))
 }
+
+// mpListY is where the multiplayer screen's server list starts.
+const mpListY = 104
 
 func (s *mpScreen) join(ctx *ui.Context, addr string) {
 	if addr == "" {
@@ -226,17 +230,94 @@ func (s *mpScreen) Draw(ctx *ui.Context, mx, my int, partial float32) {
 	f := ctx.Font
 	f.DrawCentered(ctx.Canvas, "Multiplayer", ctx.W/2, 12, 0xFFFFFF)
 	x := ctx.W/2 - 100
-	f.Draw(ctx.Canvas, "Name", x, 31, 0xA0A0A0, false)
+	f.Draw(ctx.Canvas, "Your name and skin", x, 31, 0xA0A0A0, false)
 	// The chosen skin's face, next to its button.
 	sk := s.g.skins[s.g.skinIdx]
 	t := ctx.Tex("voxellib:skin/" + sk.name)
 	ui.DrawTexScaled(ctx.Canvas, t, float32(x-26), 66, 20, 20, 8, 8, 8, 8, 64, 64, 0xFFFFFFFF)
 	ui.DrawTexScaled(ctx.Canvas, t, float32(x-26), 66, 20, 20, 40, 8, 8, 8, 64, 64, 0xFFFFFFFF)
-	label := "LAN games:"
+	label := "Join a LAN game, or type an address:"
 	if n == 0 {
-		label = "LAN games: none found yet (searching...)"
+		label = "Join: no LAN games yet (searching...)"
 	}
-	f.Draw(ctx.Canvas, label, x, 116, 0xA0A0A0, false)
+	f.Draw(ctx.Canvas, label, x, mpListY-12, 0xA0A0A0, false)
+	if s.status != "" {
+		f.DrawCentered(ctx.Canvas, s.status, ctx.W/2, ctx.H-63, 0xFFFFFF)
+	}
+	s.DrawWidgets(ctx, mx, my)
+}
+
+// createScreen sets up a game to host: its name in the LAN list, the
+// world seed and type.
+type createScreen struct {
+	ui.Base
+	g          *game
+	name, seed *ui.TextField
+	flat       bool
+	status     string
+}
+
+func (g *game) createScreen() ui.Screen { return &createScreen{g: g} }
+
+func (s *createScreen) Init(ctx *ui.Context) {
+	s.Widgets = nil
+	x := ctx.W/2 - 100
+	if s.name == nil {
+		s.name = ui.NewTextField(x, 0, 200, 20)
+		s.name.MaxLen = 32
+		s.name.SetText(s.g.playerName + "'s game")
+		s.seed = ui.NewTextField(x, 0, 200, 20)
+	}
+	s.name.X, s.name.Y = x, 52
+	s.seed.X, s.seed.Y = x, 92
+	s.Add(s.name)
+	s.Add(s.seed)
+	world := "World type: Overworld"
+	if s.flat {
+		world = "World type: Flat"
+	}
+	s.Add(ui.NewButton(x, 120, 200, world, func() { s.flat = !s.flat; s.Init(ctx) }))
+	s.Add(ui.NewButton(x, ctx.H-28, 98, "Create game", func() { s.create(ctx) }))
+	s.Add(ui.NewButton(x+102, ctx.H-28, 98, ctx.T("gui.cancel"), func() { ctx.Screens.Back() }))
+}
+
+func (s *createScreen) create(ctx *ui.Context) {
+	gen := "overworld"
+	if s.flat {
+		gen = "flat"
+	}
+	if err := s.g.hostGame(strings.TrimSpace(s.name.Text), seedOf(s.seed.Text), gen); err != nil {
+		s.status = "§c" + err.Error()
+		return
+	}
+	ctx.Screens.CloseAll()
+}
+
+// seedOf is the reference's seed field: a number as is, other text by its
+// (Java) hash, nothing random (0).
+func seedOf(t string) int64 {
+	t = strings.TrimSpace(t)
+	if t == "" {
+		return 0
+	}
+	if n, err := strconv.ParseInt(t, 10, 64); err == nil && n != 0 {
+		return n
+	}
+	var h int32
+	for _, r := range utf16.Encode([]rune(t)) {
+		h = 31*h + int32(r)
+	}
+	return int64(h)
+}
+
+func (s *createScreen) Draw(ctx *ui.Context, mx, my int, partial float32) {
+	ctx.DrawBackground()
+	f := ctx.Font
+	x := ctx.W/2 - 100
+	f.DrawCentered(ctx.Canvas, "Create a LAN game", ctx.W/2, 12, 0xFFFFFF)
+	f.Draw(ctx.Canvas, "Game name", x, 41, 0xA0A0A0, false)
+	f.Draw(ctx.Canvas, "Seed (blank for random)", x, 81, 0xA0A0A0, false)
+	f.DrawCentered(ctx.Canvas, fmt.Sprintf("Up to 4 players on UDP port %d", mp.DefaultPort), ctx.W/2, 150, 0xA0A0A0)
 	if s.status != "" {
 		f.DrawCentered(ctx.Canvas, s.status, ctx.W/2, ctx.H-39, 0xFFFFFF)
 	}

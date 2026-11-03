@@ -187,3 +187,46 @@ func TestSnipeAndEdits(t *testing.T) {
 		t.Fatalf("late joiner got %+v", late.edits)
 	}
 }
+
+// TestNoHitDeadOrProtected: a dead player can't be killed again and a
+// (re)spawned one is protected for ProtectTicks.
+func TestNoHitDeadOrProtected(t *testing.T) {
+	srv := startServer(t, nil)
+	a := newBot(t, srv.Addr().String(), "A", netcode.Config{})
+	b := newBot(t, srv.Addr().String(), "B", netcode.Config{})
+	run(t, 3*time.Second, nil, func(int) bool {
+		a.step(0, 0, false)
+		b.step(0, 0, false)
+		return a.c.Ready() && b.c.Ready()
+	})
+	shoot := func() (health int, dead, protected bool) {
+		srv.call(func() {
+			shooter, victim := srv.players[a.c.Slot()], srv.players[b.c.Slot()]
+			var w projectile.World
+			srv.hit(shooter, victim, w.Shoot(0, 0, 0, 0, 0, projectile.Speed))
+			health, dead, protected = victim.health, victim.dead > 0, victim.protect > 0
+		})
+		return
+	}
+	if h, _, p := shoot(); h != MaxHealth || !p {
+		t.Fatalf("just spawned: health %d, protected %v", h, p)
+	}
+	var deaths int
+	srv.call(func() {
+		v := srv.players[b.c.Slot()]
+		v.protect = 0
+		deaths = v.deaths
+	})
+	for range MaxHealth/ArrowDamage + 1 {
+		shoot()
+	}
+	h, dead, _ := shoot()
+	srv.call(func() { deaths = srv.players[b.c.Slot()].deaths - deaths })
+	if h != 0 || !dead || deaths != 1 {
+		t.Fatalf("after shooting the dead: health %d, dead %v, died %d times", h, dead, deaths)
+	}
+	srv.call(func() { srv.respawn(srv.players[b.c.Slot()]) })
+	if h, _, p := shoot(); h != MaxHealth || !p {
+		t.Fatalf("respawned: health %d, protected %v", h, p)
+	}
+}

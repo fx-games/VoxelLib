@@ -124,7 +124,7 @@ func nearest(c *mp.Client, ch *character.Character, name string) (mp.PlayerView,
 		if name != "" && c.Info[v.Slot].Name != name {
 			continue
 		}
-		if d := math.Hypot(v.X-ch.X, v.Z-ch.Z); !v.Dead && d < bd {
+		if d := math.Hypot(v.X-ch.X, v.Z-ch.Z); !v.Dead && !v.Protected && d < bd {
 			best, bd = v, d
 		}
 	}

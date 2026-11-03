@@ -11,7 +11,7 @@ import (
 // Protocol is the netcode protocol id: "VLMP" plus a version byte. Bump the
 // version on any wire change; older peers are refused and stay invisible to
 // discovery.
-const Protocol = 0x564C4D00 | 1
+const Protocol = 0x564C4D00 | 3
 
 // DefaultPort is the server's UDP port.
 const DefaultPort = 28960
@@ -213,7 +213,8 @@ type PlayerState struct {
 	FallDistance        float64
 	Health              int
 	Dead                bool
-	Reload              int // ticks until the crossbow can fire
+	Protected           bool // spawn protection: can't be hurt
+	Reload              int  // ticks until the crossbow can fire
 	Shots               uint16
 }
 
@@ -242,7 +243,7 @@ func (s PlayerState) encode(b *wbuf) {
 	b.f64(s.VX)
 	b.f64(s.VY)
 	b.f64(s.VZ)
-	b.u8(flag(s.OnGround, 1) | flag(s.Sprinting, 2) | flag(s.HorizontalCollision, 4) | flag(s.Dead, 8))
+	b.u8(flag(s.OnGround, 1) | flag(s.Sprinting, 2) | flag(s.HorizontalCollision, 4) | flag(s.Dead, 8) | flag(s.Protected, 16))
 	b.f32(s.FallDistance)
 	b.u8(uint8(s.Health))
 	b.u8(uint8(s.Reload))
@@ -253,6 +254,7 @@ func decodePlayerState(r *rbuf) PlayerState {
 	s := PlayerState{X: r.f64(), Y: r.f64(), Z: r.f64(), VX: r.f64(), VY: r.f64(), VZ: r.f64()}
 	f := r.u8()
 	s.OnGround, s.Sprinting, s.HorizontalCollision, s.Dead = f&1 != 0, f&2 != 0, f&4 != 0, f&8 != 0
+	s.Protected = f&16 != 0
 	s.FallDistance = r.f32()
 	s.Health, s.Reload, s.Shots = int(r.u8()), int(r.u8()), r.u16()
 	return s
@@ -274,6 +276,7 @@ type PlayerView struct {
 	Yaw, Pitch float64
 	Sneak      bool
 	Dead       bool
+	Protected  bool // spawn protection: can't be hurt
 	Health     int
 	Shots      uint16 // counts shots fired: a change means one went off
 }
@@ -287,7 +290,7 @@ func (p PlayerView) encode() []byte {
 	b.f32(p.Z)
 	b.u16(angle16(p.Yaw))
 	b.u16(angle16(p.Pitch))
-	b.u8(flag(p.Sneak, 1) | flag(p.Dead, 2))
+	b.u8(flag(p.Sneak, 1) | flag(p.Dead, 2) | flag(p.Protected, 4))
 	b.u8(uint8(p.Health))
 	b.u16(p.Shots)
 	return b
@@ -300,7 +303,7 @@ func decodePlayerView(p []byte) (PlayerView, bool) {
 	}
 	v := PlayerView{Slot: int(r.u8()), X: r.f32(), Y: r.f32(), Z: r.f32(), Yaw: unangle16(r.u16()), Pitch: unangle16(r.u16())}
 	f := r.u8()
-	v.Sneak, v.Dead = f&1 != 0, f&2 != 0
+	v.Sneak, v.Dead, v.Protected = f&1 != 0, f&2 != 0, f&4 != 0
 	v.Health, v.Shots = int(r.u8()), r.u16()
 	return v, r.err == nil
 }
@@ -367,6 +370,7 @@ const (
 	msgBlock  = 11 // x, y, z i32, state name: a block changed
 	msgHit    = 12 // attacker u8, victim u8, damage u8, flags (head, killed)
 	msgText   = 13 // a line for the chat/kill feed
+	msgScore  = 14 // slot u8, kills u16, deaths u16: a player's score changed
 )
 
 // BlockEdit is one block change.
@@ -409,6 +413,24 @@ func decodeHit(r *rbuf) Hit {
 	f := r.u8()
 	h.Head, h.Killed = f&1 != 0, f&2 != 0
 	return h
+}
+
+// Score is a player's kills and deaths.
+type Score struct {
+	Slot          int
+	Kills, Deaths int
+}
+
+func (s Score) encode() []byte {
+	b := wbuf{msgScore}
+	b.u8(uint8(s.Slot))
+	b.u16(uint16(s.Kills))
+	b.u16(uint16(s.Deaths))
+	return b
+}
+
+func decodeScore(r *rbuf) Score {
+	return Score{Slot: int(r.u8()), Kills: int(r.u16()), Deaths: int(r.u16())}
 }
 
 // PlayerInfo is who is in a slot.

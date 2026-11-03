@@ -110,7 +110,9 @@ func (s *Server) tickArrows(tick uint32) {
 		}
 		var targets []projectile.Target
 		for _, o := range s.players {
-			if o == nil || o == p {
+			// The dead and the protected have no body for arrows: they
+			// fly through.
+			if o == nil || o == p || o.dead > 0 || o.protect > 0 {
 				continue
 			}
 			if r, ok := s.rewind(o, tick, p.lag); ok {
@@ -153,10 +155,10 @@ func (s *Server) tickArrows(tick uint32) {
 
 // hit deals an arrow's damage: a head shot kills.
 func (s *Server) hit(shooter, victim *sPlayer, a *projectile.Arrow) {
-	a.Discard()
-	if victim.dead > 0 {
-		return
+	if victim.dead > 0 || victim.protect > 0 {
+		return // no one is killed twice, or on arrival (tickArrows skips them)
 	}
+	a.Discard()
 	h := Hit{Attacker: shooter.slot, Victim: victim.slot, Damage: ArrowDamage, Head: IsHead(a.Part)}
 	if h.Head {
 		h.Damage = HeadDamage
@@ -171,12 +173,20 @@ func (s *Server) hit(shooter, victim *sPlayer, a *projectile.Arrow) {
 	}
 	if victim.health <= 0 {
 		victim.health, victim.dead, h.Killed = 0, RespawnTicks, true
+		victim.deaths++
+		if shooter != victim {
+			shooter.kills++
+			s.broadcast(shooter.score().encode())
+		}
+		s.broadcast(victim.score().encode())
 		how := "shot"
 		if h.Head {
 			how = "head-shot"
 		}
 		dist := math.Sqrt(sq(victim.ch.X-shooter.ch.X) + sq(victim.ch.Y-shooter.ch.Y) + sq(victim.ch.Z-shooter.ch.Z))
-		s.broadcastText(fmt.Sprintf("%s %s %s (%.0f m)", shooter.name, how, victim.name, dist))
+		feed := fmt.Sprintf("%s %s %s (%.0f m)", shooter.name, how, victim.name, dist)
+		s.broadcastText(feed)
+		s.cfg.Logf("mp: %s", feed)
 	}
 	s.broadcast(h.encode())
 }
@@ -192,7 +202,7 @@ func (s *Server) sendSnapshot(p *sPlayer, tick uint32) {
 			continue
 		}
 		snap[uint32(o.slot+1)] = PlayerView{Slot: o.slot, X: o.ch.X, Y: o.ch.Y, Z: o.ch.Z, Yaw: o.yaw, Pitch: o.pitch,
-			Sneak: o.anim.Sneak, Dead: o.dead > 0, Health: o.health, Shots: o.shots}.encode()
+			Sneak: o.anim.Sneak, Dead: o.dead > 0, Protected: o.protect > 0, Health: o.health, Shots: o.shots}.encode()
 	}
 	for a, m := range s.arrows {
 		snap[arrowBase+m.id] = ArrowView{X: a.X, Y: a.Y, Z: a.Z, VX: a.VX, VY: a.VY, VZ: a.VZ, Yaw: a.Yaw, Pitch: a.Pitch,
@@ -201,8 +211,11 @@ func (s *Server) sendSnapshot(p *sPlayer, tick uint32) {
 	var b wbuf
 	b.u32(tick)
 	b.u32(p.last.Num)
+	b.f64(float64(s.time))
+	b.u8(flag(s.frozen, 1))
 	st := stateOf(p.ch)
 	st.Health, st.Dead, st.Reload, st.Shots = p.health, p.dead > 0, p.reload, p.shots
+	st.Protected = p.protect > 0
 	st.encode(&b)
 	seq := s.net.NextSeq(p.slot)
 	payload := p.enc.Encode(b, seq, s.net.Acked(p.slot), snap)

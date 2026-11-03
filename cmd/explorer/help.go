@@ -37,6 +37,7 @@ var helpLines = [][2]string{
 	{"N", "day / night"},
 	{"R", "respawn"},
 	{"K", "preview nearest creature's animations"},
+	{"Tab", "multiplayer ranking (hold)"},
 	{"C", "take out / put away the crossbow (LMB shoots)"},
 	{"F2", "screenshot to screenshots/ (with position)"},
 	{"F3", "frame stats on stdout"},

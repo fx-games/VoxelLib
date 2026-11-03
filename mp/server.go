@@ -24,6 +24,9 @@ const (
 	HeadDamage   = MaxHealth
 	ReloadTicks  = 8 // the explorer's repeating crossbow: 2.5 shots a second
 	RespawnTicks = 3 * TickRate
+	// ProtectTicks after (re)spawning a player can't be hurt and arrows
+	// fly through them (EntityPlayerMP.respawnInvulnerabilityTicks).
+	ProtectTicks = 60
 	// historyTicks of player poses are kept for lag compensation.
 	historyTicks = 32
 	// maxLag caps how far back a shooter's view is rewound (ticks).
@@ -63,14 +66,17 @@ type Server struct {
 	body  *Body
 
 	tick    uint32 // atomic: the AcceptFunc reads it
+	time    int64  // world time (see DayLength)
+	frozen  bool   // the time stands still
 	spawn   [3]float64
 	players [4]*sPlayer
 	arrows  map[*projectile.Arrow]arrowMeta
 	nextID  uint32
 
-	stop chan struct{}
-	done chan struct{}
-	once sync.Once
+	calls chan func() // run on the server goroutine (the console)
+	stop  chan struct{}
+	done  chan struct{}
+	once  sync.Once
 }
 
 type sPlayer struct {
@@ -84,11 +90,14 @@ type sPlayer struct {
 	yaw   float64
 	pitch float64
 
-	health int
-	dead   int // ticks until respawn while dead
-	reload int
-	shots  uint16
-	lag    float64 // smoothed ticks between the server's time and what the player saw
+	health  int
+	dead    int // ticks until respawn while dead
+	protect int // ticks of spawn protection left
+	reload  int
+	shots   uint16
+	kills   int
+	deaths  int
+	lag     float64 // smoothed ticks between the server's time and what the player saw
 
 	hist   [historyTicks]pose
 	arrows projectile.World
@@ -129,7 +138,7 @@ func StartServer(cfg ServerConfig) (*Server, error) {
 		return nil, err
 	}
 	s := &Server{cfg: cfg, edits: NewEditLog(), body: NewBody(), arrows: map[*projectile.Arrow]arrowMeta{},
-		stop: make(chan struct{}), done: make(chan struct{})}
+		time: TimeDay, calls: make(chan func()), stop: make(chan struct{}), done: make(chan struct{})}
 	s.world = NewWorld(cfg.Reg, s.edits.Wrap(gen))
 	x, y, z := s.world.SpawnPoint(0, 0)
 	s.spawn = [3]float64{x, y, z}
@@ -158,6 +167,87 @@ func (s *Server) Close() {
 		s.net.Close()
 	})
 }
+
+func (p *sPlayer) score() Score { return Score{Slot: p.slot, Kills: p.kills, Deaths: p.deaths} }
+
+// Ranking is the players by kills, most first, then by fewest deaths.
+func (s *Server) Ranking() []PlayerStatus {
+	ps := s.Status()
+	slices.SortStableFunc(ps, func(a, b PlayerStatus) int {
+		if a.Kills != b.Kills {
+			return b.Kills - a.Kills
+		}
+		return a.Deaths - b.Deaths
+	})
+	return ps
+}
+
+// call runs f on the server goroutine and waits for it; false if the
+// server has stopped.
+func (s *Server) call(f func()) bool {
+	ran := make(chan struct{})
+	select {
+	case s.calls <- func() { f(); close(ran) }:
+		<-ran
+		return true
+	case <-s.done:
+		return false
+	}
+}
+
+// PlayerStatus is one connected player, for a server console.
+type PlayerStatus struct {
+	Slot          int
+	Name          string
+	Health        int
+	Dead          bool
+	Kills, Deaths int
+	Ping          time.Duration
+}
+
+// Status lists the connected players.
+func (s *Server) Status() []PlayerStatus {
+	var out []PlayerStatus
+	s.call(func() {
+		for _, p := range s.players {
+			if p != nil {
+				out = append(out, PlayerStatus{Slot: p.slot, Name: p.name, Health: p.health, Dead: p.dead > 0,
+					Kills: p.kills, Deaths: p.deaths, Ping: s.net.Stats(p.slot).RTT})
+			}
+		}
+	})
+	return out
+}
+
+// Say sends every player a chat line.
+func (s *Server) Say(text string) { s.call(func() { s.broadcastText(text) }) }
+
+// Kick disconnects a player; false if the slot is empty.
+func (s *Server) Kick(slot int, reason string) bool {
+	ok := false
+	s.call(func() {
+		if slot >= 0 && slot < len(s.players) && s.players[slot] != nil {
+			s.net.Kick(slot, reason)
+			ok = true
+		}
+	})
+	return ok
+}
+
+// Time is the world time (see DayLength) and whether it stands still.
+func (s *Server) Time() (t int64, frozen bool) {
+	s.call(func() { t, frozen = s.time, s.frozen })
+	return
+}
+
+// SetTime sets the world time and whether it runs; every player sees it
+// with their next snapshot.
+func (s *Server) SetTime(t int64, frozen bool) {
+	s.call(func() { s.time, s.frozen = max(t, 0), frozen })
+}
+
+// Config is what the server was started with.
+func (s *Server) Config() ServerConfig { return s.cfg }
 
 // accept answers a connect request (on the network goroutine).
 func (s *Server) accept(slot int, _ net.Addr, hello []byte) ([]byte, error) {
@@ -229,6 +319,8 @@ func (s *Server) run() {
 		select {
 		case <-s.stop:
 			return
+		case f := <-s.calls:
+			f()
 		case <-t.C:
 			frameStart.Store(time.Now().UnixNano())
 			s.frame()
@@ -267,6 +359,9 @@ func (s *Server) frame() {
 		s.handle(e)
 	}
 	tick := atomic.AddUint32(&s.tick, 1)
+	if !s.frozen {
+		s.time++
+	}
 	for _, p := range s.players {
 		if p == nil {
 			continue
@@ -275,6 +370,8 @@ func (s *Server) frame() {
 			if p.dead--; p.dead == 0 {
 				s.respawn(p)
 			}
+		} else if p.protect > 0 {
+			p.protect--
 		}
 		p.hist[tick%historyTicks] = pose{tick: tick, x: p.ch.X, y: p.ch.Y, z: p.ch.Z, yaw: p.yaw, anim: p.anim,
 			alive: p.dead == 0}
@@ -301,6 +398,7 @@ func (s *Server) handle(e netcode.Event) {
 		for _, o := range s.players {
 			if o != nil && o != p {
 				s.net.SendReliable(p.slot, PlayerInfo{Slot: o.slot, Joined: true, Name: o.name, Skin: o.skin}.encode())
+				s.net.SendReliable(p.slot, o.score().encode())
 			}
 		}
 		s.broadcast(PlayerInfo{Slot: p.slot, Joined: true, Name: p.name}.encode())
@@ -413,7 +511,7 @@ func (s *Server) respawn(p *sPlayer) {
 		}
 		*p.ch = *character.New(float64(x)+0.5, float64(y), float64(z)+0.5)
 	}
-	p.health, p.dead, p.reload = MaxHealth, 0, 0
+	p.health, p.dead, p.reload, p.protect = MaxHealth, 0, 0, ProtectTicks
 	p.anim = Anim{}
 }
 

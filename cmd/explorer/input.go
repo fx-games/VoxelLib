@@ -13,9 +13,10 @@ import (
 //	Q                 drop held item     E  open/close door
 //	F1                help screen        C  crossbow
 //	K                 preview the nearest creature's animations one by one
+//	Tab (hold)        multiplayer ranking
 func (g *game) bindKeys() {
 	for name, k := range map[string]glfw.Key{"fly": glfw.KeyF, "noclip": glfw.KeyG, "daynight": glfw.KeyN,
-		"respawn": glfw.KeyR, "drop": glfw.KeyQ, "door": glfw.KeyE, "help": glfw.KeyF1, "anim": glfw.KeyK, "crossbow": glfw.KeyC} {
+		"respawn": glfw.KeyR, "drop": glfw.KeyQ, "door": glfw.KeyE, "help": glfw.KeyF1, "anim": glfw.KeyK, "crossbow": glfw.KeyC, "scores": glfw.KeyTab} {
 		g.Input.Bind(name, app.Key(k))
 	}
 }
@@ -23,6 +24,10 @@ func (g *game) bindKeys() {
 // action handles the explorer's own actions, and left clicks while the
 // crossbow is out.
 func (g *game) action(name string, pressed bool) bool {
+	if name == "scores" {
+		g.showScores = pressed && g.net != nil
+		return true
+	}
 	if !pressed {
 		return false
 	}
@@ -32,7 +37,7 @@ func (g *game) action(name string, pressed bool) bool {
 		case app.ActAttack:
 			return g.crossbowOn() // fired by the server from the command
 		case "fly", "noclip", "respawn", "daynight", "drop", "anim":
-			return true // not in multiplayer
+			return true // not in multiplayer (the time is the server's)
 		}
 	}
 	switch name {

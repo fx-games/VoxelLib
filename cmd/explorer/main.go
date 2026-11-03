@@ -220,7 +220,7 @@ func main() {
 	}
 	switch {
 	case *host:
-		g.autoNet = func() error { return g.hostGame() }
+		g.autoNet = func() error { return g.hostGame("", 0, "overworld") }
 	case *connect != "":
 		addr := *connect
 		if !strings.Contains(addr, ":") {
@@ -262,6 +262,7 @@ type game struct {
 	pendingNote string       // why the last game ended, for the main menu
 	autoNet     func() error // -host / -connect, run in the first session
 	menuAtStart bool
+	showScores  bool // Tab held in multiplayer
 }
 
 // flagSet reports whether the flag was given on the command line.
@@ -292,6 +293,7 @@ func (g *game) start() {
 	if g.net != nil {
 		o = &options{hold: "", signFont: o.signFont, modelPack: o.modelPack} // no items, creatures or pets
 	}
+	g.Eng.Renderer.Opt.Daylight = 1 // after a multiplayer game's
 	if o.night {
 		g.Eng.Renderer.Opt.Daylight = 0.2
 	}
@@ -344,6 +346,7 @@ func (g *game) tick() {
 		g.tickItems()
 		g.tickTorches()
 		g.tickNet()
+		g.tickPlayerHealth() // the hurt flash fades
 		return
 	}
 	if g.crossbowOn() && g.Input.Down(app.ActAttack) {
