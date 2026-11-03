@@ -772,7 +772,109 @@ func collision(s JavaState) any {
 
 // regions writes the map's chunks: legacy sections (Blocks, Add, Data)
 // with plains biomes.
+// formatCode is a § formatting code (colours, bold, ...).
+var formatCode = regexp.MustCompile("§.")
+
+// signEntity is the Java 1.12 tile entity of a Bedrock sign at p: its front
+// text (FrontText.Text, or Text before 1.20) split into Text1..Text4 as
+// JSON text components, formatting codes removed. ok is false for a block
+// entity that isn't a sign or a sign without text.
+func signEntity(p [3]int, be map[string]any) (te anvil.Compound, ok bool) {
+	if Str(be, "id") != "Sign" && Str(be, "id") != "HangingSign" {
+		return nil, false
+	}
+	text := Str(be, "Text")
+	if ft, isC := be["FrontText"].(map[string]any); isC {
+		text = Str(ft, "Text")
+	}
+	text = formatCode.ReplaceAllString(text, "")
+	if strings.TrimSpace(text) == "" {
+		return nil, false
+	}
+	te = anvil.Compound{"id": "Sign", "x": int32(p[0]), "y": int32(p[1]), "z": int32(p[2])}
+	var lines []string
+	for _, l := range strings.Split(text, "\n") {
+		lines = append(lines, wrapSign(l)...)
+	}
+	for i := range 4 {
+		l := ""
+		if i < len(lines) {
+			l = lines[i]
+		}
+		j, _ := json.Marshal(l)
+		te[fmt.Sprintf("Text%d", i+1)] = string(j)
+	}
+	return te, true
+}
+
+// signLineW is the width of a Java sign line in font pixels (SignRenderer's 90).
+const signLineW = 90
+
+// glyphW is a character's advance in the vanilla font (ascii.png: ink plus
+// one pixel of spacing).
+func glyphW(r rune) int {
+	switch {
+	case strings.ContainsRune("!',.:;i|", r):
+		return 2
+	case strings.ContainsRune("`l", r):
+		return 3
+	case strings.ContainsRune(" I[]t", r):
+		return 4
+	case strings.ContainsRune("\"()*<>fk{}", r):
+		return 5
+	case r == '@' || r == '~':
+		return 7
+	}
+	return 6
+}
+
+func textW(s string) int {
+	w := 0
+	for _, r := range s {
+		w += glyphW(r)
+	}
+	return w
+}
+
+// wrapSign breaks a Bedrock sign line, which Bedrock wraps on screen, into
+// Java lines of at most signLineW pixels at spaces (a longer word is cut).
+func wrapSign(l string) []string {
+	var out []string
+	cur := ""
+	for _, w := range strings.Fields(l) {
+		for textW(w) > signLineW {
+			if cur != "" {
+				out, cur = append(out, cur), ""
+			}
+			n, cw := 0, 0
+			for _, r := range w {
+				if cw+glyphW(r) > signLineW {
+					break
+				}
+				n, cw = n+len(string(r)), cw+glyphW(r)
+			}
+			out, w = append(out, w[:n]), w[n:]
+		}
+		switch {
+		case cur == "":
+			cur = w
+		case textW(cur+" "+w) <= signLineW:
+			cur += " " + w
+		default:
+			out, cur = append(out, cur), w
+		}
+	}
+	return append(out, cur) // an empty line stays a line
+}
+
 func (e *exporter) regions(keys []uint16) error {
+	signs := map[[2]int][]any{} // tile entities by chunk
+	for p, be := range e.bes {
+		if te, ok := signEntity(p, be); ok && p[1] >= 0 && p[1] < 256 {
+			c := [2]int{p[0] >> 4, p[2] >> 4}
+			signs[c] = append(signs[c], te)
+		}
+	}
 	cols := map[[2]int][]int{}
 	for k := range e.secs {
 		cols[[2]int{k[0], k[2]}] = append(cols[[2]int{k[0], k[2]}], k[1])
@@ -812,6 +914,9 @@ func (e *exporter) regions(keys []uint16) error {
 		}
 		level := anvil.Compound{"xPos": int32(c[0]), "zPos": int32(c[1]), "Sections": anvil.List{Type: anvil.TagCompound, Items: secs},
 			"Biomes": biomes, "TerrainPopulated": int8(1)}
+		if tes := signs[c]; len(tes) > 0 {
+			level["TileEntities"] = anvil.List{Type: anvil.TagCompound, Items: tes}
+		}
 		r := [2]int{c[0] >> 5, c[1] >> 5}
 		if byRegion[r] == nil {
 			byRegion[r] = map[[2]int]anvil.Compound{}

@@ -170,6 +170,17 @@ func (m *Map) State(key string) voxel.StateID {
 // Key returns the block key of a state ("" for states not from this map).
 func (m *Map) Key(id voxel.StateID) string { return m.reg.StateString(id) }
 
+// JavaState returns the Java Edition block and its properties that a
+// state of this map was imported from ("oak_wall_sign", {facing: north});
+// name is "" when blocks.json doesn't say.
+func (m *Map) JavaState(id voxel.StateID) (name string, props map[string]string) {
+	b := m.Blocks[m.Key(id)]
+	if b == nil || b.Java == "" {
+		return "", nil
+	}
+	return voxel.ParseStateString(b.Java)
+}
+
 // Legacy resolves a numeric id and meta through ids.json; it is the
 // anvil.LegacyIDs of the map's regions.
 func (m *Map) Legacy(id uint16, meta uint8) voxel.StateID {

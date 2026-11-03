@@ -57,6 +57,7 @@ import (
 // Every other field (sounds, ...) is left to the game in Raw.
 type Block struct {
 	Key      string `json:"key"`
+	Java     string `json:"java"` // the Java Edition state it was imported from ("" none)
 	Shape    string `json:"shape"`
 	X        int    `json:"x"`
 	Y        int    `json:"y"`

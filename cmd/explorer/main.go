@@ -40,6 +40,7 @@ import (
 	"github.com/memmaker/voxellib/voxel/physics"
 	"github.com/memmaker/voxellib/voxel/render"
 	"github.com/memmaker/voxellib/voxel/respack"
+	"github.com/memmaker/voxellib/voxel/signtext"
 	"github.com/memmaker/voxellib/voxel/voxelmap"
 	"github.com/memmaker/voxellib/worldgen/flat"
 	"github.com/memmaker/voxellib/worldgen/overworld"
@@ -245,7 +246,7 @@ type game struct {
 	*app.App
 	opt     options
 	hotbar  []voxel.StateID
-	signs   *signText
+	signs   *signtext.Renderer
 	torches torchFX
 
 	itemsState
