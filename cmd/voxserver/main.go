@@ -3,6 +3,7 @@
 // console on stdin.
 //
 //	go run ./cmd/voxserver -name "Friday game" -seed 42
+//	go run ./cmd/voxserver -map minecity -mode tdm
 //
 // Console commands: status, say <text>, kick <slot|name>, quit.
 package main
@@ -28,10 +29,16 @@ func main() {
 	name := flag.String("name", "", "game name shown in the LAN list (default: the host name)")
 	seed := flag.Int64("seed", 0, "world seed (0: random)")
 	gen := flag.String("gen", "overworld", "world generator: overworld or flat")
+	mapName := flag.String("map", "", "play on a VoxelMap (a folder of -maps, e.g. minecity) instead of a generated world")
+	maps := flag.String("maps", mp.MapsDir, "directory of the VoxelMaps players can play on (every player needs the same)")
 	modeName := flag.String("mode", "dm", "game mode: dm (deathmatch), tdm (team deathmatch) or br (battle royale)")
 	interval := flag.Duration("zone-interval", mp.DefaultZoneInterval, "battle royale: how long the energy wall stands before closing in")
 	shrink := flag.Duration("zone-shrink", mp.DefaultShrinkTime, "battle royale: how long the wall takes to close in")
 	flag.Parse()
+	mp.MapsDir = *maps
+	if *mapName != "" {
+		*gen = "map:" + *mapName
+	}
 	mode, err := mp.ParseMode(*modeName)
 	if err != nil {
 		log.Fatal(err)

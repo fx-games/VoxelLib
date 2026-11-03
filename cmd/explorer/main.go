@@ -78,6 +78,7 @@ func main() {
 		cpuprof  = flag.String("cpuprofile", "", "write a CPU profile")
 		mapDir   = flag.String("map", "", "VoxelMap directory to walk (instead of -world)")
 		mapDim   = flag.Int("dim", math.MinInt, "VoxelMap dimension id (default: the map's spawn dimension)")
+		mapsDir  = flag.String("maps", mp.MapsDir, "directory of the VoxelMaps multiplayer games can be played on")
 		slot     = flag.String("slot", "", "save slot for -map: only your changes are stored there ('' = not saved)")
 		scale    = flag.Float64("scale", 1, "render the world at this fraction of the window resolution (HUD stays sharp)")
 	)
@@ -111,6 +112,7 @@ func main() {
 	flag.BoolVar(&cfg.Fullscreen, "fullscreen", false, "fullscreen on the primary monitor at its desktop (native) resolution")
 	flag.StringVar(&cfg.VSync, "vsync", "on", "frame pacing: on (vsync), limit (no vsync, sleep to max(display rate, 120Hz)), off (unlimited)")
 	flag.Parse()
+	mp.MapsDir = *mapsDir
 
 	if *cpuprof != "" {
 		f, err := os.Create(*cpuprof)

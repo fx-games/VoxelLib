@@ -26,9 +26,10 @@ type World struct {
 	Gen Generator
 }
 
-// NewWorld makes an empty world of the engine's default height.
-func NewWorld(reg *voxel.Registry, gen Generator) *World {
-	return &World{W: voxel.NewWorld(reg, -64, 384), Gen: gen}
+// NewWorld makes an empty world with the build limits of a generator
+// (see Heights).
+func NewWorld(reg *voxel.Registry, gen Generator, minY, height int) *World {
+	return &World{W: voxel.NewWorld(reg, minY, height), Gen: gen}
 }
 
 // Load makes sure the column holding block x,z exists.
@@ -124,7 +125,7 @@ func (w *World) Surface(x, z int) int {
 // leaves (a tree top) or there is liquid above it.
 func (w *World) Ground(x, z int) (int, bool) {
 	y := w.Surface(x, z)
-	top := w.W.Reg.Info(w.Block(x, y-1, z)).Name
+	top, _, _ := strings.Cut(w.W.Reg.Info(w.Block(x, y-1, z)).Name, "#") // a map block's key
 	return y, !strings.HasSuffix(top, "_leaves") && !strings.HasSuffix(top, ":leaves") && w.Liquid(x, y, z) == character.LiquidNone
 }
 

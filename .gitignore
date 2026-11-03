@@ -7,3 +7,6 @@ screenshots/
 .DS_Store
 cmd/explorer/explorer
 /skins/
+/maps/
+/voxserver
+/importbedrock

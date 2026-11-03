@@ -45,7 +45,7 @@ type ServerConfig struct {
 	Addr      string // UDP address to listen on (default ":28960")
 	Name      string // shown in discovery
 	Seed      int64
-	Generator string // "overworld" or "flat"
+	Generator string // "overworld", "flat" or "map:<name>" (see MapsDir)
 	Mode      Mode
 	// ZoneInterval is how long a battle royale wall stands before it
 	// closes in (0: DefaultZoneInterval).
@@ -72,14 +72,16 @@ type Server struct {
 	edits *EditLog
 	body  *Body
 
-	tick    uint32 // atomic: the AcceptFunc reads it
-	time    int64  // world time (see DayLength)
-	frozen  bool   // the time stands still
-	spawn   [3]float64
-	players [4]*sPlayer
-	arrows  map[*projectile.Arrow]arrowMeta
-	nextID  uint32
-	m       match
+	tick   uint32 // atomic: the AcceptFunc reads it
+	time   int64  // world time (see DayLength)
+	frozen bool   // the time stands still
+	spawn  [3]float64
+	// spawnTop is the highest ground a respawn takes.
+	spawnTop float64
+	players  [4]*sPlayer
+	arrows   map[*projectile.Arrow]arrowMeta
+	nextID   uint32
+	m        match
 
 	calls chan func() // run on the server goroutine (the console)
 	stop  chan struct{}
@@ -158,9 +160,13 @@ func StartServer(cfg ServerConfig) (*Server, error) {
 		time: TimeDay, calls: make(chan func()), stop: make(chan struct{}), done: make(chan struct{})}
 	s.m.interval = max(1, int(cfg.ZoneInterval*TickRate/time.Second))
 	s.m.shrinkTicks = max(1, int(cfg.ShrinkTime*TickRate/time.Second))
-	s.world = NewWorld(cfg.Reg, s.edits.Wrap(gen))
+	minY, height := Heights(cfg.Generator)
+	s.world = NewWorld(cfg.Reg, s.edits.Wrap(gen), minY, height)
 	x, y, z := s.world.SpawnPoint(0, 0)
-	s.spawn = [3]float64{x, y, z}
+	s.spawn, s.spawnTop = [3]float64{x, y, z}, math.Inf(1)
+	if MapName(cfg.Generator) != "" {
+		s.spawnTop = y + 3 // a map's streets, not its roofs
+	}
 	s.world.LoadAround(x, z, 32)
 
 	nc := cfg.Net
@@ -556,7 +562,7 @@ func (s *Server) respawn(p *sPlayer) {
 			x = int(math.Floor(s.spawn[0] - math.Cos(a+float64(i)*step)*r))
 			z = int(math.Floor(s.spawn[2] + math.Sin(a+float64(i)*step)*r))
 			var ok bool
-			if y, ok = s.world.Ground(x, z); ok {
+			if y, ok = s.world.Ground(x, z); ok && float64(y) <= s.spawnTop {
 				break
 			}
 		}

@@ -73,8 +73,18 @@ Everyone carries the crossbow; a head shot kills. After (re)spawning a player is
 while dead. The time of day is the server's. Placed and broken blocks (and doors) sync to
 everyone, late joiners included. The server uses UDP port 28960 (allow it in the firewall).
 
+**Maps.** Besides the generated worlds, a game can be played on any VoxelMap in `maps/` (`-maps`
+elsewhere): the create screen's world button cycles through them, and every player needs the same
+map folder. Players respawn on the streets round the map's spawn, not on roofs. Bedrock worlds
+convert with `go run ./cmd/importbedrock -in world.mcworld|.zip|DIR -jar CLIENT.jar -out
+maps/NAME`: blocks are translated to Java states (stair shapes, fence arms, door halves, double
+chests, bed and banner colours and other neighbour or block-entity details resolved at import),
+drawn with the jar's models and textures; chests, shulker boxes, banners, skulls and the bell get
+models built from their entity renderers. The map holds Mojang's textures, so `maps/` stays out
+of git.
+
 `go run ./cmd/voxserver` is the dedicated server: no window or GPU (it builds with
-`CGO_ENABLED=0`), flags `-addr`, `-name`, `-seed`, `-gen overworld|flat`, `-mode dm|tdm|br`,
+`CGO_ENABLED=0`), flags `-addr`, `-name`, `-seed`, `-gen overworld|flat`, `-map NAME` (a folder of `-maps`), `-mode dm|tdm|br`,
 `-zone-interval`, `-zone-shrink`, and a console on
 stdin: `status` (the ranking with health and ping), `say TEXT`, `kick SLOT|NAME`,
 `time [set day|noon|night|midnight|N | add N | stop | run]`, `quit`.

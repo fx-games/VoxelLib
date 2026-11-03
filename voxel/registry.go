@@ -390,6 +390,7 @@ func (r *Registry) conds(cs []Cond, flags map[string]uint16) []Cond {
 }
 
 func (r *Registry) bake(def *BlockDef, canon string, props map[string]string) StateInfo {
+	base, _, _ := strings.Cut(def.Name, "#") // a VoxelMap key: the name without its meta
 	info := StateInfo{
 		Def: def, Name: def.Name, Props: canon,
 		Shape: def.Shape, Layer: def.Layer, Tint: def.Tint, TintMask: def.TintMask,
@@ -397,8 +398,8 @@ func (r *Registry) bake(def *BlockDef, canon string, props map[string]string) St
 		Opacity: def.LightOpacity, CullSelf: def.CullSelf, Connects: def.Connects,
 		Collision: def.Collision, TintColor: def.TintColor, Level: def.Level,
 		NeighbourLight: def.NeighbourLight, PlantOffset: def.PlantOffset, Scatter: def.Scatter, UVRandom: def.UVRandom, UVSeed: def.UVSeed, UVRotate: def.UVRotate,
-		Step:  def.Shape == ShapeBoxes && (strings.HasSuffix(def.Name, "_stairs") || strings.HasSuffix(def.Name, "_slab")),
-		Climb: def.Shape == ShapeBoxes && isLadder(def.Name) || strings.HasSuffix(def.Name, "vine"),
+		Step:  def.Shape == ShapeBoxes && (strings.HasSuffix(base, "_stairs") || strings.HasSuffix(base, "_slab")),
+		Climb: def.Shape == ShapeBoxes && isLadder(base) || strings.HasSuffix(base, "vine"),
 	}
 	for _, t := range def.Tags {
 		info.Tags = append(info.Tags, r.tagID(t))

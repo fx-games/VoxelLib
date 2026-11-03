@@ -377,11 +377,27 @@ type elemRot struct {
 
 type model struct {
 	Parent   string            `json:"parent"`
-	Textures map[string]string `json:"textures"`
+	Textures map[string]texRef `json:"textures"`
 	Elements []element         `json:"elements"`
 	AO       *bool             `json:"ambientocclusion"`
 	// resolved
 	chain []string
+}
+
+// texRef is a model's texture variable: a texture id or "#var", or (since
+// 26.1) an object naming it as its "sprite".
+type texRef string
+
+func (t *texRef) UnmarshalJSON(b []byte) error {
+	if len(b) > 0 && b[0] == '{' {
+		var o struct {
+			Sprite string `json:"sprite"`
+		}
+		err := json.Unmarshal(b, &o)
+		*t = texRef(o.Sprite)
+		return err
+	}
+	return json.Unmarshal(b, (*string)(t))
 }
 
 func (p *Pack) model(id string) (*model, error) {
@@ -432,7 +448,7 @@ func (p *Pack) resolve(id string) (tex map[string]string, elems []element, chain
 		}
 		for k, v := range m.Textures {
 			if _, ok := tex[k]; !ok {
-				tex[k] = v
+				tex[k] = string(v)
 			}
 		}
 		if elems == nil && len(m.Elements) > 0 {

@@ -62,7 +62,8 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	w := mp.NewWorld(reg, c.Edits.Wrap(gen))
+	minY, height := mp.Heights(c.Welcome.Generator)
+	w := mp.NewWorld(reg, c.Edits.Wrap(gen), minY, height)
 	c.OnBlock = func(e mp.BlockEdit) { w.SetBlock(e.X, e.Y, e.Z, reg.Parse(e.State)) }
 	c.OnText = func(s string) { log.Printf("text: %s", s) }
 	c.OnHit = func(h mp.Hit) { log.Printf("hit: %+v", h) }

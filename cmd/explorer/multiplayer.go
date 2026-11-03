@@ -168,6 +168,14 @@ func (g *game) joinGame(addr string) error {
 	}
 	c := &g.Config.Engine
 	c.Generator, c.WorldDir, c.SaveDir, c.Map, c.ReadOnly = cl.Edits.Wrap(gen), "", "", nil, true
+	c.MinY, c.Height = mp.Heights(w.Generator)
+	c.Textures = g.sp.engine.Textures
+	if c.Textures == nil {
+		c.Textures = g.sp.engine.Map
+	}
+	if mg, ok := gen.(*mp.MapGen); ok { // the map's block textures first
+		c.Textures = stackedTextures{mg.Map, c.Textures}
+	}
 	g.Config.Start = &[3]float64{w.SpawnX, w.SpawnY, w.SpawnZ}
 	g.net = &netGame{cl: cl, bodyModel: -1}
 	log.Printf("mp: joined %s as slot %d (seed %d)", addr, w.Slot, w.Seed)
@@ -420,3 +428,37 @@ func (g *game) sendEdit(pos voxel.BlockPos) {
 
 func (g *game) blockBroken(pos voxel.BlockPos, _ voxel.StateID) { g.sendEdit(pos) }
 func (g *game) blockPlaced(pos voxel.BlockPos, _ voxel.StateID) { g.sendEdit(pos) }
+
+// stackedTextures looks a texture up in each source in turn.
+type stackedTextures []render.TextureSource
+
+func (s stackedTextures) Texture(name string) (image.Image, error) {
+	var err error
+	for _, t := range s {
+		var img image.Image
+		if img, err = t.Texture(name); err == nil {
+			return img, nil
+		}
+	}
+	return nil, err
+}
+
+func (s stackedTextures) TextureFrames(name string) ([]image.Image, int, error) {
+	var err error
+	for _, t := range s {
+		if a, ok := t.(render.AnimatedTextureSource); ok {
+			fs, ticks, e := a.TextureFrames(name)
+			if e == nil {
+				return fs, ticks, nil
+			}
+			err = e
+			continue
+		}
+		img, e := t.Texture(name)
+		if e == nil {
+			return []image.Image{img}, 0, nil
+		}
+		err = e
+	}
+	return nil, 0, err
+}

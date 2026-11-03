@@ -36,7 +36,7 @@ func newBot(t *testing.T, addr, name string, cfg netcode.Config) *bot {
 		t.Fatal(err)
 	}
 	b := &bot{t: t, c: c, ch: character.New(c.Welcome.SpawnX, c.Welcome.SpawnY, c.Welcome.SpawnZ)}
-	b.w = NewWorld(reg, c.Edits.Wrap(gen))
+	b.w = NewWorld(reg, c.Edits.Wrap(gen), -64, 384)
 	c.OnHit = func(h Hit) { b.hits = append(b.hits, h) }
 	c.OnBlock = func(e BlockEdit) {
 		b.edits = append(b.edits, e)

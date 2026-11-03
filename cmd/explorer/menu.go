@@ -248,17 +248,24 @@ func (s *mpScreen) Draw(ctx *ui.Context, mx, my int, partial float32) {
 }
 
 // createScreen sets up a game to host: its name in the LAN list, the
-// world seed and type.
+// world seed and type (a generator or one of the maps in mp.MapsDir).
 type createScreen struct {
 	ui.Base
 	g          *game
 	name, seed *ui.TextField
-	flat       bool
+	worlds     []mp.MapInfo
+	world      int // index into worlds
 	mode       mp.Mode
 	status     string
 }
 
-func (g *game) createScreen() ui.Screen { return &createScreen{g: g} }
+func (g *game) createScreen() ui.Screen {
+	worlds := []mp.MapInfo{{Gen: "overworld", Title: "World type: Overworld"}, {Gen: "flat", Title: "World type: Flat"}}
+	for _, m := range mp.Maps() {
+		worlds = append(worlds, mp.MapInfo{Gen: m.Gen, Title: "Map: " + m.Title})
+	}
+	return &createScreen{g: g, worlds: worlds}
+}
 
 func (s *createScreen) Init(ctx *ui.Context) {
 	s.Widgets = nil
@@ -273,11 +280,7 @@ func (s *createScreen) Init(ctx *ui.Context) {
 	s.seed.X, s.seed.Y = x, 92
 	s.Add(s.name)
 	s.Add(s.seed)
-	world := "World type: Overworld"
-	if s.flat {
-		world = "World type: Flat"
-	}
-	s.Add(ui.NewButton(x, 120, 200, world, func() { s.flat = !s.flat; s.Init(ctx) }))
+	s.Add(ui.NewButton(x, 120, 200, s.worlds[s.world].Title, func() { s.world = (s.world + 1) % len(s.worlds); s.Init(ctx) }))
 	s.Add(ui.NewButton(x, 144, 200, "Mode: "+s.mode.String(), func() {
 		s.mode = (s.mode + 1) % (mp.BattleRoyale + 1)
 		s.Init(ctx)
@@ -287,11 +290,7 @@ func (s *createScreen) Init(ctx *ui.Context) {
 }
 
 func (s *createScreen) create(ctx *ui.Context) {
-	gen := "overworld"
-	if s.flat {
-		gen = "flat"
-	}
-	if err := s.g.hostGame(strings.TrimSpace(s.name.Text), seedOf(s.seed.Text), gen, s.mode); err != nil {
+	if err := s.g.hostGame(strings.TrimSpace(s.name.Text), seedOf(s.seed.Text), s.worlds[s.world].Gen, s.mode); err != nil {
 		s.status = "§c" + err.Error()
 		return
 	}

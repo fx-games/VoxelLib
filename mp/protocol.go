@@ -90,7 +90,7 @@ func decodeHello(p []byte) (Hello, error) {
 type Welcome struct {
 	Slot      int
 	Seed      int64
-	Generator string // "overworld" or "flat"
+	Generator string // "overworld", "flat" or "map:<name>"
 	Mode      Mode
 	Tick      uint32
 	SpawnX    float64

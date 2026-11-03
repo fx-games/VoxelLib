@@ -3,7 +3,20 @@
 // worldgen.Generator and a template for writing your own.
 package flat
 
-import "github.com/memmaker/voxellib/voxel"
+import (
+	"github.com/memmaker/voxellib/voxel"
+	"github.com/memmaker/voxellib/worldgen"
+)
+
+// The classic layers by VoxelMap block keys, for maps whose dimension
+// names "minecraft:flat" (a converted flat world past its edge).
+func init() {
+	worldgen.Register("minecraft:flat", func(_ int64, b worldgen.Blocks) worldgen.Generator {
+		return &Generator{Layers: []Layer{
+			{b("minecraft:bedrock#0"), 1}, {b("minecraft:dirt#0"), 2}, {b("minecraft:grass_block#0"), 1},
+		}}
+	})
+}
 
 // Layer is a run of identical blocks, listed bottom up.
 type Layer struct {

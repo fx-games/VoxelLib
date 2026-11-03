@@ -22,6 +22,13 @@ func NewGenerator(reg *voxel.Registry, name string, seed int64) (Generator, erro
 	case "flat":
 		return flat.New(reg), nil
 	}
+	if n := MapName(name); n != "" {
+		m, err := OpenMap(reg, n)
+		if err != nil {
+			return nil, err
+		}
+		return NewMapGen(m), nil
+	}
 	return nil, fmt.Errorf("mp: unknown generator %q", name)
 }
 
