@@ -1,0 +1,157 @@
+package weapon
+
+import "fmt"
+
+// Guns: the spec of a firearm as cmd/importtacz writes it (assets/tacz/guns.json)
+// from the TACZ gun pack. Times are seconds, speeds blocks/second, angles degrees.
+
+// FireMode is how a trigger pull fires.
+type FireMode uint8
+
+const (
+	Semi FireMode = iota
+	Auto
+	Burst
+)
+
+// Bolt is the action that chambers the next round.
+type Bolt uint8
+
+const (
+	ClosedBolt   Bolt = iota // a round stays chambered: a tactical reload holds mag+1
+	OpenBolt                 // no chambered round
+	ManualAction             // pump or bolt: the "bolt" clip runs after each shot
+)
+
+// ReloadKind is how ammunition goes in.
+type ReloadKind uint8
+
+const (
+	Magazine ReloadKind = iota // one feed fills the magazine
+	Tube                       // reload_intro, then reload_loop once per round, then reload_end
+)
+
+var (
+	fireModeNames   = []string{"semi", "auto", "burst"}
+	boltNames       = []string{"closed_bolt", "open_bolt", "manual_action"}
+	reloadKindNames = []string{"magazine", "tube"}
+)
+
+func enumText(names []string, v uint8) ([]byte, error) {
+	if int(v) >= len(names) {
+		return nil, fmt.Errorf("weapon: enum value %d out of range", v)
+	}
+	return []byte(names[v]), nil
+}
+
+func enumParse(names []string, b []byte) (uint8, error) {
+	for i, n := range names {
+		if n == string(b) {
+			return uint8(i), nil
+		}
+	}
+	return 0, fmt.Errorf("weapon: unknown value %q (want one of %v)", b, names)
+}
+
+func (m FireMode) MarshalText() ([]byte, error) { return enumText(fireModeNames, uint8(m)) }
+func (m *FireMode) UnmarshalText(b []byte) error {
+	v, err := enumParse(fireModeNames, b)
+	*m = FireMode(v)
+	return err
+}
+func (b Bolt) MarshalText() ([]byte, error) { return enumText(boltNames, uint8(b)) }
+func (b *Bolt) UnmarshalText(t []byte) error {
+	v, err := enumParse(boltNames, t)
+	*b = Bolt(v)
+	return err
+}
+func (k ReloadKind) MarshalText() ([]byte, error) { return enumText(reloadKindNames, uint8(k)) }
+func (k *ReloadKind) UnmarshalText(t []byte) error {
+	v, err := enumParse(reloadKindNames, t)
+	*k = ReloadKind(v)
+	return err
+}
+
+// Falloff is the damage of a bullet up to a distance (the last entry has Dist 0: any distance).
+type Falloff struct {
+	Dist   float32 `json:"dist"`
+	Damage float32 `json:"damage"`
+}
+
+// RecoilKey is a recoil curve point: at T after the shot the camera turns by a
+// random angle in [Min, Max].
+type RecoilKey struct {
+	T   float32 `json:"t"`
+	Min float32 `json:"min"`
+	Max float32 `json:"max"`
+}
+
+// Cue is a sound event played at T seconds into a clip.
+type Cue struct {
+	T     float32 `json:"t"`
+	Sound string  `json:"sound"`
+}
+
+type Gun struct {
+	ID    string     `json:"id"`
+	Name  string     `json:"name"`
+	Class string     `json:"class"` // display group: pistol, rifle, shotgun, sniper, smg, mg, rpg
+	Ammo  string     `json:"ammo"`  // Ammo.ID
+	Mag   int        `json:"mag"`
+	RPM   float32    `json:"rpm"`
+	Modes []FireMode `json:"modes"`
+	Bolt  Bolt       `json:"bolt"`
+	Burst struct {
+		Count int     `json:"count"`
+		BPM   float32 `json:"bpm"`
+	} `json:"burst"`
+	Bullet struct {
+		Damage   float32   `json:"damage"`
+		Pellets  int       `json:"pellets"`
+		Speed    float32   `json:"speed"`
+		Gravity  float32   `json:"gravity"`
+		Pierce   int       `json:"pierce"`
+		Headshot float32   `json:"headshot"`
+		Falloff  []Falloff `json:"falloff"`
+	} `json:"bullet"`
+	Reload struct {
+		Kind ReloadKind `json:"kind"`
+		// Magazine: the rounds go in at Feed, the reload ends at Done.
+		FeedEmpty    float32 `json:"feed_empty"`
+		FeedTactical float32 `json:"feed_tactical"`
+		DoneEmpty    float32 `json:"done_empty"`
+		DoneTactical float32 `json:"done_tactical"`
+	} `json:"reload"`
+	Draw    float32 `json:"draw"`
+	PutAway float32 `json:"put_away"`
+	Aim     float32 `json:"aim"`
+	Recoil  struct {
+		Pitch []RecoilKey `json:"pitch"`
+		Yaw   []RecoilKey `json:"yaw"`
+	} `json:"recoil"`
+	Inaccuracy struct {
+		Stand float32 `json:"stand"`
+		Move  float32 `json:"move"`
+		Sneak float32 `json:"sneak"`
+		Aim   float32 `json:"aim"`
+	} `json:"inaccuracy"`
+	Zoom  float32          `json:"zoom"`  // iron sight magnification
+	Model string           `json:"model"` // glTF path in the pack dir
+	Icon  string           `json:"icon"`  // slot sprite path in the pack dir
+	Shoot string           `json:"shoot"` // sound events
+	Dry   string           `json:"dry"`
+	Cues  map[string][]Cue `json:"cues"` // clip name → sounds
+}
+
+type Ammo struct {
+	ID    string `json:"id"`
+	Name  string `json:"name"`
+	Stack int    `json:"stack"`
+	Icon  string `json:"icon"`
+}
+
+// Pack is assets/tacz/guns.json.
+type Pack struct {
+	Guns []Gun  `json:"guns"`
+	Ammo []Ammo `json:"ammo"`
+}

@@ -194,39 +194,7 @@ func (a *Animator) Skin(dst []mgl32.Mat4) []mgl32.Mat4 {
 		a.scratch = make([]pose, n)
 	}
 	a.poses, a.world = a.poses[:n], a.world[:n]
-	euler := a.scratch[:n] // .t holds the Euler accumulator
-	for i, b := range m.Bones {
-		a.poses[i] = pose{b.T, b.R, b.S}
-		euler[i].t = b.Euler
-	}
-	if c := a.Clip; c != nil {
-		for _, ch := range c.Channels {
-			if ch.Bone < 0 || ch.Bone >= n {
-				continue
-			}
-			v := ch.Track.Sample(a.Time)
-			p := &a.poses[ch.Bone]
-			switch {
-			case ch.Target == Translation && ch.Additive:
-				p.t = p.t.Add(v.Vec3())
-			case ch.Target == Translation:
-				p.t = v.Vec3()
-			case ch.Target == Rotation && ch.Additive:
-				euler[ch.Bone].t = euler[ch.Bone].t.Add(v.Vec3())
-			case ch.Target == Rotation:
-				p.r = mgl32.Quat{W: v[3], V: v.Vec3()}.Normalize()
-			case ch.Target == Scale && ch.Additive:
-				p.s = mgl32.Vec3{p.s[0] * v[0], p.s[1] * v[1], p.s[2] * v[2]}
-			case ch.Target == Scale:
-				p.s = v.Vec3()
-			}
-		}
-	}
-	for i, b := range m.Bones {
-		if b.UseEuler {
-			a.poses[i].r = EulerZYX(euler[i].t)
-		}
-	}
+	m.localPoses(a.Clip, a.Time, a.poses, a.scratch[:n])
 	if a.fade > 0 && len(a.prev) == n {
 		f := 1 - a.fade/a.FadeTime
 		for i := range a.poses {
@@ -253,6 +221,136 @@ func (a *Animator) Skin(dst []mgl32.Mat4) []mgl32.Mat4 {
 	}
 	return dst
 }
+
+// localPoses fills poses with every bone's local pose under clip c at time
+// t (nil c: the bind pose); euler is scratch of the same length.
+func (m *Model) localPoses(c *Clip, t float32, poses, euler []pose) {
+	n := len(m.Bones)
+	for i, b := range m.Bones {
+		poses[i] = pose{b.T, b.R, b.S}
+		euler[i].t = b.Euler
+	}
+	if c != nil {
+		for _, ch := range c.Channels {
+			if ch.Bone < 0 || ch.Bone >= n {
+				continue
+			}
+			v := ch.Track.Sample(t)
+			p := &poses[ch.Bone]
+			switch {
+			case ch.Target == Translation && ch.Additive:
+				p.t = p.t.Add(v.Vec3())
+			case ch.Target == Translation:
+				p.t = v.Vec3()
+			case ch.Target == Rotation && ch.Additive:
+				euler[ch.Bone].t = euler[ch.Bone].t.Add(v.Vec3())
+			case ch.Target == Rotation:
+				p.r = mgl32.Quat{W: v[3], V: v.Vec3()}.Normalize()
+			case ch.Target == Scale && ch.Additive:
+				p.s = mgl32.Vec3{p.s[0] * v[0], p.s[1] * v[1], p.s[2] * v[2]}
+			case ch.Target == Scale:
+				p.s = v.Vec3()
+			}
+		}
+	}
+	for i, b := range m.Bones {
+		if b.UseEuler {
+			poses[i].r = EulerZYX(euler[i].t)
+		}
+	}
+}
+
+// Bake turns every clip into absolute linear keyframes sampled fps times a
+// second (plus the last frame), for the bones and targets each clip animates,
+// and gives Euler bones a plain rotation. Afterwards the model is plain glTF:
+// additive Bedrock channels and Molang tracks are gone, the poses are the same.
+func (m *Model) Bake(fps float32) {
+	n := len(m.Bones)
+	poses, euler := make([]pose, n), make([]pose, n)
+	for _, c := range m.Clips {
+		type key struct {
+			bone   int
+			target Target
+		}
+		var keys []key
+		seen := map[key]bool{}
+		for _, ch := range c.Channels {
+			k := key{ch.Bone, ch.Target}
+			if ch.Bone >= 0 && ch.Bone < n && !seen[k] {
+				seen[k] = true
+				keys = append(keys, k)
+			}
+		}
+		frames := int(c.Length*fps) + 1
+		tracks := make([]*Keyframes, len(keys))
+		for i, k := range keys {
+			tracks[i] = &Keyframes{Quat: k.target == Rotation}
+		}
+		for f := 0; f <= frames; f++ {
+			t := min(float32(f)/fps, c.Length)
+			m.localPoses(c, t, poses, euler)
+			for i, k := range keys {
+				p := poses[k.bone]
+				v := p.t.Vec4(0)
+				switch k.target {
+				case Rotation:
+					v = mgl32.Vec4{p.r.V[0], p.r.V[1], p.r.V[2], p.r.W}
+				case Scale:
+					v = p.s.Vec4(0)
+				}
+				tracks[i].Times = append(tracks[i].Times, t)
+				tracks[i].Values = append(tracks[i].Values, v)
+			}
+			if t == c.Length {
+				break
+			}
+		}
+		c.Channels = c.Channels[:0]
+		for i, k := range keys {
+			reduce(tracks[i], bakeTolerance)
+			c.Channels = append(c.Channels, Channel{Bone: k.bone, Target: k.target, Track: tracks[i]})
+		}
+	}
+	for i := range m.Bones {
+		if b := &m.Bones[i]; b.UseEuler {
+			b.R, b.UseEuler, b.Euler = EulerZYX(b.Euler), false, mgl32.Vec3{}
+		}
+	}
+}
+
+// bakeTolerance is the largest error Bake's key reduction allows: 1e-4 model
+// units (blocks) or quaternion components (about 0.01°).
+const bakeTolerance = 1e-4
+
+// reduce drops keys that interpolating their kept neighbours reproduces
+// within tol, greedily from the front; the first and last keys stay.
+func reduce(k *Keyframes, tol float32) {
+	n := len(k.Times)
+	if n < 3 {
+		return
+	}
+	times, vals := []float32{k.Times[0]}, []mgl32.Vec4{k.Values[0]}
+	a := 0
+	for b := 2; b < n; b++ {
+		// Can a..b be one segment? Every key between must lie on it.
+		ok := true
+		for i := a + 1; i < b && ok; i++ {
+			f := (k.Times[i] - k.Times[a]) / (k.Times[b] - k.Times[a])
+			seg := &Keyframes{Times: []float32{0, 1}, Values: []mgl32.Vec4{k.Values[a], k.Values[b]}, Quat: k.Quat}
+			v := seg.Sample(f)
+			for c := range 4 {
+				ok = ok && abs32(v[c]-k.Values[i][c]) <= tol
+			}
+		}
+		if !ok {
+			a = b - 1
+			times, vals = append(times, k.Times[a]), append(vals, k.Values[a])
+		}
+	}
+	k.Times, k.Values = append(times, k.Times[n-1]), append(vals, k.Values[n-1])
+}
+
+func abs32(f float32) float32 { return max(f, -f) }
 
 // BindWorld returns each bone's bind-pose world matrix (no animation);
 // importers use it to compute inverse bind matrices.
