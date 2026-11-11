@@ -12,6 +12,7 @@ import (
 // and alpha blended; additive ones glow. Neither writes depth, and alpha
 // particles are not sorted (small and short-lived, so it rarely shows).
 type ParticleRenderer struct {
+	gpuQueue
 	r   *Renderer
 	gpu gpuParticleRenderer
 	buf []float32
@@ -29,22 +30,23 @@ type particleFrame struct {
 	fog       Fog
 }
 
-// NewParticleRenderer creates the particle renderer.
+// NewParticleRenderer creates the particle renderer. Safe on any goroutine, as are SetAtlas and SetSheet: their GPU work
+// runs at the next draw (gpuQueue).
 func NewParticleRenderer(r *Renderer) (*ParticleRenderer, error) {
 	pr := &ParticleRenderer{r: r}
-	if err := pr.initGPU(); err != nil {
-		return nil, err
-	}
+	pr.queue(pr.initGPU)
 	return pr, nil
 }
 
 // SetAtlas sets the sprite atlas Particle.Sprite indexes: 16 x 16 cells
 // like the reference's particles.png.
-func (pr *ParticleRenderer) SetAtlas(img image.Image) { pr.setAtlas(img) }
+func (pr *ParticleRenderer) SetAtlas(img image.Image) { pr.queue(func() { pr.setAtlas(img) }) }
 
 // SetSheet sets sheet i (1..255) that particles with Sheet i sample by
 // their UV rectangle; a later call replaces it.
-func (pr *ParticleRenderer) SetSheet(i int, img image.Image) { pr.setSheet(i, img) }
+func (pr *ParticleRenderer) SetSheet(i int, img image.Image) {
+	pr.queue(func() { pr.setSheet(i, img) })
+}
 
 // Draw renders the particles, interpolated alpha (0..1) between ticks.
 // light gives the sky and block light (0..15) at a world position. Call
@@ -74,6 +76,8 @@ func (pr *ParticleRenderer) DrawHand(aspect float32, view mgl32.Mat4, ps []parti
 }
 
 func (pr *ParticleRenderer) draw(pf *particleFrame, origin [3]float64, ps []particles.Particle, alpha float64, light func(x, y, z float64) (sky, block uint8)) {
+	pr.lockFlush()
+	defer pr.mu.Unlock()
 	pr.begin(pf)
 	sheets := 0
 	for i := range ps {

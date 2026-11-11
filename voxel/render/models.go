@@ -21,8 +21,11 @@ var maxBonesWGSL = strconv.Itoa(MaxBones)
 // ModelRenderer draws animated models (package model) with GPU skinning,
 // lit by the world's sky/block light like the terrain and fogged alike.
 type ModelRenderer struct {
-	r      *Renderer
-	gpu    gpuModelRenderer
+	r   *Renderer
+	gpu gpuModelRenderer
+	// gpuQueue's mu also guards models and skins: Add, AddTexture and
+	// Remove may run on any goroutine.
+	gpuQueue
 	models []*gpuModel
 	skins  []*gpuSkin // textures from AddTexture; handle i+1
 }
@@ -193,7 +196,8 @@ func NewModelRenderer(r *Renderer) (*ModelRenderer, error) {
 	return mr, nil
 }
 
-// Add uploads a model and returns its handle.
+// Add queues a model's upload for the next draw and returns its handle;
+// safe on any goroutine.
 func (mr *ModelRenderer) Add(m *model.Model) (int, error) {
 	if len(m.Bones) > MaxBones {
 		return 0, fmt.Errorf("render: model %s has %d bones (max %d)", m.Name, len(m.Bones), MaxBones)
@@ -203,13 +207,16 @@ func (mr *ModelRenderer) Add(m *model.Model) (int, error) {
 	if len(texs) == 0 {
 		texs = []image.Image{whiteImage()}
 	}
-	g := mr.upload(vb, ib, texs, m.Blur)
-	g.parts, g.bones = parts, max(len(m.Bones), 1)
+	g := &gpuModel{parts: parts, bones: max(len(m.Bones), 1)}
+	blur := m.Blur
 	lo, hi := m.Bounds()
 	g.lo, g.hi = lo, hi
 	for k := 0; k < 3; k++ {
 		g.radius = max(g.radius, float32(math.Abs(float64(lo[k]))), float32(math.Abs(float64(hi[k]))))
 	}
+	mr.mu.Lock()
+	defer mr.mu.Unlock()
+	mr.pending = append(mr.pending, func() { g.vbo, g.ebo, g.textures, g.groups = mr.upload(vb, ib, texs, blur) })
 	for i, old := range mr.models { // reuse a slot freed by Remove
 		if old == nil {
 			mr.models[i] = g
@@ -223,6 +230,8 @@ func (mr *ModelRenderer) Add(m *model.Model) (int, error) {
 // Bounds returns a model's bind-pose bounds, e.g. to fit it into an icon
 // (IconView).
 func (mr *ModelRenderer) Bounds(handle int) (lo, hi mgl32.Vec3) {
+	mr.mu.Lock()
+	defer mr.mu.Unlock()
 	if handle < 0 || handle >= len(mr.models) || mr.models[handle] == nil {
 		return
 	}
@@ -260,20 +269,27 @@ func (mr *ModelRenderer) HandBounds(handle int, aspect float32, view mgl32.Mat4)
 		int(math.Ceil(float64(maxX+1)/2*w)), int(math.Ceil(float64(1-minY)/2*h)))
 }
 
-// Remove frees a model's GPU buffers and textures; its handle may be
-// reissued by a later Add.
+// Remove frees a model's GPU buffers and textures at the next draw; its
+// handle may be reissued by a later Add. Safe on any goroutine.
 func (mr *ModelRenderer) Remove(handle int) {
+	mr.mu.Lock()
+	defer mr.mu.Unlock()
 	if handle < 0 || handle >= len(mr.models) || mr.models[handle] == nil {
 		return
 	}
-	mr.models[handle].delete()
+	mr.pending = append(mr.pending, mr.models[handle].delete)
 	mr.models[handle] = nil
 }
 
-// AddTexture uploads a texture that instances can select with
-// ModelInstance.Texture, and returns its handle (never 0).
+// AddTexture queues a texture's upload for the next draw and returns the
+// handle (never 0) instances select it with in ModelInstance.Texture; safe
+// on any goroutine.
 func (mr *ModelRenderer) AddTexture(img image.Image) int {
-	mr.skins = append(mr.skins, mr.uploadSkin(img))
+	sk := &gpuSkin{}
+	mr.mu.Lock()
+	defer mr.mu.Unlock()
+	mr.pending = append(mr.pending, func() { *sk = *mr.uploadSkin(img) })
+	mr.skins = append(mr.skins, sk)
 	return len(mr.skins)
 }
 
@@ -317,6 +333,8 @@ func (mr *ModelRenderer) Draw(cam *Camera, insts []ModelInstance) {
 	if len(insts) == 0 {
 		return
 	}
+	mr.lockFlush()
+	defer mr.mu.Unlock()
 	vp := cam.ViewProj()
 	mr.begin(modelLight{vp, mr.r.CurrentFog(), mr.r.Opt.Daylight, mr.r.Opt.BlockBrightness})
 	fr := makeFrustum(vp)
@@ -381,6 +399,8 @@ func (mr *ModelRenderer) DrawHand(handle int, aspect float32, view mgl32.Mat4, s
 
 // DrawHandSkinned is DrawHand posed by skin (from model.Animator.Skin).
 func (mr *ModelRenderer) DrawHandSkinned(handle int, aspect float32, view mgl32.Mat4, skin []mgl32.Mat4, sky, block uint8) {
+	mr.lockFlush()
+	defer mr.mu.Unlock()
 	if handle < 0 || handle >= len(mr.models) {
 		return
 	}
@@ -402,6 +422,8 @@ func (mr *ModelRenderer) DrawHandSkinned(handle int, aspect float32, view mgl32.
 // instances honour their Stencil in order; later draws start on a
 // cleared depth buffer.
 func (mr *ModelRenderer) DrawHandInstance(aspect float32, view mgl32.Mat4, ins ...ModelInstance) {
+	mr.lockFlush()
+	defer mr.mu.Unlock()
 	stencil := usesStencil(ins)
 	if stencil {
 		beginHandStencil()
@@ -437,6 +459,8 @@ func toNRGBARect(img image.Image) *image.NRGBA {
 // the origin, world orientation) in the world pass, with the world's fog
 // and depth, e.g. first-person arms rendered as part of the player model.
 func (mr *ModelRenderer) DrawInWorld(handle int, cam *Camera, model mgl32.Mat4, sky, block uint8) {
+	mr.lockFlush()
+	defer mr.mu.Unlock()
 	if handle < 0 || handle >= len(mr.models) || mr.models[handle] == nil {
 		return
 	}

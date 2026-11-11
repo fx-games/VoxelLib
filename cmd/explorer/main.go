@@ -27,16 +27,19 @@ package main
 import (
 	"flag"
 	"fmt"
-	"github.com/memmaker/voxellib/ui/basepack"
-	"github.com/memmaker/voxellib/ui/nametag"
+	"io"
 	"log"
 	"math"
 	"math/rand"
 	"os"
 	"path/filepath"
 	"runtime"
+	"runtime/debug"
 	"runtime/pprof"
 	"strings"
+
+	"github.com/memmaker/voxellib/ui/basepack"
+	"github.com/memmaker/voxellib/ui/nametag"
 
 	"github.com/memmaker/voxellib/app"
 	"github.com/memmaker/voxellib/importer/tacz"
@@ -140,7 +143,18 @@ func main() {
 	flag.BoolVar(&o.sandbox, "sandbox", false, "explore the world (animals, every gun) instead of playing zombie defense; implied by -world, -map, -bench and -autofly")
 	flag.BoolVar(&cfg.Fullscreen, "fullscreen", false, "fullscreen on the primary monitor at its desktop (native) resolution")
 	flag.StringVar(&cfg.VSync, "vsync", "on", "frame pacing: on (vsync), limit (no vsync, sleep to max(display rate, 120Hz)), off (unlimited)")
+	logPath := flag.String("log", "", "also write the log and any crash trace to this file")
 	flag.Parse()
+	if *logPath != "" {
+		f, err := os.Create(*logPath)
+		if err != nil {
+			log.Fatal(err)
+		}
+		log.SetOutput(io.MultiWriter(os.Stderr, f))
+		if err := debug.SetCrashOutput(f, debug.CrashOptions{}); err != nil {
+			log.Fatal(err)
+		}
+	}
 	mp.MapsDir = *mapsDir
 	o.sandbox = o.sandbox || flagSet("world") || *mapDir != "" || cfg.Debug.Bench > 0 || cfg.Debug.AutoFly > 0
 

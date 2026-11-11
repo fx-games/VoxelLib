@@ -44,6 +44,7 @@ func (t *textureArray) allocGPU() {
 // uploadLayer writes physical layer i's mip chain (mips[l] is level l)
 // into its tile.
 func (t *textureArray) uploadLayer(i int, mips [][]byte) {
+	mustRenderThread("texture array write")
 	layer, x, y := tileOf(i, t.grid)
 	for l, px := range mips {
 		s := t.size >> l

@@ -36,9 +36,8 @@ func (pr *ParticleRenderer) setAtlas(img image.Image) {
 	pr.gpu.atlas = uploadSkyTexture(img)
 }
 
-func (pr *ParticleRenderer) initGPU() error {
+func (pr *ParticleRenderer) initGPU() {
 	pr.gpu.quad = newBuffer("particle quad", wgpu.BufferUsageVertex, bytesOf(particleCorners), 0)
-	return nil
 }
 
 func (pr *ParticleRenderer) begin(*particleFrame) {}
@@ -79,6 +78,8 @@ func (pr *ParticleRenderer) end() {}
 
 // Destroy frees the renderer's GPU objects (see ModelRenderer.Destroy).
 func (pr *ParticleRenderer) Destroy() {
+	pr.lockFlush()
+	defer pr.mu.Unlock()
 	g := &pr.gpu
 	if g.quad != nil {
 		g.quad.Release()

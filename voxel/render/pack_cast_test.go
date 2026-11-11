@@ -30,6 +30,7 @@ func TestMain(m *testing.M) {
 		glfw.WindowHint(glfw.Focused, glfw.False)
 		if win, err := glfw.CreateWindow(64, 64, "test", nil, nil); err == nil {
 			gpuOK = Init(win, false) == nil
+			renderG = 0 // tests run serially on their own goroutines: no render thread to check
 		}
 	}
 	os.Exit(m.Run())

@@ -156,6 +156,7 @@ func closeAdapter() {
 
 // Init creates the device and a surface for win; call before New.
 func Init(win *glfw.Window, vsync bool) error {
+	renderG = goroutineID()
 	// VOXELLIB_WGPU_DEBUG logs the backend's own warnings (timeouts,
 	// fallbacks); "verbose" adds its debug checks (a GL error per command).
 	if os.Getenv("VOXELLIB_WGPU_DEBUG") != "" {
@@ -245,7 +246,10 @@ func Init(win *glfw.Window, vsync bool) error {
 	if vsync {
 		dev.present = gputypes.PresentModeFifo
 	}
-	if dev.mailbox = !vsync; dev.mailbox {
+	// GL has one context, current on the render thread: acquiring off it
+	// (acquireLoop) fails with "in use", dropping draws (stale, smeared
+	// frames). GL acquires on the render thread, vsync or not.
+	if dev.mailbox = !vsync && dev.adapter.Info().Backend != gputypes.BackendGL; dev.mailbox {
 		dev.drawable, dev.acquireNext = make(chan *wgpu.SurfaceTexture, 1), make(chan struct{}, 1)
 		go acquireLoop()
 	}
@@ -811,6 +815,7 @@ func bytesOf[T any](s []T) []byte {
 
 // newBuffer creates a buffer holding data.
 func newBuffer(label string, usage gputypes.BufferUsage, data []byte, size int) *wgpu.Buffer {
+	mustRenderThread(label)
 	size = max(size, len(data), 4)
 	b, err := dev.device.CreateBuffer(&wgpu.BufferDescriptor{Label: label, Size: uint64((size + 3) &^ 3), Usage: usage | wgpu.BufferUsageCopyDst})
 	if err != nil {
@@ -823,6 +828,7 @@ func newBuffer(label string, usage gputypes.BufferUsage, data []byte, size int) 
 }
 
 func writeBuffer(b *wgpu.Buffer, off int, data []byte) {
+	mustRenderThread("buffer write")
 	if len(data)&3 != 0 {
 		data = append(data[:len(data):len(data)], make([]byte, 4-len(data)&3)...)
 	}
@@ -846,6 +852,7 @@ type texture2D struct {
 }
 
 func newTexture(label string, w, h, layers, mips int, format gputypes.TextureFormat, dim gputypes.TextureViewDimension) texture2D {
+	mustRenderThread(label)
 	t, err := dev.device.CreateTexture(&wgpu.TextureDescriptor{
 		Label: label, Size: wgpu.Extent3D{Width: uint32(w), Height: uint32(h), DepthOrArrayLayers: uint32(layers)},
 		MipLevelCount: uint32(mips), SampleCount: 1, Dimension: gputypes.TextureDimension2D, Format: format,
@@ -864,6 +871,7 @@ func newTexture(label string, w, h, layers, mips int, format gputypes.TextureFor
 
 // write uploads one layer of one mip level; bpp is bytes per texel.
 func (t texture2D) write(level, layer, w, h, bpp int, px []byte) {
+	mustRenderThread("texture write")
 	if err := dev.queue.WriteTexture(&wgpu.ImageCopyTexture{Texture: t.tex, MipLevel: uint32(level), Origin: wgpu.Origin3D{Z: uint32(layer)}},
 		px, &wgpu.ImageDataLayout{BytesPerRow: uint32(w * bpp), RowsPerImage: uint32(h)},
 		&wgpu.Extent3D{Width: uint32(w), Height: uint32(h), DepthOrArrayLayers: 1}); err != nil {
@@ -879,6 +887,7 @@ func (t texture2D) release() {
 }
 
 func bindGroup(label string, layout *wgpu.BindGroupLayout, entries ...wgpu.BindGroupEntry) *wgpu.BindGroup {
+	mustRenderThread(label)
 	bg, err := dev.device.CreateBindGroup(&wgpu.BindGroupDescriptor{Label: label, Layout: layout, Entries: entries})
 	if err != nil {
 		panic(err)

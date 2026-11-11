@@ -25,23 +25,22 @@ type gpuModel struct {
 
 func (mr *ModelRenderer) initGPU() error { return nil }
 
-func (mr *ModelRenderer) upload(vb []float32, ib []uint32, texs []image.Image, blur bool) *gpuModel {
-	g := &gpuModel{
-		vbo: newBuffer("model vertices", wgpu.BufferUsageVertex, bytesOf(vb), 0),
-		ebo: newBuffer("model indices", wgpu.BufferUsageIndex, bytesOf(ib), 0),
-	}
+// upload creates a model's GPU buffers and textures (render thread).
+func (mr *ModelRenderer) upload(vb []float32, ib []uint32, texs []image.Image, blur bool) (vbo, ebo *wgpu.Buffer, textures []texture2D, groups []*wgpu.BindGroup) {
+	vbo = newBuffer("model vertices", wgpu.BufferUsageVertex, bytesOf(vb), 0)
+	ebo = newBuffer("model indices", wgpu.BufferUsageIndex, bytesOf(ib), 0)
 	for _, img := range texs {
 		t := uploadTexture2D(img)
-		g.textures = append(g.textures, t)
+		textures = append(textures, t)
 		if blur {
-			g.groups = append(g.groups, bindGroup("texture", dev.pipes.tex2D,
+			groups = append(groups, bindGroup("texture", dev.pipes.tex2D,
 				wgpu.BindGroupEntry{Binding: 0, TextureView: t.view},
 				wgpu.BindGroupEntry{Binding: 1, Sampler: dev.linearClp}))
 		} else {
-			g.groups = append(g.groups, textureGroup(t))
+			groups = append(groups, textureGroup(t))
 		}
 	}
-	return g
+	return
 }
 
 type gpuSkin struct {
@@ -182,6 +181,8 @@ func (mr *ModelRenderer) drawGlint(p *wgpu.RenderPassEncoder, g *gpuModel, model
 // garbage collector, they are released at any time later, while the next
 // renderer is drawing.
 func (mr *ModelRenderer) Destroy() {
+	mr.lockFlush()
+	defer mr.mu.Unlock()
 	for _, g := range mr.models {
 		if g != nil {
 			g.delete()
