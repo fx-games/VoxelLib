@@ -744,6 +744,10 @@ type shadowItem struct {
 // (with group 2, and an empty group 1 where pl has none).
 func setPipe(p *wgpu.RenderPassEncoder, pl *wgpu.RenderPipeline) {
 	if dev.pk == nil {
+		if handStencil != nil {
+			setHandPipe(p, pl, *handStencil)
+			return
+		}
 		p.SetPipeline(pl)
 		return
 	}

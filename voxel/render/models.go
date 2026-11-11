@@ -98,6 +98,9 @@ type ModelInstance struct {
 	// texture (glMatrixMode(GL_TEXTURE) glTranslatef on a repeating
 	// texture), e.g. a scrolling glow; zero leaves them.
 	UVOffset [2]float32
+	// Stencil is the draw's stencil and write state in DrawHandInstance
+	// (ignored elsewhere, and in shader-pack frames).
+	Stencil HandStencil
 }
 
 // drawParams is the per-draw state of an instance.
@@ -361,12 +364,27 @@ func (mr *ModelRenderer) DrawHandSkinned(handle int, aspect float32, view mgl32.
 // depth buffer (a gun and the arms holding it), with the instance's skin,
 // texture, colour, blend, cutoff and emissive settings (its position and
 // pose fields are ignored: view places it), e.g. the first-person fire.
+//
+// When an instance has a Stencil state (outside shader-pack frames), the
+// call draws into its own depth-stencil buffer, depth and stencil cleared
+// (to 1 and 0) once at its start even within BeginHands, and the
+// instances honour their Stencil in order; later draws start on a
+// cleared depth buffer.
 func (mr *ModelRenderer) DrawHandInstance(aspect float32, view mgl32.Mat4, ins ...ModelInstance) {
-	clearHandDepth()
+	stencil := dev.pk == nil && usesStencil(ins)
+	if stencil {
+		beginHandStencil()
+		defer endHandStencil()
+	} else {
+		clearHandDepth()
+	}
 	proj := mr.r.handProj(aspect)
 	mr.begin(modelLight{proj, Fog{Start: 1e6, End: 2e6}, mr.r.Opt.Daylight, mr.r.Opt.BlockBrightness})
 	for _, in := range ins {
 		if in.Model >= 0 && in.Model < len(mr.models) {
+			if stencil {
+				handStencil = &in.Stencil
+			}
 			mr.drawModel(mr.models[in.Model], view, in.Skin, in.params())
 		}
 	}

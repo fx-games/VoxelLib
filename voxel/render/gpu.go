@@ -79,6 +79,11 @@ var dev struct {
 	worldTW    int // the world targets' size
 	worldTH    int
 
+	// handDepth is the depth-stencil buffer of DrawHandInstance calls
+	// with a stencil state (hand_stencil.go).
+	handDepth              texture2D
+	handDepthW, handDepthH int
+
 	uniforms, vertices, indirect stream
 
 	uniLayout  *wgpu.BindGroupLayout // group 0: dynamic uniform block
@@ -452,14 +457,7 @@ func curPass() *wgpu.RenderPassEncoder {
 	if dev.pass != nil || dev.enc == nil {
 		return dev.pass
 	}
-	target := dev.target
-	if dev.capturing {
-		target = dev.capTex.view
-	}
-	depthView := dev.depthView
-	if dev.inWorld {
-		target, depthView = dev.world.view, dev.worldDepth.view
-	}
+	target, depthView := frameTargets()
 	color := wgpu.RenderPassColorAttachment{View: target, LoadOp: gputypes.LoadOpLoad, StoreOp: gputypes.StoreOpStore}
 	if dev.clearNext {
 		color.LoadOp, color.ClearValue = gputypes.LoadOpClear, dev.clearColor
@@ -475,6 +473,17 @@ func curPass() *wgpu.RenderPassEncoder {
 	}
 	dev.pass, dev.clearNext, dev.clearDepth = p, false, false
 	return p
+}
+
+// frameTargets is the colour and depth view the frame draws to now.
+func frameTargets() (*wgpu.TextureView, *wgpu.TextureView) {
+	if dev.inWorld {
+		return dev.world.view, dev.worldDepth.view
+	}
+	if dev.capturing {
+		return dev.capTex.view, dev.depthView
+	}
+	return dev.target, dev.depthView
 }
 
 func endPass() {
