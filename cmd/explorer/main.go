@@ -438,14 +438,15 @@ func (g *game) tick() {
 		g.fire()
 	}
 	if g.net != nil {
-		g.tickGun() // its shots go to the server
+		g.sendCmd()
+		g.tickGun() // its shots go to the server, after the command
 		g.tickItems()
 		g.tickTorches()
 		g.tickNet()
 		g.tickPlayerHealth() // the hurt flash fades
 		return
 	}
-	if g.crossbowOn() && g.Input.Down(app.ActAttack) {
+	if g.crossbowOn() && g.Input.Down(app.ActAttack) && !g.Player.Frozen {
 		g.fire() // held down: repeat at the reload rate
 	}
 	g.tickGun()

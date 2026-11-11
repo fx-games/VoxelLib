@@ -181,7 +181,7 @@ func (p *sPlayer) colored() string {
 // pickTeam is the smaller team (Red on a tie).
 func (s *Server) pickTeam() int {
 	var n [3]int
-	for _, p := range s.players {
+	for _, p := range append(s.players[:], s.joining[:]...) {
 		if p != nil {
 			n[p.team]++
 		}

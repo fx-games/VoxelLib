@@ -106,7 +106,8 @@ func main() {
 	c.OnBlock = func(e mp.BlockEdit) { w.SetBlock(e.X, e.Y, e.Z, reg.Parse(e.State)) }
 	c.OnText = func(s string) { log.Printf("text: %s", s) }
 	c.OnHit = func(h mp.Hit) { log.Printf("hit: %+v", h) }
-	ch := character.New(c.Welcome.SpawnX, c.Welcome.SpawnY, c.Welcome.SpawnZ)
+	ch := character.New(0, 0, 0)
+	c.Welcome.Own.Apply(ch)
 	log.Printf("joined as slot %d", c.Slot())
 
 	end := time.Now().Add(*limit)

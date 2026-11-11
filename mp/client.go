@@ -1,6 +1,7 @@
 package mp
 
 import (
+	"errors"
 	"fmt"
 	"math"
 	"slices"
@@ -62,6 +63,7 @@ type Client struct {
 	// Prediction.
 	cmds     [cmdRing]predicted
 	nextCmd  uint32
+	cmdSent  bool        // Predicted sent a command: shots may follow
 	own      PlayerState // from the newest snapshot
 	ownAck   uint32      // the command it includes
 	ownFresh bool        // not reconciled yet
@@ -111,7 +113,8 @@ func Connect(addr, name string, cfg netcode.Config) (*Client, error) {
 		nc.Close()
 		return nil, err
 	}
-	return &Client{Welcome: w, Edits: NewEditLog(), Bullets: map[uint32]*RemoteBullet{}, net: nc, nextCmd: 1, serverTime: float64(w.Tick)}, nil
+	return &Client{Welcome: w, Edits: NewEditLog(), Bullets: map[uint32]*RemoteBullet{}, net: nc, nextCmd: 1, serverTime: float64(w.Tick),
+		own: w.Own, reload: w.Own.Reload, shots: w.Own.Shots, worldTime: w.Time, timeTick: w.Tick, timeFrozen: w.TimeFrozen}, nil
 }
 
 // RemoteBullet is a bullet the server fired, as a client flies and draws it.
@@ -166,8 +169,19 @@ func (c *Client) SendMelee(gun string, look Look) {
 	c.net.SendReliable(b)
 }
 
-// SendShot fires a round of the held gun; the server deals the damage.
-func (c *Client) SendShot(s Shot) { c.net.SendReliable(s.encode()) }
+// ErrNoCommand: a shot before any command, which the server would fire
+// with no input (standing, not sneaking).
+var ErrNoCommand = errors.New("mp: shot before the first command")
+
+// SendShot fires a round of the held gun; the server deals the damage. It
+// rides on the next command packet and runs before its commands, so it is
+// fired with the input of the command sent last (Predicted).
+func (c *Client) SendShot(s Shot) error {
+	if !c.cmdSent {
+		return ErrNoCommand
+	}
+	return c.net.SendReliable(s.encode())
+}
 
 // SendEdit reports a block the local player changed. It is logged at once
 // so a column that loads later shows it, and the server passes it on.
@@ -379,6 +393,7 @@ func (c *Client) Predicted(cmd Cmd, ch *character.Character, w collide.Solids) b
 		}
 	}
 	c.net.Send(encodeCmds(send))
+	c.cmdSent = true
 	return fired
 }
 
@@ -434,7 +449,7 @@ func (c *Client) Ranking() []Rank {
 // stands at the render time (a closing wall moves smoothly).
 func (c *Client) Round() Round {
 	if len(c.snaps) == 0 {
-		return Round{Mode: c.Welcome.Mode}
+		return c.Welcome.Round
 	}
 	r := c.newest().round
 	t := c.RenderTime()

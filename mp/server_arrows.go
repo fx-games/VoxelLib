@@ -212,6 +212,14 @@ func push(p *sPlayer, power, dx, dz float64) {
 
 func sq(v float64) float64 { return v * v }
 
+// state is p's own state as its snapshots and Welcome carry it.
+func (p *sPlayer) state() PlayerState {
+	st := stateOf(p.ch)
+	st.Health, st.Dead, st.Reload, st.Shots = p.health, p.dead > 0, p.reload, p.shots
+	st.Protected, st.Aim = p.protect > 0, p.aim
+	return st
+}
+
 // sendSnapshot sends one player their state and everyone else's, delta
 // compressed against the last snapshot they acknowledged.
 func (s *Server) sendSnapshot(p *sPlayer, tick uint32) {
@@ -233,10 +241,7 @@ func (s *Server) sendSnapshot(p *sPlayer, tick uint32) {
 	b.f64(float64(s.time))
 	b.u8(flag(s.frozen, 1))
 	s.m.round.encode(&b)
-	st := stateOf(p.ch)
-	st.Health, st.Dead, st.Reload, st.Shots = p.health, p.dead > 0, p.reload, p.shots
-	st.Protected, st.Aim = p.protect > 0, p.aim
-	st.encode(&b)
+	p.state().encode(&b)
 	seq := s.net.NextSeq(p.slot)
 	payload := p.enc.Encode(b, seq, s.net.Acked(p.slot), snap)
 	if _, err := s.net.Send(p.slot, payload); err != nil {

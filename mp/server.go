@@ -1,6 +1,7 @@
 package mp
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"math"
@@ -85,7 +86,10 @@ type Server struct {
 	// spawnTop is the highest ground a respawn takes.
 	spawnTop float64
 	players  [4]*sPlayer
-	arrows   map[*projectile.Arrow]arrowMeta
+	// joining are players accept placed whose Connected event has not
+	// been handled yet, by slot.
+	joining [4]*sPlayer
+	arrows  map[*projectile.Arrow]arrowMeta
 	bullets  []*sBullet
 	rng      *rand.Rand // bullet spread
 	nextID   uint32
@@ -171,6 +175,7 @@ func StartServer(cfg ServerConfig) (*Server, error) {
 	}
 	s := &Server{cfg: cfg, edits: NewEditLog(), body: NewBody(), arrows: map[*projectile.Arrow]arrowMeta{}, rng: rand.New(rand.NewSource(time.Now().UnixNano())),
 		time: TimeDay, calls: make(chan func()), stop: make(chan struct{}), done: make(chan struct{})}
+	s.m.round.Mode = cfg.Mode // before the first tick: a Welcome carries it
 	s.m.interval = max(1, int(cfg.ZoneInterval*TickRate/time.Second))
 	s.m.shrinkTicks = max(1, int(cfg.ShrinkTime*TickRate/time.Second))
 	minY, height := Heights(cfg.Generator)
@@ -306,13 +311,36 @@ func (s *Server) Round() (r Round) {
 // Config is what the server was started with.
 func (s *Server) Config() ServerConfig { return s.cfg }
 
-// accept answers a connect request (on the network goroutine).
+// accept answers a connect request (on the network goroutine): the player
+// is placed at their spawn point on the server goroutine, and the Welcome
+// carries where, so the client starts there.
 func (s *Server) accept(slot int, _ net.Addr, hello []byte) ([]byte, error) {
-	if _, err := decodeHello(hello); err != nil {
+	h, err := decodeHello(hello)
+	if err != nil {
 		return nil, err
 	}
-	return Welcome{Slot: slot, Seed: s.cfg.Seed, Generator: s.cfg.Generator, Mode: s.cfg.Mode, Tick: atomic.LoadUint32(&s.tick),
-		SpawnX: s.spawn[0], SpawnY: s.spawn[1], SpawnZ: s.spawn[2]}.encode(), nil
+	var w Welcome
+	if !s.call(func() { w = s.join(slot, h) }) {
+		return nil, errors.New("server is stopping")
+	}
+	return w.encode(), nil
+}
+
+// join makes the player connecting to slot, placed and waiting for its
+// Connected event (see joining), and their Welcome.
+func (s *Server) join(slot int, h Hello) Welcome {
+	p := &sPlayer{slot: slot, name: h.Name, ch: character.New(0, 0, 0), health: MaxHealth}
+	if p.name == "" {
+		p.name = fmt.Sprintf("Player %d", slot+1)
+	}
+	if s.cfg.Mode == TeamDeathmatch {
+		p.team = s.pickTeam()
+	}
+	s.joining[slot] = p
+	s.respawn(p)
+	s.joinedLate(p)
+	return Welcome{Slot: slot, Seed: s.cfg.Seed, Generator: s.cfg.Generator, Tick: atomic.LoadUint32(&s.tick),
+		Time: s.time, TimeFrozen: s.frozen, Round: s.m.round, Own: p.state()}
 }
 
 func (s *Server) setInfo() {
@@ -449,17 +477,13 @@ func (s *Server) frame() {
 func (s *Server) handle(e netcode.Event) {
 	switch e.Kind {
 	case netcode.Connected:
-		h, _ := decodeHello(e.Data)
-		p := &sPlayer{slot: e.Client, name: h.Name, ch: character.New(0, 0, 0), health: MaxHealth}
-		if p.name == "" {
-			p.name = fmt.Sprintf("Player %d", e.Client+1)
+		p := s.joining[e.Client]
+		if p == nil {
+			s.cfg.Logf("mp: slot %d connected without being accepted", e.Client)
+			return
 		}
-		if s.cfg.Mode == TeamDeathmatch {
-			p.team = s.pickTeam()
-		}
+		s.joining[e.Client] = nil
 		s.players[e.Client] = p
-		s.respawn(p)
-		s.joinedLate(p)
 		for _, o := range s.players {
 			if o != nil && o != p {
 				s.net.SendReliable(p.slot, o.info().encode())

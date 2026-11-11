@@ -115,6 +115,12 @@ design is covered in README.md and the comments in engine.go and render/region.g
   `App.DrawScopeView`). FOVs and aiming follow TACZ's SecondOrderDynamics.
 - **Multiplayer.** A shot is an `mp.Shot` (gun ID, pellet directions); the server casts it
   against lag-compensated players and applies damage through the same path as arrows.
+  Reliable messages run before the commands of the packet they ride on, so a client sends
+  its tick's command before queueing that tick's shot, and `Client.SendShot` refuses a shot
+  before the first command (`ErrNoCommand`); no gun ticks while the player is frozen
+  waiting for terrain. A connect places the player on the server goroutine (the
+  `netcode.AcceptFunc` runs unlocked), and the `mp.Welcome` carries their own state, the
+  world time and the round, so a client starts where its first snapshot puts it.
 
 ## Gameplay pieces
 - **`character`.** A reference-game movement model at 20 Hz: ground and air drag, sprint-jump,

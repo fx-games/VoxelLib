@@ -354,6 +354,9 @@ func cameraAt(world []mgl32.Mat4, b int) mgl32.Mat4 {
 
 // tickGun runs the held gun's cycle for one tick.
 func (g *game) tickGun() {
+	if g.Player.Frozen {
+		return // not in the world yet (terrain loading): no input, no shots
+	}
 	g.Player.MoveSpeed = character.Speed{} // default unless a gun is held
 	if !g.gunOn() {
 		g.syncGun(false)
@@ -661,7 +664,9 @@ func (g *game) shoot() {
 	look := mp.Look{Yaw: g.Cam.Yaw, Pitch: g.Cam.Pitch}
 	if g.net != nil {
 		// the server rolls the spread, flies the bullets and deals the damage
-		g.net.cl.SendShot(mp.Shot{Gun: spec.ID, Look: look, Heat: g.gun.SpreadFactor()})
+		if err := g.net.cl.SendShot(mp.Shot{Gun: spec.ID, Look: look, Heat: g.gun.SpreadFactor()}); err != nil {
+			log.Printf("mp: shot: %v", err)
+		}
 	} else {
 		p := g.Player
 		prev, now := [3]float64{p.PrevX, p.PrevY, p.PrevZ}, [3]float64{p.X, p.Y, p.Z}

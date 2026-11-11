@@ -105,7 +105,6 @@ type netGame struct {
 	cmd     mp.Cmd
 	haveCmd bool
 	dead    bool
-	edits   string // Debug.Edits held back until the first snapshot
 
 	body      *mp.Body
 	bodyModel int
@@ -215,12 +214,9 @@ func (g *game) joinGame(addr string) error {
 			c.Textures = g.sp.engine.Map
 		}
 	}
-	g.Config.Start = &[3]float64{w.SpawnX, w.SpawnY, w.SpawnZ}
-	// -edits wait for the server's spawn point (the Welcome's is the
-	// world spawn): see ride.
-	g.net = &netGame{cl: cl, bodyModel: -1, guns: map[string]*gunView{}, edits: g.Config.Debug.Edits}
-	g.Config.Debug.Edits = ""
-	log.Printf("mp: joined %s as slot %d (seed %d) at %.1f,%.1f,%.1f", addr, w.Slot, w.Seed, w.SpawnX, w.SpawnY, w.SpawnZ)
+	g.Config.Start = &[3]float64{w.Own.X, w.Own.Y, w.Own.Z} // placed by the server
+	g.net = &netGame{cl: cl, bodyModel: -1, guns: map[string]*gunView{}}
+	log.Printf("mp: joined %s as slot %d (seed %d) at %.1f,%.1f,%.1f", addr, w.Slot, w.Seed, w.Own.X, w.Own.Y, w.Own.Z)
 	g.Switch()
 	return nil
 }
@@ -327,9 +323,6 @@ func (g *game) ride(in character.Input) bool {
 		return false
 	}
 	n.cl.Reconcile(g.Player.Character, g.Terrain)
-	if n.edits != "" && n.cl.Ready() { // placed by the server now: apply next tick
-		g.Config.Debug.Edits, n.edits = n.edits, ""
-	}
 	if n.cl.Own().Dead {
 		return true
 	}
@@ -338,9 +331,11 @@ func (g *game) ride(in character.Input) bool {
 	return false
 }
 
-// tickNet runs after the player's tick: finish the command (crossbow,
-// send), take in what arrived, follow the server's health and death.
-func (g *game) tickNet() {
+// sendCmd runs first after the player's tick: finish the command
+// (crossbow) and send it. The server runs the reliable messages riding on
+// a packet before its commands, so a shot queued after this send is fired
+// with this tick's input (sneak, position), as in single player.
+func (g *game) sendCmd() {
 	n := g.net
 	if n.haveCmd {
 		if n.cl.Predicted(n.cmd, g.Player.Character, g.Terrain) {
@@ -348,6 +343,11 @@ func (g *game) tickNet() {
 		}
 		n.haveCmd = false
 	}
+}
+
+// tickNet takes in what arrived and follows the server's health and death.
+func (g *game) tickNet() {
+	n := g.net
 	n.cl.Poll()
 	n.cl.TickBullets(bulletWorld{g.Eng.World, g.Terrain})
 	if reason := n.cl.Gone(); reason != "" {
@@ -355,9 +355,7 @@ func (g *game) tickNet() {
 		return
 	}
 	own := n.cl.Own()
-	if n.cl.Ready() {
-		g.health = own.Health
-	}
+	g.health = own.Health
 	g.Player.Dead = own.Dead
 	if own.Dead && !n.dead {
 		n.mu.Lock()
@@ -382,10 +380,8 @@ func (g *game) netFrame() {
 		n.frameTicks = math.Min(dt.Seconds()*mp.TickRate, 2)
 	}
 	n.lastFrame = now
-	if n.cl.Ready() { // the day is the server's
-		t, f := n.cl.WorldTime()
-		g.Eng.Renderer.Opt.Daylight = mp.Daylight(t, f)
-	}
+	t, f := n.cl.WorldTime() // the day is the server's
+	g.Eng.Renderer.Opt.Daylight = mp.Daylight(t, f)
 	n.mu.Lock()
 	for slot := range n.skinNew {
 		if !n.skinSet[slot] {

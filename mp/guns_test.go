@@ -1,11 +1,13 @@
 package mp
 
 import (
+	"errors"
 	"fmt"
 	"math"
 	"testing"
 	"time"
 
+	"github.com/memmaker/voxellib/character"
 	"github.com/memmaker/voxellib/importer/tacz"
 	"github.com/memmaker/voxellib/netcode"
 	"github.com/memmaker/voxellib/voxel"
@@ -172,6 +174,48 @@ func TestGunShot(t *testing.T) {
 	})
 	if h := a.hits[2]; !h.Killed || !h.Gun || h.Attacker != a.c.Slot() {
 		t.Fatalf("kill hit %+v", h)
+	}
+}
+
+// TestShotAfterCommand: a shot before any command is refused (the server
+// would fire it standing); one sent after a sneaking command is fired from
+// the crouched eye.
+func TestShotAfterCommand(t *testing.T) {
+	gun := testGun("test:pistol")
+	s, err := StartServer(ServerConfig{Addr: "127.0.0.1:0", Name: "test", Seed: 7, Generator: "flat",
+		Reg: voxel.NewRegistry(), Logf: t.Logf, Gun: func(string, tacz.Choice, weapon.FireMode) (weapon.Gun, error) { return gun, nil }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(s.Close)
+	a := newBot(t, s.Addr().String(), "A", netcode.Config{})
+	if err := a.c.SendShot(Shot{Gun: gun.ID, Heat: 1}); !errors.Is(err, ErrNoCommand) {
+		t.Fatalf("shot before the first command: %v", err)
+	}
+	a.c.SendHold(Hold{Gun: gun.ID})
+	sneak := func() {
+		a.c.Poll()
+		a.c.Reconcile(a.ch, a.w)
+		in := character.Input{Sneak: true}
+		cmd := a.c.Command(in, false)
+		a.ch.Tick(a.w, in)
+		a.c.Predicted(cmd, a.ch, a.w)
+	}
+	run(t, 3*time.Second, nil, func(int) bool {
+		sneak()
+		return a.c.Ready() && a.c.Info[a.c.Slot()].Held.Gun == gun.ID
+	})
+	if err := a.c.SendShot(Shot{Gun: gun.ID, Heat: 1}); err != nil {
+		t.Fatal(err)
+	}
+	run(t, 3*time.Second, nil, func(int) bool {
+		sneak()
+		return len(a.c.Bullets) > 0
+	})
+	for _, b := range a.c.Bullets {
+		if eye := b.Pos[1] - a.ch.Y; math.Abs(eye-character.PlayerCrouchEyeHeight) > 1e-3 {
+			t.Fatalf("fired from eye height %.3f, crouched is %.3f", eye, character.PlayerCrouchEyeHeight)
+		}
 	}
 }
 

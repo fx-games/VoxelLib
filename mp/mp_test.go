@@ -35,7 +35,8 @@ func newBot(t *testing.T, addr, name string, cfg netcode.Config) *bot {
 	if err != nil {
 		t.Fatal(err)
 	}
-	b := &bot{t: t, c: c, ch: character.New(c.Welcome.SpawnX, c.Welcome.SpawnY, c.Welcome.SpawnZ)}
+	b := &bot{t: t, c: c, ch: character.New(0, 0, 0)}
+	c.Welcome.Own.Apply(b.ch)
 	b.w = NewWorld(reg, c.Edits.Wrap(gen), -64, 384)
 	c.OnHit = func(h Hit) { b.hits = append(b.hits, h) }
 	c.OnBlock = func(e BlockEdit) {
@@ -115,6 +116,38 @@ func startServer(t *testing.T, spawn func(slot int, w *World) (x, y, z float64))
 	}
 	t.Cleanup(s.Close)
 	return s
+}
+
+// TestWelcomePlaces: a joining player is placed while connecting, and the
+// Welcome carries their own state: the first snapshot agrees with it, so a
+// client starting from the Welcome never snaps.
+func TestWelcomePlaces(t *testing.T) {
+	srv := startServer(t, nil) // spread around the world spawn
+	a := newBot(t, srv.Addr().String(), "A", netcode.Config{})
+	b := newBot(t, srv.Addr().String(), "B", netcode.Config{})
+	for _, x := range []*bot{a, b} {
+		w := x.c.Welcome.Own
+		if w.Health != MaxHealth || !w.Protected || w.Dead {
+			t.Fatalf("slot %d welcome state %+v", x.c.Slot(), w)
+		}
+		if w.X == srv.spawn[0] && w.Z == srv.spawn[2] {
+			t.Fatalf("slot %d welcomed at the world spawn", x.c.Slot())
+		}
+	}
+	if a.c.Welcome.Own.X == b.c.Welcome.Own.X && a.c.Welcome.Own.Z == b.c.Welcome.Own.Z {
+		t.Fatal("both players welcomed at the same spot")
+	}
+	run(t, 3*time.Second, nil, func(int) bool {
+		a.c.Poll()
+		b.c.Poll()
+		return a.c.Ready() && b.c.Ready()
+	})
+	for _, x := range []*bot{a, b} {
+		w, s := x.c.Welcome.Own, x.c.Own()
+		if w.X != s.X || w.Y != s.Y || w.Z != s.Z {
+			t.Fatalf("slot %d welcomed at %.2f,%.2f,%.2f, first snapshot at %.2f,%.2f,%.2f", x.c.Slot(), w.X, w.Y, w.Z, s.X, s.Y, s.Z)
+		}
+	}
 }
 
 func TestSnipeAndEdits(t *testing.T) {

@@ -11,7 +11,8 @@ import (
 // AcceptFunc decides whether a client may join, given its hello, and returns
 // the reply the client receives with its Connected event (or an error, whose
 // text the client receives as the refusal reason). It runs on the server's
-// network goroutine and must not call back into the Server.
+// network goroutine, which waits for it (no packet is read meanwhile), but
+// holds no lock: it may wait for a goroutine that calls Poll or Send.
 type AcceptFunc func(slot int, addr net.Addr, hello []byte) (reply []byte, err error)
 
 // Server accepts up to Config.MaxClients clients on one UDP socket and
@@ -146,8 +147,15 @@ func (s *Server) handleConnectionless(kind byte, body []byte, from *net.UDPAddr,
 		}
 		var r []byte
 		if s.accept != nil {
+			// Unlocked: only this goroutine takes slots, so free stays free.
+			s.mu.Unlock()
 			var err error
-			if r, err = s.accept(free, from, hello); err != nil {
+			r, err = s.accept(free, from, hello)
+			s.mu.Lock()
+			if s.closed {
+				return
+			}
+			if err != nil {
 				refuse(err.Error())
 				return
 			}

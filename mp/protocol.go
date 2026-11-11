@@ -13,7 +13,7 @@ import (
 // Protocol is the netcode protocol id: "VLMP" plus a version byte. Bump the
 // version on any wire change; older peers are refused and stay invisible to
 // discovery.
-const Protocol = 0x564C4D00 | 12
+const Protocol = 0x564C4D00 | 13
 
 // DefaultPort is the server's UDP port.
 const DefaultPort = 28960
@@ -88,16 +88,17 @@ func decodeHello(p []byte) (Hello, error) {
 }
 
 // Welcome is the server's answer to a connect: everything a client needs to
-// build the same world.
+// build the same world and start in it as the first snapshot will have it:
+// the player is placed while connecting, so nothing snaps on arrival.
 type Welcome struct {
-	Slot      int
-	Seed      int64
-	Generator string // "overworld", "flat" or "map:<name>"
-	Mode      Mode
-	Tick      uint32
-	SpawnX    float64
-	SpawnY    float64
-	SpawnZ    float64
+	Slot       int
+	Seed       int64
+	Generator  string // "overworld", "flat" or "map:<name>"
+	Tick       uint32
+	Time       int64 // world time (see DayLength)
+	TimeFrozen bool
+	Round      Round
+	Own        PlayerState // the joining player, at their own spawn point
 }
 
 func (w Welcome) encode() []byte {
@@ -107,10 +108,10 @@ func (w Welcome) encode() []byte {
 	b.u32(uint32(w.Seed >> 32))
 	b.str(w.Generator)
 	b.u32(w.Tick)
-	b.f64(w.SpawnX)
-	b.f64(w.SpawnY)
-	b.f64(w.SpawnZ)
-	b.u8(uint8(w.Mode))
+	b.f64(float64(w.Time))
+	b.u8(flag(w.TimeFrozen, 1))
+	w.Round.encode(&b)
+	w.Own.encode(&b)
 	return b
 }
 
@@ -120,8 +121,9 @@ func decodeWelcome(p []byte) (Welcome, error) {
 	lo, hi := r.u32(), r.u32()
 	w.Seed = int64(uint64(hi)<<32 | uint64(lo))
 	w.Generator, w.Tick = r.str(), r.u32()
-	w.SpawnX, w.SpawnY, w.SpawnZ = r.f64(), r.f64(), r.f64()
-	w.Mode = Mode(r.u8())
+	w.Time, w.TimeFrozen = int64(r.f64()), r.u8()&1 != 0
+	w.Round = decodeRound(&r)
+	w.Own = decodePlayerState(&r)
 	return w, r.err
 }
 
