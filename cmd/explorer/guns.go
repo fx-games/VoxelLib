@@ -65,6 +65,7 @@ type gunsState struct {
 	shells    gunShells
 	hudTex    map[string]ui.Texture // HUD sprites by pack/hud path
 	heatScale float32               // HeatBarOverlay's eased scale
+	lensDisc  int                   // the scopes' view disc model (-1: not uploaded)
 	gunViews  map[string]*gunView   // by gun ID, loaded on first use
 	stock     map[string]int        // ammo ID → rounds carried
 	aim       int                   // ticks of aiming, 0..aimTicks
@@ -96,10 +97,7 @@ type gunView struct {
 	hands      [2]int // lefthand_pos, righthand_pos (-1: no arm)
 	skin       []mgl32.Mat4
 	times      []float32 // layer times saved while posing between ticks
-	// lensPlain are the scope's ring and body, drawn as TACZ draws them
-	// outside first person. ponytail: oculars and reticles wait for the
-	// hand pass stencil (BedrockAttachmentModel.renderScope).
-	lensPlain []int
+	lens       *lensView // nil: no scope
 }
 
 // gunArms draws the player's arms at a gun's hand bones as TACZ does
@@ -113,7 +111,7 @@ type gunArms struct {
 
 // setupGuns loads the gun pack and gives the player a stock of every ammo type.
 func (g *game) setupGuns() {
-	g.gunSel, g.heatScale = -1, 0.25 // HeatBarOverlay.heatScale
+	g.gunSel, g.heatScale, g.lensDisc = -1, 0.25, -1 // heatScale: HeatBarOverlay.heatScale
 	p, err := tacz.Load(os.DirFS(gunPackDir), os.DirFS(gunDefaultsDir))
 	if err != nil {
 		log.Printf("guns disabled: %v", err)
@@ -192,15 +190,8 @@ func (g *game) gunView(spec *firearm.Gun) (*gunView, error) {
 	}
 	v := &gunView{handle: h, m: m, anim: model.NewAnimator(m)}
 	if lens != nil {
-		for _, p := range []*model.Model{lens.Ring, lens.Body} {
-			if p == nil {
-				continue
-			}
-			ph, err := g.Models.Add(p)
-			if err != nil {
-				return nil, err
-			}
-			v.lensPlain = append(v.lensPlain, ph)
+		if v.lens, err = g.lensView(lens); err != nil {
+			return nil, err
 		}
 	}
 	v.anim.FadeTime = 0
@@ -463,10 +454,9 @@ func (g *game) drawGunHand(alpha float64) {
 	view := lerpMat(v.idle, v.iron, f)
 	view = mgl32.Translate3D(0, g.gun.Gun.IdleRaise*(1-f), 0).Mul4(view) // a scope's idle height adjust
 	sky, blk := g.Light(g.Cam.X, g.Cam.Y, g.Cam.Z)
-	ins := []render.ModelInstance{{Model: v.handle, Skin: v.skin, Sky: sky, Block: blk}}
-	for _, h := range v.lensPlain {
-		ins = append(ins, render.ModelInstance{Model: h, Skin: v.skin, Sky: sky, Block: blk})
-	}
+	ins := g.lensInstances(v, view, f, sky, blk)
+	gunAt := len(ins)
+	ins = append(ins, render.ModelInstance{Model: v.handle, Skin: v.skin, Sky: sky, Block: blk})
 	a := &g.arms
 	for i, b := range v.hands {
 		if b < 0 || a.model < 0 {
@@ -484,6 +474,11 @@ func (g *game) drawGunHand(alpha float64) {
 	}
 	sprites := g.drawMuzzle(v, view) // world smoke first: the hand clears depth
 	ins = g.shellInstances(v, view, g.fx.dt, sky, blk, ins)
+	if v.lens != nil && v.lens.scope {
+		for i := gunAt; i < len(ins); i++ { // not over the magnified view
+			ins[i].Stencil = render.HandStencil{Test: true, Compare: render.StencilGreater, Ref: lensView127}
+		}
+	}
 	g.Models.DrawHandInstance(float32(g.Cam.Aspect), view, ins...)
 	if g.fx.rend != nil {
 		g.fx.rend.DrawHand(float32(g.Cam.Aspect), view, sprites, sky, blk)

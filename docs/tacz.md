@@ -30,6 +30,6 @@ is the gun cycle (draw, idle, shoot, bolt, reload magazine/tube/inventory, inspe
 - [x] shells: ShellRender per shot at shell/shell_N bones (display's shell model, else the ammo's), camera space from the bone's first-frame pose
 - [x] attachments: builtin_attachments shown as TACZ shows them (adapters, <type>_pos grafts via model.Graft, bone visibility), scope aiming (scope_view_N, zoom, idle_scope_height_adjust)
 - [x] scope lens parts split out of the gun (tacz.Lens: ring, body, oculars, divisions on the gun skeleton); ring + body drawn plainly
-- [ ] scope stencil passes (renderScope/renderSight) — renderer agent adding a hand-pass stencil
+- [x] scope stencil passes: renderScope/renderBoth/renderSight order on render.HandStencil (cmd/explorer/gunlens.go); view disc at the ocular depth with the reference angular size (80/90·aim)
 - [x] heat (GunHeatData + sp_heat.lua: lock, cooling·t², rpm/inaccuracy factors; HeatBarOverlay)
 - [ ] TACZ movement/camera tracks, missing sounds, guns in multiplayer, README/ARCHITECTURE
