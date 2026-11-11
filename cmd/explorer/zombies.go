@@ -1,13 +1,11 @@
 package main
 
-// Zombies: the demo's undead come in waves. A zombie is the vanilla biped
-// (mp.Body) in the pack's zombie skin, posed as ZombieModel, always hostile
-// and never giving up; it fights through combat.go's melee (no sword, a
-// bare swing). A zombie killed while a gun is held drops a magazine's worth
-// of that gun's ammunition, picked up into the stock by walking over it.
-// Hooks elsewhere: setupZombies after the guns, tickWaves after the
-// creatures, poseCreature for the pose, kill for the loot, tickItems for
-// the pickup.
+// Zombie defense on the client (the rules and the simulation are the
+// server's: mp/zdefense.go, mp/server_zombies.go; single player is a
+// private server). Here: the zombie model (the vanilla biped in the pack's
+// zombie skin, posed as ZombieModel), the zombies drawn from the snapshots
+// with the players' hurt flash and death fall, the pickup sprites, what a
+// pickup gives, and the HUD line pointing at the nearest pickup.
 
 import (
 	"fmt"
@@ -15,63 +13,59 @@ import (
 	"log"
 	"math"
 	"os"
-	"strings"
+	"slices"
 
+	"github.com/go-gl/mathgl/mgl32"
+	"github.com/memmaker/voxellib/actors"
 	"github.com/memmaker/voxellib/importer/cuboid"
-	"github.com/memmaker/voxellib/mobs"
-	"github.com/memmaker/voxellib/model"
 	"github.com/memmaker/voxellib/mp"
+	"github.com/memmaker/voxellib/voxel/render"
 )
 
-const (
-	zombieSkinFile = "assets/pixelperfection/assets/minecraft/textures/entity/zombie/zombie.png"
-	// A wave of n holds firstWave + (n-1)·waveGrowth zombies, appearing
-	// waveNear..waveFar blocks away; the next one starts waveRest ticks
-	// after the last falls.
-	firstWave  = 4
-	waveGrowth = 2
-	waveNear   = 16
-	waveFar    = 28
-	waveRest   = 5 * 20
-	// zombieSwingTicks is how long a blow takes (the reference's swing
-	// duration), zombieAttackTicks the whole attack (blow and recovery).
-	zombieSwingTicks  = 6
-	zombieAttackTicks = 10
-	// ammoItem prefixes the item name of an ammunition pickup ("ammo:" + Ammo.ID).
-	ammoItem = "ammo:"
-)
+const zombieSkinFile = "assets/pixelperfection/assets/minecraft/textures/entity/zombie/zombie.png"
 
-type wavesState struct {
-	zombie  *species // nil: no waves
-	wave    int      // the wave running (0 before the first)
-	toSpawn int      // zombies of this wave still to appear
-	rest    int      // ticks until the next wave
-	// ammoLoot is the rounds an ammunition pickup holds by Ammo.ID: the
-	// largest magazine taking it.
-	ammoLoot map[string]int
+// zombieState is the zombie model and the pickups' sprites.
+type zombieState struct {
+	zombieBody  *mp.Body
+	zombieModel int // ModelRenderer handle; -1: none
 }
 
-// setupZombies builds the zombie species and registers the ammo pickups.
+// remoteZombie is a snapshot zombie's drawing state.
+type remoteZombie struct {
+	mp.Anim
+	x, z float64
+	// hurt counts down the red flash (ticks, from actors.MaxHurtTime on an
+	// mp.Hit); dying counts ticks since the death was seen.
+	hurt, dying float64
+	skin        []mgl32.Mat4
+	seen        bool // in this frame's snapshot
+}
+
+// setupZombies builds the zombie model and registers the pickups' sprites:
+// each gun's and ammunition's slot icon under mp.Pickup.Sprite.
 func (g *game) setupZombies() {
+	g.zombieModel = -1
 	if err := g.loadZombie(); err != nil {
-		log.Printf("zombies disabled: %v", err)
+		log.Printf("zombies not drawn: %v", err)
 	}
 	if g.gunPack == nil {
 		return
 	}
-	g.ammoLoot = map[string]int{}
 	for _, gun := range g.gunPack.Guns {
-		g.ammoLoot[gun.Ammo] = max(g.ammoLoot[gun.Ammo], gun.Mag, 1)
+		g.addIcon(mp.Pickup{Kind: mp.PickupGun, ID: gun.ID}, gun.Icon)
 	}
 	for _, a := range g.gunPack.Ammo {
-		img, err := g.gunPack.Icon(a.Icon)
-		if err != nil {
-			log.Printf("ammo %s: %v", a.ID, err)
-			continue
-		}
-		g.addItem(ammoItem+a.ID, img)
-		g.unscattered = append(g.unscattered, ammoItem+a.ID)
+		g.addIcon(mp.Pickup{Kind: mp.PickupAmmo, ID: a.ID}, a.Icon)
 	}
+}
+
+func (g *game) addIcon(p mp.Pickup, file string) {
+	img, err := g.gunPack.Icon(file)
+	if err != nil {
+		log.Printf("pickup %s: %v", p.Sprite(), err)
+		return
+	}
+	g.addItem(p.Sprite(), img)
 }
 
 func (g *game) loadZombie() error {
@@ -91,90 +85,184 @@ func (g *game) loadZombie() error {
 		return err
 	}
 	m.Name = "zombie"
-	m.Tags = map[string]bool{"humanoid": true}
 	h, err := g.Models.Add(m)
 	if err != nil {
 		return err
 	}
-	g.zombie = &species{model: m, handle: h, kind: mobs.Walker, width: 0.6, height: 1.95, eye: zombieEyeHeight, body: body}
+	g.zombieBody, g.zombieModel = body, h
 	return nil
 }
 
-// zombieEyeHeight is Zombie.getStandingEyeHeight for an adult.
-const zombieEyeHeight = 1.74
-
-// tickWaves starts waves and lets their zombies appear.
-func (g *game) tickWaves() {
-	if g.zombie == nil || !g.Ready() {
-		return
+// poseZombies poses the snapshot zombies for this frame (netPose).
+func (g *game) poseZombies() {
+	n := g.net
+	n.zinsts = n.zinsts[:0]
+	n.zviews = n.cl.Zombies(n.zviews)
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	for _, rz := range n.zombies {
+		rz.seen = false
 	}
+	for _, v := range n.zviews {
+		rz := n.zombies[v.ID]
+		if rz == nil {
+			rz = &remoteZombie{x: v.X, z: v.Z}
+			n.zombies[v.ID] = rz
+		}
+		rz.seen = true
+		rz.hurt = max(0, rz.hurt-n.frameTicks)
+		rz.Advance(v.X-rz.x, v.Z-rz.z, n.frameTicks)
+		rz.x, rz.z = v.X, v.Z
+		tilt := 0.0
+		if v.Dead {
+			rz.dying += n.frameTicks
+			tilt = deathTiltAt(rz.dying)
+		}
+		if g.zombieModel < 0 {
+			continue
+		}
+		attack := 0.0
+		if v.Attack >= 0 {
+			attack = min(float64(v.Attack)/mp.ZombieSwingTicks, 1)
+		}
+		rz.skin = g.zombieBody.ZombieSkin(rz.Anim, v.Hostile, attack, n.cl.RenderTime(), rz.skin)
+		sky, blk := g.Light(v.X, v.Y+1, v.Z)
+		in := render.ModelInstance{Model: g.zombieModel, X: v.X, Y: v.Y, Z: v.Z, Yaw: v.Yaw, Tilt: tilt, TiltYaw: v.Yaw - math.Pi/2,
+			Skin: rz.skin, Sky: sky, Block: blk}
+		if rz.hurt > 0 || v.Dead { // getOverlayCoords: hurtTime > 0 || deathTime > 0
+			in.Overlay = hurtOverlay
+		}
+		n.zinsts = append(n.zinsts, in)
+	}
+	for id, rz := range n.zombies {
+		if !rz.seen {
+			delete(n.zombies, id)
+		}
+	}
+}
+
+// zombieHurt starts a zombie's hurt flash (an mp.Hit on it).
+func (g *game) zombieHurt(id uint32) {
+	n := g.net
+	n.mu.Lock()
+	if rz := n.zombies[id]; rz != nil {
+		rz.hurt = actors.MaxHurtTime
+	}
+	n.mu.Unlock()
+}
+
+// arsenal is the guns the player has picked up, in pickup order (V cycles
+// through them, then the bare hand).
+type arsenal struct{ owned []string }
+
+// add adds a gun; it reports whether to draw it: the hand is empty.
+func (a *arsenal) add(id string, holding bool) (draw bool) {
+	if !slices.Contains(a.owned, id) {
+		a.owned = append(a.owned, id)
+	}
+	return !holding
+}
+
+// next is the gun after cur ("": none) in the arsenal, "" past the last.
+func (a *arsenal) next(cur string) string {
+	i := slices.Index(a.owned, cur) // -1 for none: the first
+	if i+1 < len(a.owned) {
+		return a.owned[i+1]
+	}
+	return ""
+}
+
+// takePickup gives the player what they picked up (mp.Client.OnPickup).
+func (g *game) takePickup(p mp.Pickup) {
+	switch p.Kind {
+	case mp.PickupGun:
+		spec := g.gunSpec(p.ID)
+		if spec == nil {
+			log.Printf("pickup: no gun %q in this pack", p.ID)
+			return
+		}
+		if g.arsenal.add(p.ID, g.gunOn() || g.switching) {
+			g.selectGunID(p.ID)
+		}
+		g.note("§aPicked up " + spec.Name)
+	case mp.PickupAmmo:
+		g.stock[p.ID] += p.Rounds
+		g.note(fmt.Sprintf("§aPicked up %d rounds of %s", p.Rounds, g.ammoName(p.ID)))
+	default:
+		log.Printf("pickup: unknown kind %d", p.Kind)
+	}
+}
+
+func (g *game) ammoName(id string) string {
+	for _, a := range g.gunPack.Ammo {
+		if a.ID == id && a.Name != "" {
+			return a.Name
+		}
+	}
+	return id
+}
+
+// loseArsenal empties the hands and the pockets (a death in zombie
+// defense: back to bare hands).
+func (g *game) loseArsenal() {
+	g.takeGun(-1)
+	g.arsenal = arsenal{}
+	clear(g.stock)
+	clear(g.loaded)
+}
+
+// note shows a line in the kill feed.
+func (g *game) note(s string) {
+	if g.ui != nil {
+		g.ui.HUD.Message(s)
+	}
+}
+
+// compass names the direction from the camera's look to a point: ahead,
+// behind, left or right.
+func compass(yaw, dx, dz float64) string {
+	a := math.Remainder(math.Atan2(dx, -dz)-yaw, 2*math.Pi)
+	switch {
+	case math.Abs(a) < math.Pi/4:
+		return "ahead"
+	case math.Abs(a) > 3*math.Pi/4:
+		return "behind"
+	case a < 0:
+		return "left"
+	}
+	return "right"
+}
+
+// defenseLine is zombie defense's top line: the zombies about, and where
+// the nearest gun (or, holding guns, ammunition) pickup lies.
+func (g *game) defenseLine() string {
+	n := g.net
 	alive := 0
-	for _, c := range g.creatures {
-		if c.sp == g.zombie && c.dying == 0 {
+	for _, v := range n.zviews {
+		if !v.Dead {
 			alive++
 		}
 	}
-	if alive == 0 && g.toSpawn == 0 {
-		if g.rest > 0 {
-			g.rest--
-			return
-		}
-		g.wave++
-		g.toSpawn, g.rest = firstWave+(g.wave-1)*waveGrowth, waveRest
-		g.debugMsg = fmt.Sprintf("wave %d: %d zombies", g.wave, g.toSpawn)
+	l := fmt.Sprintf("§cZombies: %d", alive)
+	want := mp.PickupGun
+	if len(g.arsenal.owned) > 0 {
+		want = mp.PickupAmmo
 	}
-	for tries := 0; g.toSpawn > 0 && tries < 8; tries++ {
-		x, y, z, ok := g.spawnSpot(waveNear, waveFar)
-		if !ok {
-			continue
-		}
-		m := mobs.New(mobs.Walker, x, y, z, g.zombie.width, g.zombie.height)
-		m.Yaw = g.mobRand.Float64() * 2 * math.Pi
-		c := &creature{sp: g.zombie, mob: m, anim: model.NewAnimator(g.zombie.model)}
-		g.addCreature(c)
-		g.provoke(c)
-		g.toSpawn--
-	}
-	for _, c := range g.creatures {
-		if c.sp == g.zombie && c.dying == 0 {
-			c.prevLimb = c.limb
-			c.limb.Walk(c.mob.X-c.mob.PrevX, c.mob.Z-c.mob.PrevZ)
-			c.age++
+	best, bd := mp.PickupView{}, math.Inf(1)
+	p := g.Player
+	for _, pk := range n.cl.Pickups() {
+		if d := math.Hypot(pk.X-p.X, pk.Z-p.Z); pk.Kind == want && d < bd {
+			best, bd = pk, d
 		}
 	}
-}
-
-// zombieSkin poses a zombie between the last two ticks.
-func (c *creature) zombieSkin(alpha float64) {
-	m := c.mob
-	attack := 0.0
-	if m.State == mobs.Attack {
-		attack = min((float64(m.StateTicks)+alpha)/zombieSwingTicks, 1)
-	}
-	c.skin = c.sp.body.ZombieSkin(c.prevLimb.Lerp(c.limb, alpha), m.Hostile, attack, float64(c.age)+alpha, c.skin)
-}
-
-// dropAmmo leaves a magazine of the held gun's ammunition where a zombie fell.
-func (g *game) dropAmmo(c *creature) {
-	if c.sp != g.zombie || !g.gunOn() || g.itemRend == nil {
-		return
-	}
-	if item := ammoItem + g.gun.Gun.Ammo; g.itemRend.Has(item) {
-		m := c.mob
-		g.drops.Spawn(item, m.X, m.Y+0.5, m.Z)
-	}
-}
-
-// takeAmmo moves touched ammunition pickups into the stock.
-func (g *game) takeAmmo() {
-	g.drops.Take(g.Player.Box(), func(item string) bool {
-		id, ok := strings.CutPrefix(item, ammoItem)
-		if !ok {
-			return false
+	if !math.IsInf(bd, 1) {
+		what := "gun"
+		if want == mp.PickupAmmo {
+			what = "ammo"
 		}
-		g.stock[id] += max(g.ammoLoot[id], 1)
-		return true
-	})
+		l += fmt.Sprintf("§r  Nearest %s: %.0f m %s", what, bd, compass(g.Cam.Yaw, best.X-p.X, best.Z-p.Z))
+	}
+	return l
 }
 
 // bipedLimbs gives a player geometry ModelBiped's left limbs, which the

@@ -1,6 +1,9 @@
-// Command explorer is a first-person demo of voxellib on the app shell:
-// reference-like terrain, walking, flying and swimming, block breaking and
-// placing, extruded 2D item sprites to pick up, creatures, a crossbow.
+// Command explorer is a first-person demo of voxellib on the app shell. It
+// starts in zombie defense: a private server (single player) or a LAN game
+// where zombies keep coming and TACZ guns and ammunition lie around to be
+// picked up. -sandbox (or -world, -map, -bench, -autofly) explores the
+// world instead: reference-like terrain, walking, flying and swimming,
+// block breaking and placing, animals, every gun.
 //
 //	./run.sh                                   # build and run (repo root)
 //	go run ./cmd/explorer                      # generated world saved to saves/demo
@@ -13,10 +16,12 @@
 //
 //	main.go    flags, engine config, hooks
 //	input.go   the explorer's own keys
-//	items.go   item sprites, drops, pickup, held item
-//	creatures.go  imported animated models (app entities) and their behaviour
-//	import.go  Roblox-style and Blockbench-style asset imports
-//	combat.go, crossbow.go, torches.go, signs.go, help.go: demo features
+//	items.go   item sprites: the pickups
+//	creatures.go  the animals (app entities): behaviour and deaths
+//	import.go  Roblox-style animal packs
+//	zombies.go zombie defense's client side: zombies, pickups, the arsenal
+//	guns*.go, refit.go  TACZ guns
+//	combat.go, torches.go, signs.go, help.go: demo features
 package main
 
 import (
@@ -62,10 +67,12 @@ var hotbarNames = []string{
 }
 
 type options struct {
-	itemDir, signFont, pets, modelPack, species, anim, hold, gun, press string
-	attach                                                              string // -attach: slot=attachment,... on the -gun
-	numItems, numMobs                                                   int
-	night, fly, lineup, help, aim                                       bool
+	signFont, pets, species, anim, gun, press string
+	attach                                    string // -attach: slot=attachment,... on the -gun
+	numMobs                                   int
+	night, fly, lineup, help                  bool
+	// sandbox explores the world instead of playing zombie defense.
+	sandbox bool
 	// fullZoom magnifies the whole screen while aiming (TACZ; cheaper)
 	// instead of only inside a scope's lens (a second world render).
 	fullZoom bool
@@ -97,20 +104,16 @@ func main() {
 		scale    = flag.Float64("scale", 1, "render the world at this fraction of the window resolution (HUD stays sharp)")
 	)
 	flag.StringVar(&o.signFont, "signfont", "", "pixel TTF for sign text ('' = built-in font, 'none' = no sign text)")
-	flag.StringVar(&o.itemDir, "items", "assets/items", "directory of item sprite PNGs ('' = no items)")
-	flag.IntVar(&o.numItems, "item-count", 40, "items scattered around the spawn")
 	flag.StringVar(&o.pets, "pets", filepath.Join(os.Getenv("HOME"), "Downloads/CubePetsVol2_Free_v1.0.zip"), "Roblox-style model pack (dir/zip/glb) to populate the world with ('' = none)")
-	flag.StringVar(&o.modelPack, "modelpack", "assets/cleannrooster", "Blockbench asset pack (Blockbench models, animations, item textures) ('' = none)")
-	flag.IntVar(&o.numMobs, "mob-count", 24, "creatures spawned around the player")
+	flag.IntVar(&o.numMobs, "mob-count", 24, "animals spawned around the player")
 	flag.StringVar(&cfg.Debug.Shot, "shot", "", "save a screenshot PNG at tick -shot-at and quit")
 	flag.IntVar(&cfg.Debug.ShotAt, "shot-at", 200, "tick for -shot")
 	flag.BoolVar(&o.night, "night", false, "start at night")
 	flag.BoolVar(&o.fly, "fly", false, "start flying")
-	flag.StringVar(&o.hold, "hold", "sword_01", "item held at start")
 	flag.StringVar(&o.press, "press", "", "debug: actions held down from the start, comma separated (e.g. use,attack: aim and fire)")
 	flag.BoolVar(&o.fullZoom, "full-zoom", false, "aiming magnifies the whole screen as TACZ does, instead of a second render inside scope lenses (for slower machines)")
 	watch := flag.String("watch", "", "debug: in multiplayer, view the first other player from angle,distance (degrees from their facing, blocks) instead of your eyes")
-	flag.StringVar(&o.gun, "gun", "", "gun (a TACZ gun ID, e.g. ak47) in hand at start")
+	flag.StringVar(&o.gun, "gun", "", "debug: gun (a TACZ gun ID, e.g. tacz:ak47) given and in hand at start")
 	flag.StringVar(&o.attach, "attach", "", "debug: attachments installed on the -gun in order, slot=ID comma separated (e.g. scope=tacz:scope_acog_ta31; an empty ID removes one); adapter.slot=ID selects a slot adapter")
 	flag.StringVar(&cfg.Debug.Edits, "edits", "", "debug: 'dx,dy,dz,block;...' edits relative to the player, applied once terrain is ready as blocks the player placed (shared in multiplayer)")
 	flag.DurationVar(&cfg.Debug.AutoTurn, "autoturn", 0, "debug: stand and turn round from this long into the game on, firing after 5 and 15 s (benchmark under real conditions)")
@@ -128,12 +131,14 @@ func main() {
 		name    = flag.String("name", "", "player name in multiplayer (default: the user name)")
 		skinDir = flag.String("skins", "skins", "directory of 64x64 player skin PNGs (cmd/fetchskins)")
 		skinSel = flag.String("skin", "", "multiplayer skin (a file name in -skins without .png)")
-		menu    = flag.Bool("menu", true, "open the main menu at start (default not with -shot or -bench; never with -host or -connect)")
+		menu    = flag.Bool("menu", false, "open the main menu at start instead of playing zombie defense")
 	)
+	flag.BoolVar(&o.sandbox, "sandbox", false, "explore the world (animals, every gun) instead of playing zombie defense; implied by -world, -map, -bench and -autofly")
 	flag.BoolVar(&cfg.Fullscreen, "fullscreen", false, "fullscreen on the primary monitor at its desktop (native) resolution")
 	flag.StringVar(&cfg.VSync, "vsync", "on", "frame pacing: on (vsync), limit (no vsync, sleep to max(display rate, 120Hz)), off (unlimited)")
 	flag.Parse()
 	mp.MapsDir = *mapsDir
+	o.sandbox = o.sandbox || flagSet("world") || *mapDir != "" || cfg.Debug.Bench > 0 || cfg.Debug.AutoFly > 0
 
 	if *cpuprof != "" {
 		f, err := os.Create(*cpuprof)
@@ -250,6 +255,7 @@ func main() {
 		BlockPlaced:   g.blockPlaced,
 	}
 	a.HUD = g
+	g.solo = func() error { return g.playSolo(*genName, *seed) }
 	g.setupUI()
 	if g.ui != nil {
 		a.HUD = hudStack{g, g.ui}
@@ -257,15 +263,17 @@ func main() {
 	}
 	switch {
 	case *host:
-		g.autoNet = func() error { return g.hostGame("", 0, *hostGen, mp.Deathmatch) }
+		g.autoNet = func() error { return g.hostGame("", 0, *hostGen, mp.ZombieDefense) }
 	case *connect != "":
 		addr := *connect
 		if !strings.Contains(addr, ":") {
 			addr = fmt.Sprintf("%s:%d", addr, mp.DefaultPort)
 		}
 		g.autoNet = func() error { return g.joinGame(addr) }
-	case *menu && (cfg.Debug.Shot == "" && cfg.Debug.Bench == 0 || flagSet("menu")):
+	case *menu:
 		g.menuAtStart = true
+	case !o.sandbox:
+		g.autoNet = g.solo
 	}
 	g.bindKeys()
 	if err := a.Run(); err != nil {
@@ -286,10 +294,9 @@ type game struct {
 
 	itemsState
 	creaturesState
-	crossbowState
 	gunsState
 	combatState
-	wavesState
+	zombieState
 	help     *render.Overlay // F1 help screen
 	showHelp bool
 	debugMsg string // shown in the title (K animation preview)
@@ -304,6 +311,7 @@ type game struct {
 	skinIdx     int
 	pendingNote string       // why the last game ended, for the main menu
 	autoNet     func() error // -host / -connect, run in the first session
+	solo        func() error // starts single player: zombie defense on a private server
 	menuAtStart bool
 	showScores  bool // Tab held in multiplayer
 	wallDraw    [1]render.SkyDraw
@@ -328,14 +336,14 @@ func defaultName() string {
 	return n[:min(len(n), 16)]
 }
 
-// start sets up a session: items, creatures, weapons (the app calls it
-// once the engine and the player exist).
+// start sets up a session: animals, guns, zombie defense's client side
+// (the app calls it once the engine and the player exist).
 func (g *game) start() {
 	o := &g.opt
 	g.Player.Flying = o.fly
 	g.Player.HotbarSize = len(g.hotbar)
 	if g.net != nil {
-		o = &options{hold: "", signFont: o.signFont, modelPack: o.modelPack, gun: o.gun, attach: o.attach} // no items, creatures or pets
+		o = &options{signFont: o.signFont, pets: o.pets, numMobs: o.numMobs, gun: o.gun, attach: o.attach, press: o.press} // the server's time of day
 	}
 	// the last session's renderers, freed now rather than by the garbage
 	// collector while this one draws
@@ -349,17 +357,16 @@ func (g *game) start() {
 	if o.night {
 		g.Eng.Renderer.Opt.Daylight = 0.2
 	}
-	g.itemsState = itemsState{held: o.hold, itemsLeft: o.numItems}
+	g.itemsState = itemsState{}
 	g.creaturesState = creaturesState{spawnLeft: o.numMobs, mobRand: rand.New(rand.NewSource(7)),
 		lineup: o.lineup, lineupAnim: o.anim}
-	g.crossbowState = crossbowState{bowModel: -1, arrowModel: -1} // set by setupCrossbow
-	g.combatState = combatState{swordModel: -1}                   // set by setupCombat
-	g.wavesState = wavesState{}                                   // set by setupZombies
+	g.combatState = combatState{health: maxHealth, hudHealth: -1}
 	g.gunsState = gunsState{sounds: gunSounds{mixer: g.Mixer}}
-	g.setupGuns()
+	g.setupGuns(g.net == nil)
 	g.setupArms()
 	g.setupZombies()
 	if o.gun != "" {
+		g.arsenal.add(o.gun, true)
 		g.selectGunID(o.gun)
 	}
 	if o.attach != "" && g.gunOn() {
@@ -380,11 +387,6 @@ func (g *game) start() {
 		}
 	}
 	g.torches = torchFX{}
-	if o.itemDir != "" {
-		if err := g.loadItems(o.itemDir); err != nil {
-			log.Printf("items disabled: %v", err)
-		}
-	}
 	if o.signFont != "none" {
 		if err := g.loadSignFont(o.signFont); err != nil {
 			log.Printf("sign text disabled: %v", err)
@@ -397,9 +399,6 @@ func (g *game) start() {
 	}
 	if o.pets != "" {
 		g.importPets(o.pets)
-	}
-	if o.modelPack != "" {
-		g.importBlockbenchPack(o.modelPack)
 	}
 	g.finishItems()
 	g.filterSpecies(o.species)
@@ -423,37 +422,18 @@ func (g *game) start() {
 	}
 }
 
-// autoShot reports whether -autoturn fires this tick: 5 and 15 s into
-// the turning.
-func (g *game) autoShot() bool {
-	if g.Config.Debug.AutoTurn <= 0 {
-		return false
-	}
-	t := g.Tick - g.AutoTurnTick()
-	return t == 5*app.TickRate || t == 15*app.TickRate
-}
-
 func (g *game) tick() {
-	if g.net == nil && g.autoShot() {
-		g.fire()
-	}
 	if g.net != nil {
 		g.sendCmd()
-		g.tickGun() // its shots go to the server, after the command
-		g.tickItems()
+		g.tickGun()       // its shots go to the server, after the command
+		g.tickCreatures() // the animals: client-side scenery
 		g.tickTorches()
 		g.tickNet()
 		g.tickPlayerHealth() // the hurt flash fades
 		return
 	}
-	if g.crossbowOn() && g.Input.Down(app.ActAttack) && !g.Player.Frozen {
-		g.fire() // held down: repeat at the reload rate
-	}
 	g.tickGun()
-	g.tickItems()
 	g.tickCreatures()
-	g.tickWaves()
-	g.tickArrows()
 	g.tickBullets()
 	g.tickTorches()
 	g.tickPlayerHealth()
@@ -464,7 +444,7 @@ func (g *game) render(alpha float64, _ *render.Options) {
 	g.animStep()
 	if g.net != nil {
 		g.netFrame()
-		g.netPose(alpha)
+		g.netPose()
 		g.watchCam()
 	}
 	g.fxFrame()
@@ -474,14 +454,11 @@ func (g *game) render(alpha float64, _ *render.Options) {
 // and creatures (Hooks.DrawWorld: the main view and the scope view).
 func (g *game) drawWorld(cam *render.Camera, alpha float64) {
 	g.drawSigns(cam)
-	g.drawWeapons(cam)
 	if g.net != nil {
 		g.drawNet(cam)
-	} else {
-		g.drawArrows(cam, alpha)
 	}
 	g.drawTorches(cam, alpha)
-	g.drawDrops(cam, alpha)
+	g.drawPickups(cam)
 	g.drawFX(cam)
 	g.drawTracers(cam, alpha)
 }
@@ -492,11 +469,6 @@ func (g *game) drawHand(alpha float64) {
 	case g.watching:
 	case g.gunOn():
 		g.drawGunHand(alpha)
-	case g.crossbowOn():
-		g.drawCrossbowHand(alpha)
-	case g.held != "" && g.itemRend != nil:
-		sky, blk := g.Light(g.Cam.X, g.Cam.Y, g.Cam.Z)
-		g.itemRend.DrawHand(g.held, float32(g.Cam.Aspect), g.Player.HandPose(alpha), sky, blk)
 	}
 }
 
@@ -518,11 +490,7 @@ func (g *game) breakStrength(s voxel.StateID) float32 {
 
 func (g *game) status() string {
 	name := strings.TrimPrefix(g.Eng.World.Reg.Info(g.hotbar[min(g.Player.Selected, len(g.hotbar)-1)]).Name, resloc.Default+":")
-	held := g.held
-	if held == "" {
-		held = "-"
-	}
-	s := fmt.Sprintf("[%d] %s | hand %s", g.Player.Selected+1, name, held)
+	s := fmt.Sprintf("[%d] %s", g.Player.Selected+1, name)
 	if g.debugMsg != "" {
 		s += " | anim " + g.debugMsg
 	}

@@ -39,10 +39,6 @@ func TestShotEncoding(t *testing.T) {
 		len(got.Held.Choice.Attachments) != 2 || got.Held.Choice.Adapters[tacz.SlotGrip] != "tacz:riser" {
 		t.Fatalf("got %+v (%v)", got, r.err)
 	}
-	r = rbuf{p: PlayerInfo{Slot: 1, Joined: true, Held: Hold{Bare: true}}.encode()[1:]}
-	if got := decodePlayerInfo(&r); r.err != nil || !got.Held.Bare {
-		t.Fatalf("bare hand: got %+v (%v)", got, r.err)
-	}
 	v, ok := decodePlayerView(PlayerView{Slot: 1, Empty: true}.encode())
 	if !ok || !v.Empty {
 		t.Fatalf("empty gun: got %+v", v)
@@ -80,7 +76,7 @@ func TestHoldChoice(t *testing.T) {
 	t.Cleanup(s.Close)
 	a := newBot(t, s.Addr().String(), "A", netcode.Config{})
 	b := newBot(t, s.Addr().String(), "B", netcode.Config{})
-	step := func() { a.step(0, 0, false); b.step(0, 0, false) }
+	step := func() { a.step(0, 0); b.step(0, 0) }
 	held := tacz.Choice{}
 	held.Adapt(tacz.SlotMuzzle, riser)
 	held.Attach(tacz.SlotMuzzle, silencer)
@@ -133,8 +129,8 @@ func TestGunShot(t *testing.T) {
 	}
 	a.c.SendHold(Hold{Gun: gun.ID})
 	run(t, 3*time.Second, nil, func(int) bool {
-		a.step(0, 0, false)
-		b.step(0, 0, false)
+		a.step(0, 0)
+		b.step(0, 0)
 		return a.c.Ready() && b.c.Ready() && b.c.Info[a.c.Slot()].Held.Gun == gun.ID
 	})
 	s.call(func() { s.players[b.c.Slot()].protect = 0 })
@@ -143,8 +139,8 @@ func TestGunShot(t *testing.T) {
 	a.c.SendShot(Shot{Gun: gun.ID, Look: Look{0, pitch}, Heat: 1})
 	spawned := 0
 	run(t, 3*time.Second, nil, func(int) bool {
-		a.step(0, 0, false)
-		b.step(0, 0, false)
+		a.step(0, 0)
+		b.step(0, 0)
 		spawned = max(spawned, len(b.c.Bullets))
 		return len(b.hits) >= 2 && len(a.hits) >= 2 && fired > 0
 	})
@@ -168,8 +164,8 @@ func TestGunShot(t *testing.T) {
 	s.call(func() { s.players[b.c.Slot()].health = 4 })
 	a.c.SendShot(Shot{Gun: gun.ID, Look: Look{0, pitch}, Heat: 1})
 	run(t, 3*time.Second, nil, func(int) bool {
-		a.step(0, 0, false)
-		b.step(0, 0, false)
+		a.step(0, 0)
+		b.step(0, 0)
 		return len(a.hits) >= 3
 	})
 	if h := a.hits[2]; !h.Killed || !h.Gun || h.Attacker != a.c.Slot() {
@@ -197,9 +193,9 @@ func TestShotAfterCommand(t *testing.T) {
 		a.c.Poll()
 		a.c.Reconcile(a.ch, a.w)
 		in := character.Input{Sneak: true}
-		cmd := a.c.Command(in, false)
+		cmd := a.c.Command(in)
 		a.ch.Tick(a.w, in)
-		a.c.Predicted(cmd, a.ch, a.w)
+		a.c.Send(cmd)
 	}
 	run(t, 3*time.Second, nil, func(int) bool {
 		sneak()
@@ -250,8 +246,8 @@ func TestAimSync(t *testing.T) {
 	a.c.SendHold(Hold{Gun: gun.ID})
 	a.c.SendGun(GunAiming)
 	run(t, 3*time.Second, nil, func(int) bool {
-		a.step(0, 0, false)
-		b.step(0, 0, false)
+		a.step(0, 0)
+		b.step(0, 0)
 		return a.c.Own().Aim == weapon.Aimed && seen() == weapon.Aimed
 	})
 	var anim Anim
@@ -261,8 +257,8 @@ func TestAimSync(t *testing.T) {
 	}
 	a.c.SendGun(0)
 	run(t, 3*time.Second, nil, func(int) bool {
-		a.step(0, 0, false)
-		b.step(0, 0, false)
+		a.step(0, 0)
+		b.step(0, 0)
 		return a.c.Own().Aim == 0 && seen() == 0
 	})
 }

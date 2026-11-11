@@ -11,7 +11,6 @@ import (
 	"github.com/memmaker/voxellib/character"
 	"github.com/memmaker/voxellib/netcode"
 	"github.com/memmaker/voxellib/projectile"
-	"github.com/memmaker/voxellib/voxel/collide"
 	"github.com/memmaker/voxellib/weapon"
 )
 
@@ -26,7 +25,7 @@ const (
 
 // Client is a connection to a Server plus the client half of the game: it
 // turns the local player's ticks into commands, predicts the local player
-// and their arrows, and keeps the snapshots to draw everyone else from.
+// and keeps the snapshots to draw everyone else from.
 //
 // Per tick, the game calls Reconcile then Command before its player moves,
 // and Predicted after (all on the game's tick goroutine); Poll once per frame
@@ -43,6 +42,7 @@ type Client struct {
 	OnText   func(string)
 	OnPlayer func(PlayerInfo)
 	OnFired  func(slot int) // another player's gun went off
+	OnPickup func(Pickup)   // the local player took a pickup
 
 	// Bullets are the server's flying bullets by ID, flown on by
 	// TickBullets (the client-side entity tick) until the server says
@@ -72,30 +72,20 @@ type Client struct {
 	worldTime  int64
 	timeTick   uint32
 	timeFrozen bool
-	reload     int
-	shots      uint16
-	mine       []*mineArrow
 	Errors     int // reconciliations that moved the player (diagnostics)
 }
 
 type predicted struct {
 	cmd   Cmd
 	valid bool
-	fired bool
 }
 
 type snapshot struct {
 	tick    uint32
 	players map[int]PlayerView
-	arrows  []ArrowView
+	zombies map[uint32]ZombieView
+	pickups []PickupView
 	round   Round
-}
-
-// mineArrow is an arrow the local player fired that the server has not
-// confirmed yet: drawn at once, flown with the same physics.
-type mineArrow struct {
-	shot uint16
-	a    *projectile.Arrow
 }
 
 // Connect joins the server at addr ("10.0.0.5:28960") as name.
@@ -114,7 +104,7 @@ func Connect(addr, name string, cfg netcode.Config) (*Client, error) {
 		return nil, err
 	}
 	return &Client{Welcome: w, Edits: NewEditLog(), Bullets: map[uint32]*RemoteBullet{}, net: nc, nextCmd: 1, serverTime: float64(w.Tick),
-		own: w.Own, reload: w.Own.Reload, shots: w.Own.Shots, worldTime: w.Time, timeTick: w.Tick, timeFrozen: w.TimeFrozen}, nil
+		own: w.Own, worldTime: w.Time, timeTick: w.Tick, timeFrozen: w.TimeFrozen}, nil
 }
 
 // RemoteBullet is a bullet the server fired, as a client flies and draws it.
@@ -249,6 +239,10 @@ func (c *Client) reliable(msg []byte) {
 		if id := r.u32(); r.err == nil {
 			delete(c.Bullets, id)
 		}
+	case msgPickup:
+		if pk := decodePickup(&r); r.err == nil && c.OnPickup != nil {
+			c.OnPickup(pk)
+		}
 	case msgFired:
 		slot := int(r.u8())
 		if r.err == nil && slot < len(c.Info) && c.OnFired != nil {
@@ -290,14 +284,24 @@ func (c *Client) snapshot(seq uint32, data []byte) {
 	if err != nil {
 		return // a delta against a frame we lost: the next one will do
 	}
-	s := snapshot{tick: tick, players: map[int]PlayerView{}, round: round}
+	s := snapshot{tick: tick, players: map[int]PlayerView{}, zombies: map[uint32]ZombieView{}, round: round}
 	for id, st := range snap {
-		if id >= arrowBase {
-			if a, ok := decodeArrowView(id, st); ok {
-				s.arrows = append(s.arrows, a)
+		if len(st) == 0 {
+			continue
+		}
+		switch entityKind(st[0]) {
+		case kindPlayer:
+			if p, ok := decodePlayerView(st); ok {
+				s.players[p.Slot] = p
 			}
-		} else if p, ok := decodePlayerView(st); ok {
-			s.players[p.Slot] = p
+		case kindZombie:
+			if z, ok := decodeZombieView(id, st); ok {
+				s.zombies[id] = z
+			}
+		case kindPickup:
+			if pk, ok := decodePickupView(id, st); ok {
+				s.pickups = append(s.pickups, pk)
+			}
 		}
 	}
 	if len(c.snaps) > 0 && tick <= c.newest().tick {
@@ -313,14 +317,6 @@ func (c *Client) snapshot(seq uint32, data []byte) {
 	if !c.clockInit {
 		c.serverTime, c.clockInit = float64(tick), true
 	}
-	// Arrows the server has fired are drawn from its snapshots now.
-	keep := c.mine[:0]
-	for _, m := range c.mine {
-		if m.shot > own.Shots && m.a.Flown < 2*TickRate {
-			keep = append(keep, m)
-		}
-	}
-	c.mine = keep
 }
 
 // Own is the local player's state from the newest snapshot (health,
@@ -340,7 +336,6 @@ func (c *Client) Reconcile(ch *character.Character, w character.World) float64 {
 	c.ownFresh = false
 	x, y, z := ch.X, ch.Y, ch.Z
 	c.own.Apply(ch)
-	c.reload, c.shots = c.own.Reload, c.own.Shots
 	if !c.own.Dead {
 		for n := c.ownAck + 1; n < c.nextCmd; n++ {
 			p := &c.cmds[n%cmdRing]
@@ -348,7 +343,6 @@ func (c *Client) Reconcile(ch *character.Character, w character.World) float64 {
 				continue
 			}
 			ch.Tick(w, p.cmd.Input())
-			c.weapon(p)
 		}
 	}
 	d := math.Sqrt(sq(ch.X-x) + sq(ch.Y-y) + sq(ch.Z-z))
@@ -359,60 +353,12 @@ func (c *Client) Reconcile(ch *character.Character, w character.World) float64 {
 }
 
 // Command makes this tick's command from the player's input and look.
-func (c *Client) Command(in character.Input, attack bool) Cmd {
-	cmd := Cmd{Num: c.nextCmd, ViewTime: c.RenderTime(), Buttons: Buttons(in, attack), Yaw: in.Yaw, Pitch: in.Pitch}
+func (c *Client) Command(in character.Input) Cmd {
+	cmd := Cmd{Num: c.nextCmd, ViewTime: c.RenderTime(), Buttons: Buttons(in), Yaw: in.Yaw, Pitch: in.Pitch}
 	c.nextCmd++
 	c.cmds[cmd.Num%cmdRing] = predicted{cmd: cmd, valid: true}
 	return cmd
 }
-
-// Predicted finishes the tick of cmd after the character moved with its
-// input: it predicts the crossbow (firing an arrow from the eye) and sends
-// the newest commands. It returns whether a shot went off.
-func (c *Client) Predicted(cmd Cmd, ch *character.Character, w collide.Solids) bool {
-	p := &c.cmds[cmd.Num%cmdRing]
-	fired := false
-	if !c.own.Dead {
-		fired = c.weapon(p)
-	}
-	if fired {
-		var aw projectile.World
-		ex, ey, ez := ch.Eye()
-		c.mine = append(c.mine, &mineArrow{shot: c.shots, a: aw.Shoot(ex, ey-0.1, ez, cmd.Yaw, cmd.Pitch, projectile.Speed)})
-	}
-	// Our own arrows fly on locally until the server's take over.
-	var aw projectile.World
-	for _, m := range c.mine {
-		aw.Arrows = append(aw.Arrows[:0], m.a)
-		aw.Tick(w, nil)
-	}
-	var send []Cmd
-	for n := cmd.Num - min(cmd.Num-1, cmdsPerPacket-1); n <= cmd.Num; n++ {
-		if q := c.cmds[n%cmdRing]; q.valid && q.cmd.Num == n {
-			send = append(send, q.cmd)
-		}
-	}
-	c.net.Send(encodeCmds(send))
-	c.cmdSent = true
-	return fired
-}
-
-// weapon runs the crossbow for one command, as the server does.
-func (c *Client) weapon(p *predicted) bool {
-	p.fired = false
-	if p.cmd.Buttons&BtnAttack != 0 && c.reload == 0 {
-		c.reload = ReloadTicks
-		c.shots++
-		p.fired = true
-	}
-	if c.reload > 0 {
-		c.reload--
-	}
-	return p.fired
-}
-
-// Reload is the predicted ticks until the crossbow can fire.
-func (c *Client) Reload() int { return c.reload }
 
 // RenderTime is the server time (ticks) other players are drawn at.
 func (c *Client) RenderTime() float64 { return c.serverTime - interpDelay }
@@ -484,20 +430,7 @@ func (c *Client) Players() []PlayerView {
 	if len(c.snaps) == 0 {
 		return nil
 	}
-	t := c.RenderTime()
-	i := len(c.snaps) - 1
-	for i > 0 && float64(c.snaps[i].tick) > t {
-		i--
-	}
-	a := &c.snaps[i]
-	b := a
-	if i+1 < len(c.snaps) {
-		b = &c.snaps[i+1]
-	}
-	f := 0.0
-	if b.tick > a.tick {
-		f = math.Max(0, math.Min(1, (t-float64(a.tick))/float64(b.tick-a.tick)))
-	}
+	a, b, f := c.around()
 	var out []PlayerView
 	for slot, pb := range b.players {
 		pa, ok := a.players[slot]
@@ -513,52 +446,72 @@ func (c *Client) Players() []PlayerView {
 	return out
 }
 
-// ArrowPose is where to draw an arrow.
-type ArrowPose struct {
-	X, Y, Z, Yaw, Pitch float64
-	Mine                bool // fired by the local player and not confirmed yet
-	Fresh               bool // in its first two ticks (hidden near the eye)
-}
-
-// Arrows returns every arrow at the present: the server's run on from
-// their newest snapshot with the arrow physics (Q3 evaluates missile
-// trajectories the same way, so they need no interpolation delay), plus
-// the local player's unconfirmed shots. alpha is the local tick fraction
-// for those.
-func (c *Client) Arrows(w collide.Solids, alpha float64, out []ArrowPose) []ArrowPose {
-	out = out[:0]
-	if len(c.snaps) > 0 {
-		s := c.newest()
-		dt := math.Max(0, math.Min(3, c.serverTime-float64(s.tick)))
-		for _, a := range s.arrows {
-			p := ArrowPose{X: a.X, Y: a.Y, Z: a.Z, Yaw: a.Yaw, Pitch: a.Pitch}
-			if !a.Stuck {
-				p.X, p.Y, p.Z = extrapolate(w, a, dt)
-			}
-			out = append(out, p)
+// Send sends the newest commands, cmd last, after the character moved
+// with cmd's input (call once per tick).
+func (c *Client) Send(cmd Cmd) {
+	var send []Cmd
+	for n := cmd.Num - min(cmd.Num-1, cmdsPerPacket-1); n <= cmd.Num; n++ {
+		if q := c.cmds[n%cmdRing]; q.valid && q.cmd.Num == n {
+			send = append(send, q.cmd)
 		}
 	}
-	for _, m := range c.mine {
-		x, y, z, yaw, pitch := m.a.Lerp(alpha)
-		out = append(out, ArrowPose{X: x, Y: y, Z: z, Yaw: yaw, Pitch: pitch, Mine: true, Fresh: m.a.Flown < 2})
+	c.net.Send(encodeCmds(send))
+	c.cmdSent = true
+}
+
+// SendView tells the server the player's unzoomed projection (vertical
+// field of view in radians, aspect ratio): zombie defense spawns outside it.
+func (c *Client) SendView(fov, aspect float64) {
+	b := wbuf{msgView}
+	b.f32(fov)
+	b.f32(aspect)
+	c.net.SendReliable(b)
+}
+
+// around finds the snapshots around the render time and how far between
+// them it is.
+func (c *Client) around() (a, b *snapshot, f float64) {
+	t := c.RenderTime()
+	i := len(c.snaps) - 1
+	for i > 0 && float64(c.snaps[i].tick) > t {
+		i--
+	}
+	a = &c.snaps[i]
+	b = a
+	if i+1 < len(c.snaps) {
+		b = &c.snaps[i+1]
+	}
+	if b.tick > a.tick {
+		f = math.Max(0, math.Min(1, (t-float64(a.tick))/float64(b.tick-a.tick)))
+	}
+	return a, b, f
+}
+
+// Zombies returns the zombies at the render time, interpolated between the
+// snapshots around it.
+func (c *Client) Zombies(out []ZombieView) []ZombieView {
+	out = out[:0]
+	if len(c.snaps) == 0 {
+		return out
+	}
+	a, b, f := c.around()
+	for id, zb := range b.zombies {
+		za, ok := a.zombies[id]
+		if !ok {
+			za = zb
+		}
+		v := zb
+		v.X, v.Y, v.Z = za.X+(zb.X-za.X)*f, za.Y+(zb.Y-za.Y)*f, za.Z+(zb.Z-za.Z)*f
+		v.Yaw = lerpAngle(za.Yaw, zb.Yaw, f)
+		out = append(out, v)
 	}
 	return out
 }
 
-// extrapolate runs a flying arrow dt ticks on, stopping short of solid
-// blocks (the server's next snapshot says where it really stuck).
-func extrapolate(w collide.Solids, a ArrowView, dt float64) (x, y, z float64) {
-	x, y, z = a.X, a.Y, a.Z
-	vx, vy, vz := a.VX, a.VY, a.VZ
-	for dt > 0 {
-		f := math.Min(1, dt)
-		nx, ny, nz := x+vx*f, y+vy*f, z+vz*f
-		if w != nil && w.Solid(int(math.Floor(nx)), int(math.Floor(ny)), int(math.Floor(nz))) {
-			return x, y, z
-		}
-		x, y, z = nx, ny, nz
-		vx, vy, vz = vx*projectile.Drag, vy*projectile.Drag-projectile.Gravity, vz*projectile.Drag
-		dt -= f
+// Pickups are the pickups lying in the world in the newest snapshot.
+func (c *Client) Pickups() []PickupView {
+	if len(c.snaps) == 0 {
+		return nil
 	}
-	return x, y, z
+	return c.newest().pickups
 }

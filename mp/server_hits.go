@@ -34,9 +34,8 @@ func NewGenerator(reg *voxel.Registry, name string, seed int64) (Generator, erro
 }
 
 // rewound is a player as a shooter saw them: their pose lag ticks ago,
-// between the two recorded ticks around that time. Arrows test the posed
-// body exactly, as the shooter's screen drew it (unlagged hit detection,
-// applied over an arrow's whole flight).
+// between the two recorded ticks around that time (unlagged hit
+// detection); Intersect tests the posed body exactly.
 type rewound struct {
 	p       *sPlayer
 	x, y, z float64
@@ -116,7 +115,7 @@ func lerpAngle(a, b, f float64) float64 {
 func (s *Server) targets(p *sPlayer, tick uint32) []projectile.Target {
 	var targets []projectile.Target
 	for _, o := range s.players {
-		if o == nil || !enemies(p, o) || o.dead > 0 || o.protect > 0 {
+		if o == nil || !s.enemies(p, o) || o.dead > 0 || o.protect > 0 {
 			continue
 		}
 		if r, ok := s.rewind(o, tick, p.lag); ok {
@@ -126,65 +125,8 @@ func (s *Server) targets(p *sPlayer, tick uint32) []projectile.Target {
 	return targets
 }
 
-// tickArrows flies each shooter's arrows against the other players as that
-// shooter saw them.
-func (s *Server) tickArrows(tick uint32) {
-	for _, p := range s.players {
-		if p == nil {
-			continue
-		}
-		targets := s.targets(p, tick)
-		shooter := p
-		p.arrows.Hit = func(a *projectile.Arrow, t projectile.Target) {
-			if r, ok := t.(*rewound); ok {
-				s.hit(shooter, r.p, a)
-			}
-		}
-		p.arrows.Tick(s.world, targets)
-	}
-	// Forget arrows that are gone; keep the total bounded.
-	live := map[*projectile.Arrow]bool{}
-	var stuck []*projectile.Arrow
-	for _, p := range s.players {
-		if p == nil {
-			continue
-		}
-		for _, a := range p.arrows.Arrows {
-			live[a] = true
-			if a.Stuck {
-				stuck = append(stuck, a)
-			}
-		}
-	}
-	for a := range s.arrows {
-		if !live[a] {
-			delete(s.arrows, a)
-		}
-	}
-	if extra := len(s.arrows) - maxArrows; extra > 0 {
-		for i := 0; i < extra && i < len(stuck); i++ {
-			stuck[i].Discard() // gone next tick
-		}
-	}
-}
-
-// hit deals an arrow's damage: a head shot kills.
-func (s *Server) hit(shooter, victim *sPlayer, a *projectile.Arrow) {
-	if victim.dead > 0 || victim.protect > 0 {
-		return // no one is killed twice, or on arrival (tickArrows skips them)
-	}
-	a.Discard()
-	h := Hit{Attacker: shooter.slot, Victim: victim.slot, Damage: ArrowDamage, Head: IsHead(a.Part)}
-	if h.Head {
-		h.Damage = HeadDamage
-	}
-	s.damage(h, a.VX, a.VZ, actors.HurtKnockback)
-}
-
-// damage deals a hit (arrow or bullet) to a live, unprotected victim and
-// knocks them back along dx,dz, like an arrow's knockback in the reference.
-
-// damage applies a hit, pushing the victim knock blocks/tick along (dx, dz).
+// damage applies a player's hit on another player, pushing the victim
+// knock blocks/tick along (dx, dz).
 func (s *Server) damage(h Hit, dx, dz, knock float64) {
 	shooter, victim := s.players[h.Attacker], s.players[h.Victim]
 	victim.health -= h.Damage
@@ -215,7 +157,7 @@ func sq(v float64) float64 { return v * v }
 // state is p's own state as its snapshots and Welcome carry it.
 func (p *sPlayer) state() PlayerState {
 	st := stateOf(p.ch)
-	st.Health, st.Dead, st.Reload, st.Shots = p.health, p.dead > 0, p.reload, p.shots
+	st.Health, st.Dead = p.health, p.dead > 0
 	st.Protected, st.Aim = p.protect > 0, p.aim
 	return st
 }
@@ -223,18 +165,15 @@ func (p *sPlayer) state() PlayerState {
 // sendSnapshot sends one player their state and everyone else's, delta
 // compressed against the last snapshot they acknowledged.
 func (s *Server) sendSnapshot(p *sPlayer, tick uint32) {
-	snap := make(map[uint32][]byte, len(s.players)+len(s.arrows))
+	snap := make(map[uint32][]byte, len(s.players)+len(s.def.zombies)+len(s.def.pickups))
 	for _, o := range s.players {
 		if o == nil || o == p {
 			continue
 		}
 		snap[uint32(o.slot+1)] = PlayerView{Slot: o.slot, X: o.ch.X, Y: o.ch.Y, Z: o.ch.Z, Yaw: o.yaw, Pitch: o.pitch,
-			Sneak: o.anim.Sneak, Dead: o.dead > 0, Protected: o.protect > 0, Health: o.health, Shots: o.shots, Aim: o.aim, Empty: o.flags&GunEmpty != 0}.encode()
+			Sneak: o.anim.Sneak, Dead: o.dead > 0, Protected: o.protect > 0, Health: o.health, Aim: o.aim, Empty: o.flags&GunEmpty != 0}.encode()
 	}
-	for a, m := range s.arrows {
-		snap[arrowBase+m.id] = ArrowView{X: a.X, Y: a.Y, Z: a.Z, VX: a.VX, VY: a.VY, VZ: a.VZ, Yaw: a.Yaw, Pitch: a.Pitch,
-			Stuck: a.Stuck, Shooter: m.shooter, Shot: m.shot}.encode()
-	}
+	s.def.snapshot(snap)
 	var b wbuf
 	b.u32(tick)
 	b.u32(p.last.Num)

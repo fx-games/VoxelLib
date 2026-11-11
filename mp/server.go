@@ -24,11 +24,8 @@ import (
 // Game rules.
 const (
 	MaxHealth    = 20
-	ArrowDamage  = 6 // a body hit; four kill
-	HeadDamage   = MaxHealth
-	ReloadTicks  = 8 // the explorer's repeating crossbow: 2.5 shots a second
 	RespawnTicks = 3 * TickRate
-	// ProtectTicks after (re)spawning a player can't be hurt and arrows
+	// ProtectTicks after (re)spawning a player can't be hurt and bullets
 	// fly through them (EntityPlayerMP.respawnInvulnerabilityTicks).
 	ProtectTicks = 60
 	// historyTicks of player poses are kept for lag compensation.
@@ -40,8 +37,6 @@ const (
 	stallLimit = 3 * time.Second
 	// spawnSpread scatters spawn points around the world spawn (blocks).
 	spawnSpread = 24
-	// maxArrows in the world; the oldest stuck one goes first.
-	maxArrows = 400
 )
 
 // ServerConfig sets up a Server.
@@ -64,12 +59,15 @@ type ServerConfig struct {
 	Spawn func(slot int, w *World) (x, y, z float64)
 	// Gun resolves a held gun with its attachments (tacz.Pack.Gun); a
 	// hold it rejects is logged and ignored. Nil: players hold no guns.
-	Gun  func(id string, c tacz.Choice, mode weapon.FireMode) (weapon.Gun, error)
+	Gun func(id string, c tacz.Choice, mode weapon.FireMode) (weapon.Gun, error)
+	// Loot is what zombie defense spawns (NewLoot of the gun pack); empty:
+	// no pickups.
+	Loot Loot
 	Logf func(format string, args ...any)
 }
 
 // Server is the authoritative simulation (Q3's server game): it runs every
-// player's commands as they arrive, flies the arrows, deals damage and sends
+// player's commands as they arrive, flies the bullets, runs the zombies, deals damage and sends
 // each client a delta-compressed snapshot every tick. It runs on its own
 // goroutine; a listen server's host connects to it like everyone else.
 type Server struct {
@@ -89,11 +87,11 @@ type Server struct {
 	// joining are players accept placed whose Connected event has not
 	// been handled yet, by slot.
 	joining [4]*sPlayer
-	arrows  map[*projectile.Arrow]arrowMeta
-	bullets  []*sBullet
-	rng      *rand.Rand // bullet spread
-	nextID   uint32
-	m        match
+	bullets []*sBullet
+	rng     *rand.Rand // bullet spread, zombie spots and loot
+	nextID  uint32     // entity ids (bullets, zombies, pickups), above every slot
+	m       match
+	def     defense // zombie defense
 
 	calls chan func() // run on the server goroutine (the console)
 	stop  chan struct{}
@@ -115,8 +113,6 @@ type sPlayer struct {
 	health  int
 	dead    int // ticks until respawn while dead
 	protect int // ticks of spawn protection left
-	reload  int
-	shots   uint16
 	kills   int
 	deaths  int
 	wins    int                // battle royale rounds won
@@ -127,9 +123,9 @@ type sPlayer struct {
 	aim     weapon.AimProgress // ShooterDataHolder.aimingProgress, synced to everyone
 	out     bool               // out of the battle royale round: watching until the next
 	lag     float64            // smoothed ticks between the server's time and what the player saw
+	view    View               // the player's projection (msgView); its eye and look follow the player
 
 	hist    [historyTicks]pose
-	arrows  projectile.World
 	tracers projectile.Shooter // the held gun's bullet count, for its tracers
 	enc     netcode.Encoder
 	sentTo  int // edit log entries queued for this client
@@ -142,13 +138,6 @@ type pose struct {
 	yaw     float64
 	anim    Anim
 	alive   bool
-}
-
-// arrowMeta is who shot an arrow, and its snapshot id.
-type arrowMeta struct {
-	id      uint32
-	shooter int
-	shot    uint16
 }
 
 // StartServer generates the spawn area, opens the socket and starts the
@@ -173,7 +162,7 @@ func StartServer(cfg ServerConfig) (*Server, error) {
 	if err != nil {
 		return nil, err
 	}
-	s := &Server{cfg: cfg, edits: NewEditLog(), body: NewBody(), arrows: map[*projectile.Arrow]arrowMeta{}, rng: rand.New(rand.NewSource(time.Now().UnixNano())),
+	s := &Server{cfg: cfg, edits: NewEditLog(), body: NewBody(), rng: rand.New(rand.NewSource(time.Now().UnixNano())), nextID: firstEntityID,
 		time: TimeDay, calls: make(chan func()), stop: make(chan struct{}), done: make(chan struct{})}
 	s.m.round.Mode = cfg.Mode // before the first tick: a Welcome carries it
 	s.m.interval = max(1, int(cfg.ZoneInterval*TickRate/time.Second))
@@ -186,6 +175,8 @@ func StartServer(cfg ServerConfig) (*Server, error) {
 		s.spawnTop = y + 3 // a map's streets, not its roofs
 	}
 	s.world.LoadAround(x, z, 32)
+	s.def.loot = cfg.Loot
+	s.def.spawn = SpawnInterval
 
 	nc := cfg.Net
 	nc.Protocol = Protocol
@@ -329,7 +320,7 @@ func (s *Server) accept(slot int, _ net.Addr, hello []byte) ([]byte, error) {
 // join makes the player connecting to slot, placed and waiting for its
 // Connected event (see joining), and their Welcome.
 func (s *Server) join(slot int, h Hello) Welcome {
-	p := &sPlayer{slot: slot, name: h.Name, ch: character.New(0, 0, 0), health: MaxHealth}
+	p := &sPlayer{slot: slot, name: h.Name, ch: character.New(0, 0, 0), health: MaxHealth, view: defaultView}
 	if p.name == "" {
 		p.name = fmt.Sprintf("Player %d", slot+1)
 	}
@@ -464,7 +455,7 @@ func (s *Server) frame() {
 			alive: p.dead == 0}
 	}
 	s.tickMatch()
-	s.tickArrows(tick)
+	s.tickDefense()
 	s.tickBullets(tick)
 	s.streamEdits()
 	for _, p := range s.players {
@@ -504,9 +495,6 @@ func (s *Server) handle(e netcode.Event) {
 			return
 		}
 		s.players[e.Client] = nil
-		for _, a := range p.arrows.Arrows {
-			delete(s.arrows, a)
-		}
 		s.broadcast(PlayerInfo{Slot: p.slot}.encode())
 		s.broadcastText(p.name + " left the game")
 		s.setInfo()
@@ -565,6 +553,13 @@ func (s *Server) reliable(p *sPlayer, msg []byte) {
 		if f := GunFlags(r.u8()); r.err == nil {
 			p.flags = f
 		}
+	case msgView:
+		v := View{FOV: r.f32(), Aspect: r.f32()}
+		if r.err != nil || !v.valid() {
+			s.cfg.Logf("mp: %s: bad view %+v: %v", p.name, v, r.err)
+			return
+		}
+		p.view.FOV, p.view.Aspect = v.FOV, v.Aspect
 	case msgMelee:
 		gun, l := r.str(), Look{Yaw: r.f32(), Pitch: r.f32()}
 		if r.err == nil {
@@ -645,11 +640,11 @@ func (s *Server) respawn(p *sPlayer) {
 		}
 		*p.ch = *character.New(float64(x)+0.5, float64(y), float64(z)+0.5)
 	}
-	p.health, p.dead, p.reload, p.protect = MaxHealth, 0, 0, ProtectTicks
+	p.health, p.dead, p.protect = MaxHealth, 0, ProtectTicks
 	p.anim = Anim{}
 }
 
-// runCmd runs one command: the player's movement tick and the crossbow.
+// runCmd runs one command: the player's movement tick.
 func (s *Server) runCmd(p *sPlayer, c Cmd) {
 	p.last, p.ran = c, true
 	p.yaw, p.pitch = c.Yaw, c.Pitch
@@ -670,17 +665,6 @@ func (s *Server) runCmd(p *sPlayer, c Cmd) {
 	p.anim.Walk(p.ch.X-x0, p.ch.Z-z0)
 	p.anim.Pitch, p.anim.Sneak = c.Pitch, in.Sneak
 	p.ch.EyeHeight = character.PlayerEye(in.Sneak)
-	if c.Buttons&BtnAttack != 0 && p.reload == 0 && p.held.Gun == "" && !p.held.Bare { // the crossbow in hand
-		ex, ey, ez := p.ch.Eye()
-		a := p.arrows.Shoot(ex, ey-0.1, ez, c.Yaw, c.Pitch, projectile.Speed)
-		p.shots++
-		s.nextID++
-		s.arrows[a] = arrowMeta{id: s.nextID, shooter: p.slot, shot: p.shots}
-		p.reload = ReloadTicks
-	}
-	if p.reload > 0 {
-		p.reload--
-	}
 }
 
 // tickAim runs p's aiming progress for a server tick
@@ -693,5 +677,5 @@ func (s *Server) tickAim(p *sPlayer) {
 		p.aim = p.aim.Tick(p.flags&GunAiming != 0, p.gun.Aim, time.Second/TickRate)
 		p.anim.Hold = p.gun.ThirdPersonHold
 	}
-	p.anim.Gun, p.anim.Aim, p.anim.Bare = p.gun != nil, p.aim, p.held.Bare
+	p.anim.Gun, p.anim.Aim = p.gun != nil, p.aim
 }

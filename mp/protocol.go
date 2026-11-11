@@ -13,7 +13,7 @@ import (
 // Protocol is the netcode protocol id: "VLMP" plus a version byte. Bump the
 // version on any wire change; older peers are refused and stay invisible to
 // discovery.
-const Protocol = 0x564C4D00 | 13
+const Protocol = 0x564C4D00 | 14
 
 // DefaultPort is the server's UDP port.
 const DefaultPort = 28960
@@ -146,7 +146,6 @@ const (
 	BtnJump
 	BtnSneak
 	BtnSprint
-	BtnAttack
 )
 
 const cmdsPerPacket = 8
@@ -168,8 +167,8 @@ func (c Cmd) Input() character.Input {
 		Yaw: c.Yaw, Pitch: c.Pitch}
 }
 
-// Buttons packs a controller input (and the attack button) into cmd buttons.
-func Buttons(in character.Input, attack bool) uint8 {
+// Buttons packs a controller input into cmd buttons.
+func Buttons(in character.Input) uint8 {
 	var b uint8
 	set := func(on bool, bit uint8) {
 		if on {
@@ -183,7 +182,6 @@ func Buttons(in character.Input, attack bool) uint8 {
 	set(in.Jump, BtnJump)
 	set(in.Sneak, BtnSneak)
 	set(in.Sprint, BtnSprint)
-	set(attack, BtnAttack)
 	return b
 }
 
@@ -220,9 +218,7 @@ type PlayerState struct {
 	FallDistance        float64
 	Health              int
 	Dead                bool
-	Protected           bool // spawn protection: can't be hurt
-	Reload              int  // ticks until the crossbow can fire
-	Shots               uint16
+	Protected           bool               // spawn protection: can't be hurt
 	Aim                 weapon.AimProgress // the server's aiming progress (AIMING_PROGRESS_KEY)
 }
 
@@ -254,8 +250,6 @@ func (s PlayerState) encode(b *wbuf) {
 	b.u8(flag(s.OnGround, 1) | flag(s.Sprinting, 2) | flag(s.HorizontalCollision, 4) | flag(s.Dead, 8) | flag(s.Protected, 16))
 	b.f32(s.FallDistance)
 	b.u8(uint8(s.Health))
-	b.u8(uint8(s.Reload))
-	b.u16(s.Shots)
 	b.f32(float64(s.Aim))
 }
 
@@ -265,18 +259,21 @@ func decodePlayerState(r *rbuf) PlayerState {
 	s.OnGround, s.Sprinting, s.HorizontalCollision, s.Dead = f&1 != 0, f&2 != 0, f&4 != 0, f&8 != 0
 	s.Protected = f&16 != 0
 	s.FallDistance = r.f32()
-	s.Health, s.Reload, s.Shots = int(r.u8()), int(r.u8()), r.u16()
+	s.Health = int(r.u8())
 	s.Aim = weapon.AimProgress(r.f32())
 	return s
 }
 
-// Snapshot entity ids: players are their slot+1, arrows arrowBase and up.
-const arrowBase = 1 << 16
+// Snapshot entity ids: players are their slot+1; zombies and pickups
+// take ids from Server.nextID (above every slot), told apart by their kind.
 
-// Entity kinds, the first byte of an entity state.
+// entityKind is the first byte of an entity state.
+type entityKind uint8
+
 const (
-	kindPlayer = 1
-	kindArrow  = 2
+	kindPlayer entityKind = 1
+	kindZombie entityKind = 3
+	kindPickup entityKind = 4
 )
 
 // PlayerView is another player as the snapshot shows them.
@@ -288,7 +285,6 @@ type PlayerView struct {
 	Dead       bool
 	Protected  bool // spawn protection: can't be hurt
 	Health     int
-	Shots      uint16             // counts shots fired: a change means one went off
 	Aim        weapon.AimProgress // aiming progress (AIMING_PROGRESS_KEY)
 	Empty      bool               // the held gun has no round (TACZ: the item's ammo count)
 }
@@ -306,7 +302,7 @@ const (
 
 func (p PlayerView) encode() []byte {
 	var b wbuf
-	b.u8(kindPlayer)
+	b.u8(uint8(kindPlayer))
 	b.u8(uint8(p.Slot))
 	b.f32(p.X)
 	b.f32(p.Y)
@@ -315,20 +311,19 @@ func (p PlayerView) encode() []byte {
 	b.u16(angle16(p.Pitch))
 	b.u8(flag(p.Sneak, 1) | flag(p.Dead, 2) | flag(p.Protected, 4) | flag(p.Empty, 8))
 	b.u8(uint8(p.Health))
-	b.u16(p.Shots)
 	b.f32(float64(p.Aim))
 	return b
 }
 
 func decodePlayerView(p []byte) (PlayerView, bool) {
 	r := rbuf{p: p}
-	if r.u8() != kindPlayer {
+	if entityKind(r.u8()) != kindPlayer {
 		return PlayerView{}, false
 	}
 	v := PlayerView{Slot: int(r.u8()), X: r.f32(), Y: r.f32(), Z: r.f32(), Yaw: unangle16(r.u16()), Pitch: unangle16(r.u16())}
 	f := r.u8()
 	v.Sneak, v.Dead, v.Protected, v.Empty = f&1 != 0, f&2 != 0, f&4 != 0, f&8 != 0
-	v.Health, v.Shots = int(r.u8()), r.u16()
+	v.Health = int(r.u8())
 	v.Aim = weapon.AimProgress(r.f32())
 	return v, r.err == nil
 }
@@ -343,47 +338,6 @@ func unangle16(v uint16) float64 {
 	return a
 }
 
-// ArrowView is an arrow as the snapshot shows it: its full flight state, so
-// a client can run it on to the present with the same physics.
-type ArrowView struct {
-	ID         uint32
-	X, Y, Z    float64
-	VX, VY, VZ float64
-	Yaw, Pitch float64
-	Stuck      bool
-	Shooter    int
-	Shot       uint16 // the shooter's Shots count when it went off
-}
-
-func (a ArrowView) encode() []byte {
-	var b wbuf
-	b.u8(kindArrow)
-	b.f32(a.X)
-	b.f32(a.Y)
-	b.f32(a.Z)
-	b.f32(a.VX)
-	b.f32(a.VY)
-	b.f32(a.VZ)
-	b.u16(angle16(a.Yaw))
-	b.u16(angle16(a.Pitch))
-	b.u8(flag(a.Stuck, 1))
-	b.u8(uint8(a.Shooter))
-	b.u16(a.Shot)
-	return b
-}
-
-func decodeArrowView(id uint32, p []byte) (ArrowView, bool) {
-	r := rbuf{p: p}
-	if r.u8() != kindArrow {
-		return ArrowView{}, false
-	}
-	a := ArrowView{ID: id, X: r.f32(), Y: r.f32(), Z: r.f32(), VX: r.f32(), VY: r.f32(), VZ: r.f32(),
-		Yaw: unangle16(r.u16()), Pitch: unangle16(r.u16())}
-	a.Stuck = r.u8()&1 != 0
-	a.Shooter, a.Shot = int(r.u8()), r.u16()
-	return a, r.err == nil
-}
-
 // Reliable message types.
 const (
 	// client → server
@@ -394,6 +348,7 @@ const (
 	msgShoot     = 5 // Shot: a round of the held gun
 	msgMelee     = 6 // gun ID, yaw, pitch f32: the held gun's melee hit lands
 	msgGun       = 7 // GunFlags u8: the held gun's state changed (aim, reload, empty)
+	msgView      = 8 // fov, aspect f32: the player's unzoomed projection (zombie defense spawns out of sight)
 	// server → client
 	msgPlayer     = 10 // slot u8, joined u8, name, skin png: a player joined, changed skin or left
 	msgBlock      = 11 // x, y, z i32, state name: a block changed
@@ -403,6 +358,7 @@ const (
 	msgFired      = 15 // slot u8: that player's gun went off (not sent to the shooter)
 	msgBullet     = 16 // BulletSpawn: the server fired a bullet
 	msgBulletGone = 17 // id u32: that bullet is gone (hit something or its life ran out)
+	msgPickup     = 18 // Pickup: the player took a pickup (zombie defense)
 )
 
 // BlockEdit is one block change.
@@ -424,9 +380,13 @@ func decodeBlockEdit(r *rbuf) BlockEdit {
 	return BlockEdit{X: int(r.i32()), Y: int(r.i32()), Z: int(r.i32()), State: r.str()}
 }
 
-// Hit reports damage dealt by an arrow.
+// Hit reports damage dealt: by player Attacker to player Victim, or, with
+// Zombie set, by Attacker to that zombie, or (ByZombie) by that zombie to
+// Victim.
 type Hit struct {
 	Attacker, Victim int
+	Zombie           uint32 // the zombie's entity id (0: none)
+	ByZombie         bool
 	Damage           int
 	Head, Killed     bool
 	Gun              bool // a bullet: the shooter plays TACZ's hit marks
@@ -437,15 +397,16 @@ func (h Hit) encode() []byte {
 	b := wbuf{msgHit}
 	b.u8(uint8(h.Attacker))
 	b.u8(uint8(h.Victim))
+	b.u32(h.Zombie)
 	b.u8(uint8(h.Damage))
-	b.u8(flag(h.Head, 1) | flag(h.Killed, 2) | flag(h.Gun, 4) | flag(h.Melee, 8))
+	b.u8(flag(h.Head, 1) | flag(h.Killed, 2) | flag(h.Gun, 4) | flag(h.Melee, 8) | flag(h.ByZombie, 16))
 	return b
 }
 
 func decodeHit(r *rbuf) Hit {
-	h := Hit{Attacker: int(r.u8()), Victim: int(r.u8()), Damage: int(r.u8())}
+	h := Hit{Attacker: int(r.u8()), Victim: int(r.u8()), Zombie: r.u32(), Damage: int(r.u8())}
 	f := r.u8()
-	h.Head, h.Killed, h.Gun, h.Melee = f&1 != 0, f&2 != 0, f&4 != 0, f&8 != 0
+	h.Head, h.Killed, h.Gun, h.Melee, h.ByZombie = f&1 != 0, f&2 != 0, f&4 != 0, f&8 != 0, f&16 != 0
 	return h
 }
 
@@ -497,12 +458,11 @@ func decodePlayerInfo(r *rbuf) PlayerInfo {
 }
 
 // Hold is what a player has in hand: a gun with its attachments and fire
-// mode, else the crossbow, or nothing (Bare).
+// mode, or nothing (Gun "": bare hands).
 type Hold struct {
 	Gun    string          // a weapon.Gun ID, "" for none
 	Choice tacz.Choice     // the installed attachments (tacz.Pack.Gun)
 	Mode   weapon.FireMode // the selected fire mode (tacz.Pack.Gun: fire_mode_adjust)
-	Bare   bool            // no gun and the crossbow put away: an empty hand
 }
 
 // encode writes the gun, its fire mode and its filled slots (adapter,
@@ -516,7 +476,6 @@ func (h Hold) encode(b *wbuf) {
 	}
 	b.str(h.Gun)
 	b.u8(uint8(h.Mode))
-	b.u8(flag(h.Bare, 1))
 	b.u8(uint8(len(set)))
 	for _, s := range set {
 		b.str(string(s))
@@ -527,7 +486,6 @@ func (h Hold) encode(b *wbuf) {
 
 func decodeHold(r *rbuf) Hold {
 	h := Hold{Gun: r.str(), Mode: weapon.FireMode(r.u8())}
-	h.Bare = r.u8()&1 != 0
 	for range int(r.u8()) {
 		s := tacz.Slot(r.str())
 		if ad := r.str(); ad != "" {

@@ -37,8 +37,9 @@ import (
 const (
 	// creatureHealth is the hit points of every creature (a vanilla zombie's).
 	creatureHealth = 20
-	// startRounds is the stock of each ammo type a new game starts with.
-	startRounds = 300
+	// sandboxRounds is the stock of each ammo type the sandbox starts with
+	// (zombie defense starts with none).
+	sandboxRounds = 300
 )
 
 // Bones a gun shows only while it holds rounds (TACZ's GunModelConstant).
@@ -63,6 +64,8 @@ type gunsState struct {
 	choices   map[string]tacz.Choice      // refitted guns' attachments by gun ID (refit.go)
 	modes     map[string]firearm.FireMode // guns' last fire modes by gun ID (TACZ keeps it on the item)
 	stock     map[string]int              // ammo ID → rounds carried
+	loaded    map[string]int              // rounds in each put-away gun's magazine by gun ID (TACZ keeps them on the item)
+	arsenal   arsenal                     // the guns the player has
 	// aim is the aiming progress 0..1 (LocalPlayerAim: 1/aim_time per
 	// second), aimPrev the last tick's.
 	aim, aimPrev firearm.AimProgress
@@ -128,18 +131,24 @@ type gunArms struct {
 	draw  [2][]mgl32.Mat4
 }
 
-// setupGuns loads the gun pack and gives the player a stock of every ammo type.
-func (g *game) setupGuns() {
+// setupGuns loads the gun pack; the sandbox gets every gun and a stock of
+// every ammo type, zombie defense nothing (the pickups give them).
+func (g *game) setupGuns(sandbox bool) {
 	g.gunSel, g.heatScale, g.lensDisc = -1, 0.25, -1 // heatScale: HeatBarOverlay.heatScale
 	p, err := tacz.LoadDefault()
 	if err != nil {
 		log.Printf("guns disabled: %v", err)
 		return
 	}
-	g.gunPack, g.gunViews, g.stock, g.choices, g.modes = p, map[string]*gunView{}, map[string]int{}, map[string]tacz.Choice{}, map[string]firearm.FireMode{}
+	g.gunPack, g.gunViews, g.stock, g.loaded, g.choices, g.modes = p, map[string]*gunView{}, map[string]int{}, map[string]int{}, map[string]tacz.Choice{}, map[string]firearm.FireMode{}
 	g.gunRand = rand.New(rand.NewSource(1))
-	for _, a := range p.Ammo {
-		g.stock[a.ID] = startRounds
+	if sandbox {
+		for _, a := range p.Ammo {
+			g.stock[a.ID] = sandboxRounds
+		}
+		for _, gun := range p.Guns {
+			g.arsenal.add(gun.ID, true)
+		}
 	}
 	g.sounds.files = p.FS
 	log.Printf("guns: %d guns, %d ammo types", len(p.Guns), len(p.Ammo))
@@ -148,7 +157,7 @@ func (g *game) setupGuns() {
 // gunOn reports whether a gun is in hand.
 func (g *game) gunOn() bool { return g.gunPack != nil && g.gunSel >= 0 }
 
-// nextGun (V) takes out the next gun, or puts the last one away.
+// nextGun (V) takes out the arsenal's next gun, or puts the last one away.
 func (g *game) nextGun() {
 	if g.gunPack == nil {
 		return
@@ -157,7 +166,15 @@ func (g *game) nextGun() {
 	if g.switching {
 		from = g.nextSel // pressed again while putting away
 	}
-	g.selectGun(from + 1)
+	cur := ""
+	if from >= 0 && from < len(g.gunPack.Guns) {
+		cur = g.gunPack.Guns[from].ID
+	}
+	if id := g.arsenal.next(cur); id != "" {
+		g.selectGunID(id)
+	} else {
+		g.selectGun(-1)
+	}
 }
 
 // selectGunID takes out the gun with this ID.
@@ -209,6 +226,9 @@ func (g *game) selectGun(i int) {
 // takeGun takes out gun i at once (-1 or out of range: none).
 func (g *game) takeGun(i int) {
 	g.switching = false
+	if g.gunOn() {
+		g.loaded[g.gun.Gun.ID] = g.gun.Ammo
+	}
 	if g.gunPack == nil || i < 0 || i >= len(g.gunPack.Guns) {
 		g.gunSel = -1
 		g.sendHold()
@@ -221,10 +241,13 @@ func (g *game) takeGun(i int) {
 		g.sendHold()
 		return
 	}
-	g.equipped = false // the crossbow goes away
 	g.gunSel = i
 	spec := &v.spec
-	g.gun = firearm.GunState{Gun: spec, Ammo: spec.Mag, ClipLen: clipLen(v)}
+	ammo, ok := g.loaded[spec.ID]
+	if !ok {
+		ammo = spec.Mag // a new gun comes loaded
+	}
+	g.gun = firearm.GunState{Gun: spec, Ammo: ammo, ClipLen: clipLen(v)}
 	if m, ok := g.modes[spec.ID]; ok && !g.gun.SetFireMode(m) {
 		log.Printf("gun %s: kept fire mode %v not among %v", spec.ID, m, spec.FireModes())
 	}
@@ -770,7 +793,6 @@ func (g *game) hitCreature(c *creature, dmg float32, dir [3]float64, knock float
 		g.kill(c, yaw)
 		return true
 	}
-	g.provoke(c)
 	pushCreature(c, knock, -dir[0], -dir[2])
 	return false
 }
@@ -812,10 +834,8 @@ func (g *game) melee() {
 	boxes := func(x, y, z int, id voxel.StateID, buf []collide.AABB) []collide.AABB {
 		return w.StateBoxes(id, x, y, z, buf)
 	}
-	for _, t := range g.creatureTargets() {
-		c := t.(*creature)
-		b := c.Box()
-		if !reach.Intersects(b) {
+	for _, c := range g.creatures {
+		if c.dying > 0 || !reach.Intersects(c.mob.Box()) {
 			continue
 		}
 		eye := [3]float64{c.mob.X, c.mob.Y + c.sp.eyeHeight(), c.mob.Z}

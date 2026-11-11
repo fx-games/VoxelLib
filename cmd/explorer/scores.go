@@ -9,14 +9,19 @@ import (
 )
 
 // drawMatch draws the multiplayer match state: a line at the top (team
-// score, battle royale round and wall), and the ranking while Tab is held
+// score, battle royale round and wall, zombie defense's zombies and
+// nearest pickup), and the ranking while Tab is held
 // (and while dead, like Q3).
 func (g *game) drawMatch(ctx *ui.Context) {
 	if g.net == nil {
 		return
 	}
 	r := g.net.cl.Round()
-	if l := matchLine(r); l != "" {
+	l := matchLine(r)
+	if r.Mode == mp.ZombieDefense {
+		l = g.defenseLine()
+	}
+	if l != "" {
 		f := ctx.Font
 		w := f.Width(l)
 		ui.DrawRect(ctx.Canvas, ctx.W/2-w/2-3, 2, ctx.W/2+w/2+3, 14, 0x60000000)

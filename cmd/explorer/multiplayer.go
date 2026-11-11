@@ -2,8 +2,8 @@ package main
 
 // LAN multiplayer on package mp: host (a listen server in this process,
 // joined over loopback like any client) or join a game, then play it in a
-// world generated from the server's seed. Everyone has the crossbow; the
-// server runs the game, this side predicts the local player and draws the
+// world generated from the server's seed. The server runs the game
+// (zombie defense: zombies, pickups); this side predicts the local player and draws the
 // others with their skins. Hooks: ride (commands and prediction), tickNet
 // after the player tick, drawNet in the world pass, blockBroken/blockPlaced
 // and toggleDoor send block edits.
@@ -25,17 +25,14 @@ import (
 
 	"github.com/go-gl/mathgl/mgl32"
 	"github.com/memmaker/voxellib/actors"
-	"github.com/memmaker/voxellib/app"
 	"github.com/memmaker/voxellib/audio"
 	"github.com/memmaker/voxellib/character"
-	"github.com/memmaker/voxellib/importer/tacz"
 	"github.com/memmaker/voxellib/mp"
 	"github.com/memmaker/voxellib/netcode"
 	"github.com/memmaker/voxellib/voxel"
 	"github.com/memmaker/voxellib/voxel/engine"
 	"github.com/memmaker/voxellib/voxel/render"
 	"github.com/memmaker/voxellib/voxel/respack"
-	firearm "github.com/memmaker/voxellib/weapon"
 )
 
 // skin is a player skin to choose from.
@@ -123,15 +120,18 @@ type netGame struct {
 	anims      [4]remoteAnim
 	lastFrame  time.Time
 	frameTicks float64 // the last frame's length in ticks
-	arrows     []mp.ArrowPose
 	insts      []render.ModelInstance
-	bows       []render.ModelInstance
-	mats       []mgl32.Mat4  // per bows entry
-	gunAt      [4]mgl32.Mat4 // by slot: the held gun's model→world this frame (remoteGunMat)
-	gunPosed   [4]bool       // gunAt is set
-	arrowInsts []render.ModelInstance
+	bows       []render.ModelInstance // the other players' guns
+	mats       []mgl32.Mat4           // per bows entry
+	gunAt      [4]mgl32.Mat4          // by slot: the held gun's model→world this frame (remoteGunMat)
+	gunPosed   [4]bool                // gunAt is set
 	tags       []nametag.Tag
 	skins      [][]mgl32.Mat4
+	viewAspect float64 // the aspect last sent (SendView)
+
+	zombies map[uint32]*remoteZombie // by entity ID; under mu
+	zviews  []mp.ZombieView
+	zinsts  []render.ModelInstance
 }
 
 type remoteAnim struct {
@@ -159,11 +159,25 @@ func (g *game) hostGame(name string, seed int64, gen string, mode mp.Mode) error
 	if seed == 0 {
 		seed = time.Now().UnixNano() & 0xFFFFFFF
 	}
-	var gun func(string, tacz.Choice, firearm.FireMode) (firearm.Gun, error)
-	if g.gunPack != nil {
-		gun = g.gunPack.Gun
+	return g.serve(mp.ServerConfig{Name: name, Seed: seed, Generator: gen, Mode: mode})
+}
+
+// playSolo is single player: zombie defense on a private server in this
+// process (on loopback and a free port: not found by LAN discovery).
+func (g *game) playSolo(gen string, seed int64) error {
+	if seed == 0 {
+		seed = time.Now().UnixNano() & 0xFFFFFFF
 	}
-	srv, err := mp.StartServer(mp.ServerConfig{Name: name, Seed: seed, Generator: gen, Mode: mode, Reg: voxel.NewRegistry(), Gun: gun})
+	return g.serve(mp.ServerConfig{Addr: "127.0.0.1:0", Name: g.playerName + "'s game", Seed: seed, Generator: gen, Mode: mp.ZombieDefense})
+}
+
+// serve starts a server for cfg (with this game's guns) and joins it.
+func (g *game) serve(cfg mp.ServerConfig) error {
+	cfg.Reg = voxel.NewRegistry()
+	if g.gunPack != nil {
+		cfg.Gun, cfg.Loot = g.gunPack.Gun, mp.NewLoot(g.gunPack)
+	}
+	srv, err := mp.StartServer(cfg)
 	if err != nil {
 		return err
 	}
@@ -215,7 +229,7 @@ func (g *game) joinGame(addr string) error {
 		}
 	}
 	g.Config.Start = &[3]float64{w.Own.X, w.Own.Y, w.Own.Z} // placed by the server
-	g.net = &netGame{cl: cl, bodyModel: -1, guns: map[string]*gunView{}}
+	g.net = &netGame{cl: cl, bodyModel: -1, guns: map[string]*gunView{}, zombies: map[uint32]*remoteZombie{}}
 	log.Printf("mp: joined %s as slot %d (seed %d) at %.1f,%.1f,%.1f", addr, w.Slot, w.Seed, w.Own.X, w.Own.Y, w.Own.Z)
 	g.Switch()
 	return nil
@@ -254,9 +268,6 @@ func (g *game) netStart() {
 	n := g.net
 	cl := n.cl
 	g.Player.CanFly, g.Player.Flying, g.Player.NoClip = false, false, false
-	if g.bowModel >= 0 {
-		g.equipped = true
-	}
 	n.body = mp.NewBody()
 	var err error
 	if n.bodyModel, err = g.Models.Add(n.body.Model); err != nil {
@@ -265,7 +276,9 @@ func (g *game) netStart() {
 	}
 	n.defTex = g.Models.AddTexture(g.defaultSkin.img)
 	cl.SendSkin(g.skins[g.skinIdx].png)
-	g.sendHold() // the crossbow, or an empty hand without one
+	g.sendHold()
+	g.sendView()
+	cl.OnPickup = g.takePickup
 	cl.OnBlock = func(e mp.BlockEdit) {
 		reg := g.Eng.World.Reg
 		if id := reg.Parse(e.State); g.Eng.Block(e.X, e.Y, e.Z) != id {
@@ -292,26 +305,52 @@ func (g *game) netStart() {
 	cl.OnHit = func(h mp.Hit) {
 		me := cl.Slot()
 		switch {
+		case h.ByZombie && h.Victim == me:
+			g.hurt = hurtTicks
+		case h.ByZombie && h.Victim >= 0 && h.Victim < len(n.anims):
+			n.anims[h.Victim].hurt = actors.MaxHurtTime
+		case h.Zombie != 0:
+			g.zombieHurt(h.Zombie)
+			if h.Attacker == me {
+				g.hitFeedback(h)
+			}
 		case h.Victim == me:
 			g.hurt = hurtTicks
 		case h.Victim >= 0 && h.Victim < len(n.anims):
 			n.anims[h.Victim].hurt = actors.MaxHurtTime
 		case h.Attacker == me:
-			if h.Gun {
-				g.hitMark(h.Head, h.Killed)
-			}
-			msg := "Hit"
-			if h.Head {
-				msg = "Head shot"
-			}
-			if h.Killed {
-				msg += " - kill!"
-			}
-			n.mu.Lock()
-			n.lines = append(n.lines, "§e"+msg)
-			n.mu.Unlock()
+			g.hitFeedback(h)
 		}
 	}
+}
+
+// hitFeedback is the shooter's side of a hit: the hit marker and a line.
+func (g *game) hitFeedback(h mp.Hit) {
+	if h.Gun {
+		g.hitMark(h.Head, h.Killed)
+	}
+	msg := "Hit"
+	if h.Head {
+		msg = "Head shot"
+	}
+	if h.Killed {
+		msg += " - kill!"
+	}
+	n := g.net
+	n.mu.Lock()
+	n.lines = append(n.lines, "§e"+msg)
+	n.mu.Unlock()
+}
+
+// sendView tells the server the unzoomed view (zombie defense spawns out
+// of it) when the window's aspect changed.
+func (g *game) sendView() {
+	n := g.net
+	if g.Cam.Aspect == n.viewAspect || g.Cam.Aspect <= 0 {
+		return
+	}
+	n.viewAspect = g.Cam.Aspect
+	n.cl.SendView(baseFOV*math.Pi/180, g.Cam.Aspect)
 }
 
 // ride turns the tick's input into a command (Hooks.Ride): first the
@@ -326,21 +365,17 @@ func (g *game) ride(in character.Input) bool {
 	if n.cl.Own().Dead {
 		return true
 	}
-	attack := g.crossbowOn() && (g.Input.Down(app.ActAttack) && !g.ScreenOpen() || g.autoShot())
-	n.cmd, n.haveCmd = n.cl.Command(in, attack), true
+	n.cmd, n.haveCmd = n.cl.Command(in), true
 	return false
 }
 
-// sendCmd runs first after the player's tick: finish the command
-// (crossbow) and send it. The server runs the reliable messages riding on
+// sendCmd runs first after the player's tick: send the command. The server runs the reliable messages riding on
 // a packet before its commands, so a shot queued after this send is fired
 // with this tick's input (sneak, position), as in single player.
 func (g *game) sendCmd() {
 	n := g.net
 	if n.haveCmd {
-		if n.cl.Predicted(n.cmd, g.Player.Character, g.Terrain) {
-			g.recoil = recoilTicks
-		}
+		n.cl.Send(n.cmd)
 		n.haveCmd = false
 	}
 }
@@ -358,6 +393,7 @@ func (g *game) tickNet() {
 	g.health = own.Health
 	g.Player.Dead = own.Dead
 	if own.Dead && !n.dead {
+		g.loseArsenal() // back to bare hands
 		n.mu.Lock()
 		if r := n.cl.Round(); r.Mode == mp.BattleRoyale && r.Phase == mp.PhasePlaying {
 			n.lines = append(n.lines, "§cYou are out - watching until the next round")
@@ -380,6 +416,7 @@ func (g *game) netFrame() {
 		n.frameTicks = math.Min(dt.Seconds()*mp.TickRate, 2)
 	}
 	n.lastFrame = now
+	g.sendView()
 	t, f := n.cl.WorldTime() // the day is the server's
 	g.Eng.Renderer.Opt.Daylight = mp.Daylight(t, f)
 	n.mu.Lock()
@@ -410,10 +447,11 @@ func (g *game) netFrame() {
 	}
 }
 
-// netPose poses the other players and every arrow for this frame's views
+// netPose poses the other players and the zombies for this frame's views
 // (drawNet), advancing their walk cycles.
-func (g *game) netPose(alpha float64) {
+func (g *game) netPose() {
 	n := g.net
+	g.poseZombies()
 	n.insts, n.bows, n.mats, n.tags = n.insts[:0], n.bows[:0], n.mats[:0], n.tags[:0]
 	views := n.cl.Players()
 	if len(n.skins) < len(views) {
@@ -440,7 +478,7 @@ func (g *game) netPose(alpha float64) {
 		}
 		ra.Advance(v.X-ra.x, v.Z-ra.z, n.frameTicks)
 		ra.x, ra.z, ra.Age = v.X, v.Z, n.cl.RenderTime()
-		ra.Pitch, ra.Sneak, ra.Gun, ra.Aim, ra.Bare = v.Pitch, v.Sneak, held.Gun != "", v.Aim, held.Bare
+		ra.Pitch, ra.Sneak, ra.Gun, ra.Aim = v.Pitch, v.Sneak, held.Gun != "", v.Aim
 		if gv != nil {
 			ra.Hold = gv.spec.ThirdPersonHold
 		}
@@ -495,46 +533,20 @@ func (g *game) netPose(alpha float64) {
 					n.bows = append(n.bows, render.ModelInstance{Model: h, X: float64(t[0]), Y: float64(t[1]), Z: float64(t[2]), Skin: skin, Sky: sky, Block: blk})
 				}
 			}
-		} else if g.bowModel >= 0 && !held.Bare {
-			// The crossbow at the right hand, aimed along the look, its
-			// cut-out on edge (rolled from the first-person hold, which
-			// lies flat) so it shows its profile from the side.
-			hand := mgl32.TransformCoordinate(n.body.Hand(n.skins[i]), creatureMatrix(0, 0, 0, v.Yaw, tilt, tiltYaw))
-			m := render.TiltMatrix(tilt, tiltYaw).Mul4(mgl32.HomogRotate3DY(float32(-v.Yaw))).Mul4(mgl32.HomogRotate3DX(float32(v.Pitch))).
-				Mul4(mgl32.HomogRotate3DZ(math.Pi / 2)).Mul4(bowHold).Mul4(mgl32.Scale3D(0.55, 0.55, 0.55))
-			n.mats = append(n.mats, m)
-			n.bows = append(n.bows, render.ModelInstance{Model: g.bowModel, X: v.X + float64(hand[0]),
-				Y: v.Y + float64(hand[1]), Z: v.Z + float64(hand[2]), Sky: sky, Block: blk})
 		}
 	}
 	for i := range n.bows {
 		n.bows[i].Transform = &n.mats[i]
 	}
-	n.arrowInsts = n.arrowInsts[:0]
-	if g.arrowModel < 0 {
-		return
-	}
-	n.arrows = n.cl.Arrows(g.Terrain, alpha, n.arrows)
-	for _, a := range n.arrows {
-		if a.Fresh {
-			dx, dy, dz := a.X-g.Cam.X, a.Y-g.Cam.Y, a.Z-g.Cam.Z
-			if dx*dx+dy*dy+dz*dz < 3.5*3.5 {
-				continue // a fresh shot leaving the eye (see drawArrows)
-			}
-		}
-		back := 0.4 * math.Cos(a.Pitch)
-		sky, blk := g.Light(a.X-math.Sin(a.Yaw)*back, a.Y-0.4*math.Sin(a.Pitch), a.Z+math.Cos(a.Yaw)*back)
-		n.arrowInsts = append(n.arrowInsts, render.ModelInstance{Model: g.arrowModel, X: a.X, Y: a.Y, Z: a.Z, Yaw: a.Yaw, Pitch: a.Pitch, Sky: sky, Block: blk})
-	}
 }
 
-// drawNet draws the other players, their weapons and every arrow as
-// netPose posed them, and the battle royale wall, for cam.
+// drawNet draws the other players, their guns and the zombies as netPose
+// posed them, and the battle royale wall, for cam.
 func (g *game) drawNet(cam *render.Camera) {
 	n := g.net
 	g.Models.Draw(cam, n.insts)
 	g.Models.Draw(cam, n.bows)
-	g.Models.Draw(cam, n.arrowInsts)
+	g.Models.Draw(cam, n.zinsts)
 	if g.nameTags != nil {
 		g.nameTags.Draw(cam, n.tags)
 	}
@@ -543,12 +555,12 @@ func (g *game) drawNet(cam *render.Camera) {
 	}
 }
 
-// sendHold tells the server what is in hand: the gun, else the crossbow or nothing.
+// sendHold tells the server what is in hand: the gun or nothing.
 func (g *game) sendHold() {
 	if g.net == nil {
 		return
 	}
-	h := mp.Hold{Bare: !g.bowReady()}
+	var h mp.Hold
 	if g.gunOn() {
 		h = mp.Hold{Gun: g.gun.Gun.ID, Choice: g.gunChoice(g.gun.Gun.ID), Mode: g.gun.FireMode()}
 	}
@@ -562,7 +574,7 @@ func (g *game) sendNextHold(i int) {
 	if g.net == nil {
 		return
 	}
-	h := mp.Hold{Bare: !g.bowReady()}
+	var h mp.Hold
 	if g.gunPack != nil && i >= 0 && i < len(g.gunPack.Guns) {
 		spec := &g.gunPack.Guns[i]
 		mode, ok := g.modes[spec.ID]

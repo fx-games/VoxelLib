@@ -23,7 +23,6 @@ import (
 	"github.com/memmaker/voxellib/importer/tacz"
 	"github.com/memmaker/voxellib/mp"
 	"github.com/memmaker/voxellib/voxel"
-	"github.com/memmaker/voxellib/weapon"
 )
 
 func main() {
@@ -33,7 +32,7 @@ func main() {
 	gen := flag.String("gen", "overworld", "world generator: overworld or flat")
 	mapName := flag.String("map", "", "play on a VoxelMap (a folder of -maps, e.g. minecity) instead of a generated world")
 	maps := flag.String("maps", mp.MapsDir, "directory of the VoxelMaps players can play on (every player needs the same)")
-	modeName := flag.String("mode", "dm", "game mode: dm (deathmatch), tdm (team deathmatch) or br (battle royale)")
+	modeName := flag.String("mode", "zd", "game mode: zd (zombie defense), dm (deathmatch), tdm (team deathmatch) or br (battle royale)")
 	interval := flag.Duration("zone-interval", mp.DefaultZoneInterval, "battle royale: how long the energy wall stands before closing in")
 	shrink := flag.Duration("zone-shrink", mp.DefaultShrinkTime, "battle royale: how long the wall takes to close in")
 	flag.Parse()
@@ -54,8 +53,14 @@ func main() {
 		*seed = time.Now().UnixNano() & 0xFFFFFFF
 	}
 	log.Printf("generating the %s world (seed %d) for %s...", *gen, *seed, mode)
-	srv, err := mp.StartServer(mp.ServerConfig{Addr: *addr, Name: *name, Seed: *seed, Generator: *gen,
-		Mode: mode, ZoneInterval: *interval, ShrinkTime: *shrink, Reg: voxel.NewRegistry(), Gun: loadGuns()})
+	cfg := mp.ServerConfig{Addr: *addr, Name: *name, Seed: *seed, Generator: *gen,
+		Mode: mode, ZoneInterval: *interval, ShrinkTime: *shrink, Reg: voxel.NewRegistry()}
+	if p, err := tacz.LoadDefault(); err != nil {
+		log.Printf("guns disabled: %v", err)
+	} else {
+		cfg.Gun, cfg.Loot = p.Gun, mp.NewLoot(p)
+	}
+	srv, err := mp.StartServer(cfg)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -220,15 +225,4 @@ func timeCommand(srv *mp.Server, arg string) {
 	}
 	srv.SetTime(t, frozen)
 	timeCommand(srv, "")
-}
-
-// loadGuns resolves the guns players may hold from the TACZ pack (nil when it is
-// missing: run from the repo root).
-func loadGuns() func(string, tacz.Choice, weapon.FireMode) (weapon.Gun, error) {
-	p, err := tacz.LoadDefault()
-	if err != nil {
-		log.Printf("guns disabled: %v", err)
-		return nil
-	}
-	return p.Gun
 }

@@ -73,7 +73,7 @@ func (g *game) openMainMenu() {
 	}
 	ctx := g.ui.Ctx
 	m := ui.NewMainMenu(ctx, []ui.MenuItem{
-		{Label: "Singleplayer", OnClick: func() { ctx.Screens.CloseAll() }},
+		{Label: "Singleplayer", OnClick: func() { g.startSolo(ctx) }},
 		{Label: "Multiplayer", OnClick: func() { ctx.Screens.Open(g.multiplayerScreen()) }},
 	}, func() { ctx.Screens.Open(g.optionsScreen()) }, g.Quit, nil)
 	m.Title, m.TitleY = "§lVOXELLIB", 50
@@ -82,6 +82,20 @@ func (g *game) openMainMenu() {
 		m.FooterRight, g.pendingNote = g.pendingNote, ""
 	}
 	g.ui.Open(noPause{m}) // the world lives on behind the title
+}
+
+// startSolo leaves the title for single player: zombie defense, unless
+// already in a game (back to it) or exploring the -sandbox world.
+func (g *game) startSolo(ctx *ui.Context) {
+	ctx.Screens.CloseAll()
+	if g.net != nil || g.opt.sandbox {
+		return
+	}
+	if err := g.solo(); err != nil {
+		log.Printf("singleplayer: %v", err)
+		g.pendingNote = err.Error()
+		g.openMainMenu()
+	}
 }
 
 // pauseMenu is Esc's menu: back to the game, and leaving it.
@@ -267,7 +281,7 @@ func (g *game) createScreen() ui.Screen {
 	for _, m := range mp.Maps() {
 		worlds = append(worlds, mp.MapInfo{Gen: m.Gen, Title: "Map: " + m.Title})
 	}
-	return &createScreen{g: g, worlds: worlds}
+	return &createScreen{g: g, worlds: worlds, mode: mp.ZombieDefense}
 }
 
 func (s *createScreen) Init(ctx *ui.Context) {
@@ -285,7 +299,7 @@ func (s *createScreen) Init(ctx *ui.Context) {
 	s.Add(s.seed)
 	s.Add(ui.NewButton(x, 120, 200, s.worlds[s.world].Title, func() { s.world = (s.world + 1) % len(s.worlds); s.Init(ctx) }))
 	s.Add(ui.NewButton(x, 144, 200, "Mode: "+s.mode.String(), func() {
-		s.mode = (s.mode + 1) % (mp.BattleRoyale + 1)
+		s.mode = (s.mode + 1) % mp.NumModes
 		s.Init(ctx)
 	}))
 	s.Add(ui.NewButton(x, ctx.H-28, 98, "Create game", func() { s.create(ctx) }))
@@ -305,6 +319,7 @@ var modeHelp = map[mp.Mode]string{
 	mp.Deathmatch:     "Everyone against everyone; the most kills lead",
 	mp.TeamDeathmatch: "Red against Blue; the team's kills add up",
 	mp.BattleRoyale:   "One life a round; the energy wall closes in every 5 minutes",
+	mp.ZombieDefense:  "Together against zombies; find guns and ammo lying about",
 }
 
 // seedOf is the reference's seed field: a number as is, other text by its

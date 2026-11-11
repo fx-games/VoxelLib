@@ -11,8 +11,8 @@ import (
 	"github.com/memmaker/voxellib/app"
 	"github.com/memmaker/voxellib/mobs"
 	"github.com/memmaker/voxellib/model"
-	"github.com/memmaker/voxellib/mp"
 	"github.com/memmaker/voxellib/voxel"
+	"github.com/memmaker/voxellib/voxel/collide"
 	"github.com/memmaker/voxellib/voxel/render"
 )
 
@@ -24,10 +24,8 @@ type species struct {
 	clips  [mobs.NumStates]string // clip per mobs.State ("" = fall back to idle)
 	width  float64
 	height float64
-	eye    float64    // eye height above the feet (0: mobEyeFraction of the height)
-	static bool       // props: stay put
-	shape  *shapeInfo // for exact arrow hits, built on first use
-	body   *mp.Body   // posed as the vanilla zombie instead of by clips (zombies.go)
+	eye    float64 // eye height above the feet (0: mobEyeFraction of the height)
+	static bool    // props: stay put
 }
 
 type creature struct {
@@ -38,25 +36,11 @@ type creature struct {
 	skin []mgl32.Mat4
 	// debugClip, when set (K key), overrides the behaviour's animation.
 	debugClip string
-	// attacks counts attacks (picks the next clip); attackClip is playing.
-	attacks    int
-	attackClip string
 	// damage is the bullet damage taken (guns.go: dead at creatureHealth).
 	damage float32
-	// dying counts ticks since a fatal hit (0 = alive); see crossbow.go.
-	dying int
-	// drawn is the pose last drawn (skin is its animation), for exact
-	// arrow hits against what the player saw.
-	drawn                        bool
-	drawX, drawY, drawZ, drawYaw float64
-	drawTilt                     float64 // death tilt as drawn
-	drawFade                     float32
-	fallYaw                      float64     // direction a corpse falls
-	drawFrame, poseFrame         int         // pose is the drawn skin, rebuilt when stale
-	pose                         *model.Pose // deformed vertices for hit tests
-	// zombies (sp.body): the walk cycle this and last tick, ticks alive
-	limb, prevLimb mp.Anim
-	age            int
+	// dying counts ticks since a fatal hit (0 = alive); see kill.
+	dying   int
+	fallYaw float64 // direction a corpse falls
 }
 
 // creaturesState is the explorer's creature glue: imported models →
@@ -68,9 +52,8 @@ type creaturesState struct {
 	mobRand    *rand.Rand
 	lastAnim   time.Time
 	animDT     float32 // animation time step this frame
-	modelInsts []render.ModelInstance
-	lineup     bool   // debug: species gallery in front of the player
-	lineupAnim string // debug: clip forced on the gallery
+	lineup     bool    // debug: species gallery in front of the player
+	lineupAnim string  // debug: clip forced on the gallery
 }
 
 // filterSpecies keeps only species whose name contains f.
@@ -125,7 +108,7 @@ func (g *game) addSpecies(ms []*model.Model, clipFor func(m *model.Model, s mobs
 		if m.Tags["flying"] {
 			sp.kind = mobs.Flyer
 		}
-		for s := mobs.Idle; s <= mobs.Trick; s++ { // Attack clips: combat.go
+		for s := mobs.Idle; s <= mobs.Trick; s++ {
 			sp.clips[s] = clipFor(m, s)
 		}
 		g.species = append(g.species, sp)
@@ -183,7 +166,6 @@ func (g *game) tickCreatures() {
 		g.spawnLeft--
 	}
 	all := make([]*mobs.Mob, 0, len(g.creatures)+1)
-	g.aimHostiles()
 	g.tickDying()
 	for _, c := range g.creatures {
 		if c.dying == 0 {
@@ -193,7 +175,6 @@ func (g *game) tickCreatures() {
 	}
 	// The player shoves mobs aside but isn't shoved back.
 	all = append(all, &mobs.Mob{X: p.X, Y: p.Y, Z: p.Z, Width: p.Width, Height: p.Height, Static: true})
-	g.applyStrikes()
 	mobs.Separate(all, g.Terrain)
 	for _, c := range g.creatures { // the app interpolates and draws the entity
 		e, m := c.ent, c.mob
@@ -265,19 +246,13 @@ func (g *game) animStep() {
 	g.lastAnim = now
 }
 
-// poseCreature animates a creature's entity for drawing (app.Entity.Pose)
-// and remembers the drawn pose for exact arrow hits.
+// poseCreature animates a creature's entity for drawing (app.Entity.Pose).
 func (g *game) poseCreature(e *app.Entity, alpha float64, in *render.ModelInstance) bool {
 	c := e.Data.(*creature)
 	switch {
 	case c.dying > 0 && c.skin != nil: // the dead keep their last pose
-	case c.sp.body != nil:
-		c.zombieSkin(alpha)
 	default:
 		clip := c.debugClip
-		if clip == "" {
-			clip = g.combatClip(c)
-		}
 		if clip == "" {
 			clip = c.sp.clips[c.mob.State]
 			if clip == "" {
@@ -295,9 +270,113 @@ func (g *game) poseCreature(e *app.Entity, alpha float64, in *render.ModelInstan
 		}
 		c.skin = c.anim.Skin(c.skin)
 	}
-	c.drawn, c.drawX, c.drawY, c.drawZ, c.drawYaw = true, in.X, in.Y, in.Z, in.Yaw
-	c.drawTilt, c.drawFade = c.deathTilt(alpha), c.deathFade(alpha)
-	c.drawFrame++
-	in.Tilt, in.TiltYaw, in.Fade, in.Skin = c.drawTilt, c.fallYaw, c.drawFade, c.skin
+	in.Tilt, in.TiltYaw, in.Fade, in.Skin = c.deathTilt(alpha), c.fallYaw, c.deathFade(alpha), c.skin
 	return true
+}
+
+// Deaths: a killed creature freezes in its pose, topples over the way the
+// shot was flying (90° over a second), lies still, fades out and is
+// removed. Remote players and zombies fall the same way (deathTiltAt).
+
+const (
+	deathTicks = 20 // falling over
+	lieTicks   = 10 // lying still
+	fadeTicks  = 20 // dissolving
+)
+
+// creatureMatrix places a creature's model space in the world, as the
+// model renderer does, tipped over by tilt toward tiltYaw.
+func creatureMatrix(x, y, z, yaw, tilt, tiltYaw float64) mgl32.Mat4 {
+	return mgl32.Translate3D(float32(x), float32(y), float32(z)).Mul4(render.TiltMatrix(tilt, tiltYaw)).
+		Mul4(mgl32.HomogRotate3DY(float32(math.Pi - yaw)))
+}
+
+// kill starts a creature's death: it stops and falls over along fallYaw.
+func (g *game) kill(c *creature, fallYaw float64) {
+	if c.dying > 0 {
+		return
+	}
+	// Freeze the body where it is: it is no longer ticked, so its previous
+	// pose must equal the current one or drawing keeps interpolating
+	// between them every tick (the corpse jittered), and Static keeps other
+	// mobs from shoving it.
+	m := c.mob
+	c.dying = 1
+	c.fallYaw = fallYaw
+	m.VX, m.VY, m.VZ = 0, 0, 0
+	m.OnGround = false // fallCorpse finds the ground on its first step
+	m.PrevX, m.PrevY, m.PrevZ, m.PrevYaw = m.X, m.Y, m.Z, m.Yaw
+	m.Static = true
+}
+
+// tickDying advances deaths and removes creatures that have fallen over.
+func (g *game) tickDying() {
+	live := g.creatures[:0]
+	for _, c := range g.creatures {
+		if c.dying > 0 {
+			landed := g.fallCorpse(c.mob)
+			// Lying still and fading wait until the body is down: a flyer
+			// (or a mob shot mid-jump) drops first.
+			if landed || c.dying < deathTicks {
+				c.dying++
+			}
+			if c.dying > deathTicks+lieTicks+fadeTicks {
+				c.ent.Removed = true
+				continue
+			}
+		}
+		live = append(live, c)
+	}
+	clear(g.creatures[len(live):])
+	g.creatures = live
+}
+
+// fallCorpse drops a dead body under gravity until it rests on terrain and
+// reports whether it has landed. It keeps the previous position current, so
+// drawing interpolates the fall smoothly.
+func (g *game) fallCorpse(m *mobs.Mob) bool {
+	m.PrevX, m.PrevY, m.PrevZ, m.PrevYaw = m.X, m.Y, m.Z, m.Yaw
+	if m.OnGround {
+		return true
+	}
+	m.VY = (m.VY - 0.08) * 0.98 // the reference entity gravity and drag
+	_, my, _ := collide.Move(g.Terrain, m.Box(), 0, m.VY, 0)
+	m.Y += my
+	if my != m.VY { // hit the ground
+		m.VY, m.OnGround = 0, true
+	}
+	return m.OnGround
+}
+
+// deathTilt is how far a dying creature has fallen over (radians).
+func (c *creature) deathTilt(alpha float64) float64 {
+	if c.dying == 0 {
+		return 0
+	}
+	return deathTiltAt(float64(c.dying) + alpha)
+}
+
+// deathTiltAt is how far a body has fallen over (radians) deathTime ticks
+// (with the partial tick) after dying: LivingEntityRenderer.setupRotations,
+// sqrt((deathTime − 1)/20 · 1.6) of 90°, capped at 90°.
+func deathTiltAt(deathTime float64) float64 {
+	f := math.Sqrt(math.Max(0, (deathTime-1)/deathTicks*deathTiltSpeed))
+	return math.Min(f, 1) * math.Pi / 2
+}
+
+// deathTiltSpeed is setupRotations' 1.6: the fall completes before deathTicks.
+const deathTiltSpeed = 1.6
+
+// hurtOverlay is the red over a hurt or dying living entity: OverlayTexture's
+// hurt texel (A 0xB2, red), which the entity shader mixes as
+// mix(red, colour, 0xB2/255).
+var hurtOverlay = [4]float32{1, 0, 0, 1 - 0xB2/255.0}
+
+// deathFade is how far a dead creature has dissolved (0 solid, 1 gone).
+func (c *creature) deathFade(alpha float64) float32 {
+	if c.dying == 0 {
+		return 0
+	}
+	t := (float64(c.dying-1) + alpha - deathTicks - lieTicks) / fadeTicks
+	return float32(math.Max(0, math.Min(1, t)))
 }

@@ -129,6 +129,39 @@ func (w *World) Ground(x, z int) (int, bool) {
 	return y, !strings.HasSuffix(top, "_leaves") && !strings.HasSuffix(top, ":leaves") && w.Liquid(x, y, z) == character.LiquidNone
 }
 
+// StandY is Ground in a loaded column only (zdefense's Ground): false
+// where the column has not been generated yet.
+func (w *World) StandY(x, z int) (int, bool) {
+	if w.W.Chunk(voxel.ChunkPos{X: x >> 4, Z: z >> 4}) == nil {
+		return 0, false
+	}
+	return w.Ground(x, z)
+}
+
+// LoadNext loads the nearest column within r blocks of x,z not loaded yet,
+// ring by ring; false when all are.
+//
+// ponytail: rescans the rings from the centre on every call (about 700
+// lookups at r 200); remember the finished ring per player if it shows.
+func (w *World) LoadNext(x, z float64, r int) bool {
+	cx, cz := int(math.Floor(x))>>4, int(math.Floor(z))>>4
+	n := (r + 15) >> 4
+	for d := 0; d <= n; d++ {
+		for dx := -d; dx <= d; dx++ {
+			for dz := -d; dz <= d; dz++ {
+				if max(dx, -dx, dz, -dz) != d {
+					continue
+				}
+				if p := (voxel.ChunkPos{X: cx + dx, Z: cz + dz}); w.W.Chunk(p) == nil {
+					w.Load(p.X<<4, p.Z<<4)
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
 // SpawnPoint picks a dry place to stand near the generator's land
 // around x,z, at least on solid ground.
 func (w *World) SpawnPoint(x, z int) (float64, float64, float64) {

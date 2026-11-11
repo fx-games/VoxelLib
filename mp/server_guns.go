@@ -70,14 +70,20 @@ func (s *Server) lastPos(p *sPlayer, tick uint32) [3]float64 {
 	return [3]float64{p.ch.X, p.ch.Y, p.ch.Z}
 }
 
+// hitTarget is who a bullet target is: an enemy player or a zombie.
+type hitTarget struct {
+	player *sPlayer
+	zombie *sZombie
+}
+
 // bulletTargets are p's enemies as bullet boxes (HitboxHelper's lag
-// compensation: each box as p saw it, with the velocity it had then), and
-// who each is.
-func (s *Server) bulletTargets(p *sPlayer, tick uint32) ([]projectile.BulletTarget, []*sPlayer) {
+// compensation: each box as p saw it, with the velocity it had then) and
+// the living zombies (as they are now), and who each is.
+func (s *Server) bulletTargets(p *sPlayer, tick uint32) ([]projectile.BulletTarget, []hitTarget) {
 	var ts []projectile.BulletTarget
-	var who []*sPlayer
+	var who []hitTarget
 	for _, o := range s.players {
-		if o == nil || !enemies(p, o) || o.dead > 0 || o.protect > 0 {
+		if o == nil || !s.enemies(p, o) || o.dead > 0 || o.protect > 0 {
 			continue
 		}
 		r, ok := s.rewind(o, tick, p.lag)
@@ -90,7 +96,16 @@ func (s *Server) bulletTargets(p *sPlayer, tick uint32) ([]projectile.BulletTarg
 		}
 		ts = append(ts, projectile.BulletTarget{Box: projectile.HitBox(r.Box(), vel, true, r.anim.Sneak),
 			Feet: [3]float64{r.x, r.y, r.z}, EyeHeight: character.PlayerEye(r.anim.Sneak)})
-		who = append(who, o)
+		who = append(who, hitTarget{player: o})
+	}
+	for _, z := range s.def.zombies {
+		if z.dead > 0 {
+			continue
+		}
+		m := z.m
+		ts = append(ts, projectile.BulletTarget{Box: projectile.HitBox(m.Box(), [3]float64{m.X - m.PrevX, m.Y - m.PrevY, m.Z - m.PrevZ}, false, false),
+			Feet: [3]float64{m.X, m.Y, m.Z}, EyeHeight: ZombieEyeHeight})
+		who = append(who, hitTarget{zombie: z})
 	}
 	return ts, who
 }
@@ -104,7 +119,7 @@ func (s *Server) tickBullets(tick uint32) {
 	}
 	type shooterTargets struct {
 		ts  []projectile.BulletTarget
-		who []*sPlayer
+		who []hitTarget
 	}
 	bySlot := map[int]shooterTargets{}
 	live := s.bullets[:0]
@@ -121,13 +136,18 @@ func (s *Server) tickBullets(tick uint32) {
 		}
 		sb.b.Tick(s.world, &projectile.BulletCollider{Boxes: boxes, Targets: t.ts,
 			Hit: func(b *projectile.Bullet, h projectile.BulletHit) {
-				v := t.who[h.Target]
+				dmg, knock := float64(b.Damage(h.Pos, h.Head)), float64(b.Gun.Bullet.Knockback)
+				// LivingEntity.hurt pushes away from the source's entity, the shooter.
+				if z := t.who[h.Target].zombie; z != nil {
+					s.hurtZombie(p, z, Hit{Head: h.Head, Gun: true}, dmg, z.m.X-p.ch.X, z.m.Z-p.ch.Z, knock)
+					return
+				}
+				v := t.who[h.Target].player
 				if v.dead > 0 {
 					return // killed by an earlier bullet
 				}
-				// LivingEntity.hurt pushes away from the source's entity, the shooter.
-				s.damage(Hit{Attacker: p.slot, Victim: v.slot, Damage: max(1, int(math.Round(float64(b.Damage(h.Pos, h.Head))))), Head: h.Head, Gun: true},
-					v.ch.X-p.ch.X, v.ch.Z-p.ch.Z, float64(b.Gun.Bullet.Knockback))
+				s.damage(Hit{Attacker: p.slot, Victim: v.slot, Damage: max(1, int(math.Round(dmg))), Head: h.Head, Gun: true},
+					v.ch.X-p.ch.X, v.ch.Z-p.ch.Z, knock)
 			}})
 		if sb.b.Gone {
 			s.broadcast(bulletGone(sb.id))
@@ -146,7 +166,7 @@ func bulletGone(id uint32) []byte {
 }
 
 // melee lands p's held gun's melee hit along l (ModernKineticGunItem.doMelee)
-// on the players as p saw them.
+// on the players as p saw them and on the zombies.
 //
 // ponytail: the client's melee cooldown is trusted, like its fire rate.
 func (s *Server) melee(p *sPlayer, gun string, l Look) {
@@ -173,5 +193,14 @@ func (s *Server) melee(p *sPlayer, gun string, l Look) {
 		push(r.p, float64(m.Knockback), d[0], d[2])
 		s.damage(Hit{Attacker: p.slot, Victim: r.p.slot, Damage: int(math.Round(float64(m.Damage))), Melee: true},
 			r.p.ch.X-p.ch.X, r.p.ch.Z-p.ch.Z, actors.HurtKnockback)
+	}
+	for _, z := range s.def.zombies {
+		zm := z.m
+		te := [3]float64{zm.X, zm.Y + ZombieEyeHeight, zm.Z}
+		if z.dead > 0 || !reach.Intersects(zm.Box()) || !m.Reaches(eye, d, te) || !projectile.InSight(s.world, boxes, eye, te) {
+			continue
+		}
+		zm.VX, zm.VY, zm.VZ = actors.KnockbackMotion(zm.VX, zm.VY, zm.VZ, zm.OnGround, float64(m.Knockback), -d[0], -d[2])
+		s.hurtZombie(p, z, Hit{Melee: true}, float64(m.Damage), zm.X-p.ch.X, zm.Z-p.ch.Z, actors.HurtKnockback)
 	}
 }

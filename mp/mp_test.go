@@ -1,13 +1,11 @@
 package mp
 
 import (
-	"math"
 	"testing"
 	"time"
 
 	"github.com/memmaker/voxellib/character"
 	"github.com/memmaker/voxellib/netcode"
-	"github.com/memmaker/voxellib/projectile"
 	"github.com/memmaker/voxellib/voxel"
 )
 
@@ -47,14 +45,14 @@ func newBot(t *testing.T, addr, name string, cfg netcode.Config) *bot {
 	return b
 }
 
-// step runs one client tick with the given look and buttons.
-func (b *bot) step(yaw, pitch float64, attack bool) bool {
+// step runs one client tick with the given look.
+func (b *bot) step(yaw, pitch float64) {
 	b.c.Poll()
 	b.c.Reconcile(b.ch, b.w)
 	in := character.Input{Yaw: yaw, Pitch: pitch}
-	cmd := b.c.Command(in, attack)
+	cmd := b.c.Command(in)
 	b.ch.Tick(b.w, in)
-	return b.c.Predicted(cmd, b.ch, b.w)
+	b.c.Send(cmd)
 }
 
 // run ticks every bot at the tick rate until done reports true.
@@ -71,41 +69,6 @@ func run(t *testing.T, limit time.Duration, bots []*bot, tick func(i int) bool) 
 		time.Sleep(time.Second / TickRate)
 	}
 }
-
-// aim returns the look that sends an arrow from eye to target, found by
-// flying test arrows with the real physics (a sniper's holdover).
-func aim(eye, target [3]float64) (yaw, pitch float64) {
-	dx, dy, dz := target[0]-eye[0], target[1]-eye[1], target[2]-eye[2]
-	yaw = math.Atan2(dx, -dz)
-	dist := math.Hypot(dx, dz)
-	heightAt := func(p float64) float64 {
-		var w projectile.World
-		a := w.Shoot(0, 0, 0, 0, p, projectile.Speed)
-		for range 400 {
-			px, py := -a.Z, a.Y
-			w.Tick(noBlocks{}, nil)
-			if -a.Z >= dist {
-				f := (dist - px) / (-a.Z - px)
-				return py + (a.Y-py)*f
-			}
-		}
-		return math.Inf(-1)
-	}
-	lo, hi := -0.5, 0.8
-	for range 60 {
-		pitch = (lo + hi) / 2
-		if heightAt(pitch) < dy {
-			lo = pitch
-		} else {
-			hi = pitch
-		}
-	}
-	return yaw, pitch
-}
-
-type noBlocks struct{}
-
-func (noBlocks) Solid(x, y, z int) bool { return false }
 
 func startServer(t *testing.T, spawn func(slot int, w *World) (x, y, z float64)) *Server {
 	t.Helper()
@@ -150,7 +113,7 @@ func TestWelcomePlaces(t *testing.T) {
 	}
 }
 
-func TestSnipeAndEdits(t *testing.T) {
+func TestEdits(t *testing.T) {
 	const range_ = 120.0
 	srv := startServer(t, func(slot int, w *World) (float64, float64, float64) {
 		return 0.5, float64(w.Surface(0, 0)), 0.5 - float64(slot)*range_ // slot 1 stands 120 blocks north
@@ -166,7 +129,7 @@ func TestSnipeAndEdits(t *testing.T) {
 	a.c.SendEdit(edit)
 	run(t, 3*time.Second, bots, func(int) bool {
 		for _, bt := range bots {
-			bt.step(0, 0, false)
+			bt.step(0, 0)
 		}
 		return len(b.edits) > 0 && a.c.Ready() && b.c.Ready()
 	})
@@ -174,93 +137,13 @@ func TestSnipeAndEdits(t *testing.T) {
 		t.Fatalf("target got edit %+v", b.edits)
 	}
 
-	// The archer aims at the target's head 120 blocks off and fires once.
-	// Health 20, a head shot kills.
-	var shotAt int
-	run(t, 12*time.Second, bots, func(i int) bool {
-		var views []PlayerView
-		views = a.c.Players()
-		fire := false
-		yaw, pitch := 0.0, 0.0
-		for _, v := range views {
-			if v.Slot == b.c.Slot() {
-				ex, ey, ez := a.ch.Eye()
-				yaw, pitch = aim([3]float64{ex, ey - 0.1, ez}, [3]float64{v.X, v.Y + 1.75, v.Z})
-				fire = shotAt == 0 && i > 10
-			}
-		}
-		if a.step(yaw, pitch, fire) {
-			shotAt = i
-		}
-		b.step(math.Pi, 0, false) // facing the archer
-		return len(b.hits) > 0
-	})
-	h := b.hits[0]
-	if !h.Head || !h.Killed || h.Attacker != a.c.Slot() || h.Victim != b.c.Slot() {
-		t.Fatalf("hit %+v", h)
-	}
-	if !b.c.Own().Dead && b.c.Own().Health != 0 {
-		// The death may already be in the next snapshot; give it a tick.
-		run(t, time.Second, bots, func(int) bool {
-			for _, bt := range bots {
-				bt.step(0, 0, false)
-			}
-			return b.c.Own().Dead
-		})
-	}
-	t.Logf("hit after %d ticks; kill feed %q; prediction corrections: archer %d, target %d",
-		len(b.hits), b.texts, a.c.Errors, b.c.Errors)
-
 	late := newBot(t, srv.Addr().String(), "Late", netcode.Config{})
 	run(t, 3*time.Second, nil, func(int) bool {
-		late.step(0, 0, false)
+		late.step(0, 0)
 		return len(late.edits) > 0
 	})
 	if late.edits[0] != edit {
 		t.Fatalf("late joiner got %+v", late.edits)
-	}
-}
-
-// TestNoHitDeadOrProtected: a dead player can't be killed again and a
-// (re)spawned one is protected for ProtectTicks.
-func TestNoHitDeadOrProtected(t *testing.T) {
-	srv := startServer(t, nil)
-	a := newBot(t, srv.Addr().String(), "A", netcode.Config{})
-	b := newBot(t, srv.Addr().String(), "B", netcode.Config{})
-	run(t, 3*time.Second, nil, func(int) bool {
-		a.step(0, 0, false)
-		b.step(0, 0, false)
-		return a.c.Ready() && b.c.Ready()
-	})
-	shoot := func() (health int, dead, protected bool) {
-		srv.call(func() {
-			shooter, victim := srv.players[a.c.Slot()], srv.players[b.c.Slot()]
-			var w projectile.World
-			srv.hit(shooter, victim, w.Shoot(0, 0, 0, 0, 0, projectile.Speed))
-			health, dead, protected = victim.health, victim.dead > 0, victim.protect > 0
-		})
-		return
-	}
-	if h, _, p := shoot(); h != MaxHealth || !p {
-		t.Fatalf("just spawned: health %d, protected %v", h, p)
-	}
-	var deaths int
-	srv.call(func() {
-		v := srv.players[b.c.Slot()]
-		v.protect = 0
-		deaths = v.deaths
-	})
-	for range MaxHealth/ArrowDamage + 1 {
-		shoot()
-	}
-	h, dead, _ := shoot()
-	srv.call(func() { deaths = srv.players[b.c.Slot()].deaths - deaths })
-	if h != 0 || !dead || deaths != 1 {
-		t.Fatalf("after shooting the dead: health %d, dead %v, died %d times", h, dead, deaths)
-	}
-	srv.call(func() { srv.respawn(srv.players[b.c.Slot()]) })
-	if h, _, p := shoot(); h != MaxHealth || !p {
-		t.Fatalf("respawned: health %d, protected %v", h, p)
 	}
 }
 
@@ -280,7 +163,7 @@ func TestBattleRoyale(t *testing.T) {
 	}
 	step := func() {
 		for _, b := range bots {
-			b.step(0, 0, false)
+			b.step(0, 0)
 		}
 	}
 	phase := func(p Phase) func(int) bool {
@@ -336,7 +219,7 @@ func TestTeams(t *testing.T) {
 	}
 	run(t, 3*time.Second, bots, func(int) bool {
 		for _, b := range bots {
-			b.step(0, 0, false)
+			b.step(0, 0)
 		}
 		return bots[0].c.Info[bots[2].c.Slot()].Team != 0
 	})
@@ -348,7 +231,7 @@ func TestTeams(t *testing.T) {
 	}
 	srv.call(func() {
 		a, b, c := srv.players[bots[0].c.Slot()], srv.players[bots[1].c.Slot()], srv.players[bots[2].c.Slot()]
-		if enemies(a, c) || !enemies(a, b) || !enemies(b, c) {
+		if srv.enemies(a, c) || !srv.enemies(a, b) || !srv.enemies(b, c) {
 			t.Error("teammates are enemies or enemies aren't")
 		}
 	})

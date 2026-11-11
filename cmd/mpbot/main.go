@@ -1,7 +1,6 @@
 // Command mpbot is a headless LAN multiplayer player for testing: it joins
 // a game, walks (along a voxel/nav path) up to the nearest other player until it stands -dist
-// blocks in front of them (or -angle round), faces them, and optionally shoots (-shoot) with
-// a ballistic aim at their head.
+// blocks in front of them (or -angle round) and faces their head.
 //
 //	go run ./cmd/mpbot -connect 127.0.0.1 -skin skins/ArrowJay.png
 package main
@@ -19,7 +18,6 @@ import (
 	"github.com/memmaker/voxellib/character"
 	"github.com/memmaker/voxellib/mp"
 	"github.com/memmaker/voxellib/netcode"
-	"github.com/memmaker/voxellib/projectile"
 	"github.com/memmaker/voxellib/voxel"
 	"github.com/memmaker/voxellib/voxel/nav"
 )
@@ -68,7 +66,6 @@ func main() {
 	dist := flag.Float64("dist", 4, "distance to keep in front of the target")
 	angle := flag.Float64("angle", 0, "stand this many degrees round from the target's look (90: to their right)")
 	target := flag.String("target", "", "only go for the player with this name ('' = the nearest)")
-	shoot := flag.Bool("shoot", false, "shoot at the target's head once in place")
 	limit := flag.Duration("time", time.Minute, "leave after this long")
 	flag.Parse()
 	if *addr == "" {
@@ -125,7 +122,6 @@ func main() {
 		}
 		c.Reconcile(ch, w)
 		in := character.Input{Yaw: yaw, Pitch: pitch}
-		attack := false
 		r := c.Round()
 		z := r.Zone
 		if r.Mode == mp.BattleRoyale && r.Phase == mp.PhasePlaying && z.Touches(ch.X, ch.Z, math.Min(6, z.Side()/4)) {
@@ -142,7 +138,7 @@ func main() {
 			if d < bestD-0.5 {
 				bestD, bestAt = d, time.Now()
 			}
-			stuck := time.Since(bestAt) > 3*time.Second // shoot from here
+			stuck := time.Since(bestAt) > 3*time.Second // face them from here
 			if d > 0.4 && !stuck {
 				// Along a path to the spot, else straight at it.
 				wx, wz, up := pf.next(w, ch, gx, t.Y, gz)
@@ -152,8 +148,8 @@ func main() {
 				in.Jump = up || ch.HorizontalCollision // a step up in the way
 			} else {
 				ex, ey, ez := ch.Eye()
-				in.Yaw, in.Pitch = aim([3]float64{ex, ey - 0.1, ez}, [3]float64{t.X, t.Y + 1.75, t.Z})
-				attack = *shoot
+				dx, dy, dz := t.X-ex, t.Y+1.75-ey, t.Z-ez
+				in.Yaw, in.Pitch = math.Atan2(dx, -dz), math.Atan2(dy, math.Hypot(dx, dz))
 			}
 			if time.Since(lastLog) > 2*time.Second {
 				lastLog = time.Now()
@@ -161,11 +157,11 @@ func main() {
 			}
 		}
 		yaw, pitch = in.Yaw, in.Pitch
-		cmd := c.Command(in, attack)
+		cmd := c.Command(in)
 		if !c.Own().Dead {
 			ch.Tick(w, in)
 		}
-		c.Predicted(cmd, ch, w)
+		c.Send(cmd)
 	}
 }
 
@@ -185,38 +181,3 @@ func nearest(c *mp.Client, ch *character.Character, name string) (mp.PlayerView,
 	}
 	return best, !math.IsInf(bd, 1)
 }
-
-// aim returns the look that sends an arrow from eye to target with the
-// real physics (as mp's test).
-func aim(eye, target [3]float64) (yaw, pitch float64) {
-	dx, dy, dz := target[0]-eye[0], target[1]-eye[1], target[2]-eye[2]
-	yaw = math.Atan2(dx, -dz)
-	dist := math.Hypot(dx, dz)
-	heightAt := func(p float64) float64 {
-		var w projectile.World
-		a := w.Shoot(0, 0, 0, 0, p, projectile.Speed)
-		for range 400 {
-			px, py := -a.Z, a.Y
-			w.Tick(noBlocks{}, nil)
-			if -a.Z >= dist {
-				f := (dist - px) / (-a.Z - px)
-				return py + (a.Y-py)*f
-			}
-		}
-		return math.Inf(-1)
-	}
-	lo, hi := -0.8, 0.8
-	for range 50 {
-		pitch = (lo + hi) / 2
-		if heightAt(pitch) < dy {
-			lo = pitch
-		} else {
-			hi = pitch
-		}
-	}
-	return yaw, pitch
-}
-
-type noBlocks struct{}
-
-func (noBlocks) Solid(x, y, z int) bool { return false }

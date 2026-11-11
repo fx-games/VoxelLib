@@ -11,10 +11,10 @@ import (
 // in hand, and the hold survives Lerp (the server's lag compensation).
 func TestGunHold(t *testing.T) {
 	b := NewBody()
-	bow := b.Hand(b.Skin(Anim{}, nil))
+	bare := b.Hand(b.Skin(Anim{}, nil))
 	gun := b.Hand(b.Skin(Anim{Gun: true}.Lerp(Anim{Gun: true}, 0.5), nil))
-	if bow.Sub(gun).Len() < 0.05 {
-		t.Fatalf("gun hold hand %v = crossbow hold %v", gun, bow)
+	if bare.Sub(gun).Len() < 0.05 {
+		t.Fatalf("gun hold hand %v = bare hand %v", gun, bare)
 	}
 	l := (Anim{}).Lerp(Anim{Gun: true, Hold: weapon.HoldMinigun, Aim: 1}, 0.5)
 	if !l.Gun || l.Hold != weapon.HoldMinigun || l.Aim != 0.5 {

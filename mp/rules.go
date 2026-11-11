@@ -21,26 +21,29 @@ const (
 	// whose energy wall closes in every ZoneInterval; the last one
 	// standing wins the round.
 	BattleRoyale
-	modeCount
+	// ZombieDefense: everyone together against zombies; guns and
+	// ammunition are found lying around (zdefense.go).
+	ZombieDefense
+	NumModes // the number of modes
 )
 
-var modeNames = [modeCount][2]string{{"dm", "Deathmatch"}, {"tdm", "Team deathmatch"}, {"br", "Battle royale"}}
+var modeNames = [NumModes][2]string{{"dm", "Deathmatch"}, {"tdm", "Team deathmatch"}, {"br", "Battle royale"}, {"zd", "Zombie defense"}}
 
 func (m Mode) String() string {
-	if m < modeCount {
+	if m < NumModes {
 		return modeNames[m][1]
 	}
 	return fmt.Sprintf("Mode(%d)", m)
 }
 
-// ParseMode reads a mode by its short (dm, tdm, br) or long name.
+// ParseMode reads a mode by its short (dm, tdm, br, zd) or long name.
 func ParseMode(s string) (Mode, error) {
 	for m, n := range modeNames {
 		if strings.EqualFold(s, n[0]) || strings.EqualFold(s, n[1]) {
 			return Mode(m), nil
 		}
 	}
-	return 0, fmt.Errorf("mp: unknown mode %q (dm, tdm or br)", s)
+	return 0, fmt.Errorf("mp: unknown mode %q (dm, tdm, br or zd)", s)
 }
 
 // Teams of TeamDeathmatch (PlayerInfo.Team); 0 is no team.
@@ -192,8 +195,11 @@ func (s *Server) pickTeam() int {
 	return TeamRed
 }
 
-// enemies reports whether a can hurt b.
-func enemies(a, b *sPlayer) bool { return a != b && (a.team == 0 || a.team != b.team) }
+// enemies reports whether a can hurt b: not in zombie defense, where
+// everyone is on the same side.
+func (s *Server) enemies(a, b *sPlayer) bool {
+	return s.cfg.Mode != ZombieDefense && a != b && (a.team == 0 || a.team != b.team)
+}
 
 // kill ends victim's life: by killer (nil: the wall), counted and told as
 // "killer how victim detail".

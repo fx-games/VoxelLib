@@ -46,12 +46,11 @@ const (
 // positive), the walk cycle (ModelBiped's limbSwing and limbSwingAmount) and
 // sneaking. The body faces the look yaw. Gun: a gun is in hand, held as
 // Hold (TACZ's third-person animation) raised by Aim (the synced aiming
-// progress), else the crossbow is raised, unless the hand is Bare.
+// progress), else the hand is empty and the arms swing with the walk.
 type Anim struct {
 	Pitch                 float64
 	LimbSwing, LimbAmount float64
 	Sneak                 bool
-	Bare                  bool // nothing in hand: the arms swing with the walk
 	Gun                   bool
 	Hold                  weapon.ThirdPersonHold
 	Aim                   weapon.AimProgress
@@ -84,7 +83,7 @@ func (a *Anim) Advance(dx, dz, ticks float64) {
 // Lerp blends two animation states (the previous and current tick).
 func (a Anim) Lerp(b Anim, t float64) Anim {
 	return Anim{Pitch: a.Pitch + (b.Pitch-a.Pitch)*t, LimbSwing: a.LimbSwing + (b.LimbSwing-a.LimbSwing)*t,
-		LimbAmount: a.LimbAmount + (b.LimbAmount-a.LimbAmount)*t, Sneak: b.Sneak, Bare: b.Bare, Gun: b.Gun, Hold: b.Hold,
+		LimbAmount: a.LimbAmount + (b.LimbAmount-a.LimbAmount)*t, Sneak: b.Sneak, Gun: b.Gun, Hold: b.Hold,
 		Aim: a.Aim + (b.Aim-a.Aim)*weapon.AimProgress(t), Age: a.Age + (b.Age-a.Age)*t}
 }
 
@@ -123,22 +122,16 @@ const (
 	minigunLeftArmPit  = -1.0
 )
 
-// Skin poses the body for a (ModelBiped.setRotationAngles with aimedBow:
-// the crossbow is always raised; with a gun, TACZ's third-person animation
-// at the end of setupAnim, so it overrides sneaking's arm pitch) and
-// returns its skinning matrices.
+// Skin poses the body for a (HumanoidModel.setupAnim; with a gun, TACZ's
+// third-person animation at the end of setupAnim, so it overrides
+// sneaking's arm pitch) and returns its skinning matrices.
 func (b *Body) Skin(a Anim, dst []mgl32.Mat4) []mgl32.Mat4 {
 	pp, head := b.legs(a)
-	switch {
-	case a.Bare:
+	if !a.Gun {
 		// HumanoidModel.setupAnim: the arms swing against the legs.
 		sw, amt := float32(a.LimbSwing*0.6662), float32(a.LimbAmount)
 		pp[partRightArm].Rot[0] = cos(sw+math.Pi) * amt
 		pp[partLeftArm].Rot[0] = cos(sw) * amt
-	case !a.Gun:
-		// aimedBow: both arms forward along the look, the left one across.
-		pp[partRightArm].Rot = [3]float32{-math.Pi/2 + head, -0.1, 0}
-		pp[partLeftArm].Rot = [3]float32{-math.Pi/2 + head, 0.1 + 0.4, 0}
 	}
 	b.sneak(a)
 	bobArms(pp, a.Age)
