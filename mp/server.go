@@ -112,12 +112,14 @@ type sPlayer struct {
 	shots   uint16
 	kills   int
 	deaths  int
-	wins    int         // battle royale rounds won
-	team    int         // TeamRed, TeamBlue or 0
-	held    Hold        // the gun in hand
-	gun     *weapon.Gun // held's spec (cfg.Gun), nil for none
-	out     bool        // out of the battle royale round: watching until the next
-	lag     float64     // smoothed ticks between the server's time and what the player saw
+	wins    int                // battle royale rounds won
+	team    int                // TeamRed, TeamBlue or 0
+	held    Hold               // the gun in hand
+	gun     *weapon.Gun        // held's spec (cfg.Gun), nil for none
+	aiming  bool               // the client aims (msgAim; ShooterDataHolder.isAiming)
+	aim     weapon.AimProgress // ShooterDataHolder.aimingProgress, synced to everyone
+	out     bool               // out of the battle royale round: watching until the next
+	lag     float64            // smoothed ticks between the server's time and what the player saw
 
 	hist   [historyTicks]pose
 	arrows projectile.World
@@ -424,6 +426,7 @@ func (s *Server) frame() {
 		} else if p.protect > 0 {
 			p.protect--
 		}
+		s.tickAim(p)
 		p.hist[tick%historyTicks] = pose{tick: tick, x: p.ch.X, y: p.ch.Y, z: p.ch.Z, yaw: p.yaw, anim: p.anim,
 			alive: p.dead == 0}
 	}
@@ -523,8 +526,15 @@ func (s *Server) reliable(p *sPlayer, msg []byte) {
 			}
 			spec = &g
 		}
+		if h.Gun != p.held.Gun { // a draw: ShooterDataHolder.initialData
+			p.aiming, p.aim = false, 0
+		}
 		p.held, p.gun = h, spec
 		s.broadcast(p.info().encode())
+	case msgAim:
+		if on := r.u8()&1 != 0; r.err == nil {
+			p.aiming = on
+		}
 	case msgMelee:
 		gun, l := r.str(), Look{Yaw: r.f32(), Pitch: r.f32()}
 		if r.err == nil {
@@ -620,11 +630,15 @@ func (s *Server) runCmd(p *sPlayer, c Cmd) {
 		return
 	}
 	in := c.Input()
+	p.ch.MoveSpeed = character.Speed{}
+	if p.gun != nil { // LivingEntitySpeedModifier
+		p.ch.MoveSpeed = character.SpeedOf(character.PlayerMoveSpeed * float64(p.gun.SpeedFactor(p.aiming, false)))
+	}
 	x0, z0 := p.ch.X, p.ch.Z
 	s.world.LoadAround(p.ch.X, p.ch.Z, 8)
 	p.ch.Tick(s.world, in)
 	p.anim.Walk(p.ch.X-x0, p.ch.Z-z0)
-	p.anim.Pitch, p.anim.Sneak, p.anim.Gun = c.Pitch, in.Sneak, p.held.Gun != ""
+	p.anim.Pitch, p.anim.Sneak = c.Pitch, in.Sneak
 	if c.Buttons&BtnAttack != 0 && p.reload == 0 {
 		ex, ey, ez := p.ch.Eye()
 		a := p.arrows.Shoot(ex, ey-0.1, ez, c.Yaw, c.Pitch, projectile.Speed)
@@ -636,4 +650,17 @@ func (s *Server) runCmd(p *sPlayer, c Cmd) {
 	if p.reload > 0 {
 		p.reload--
 	}
+}
+
+// tickAim runs p's aiming progress for a server tick
+// (LivingEntityAim.tickAimingProgress, with the held spec's aim time) and
+// poses the body's gun hold with it.
+func (s *Server) tickAim(p *sPlayer) {
+	if p.gun == nil {
+		p.aim = 0
+	} else {
+		p.aim = p.aim.Tick(p.aiming, p.gun.Aim, time.Second/TickRate)
+		p.anim.Hold = p.gun.ThirdPersonHold
+	}
+	p.anim.Gun, p.anim.Aim = p.gun != nil, p.aim
 }

@@ -156,6 +156,8 @@ type Gun struct {
 	// ThirdPersonScale scales the gun in another player's hand (the display's
 	// transform.scale.thirdperson, uniform; 1 without one).
 	ThirdPersonScale float32 `json:"third_person_scale"`
+	// ThirdPersonHold is how another player holds it (third_person_animation).
+	ThirdPersonHold ThirdPersonHold `json:"third_person_hold"`
 	// Sight is the bone the camera aims through: iron_view, or the view
 	// bone of a built-in scope; IdleRaise lifts the idle view (blocks) by
 	// the scope's idle_scope_height_adjust, fading out while aiming.
@@ -355,4 +357,33 @@ type Ammo struct {
 	Name  string `json:"name"`
 	Stack int    `json:"stack"`
 	Icon  string `json:"icon"`
+}
+
+// ThirdPersonHold is how another player holds the gun: the display's
+// third_person_animation, a TACZ ThirdPersonManager animation (an unknown
+// name is the default one, as ThirdPersonManager.getAnimation).
+type ThirdPersonHold uint8
+
+const (
+	HoldDefault ThirdPersonHold = iota // arms forward along the look, raised a little more while aiming
+	HoldMinigun                        // body turned, the gun at the hip; aiming changes nothing
+)
+
+var thirdPersonHoldNames = []string{"default", "minigun"}
+
+// ParseThirdPersonHold maps a display's third_person_animation name to its hold.
+func ParseThirdPersonHold(name string) ThirdPersonHold {
+	if v, err := enumParse(thirdPersonHoldNames, []byte(name)); err == nil {
+		return ThirdPersonHold(v)
+	}
+	return HoldDefault
+}
+
+func (h ThirdPersonHold) MarshalText() ([]byte, error) {
+	return enumText(thirdPersonHoldNames, uint8(h))
+}
+func (h *ThirdPersonHold) UnmarshalText(t []byte) error {
+	v, err := enumParse(thirdPersonHoldNames, t)
+	*h = ThirdPersonHold(v)
+	return err
 }

@@ -13,7 +13,7 @@ import (
 // Protocol is the netcode protocol id: "VLMP" plus a version byte. Bump the
 // version on any wire change; older peers are refused and stay invisible to
 // discovery.
-const Protocol = 0x564C4D00 | 9
+const Protocol = 0x564C4D00 | 10
 
 // DefaultPort is the server's UDP port.
 const DefaultPort = 28960
@@ -221,6 +221,7 @@ type PlayerState struct {
 	Protected           bool // spawn protection: can't be hurt
 	Reload              int  // ticks until the crossbow can fire
 	Shots               uint16
+	Aim                 weapon.AimProgress // the server's aiming progress (AIMING_PROGRESS_KEY)
 }
 
 // Apply copies the state into a character.
@@ -253,6 +254,7 @@ func (s PlayerState) encode(b *wbuf) {
 	b.u8(uint8(s.Health))
 	b.u8(uint8(s.Reload))
 	b.u16(s.Shots)
+	b.f32(float64(s.Aim))
 }
 
 func decodePlayerState(r *rbuf) PlayerState {
@@ -262,6 +264,7 @@ func decodePlayerState(r *rbuf) PlayerState {
 	s.Protected = f&16 != 0
 	s.FallDistance = r.f32()
 	s.Health, s.Reload, s.Shots = int(r.u8()), int(r.u8()), r.u16()
+	s.Aim = weapon.AimProgress(r.f32())
 	return s
 }
 
@@ -283,7 +286,8 @@ type PlayerView struct {
 	Dead       bool
 	Protected  bool // spawn protection: can't be hurt
 	Health     int
-	Shots      uint16 // counts shots fired: a change means one went off
+	Shots      uint16             // counts shots fired: a change means one went off
+	Aim        weapon.AimProgress // aiming progress (AIMING_PROGRESS_KEY)
 }
 
 func (p PlayerView) encode() []byte {
@@ -298,6 +302,7 @@ func (p PlayerView) encode() []byte {
 	b.u8(flag(p.Sneak, 1) | flag(p.Dead, 2) | flag(p.Protected, 4))
 	b.u8(uint8(p.Health))
 	b.u16(p.Shots)
+	b.f32(float64(p.Aim))
 	return b
 }
 
@@ -310,6 +315,7 @@ func decodePlayerView(p []byte) (PlayerView, bool) {
 	f := r.u8()
 	v.Sneak, v.Dead, v.Protected = f&1 != 0, f&2 != 0, f&4 != 0
 	v.Health, v.Shots = int(r.u8()), r.u16()
+	v.Aim = weapon.AimProgress(r.f32())
 	return v, r.err == nil
 }
 
@@ -373,6 +379,7 @@ const (
 	msgHold      = 4 // Hold: the gun in the player's hand
 	msgShoot     = 5 // Shot: a round of the held gun
 	msgMelee     = 6 // gun ID, yaw, pitch f32: the held gun's melee hit lands
+	msgAim       = 7 // u8 on/off: the player aims the held gun (TACZ ClientMessagePlayerAim)
 	// server → client
 	msgPlayer = 10 // slot u8, joined u8, name, skin png: a player joined, changed skin or left
 	msgBlock  = 11 // x, y, z i32, state name: a block changed

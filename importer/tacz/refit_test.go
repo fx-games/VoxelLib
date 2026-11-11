@@ -361,3 +361,18 @@ func TestThirdPersonScale(t *testing.T) {
 		t.Errorf("ak47 thirdperson scale %v, want 0.6", g.ThirdPersonScale)
 	}
 }
+
+// TestThirdPersonHold reads the display's third_person_animation: the
+// minigun has its own, the rest TACZ's default.
+func TestThirdPersonHold(t *testing.T) {
+	p := loadPack(t)
+	for id, want := range map[string]weapon.ThirdPersonHold{"minigun": weapon.HoldMinigun, "ak47": weapon.HoldDefault} {
+		g, err := p.Gun(id, p.DefaultChoice(id), firstMode(p, id))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if g.ThirdPersonHold != want {
+			t.Errorf("%s third-person hold %v, want %v", id, g.ThirdPersonHold, want)
+		}
+	}
+}

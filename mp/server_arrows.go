@@ -221,7 +221,7 @@ func (s *Server) sendSnapshot(p *sPlayer, tick uint32) {
 			continue
 		}
 		snap[uint32(o.slot+1)] = PlayerView{Slot: o.slot, X: o.ch.X, Y: o.ch.Y, Z: o.ch.Z, Yaw: o.yaw, Pitch: o.pitch,
-			Sneak: o.anim.Sneak, Dead: o.dead > 0, Protected: o.protect > 0, Health: o.health, Shots: o.shots}.encode()
+			Sneak: o.anim.Sneak, Dead: o.dead > 0, Protected: o.protect > 0, Health: o.health, Shots: o.shots, Aim: o.aim}.encode()
 	}
 	for a, m := range s.arrows {
 		snap[arrowBase+m.id] = ArrowView{X: a.X, Y: a.Y, Z: a.Z, VX: a.VX, VY: a.VY, VZ: a.VZ, Yaw: a.Yaw, Pitch: a.Pitch,
@@ -235,7 +235,7 @@ func (s *Server) sendSnapshot(p *sPlayer, tick uint32) {
 	s.m.round.encode(&b)
 	st := stateOf(p.ch)
 	st.Health, st.Dead, st.Reload, st.Shots = p.health, p.dead > 0, p.reload, p.shots
-	st.Protected = p.protect > 0
+	st.Protected, st.Aim = p.protect > 0, p.aim
 	st.encode(&b)
 	seq := s.net.NextSeq(p.slot)
 	payload := p.enc.Encode(b, seq, s.net.Acked(p.slot), snap)

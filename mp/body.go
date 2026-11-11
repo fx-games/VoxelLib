@@ -6,6 +6,7 @@ import (
 	"github.com/go-gl/mathgl/mgl32"
 	"github.com/memmaker/voxellib/importer/cuboid"
 	"github.com/memmaker/voxellib/model"
+	"github.com/memmaker/voxellib/weapon"
 )
 
 // PlayerGeometry is the reference's ModelPlayer (1.8, 64x64 skins, wide
@@ -43,13 +44,16 @@ const (
 
 // Anim is what poses a player's body: the look pitch (radians, up
 // positive), the walk cycle (ModelBiped's limbSwing and limbSwingAmount) and
-// sneaking. The body faces the look yaw. Gun: a gun is in hand (TACZ's
-// third-person hold), else the crossbow is raised.
+// sneaking. The body faces the look yaw. Gun: a gun is in hand, held as
+// Hold (TACZ's third-person animation) raised by Aim (the synced aiming
+// progress), else the crossbow is raised.
 type Anim struct {
 	Pitch                 float64
 	LimbSwing, LimbAmount float64
 	Sneak                 bool
 	Gun                   bool
+	Hold                  weapon.ThirdPersonHold
+	Aim                   weapon.AimProgress
 }
 
 // Walk advances the walk cycle by one tick in which the body moved dx, dz
@@ -75,7 +79,8 @@ func (a *Anim) Advance(dx, dz, ticks float64) {
 // Lerp blends two animation states (the previous and current tick).
 func (a Anim) Lerp(b Anim, t float64) Anim {
 	return Anim{Pitch: a.Pitch + (b.Pitch-a.Pitch)*t, LimbSwing: a.LimbSwing + (b.LimbSwing-a.LimbSwing)*t,
-		LimbAmount: a.LimbAmount + (b.LimbAmount-a.LimbAmount)*t, Sneak: b.Sneak, Gun: b.Gun}
+		LimbAmount: a.LimbAmount + (b.LimbAmount-a.LimbAmount)*t, Sneak: b.Sneak, Gun: b.Gun, Hold: b.Hold,
+		Aim: a.Aim + (b.Aim-a.Aim)*weapon.AimProgress(t)}
 }
 
 // Body is the player model shared by drawing and hit tests, so an arrow hits
@@ -97,30 +102,65 @@ func NewBody() *Body {
 	return &Body{Geo: g, Model: m, pose: g.RestPose()}
 }
 
-// TACZ ThirdPersonManager's default animateGunHold: the arms' pitch
-// (added to the head's) and yaws.
+// TACZ ThirdPersonManager's animations: the arms' pitches (added to the
+// head's) and yaws. The default one lerps from hold to full aim.
 const (
 	gunHoldArmPitch    = -1.4
+	gunAimArmPitch     = -1.6
 	gunHoldRightArmYaw = -0.3
+	gunAimRightArmYaw  = -0.35
 	gunHoldLeftArmYaw  = 0.8
+
+	minigunBodyYaw     = 0.8 // the body turns, the arms' pivots with it
+	minigunRightArmYaw = -1.0
+	minigunRightArmPit = -0.1 // added to the body's pitch
+	minigunLeftArmYaw  = -0.1
+	minigunLeftArmPit  = -1.0
 )
 
 // Skin poses the body for a (ModelBiped.setRotationAngles with aimedBow:
-// the crossbow is always raised; with a gun, TACZ's default hold) and
+// the crossbow is always raised; with a gun, TACZ's third-person animation
+// at the end of setupAnim, so it overrides sneaking's arm pitch) and
 // returns its skinning matrices.
 func (b *Body) Skin(a Anim, dst []mgl32.Mat4) []mgl32.Mat4 {
 	pp, head := b.legs(a)
-	if a.Gun {
-		pp[partRightArm].Rot = [3]float32{gunHoldArmPitch + head, gunHoldRightArmYaw, 0}
-		pp[partLeftArm].Rot = [3]float32{gunHoldArmPitch + head, gunHoldLeftArmYaw, 0}
-	} else {
+	if !a.Gun {
 		// aimedBow: both arms forward along the look, the left one across.
 		pp[partRightArm].Rot = [3]float32{-math.Pi/2 + head, -0.1, 0}
 		pp[partLeftArm].Rot = [3]float32{-math.Pi/2 + head, 0.1 + 0.4, 0}
 	}
 	b.sneak(a)
+	if a.Gun {
+		b.gunHold(a, head)
+	}
 	return b.pose.Skin(b.Model, b.Geo, dst)
 }
+
+// gunHold is InnerThirdPersonManager.playVanillaAnimation: the hold's
+// animateGunHold at no aim, else animateGunAim. The head faces the body
+// (netHeadYaw 0: the body follows the look yaw).
+func (b *Body) gunHold(a Anim, head float32) {
+	pp := b.pose.Parts
+	ra, la, body := &pp[partRightArm], &pp[partLeftArm], &pp[partBody]
+	switch a.Hold {
+	case weapon.HoldMinigun: // animateGunAim is animateGunHold
+		body.Rot[1] = minigunBodyYaw
+		c, s := cos(-body.Rot[1]), sin(-body.Rot[1])
+		ra.Pivot[0], ra.Pivot[2] = ra.Pivot[0]*c, ra.Pivot[0]*s
+		la.Pivot[0], la.Pivot[2] = la.Pivot[0]*c, la.Pivot[0]*s
+		ra.Rot[0], ra.Rot[1] = minigunRightArmPit+body.Rot[0], minigunRightArmYaw+body.Rot[1]
+		la.Rot[0], la.Rot[1] = minigunLeftArmPit+body.Rot[0], minigunLeftArmYaw+body.Rot[1]
+	default:
+		pitch, rightYaw := float32(gunHoldArmPitch), float32(gunHoldRightArmYaw)
+		if t := float32(a.Aim); t > 0 {
+			pitch, rightYaw = lerp(t, gunHoldArmPitch, gunAimArmPitch), lerp(t, gunHoldRightArmYaw, gunAimRightArmYaw)
+		}
+		ra.Rot[0], ra.Rot[1] = pitch+head, rightYaw
+		la.Rot[0], la.Rot[1] = pitch+head, gunHoldLeftArmYaw
+	}
+}
+
+func lerp(t, a, b float32) float32 { return a + (b-a)*t }
 
 // ZombieSkin poses the body as ZombieModel: the walk cycle, then the arms
 // held out (AnimationUtils.animateZombieArms) raised higher when aggressive,
@@ -176,6 +216,7 @@ func (b *Body) sneak(a Anim) {
 }
 
 func cos(x float32) float32 { return float32(math.Cos(float64(x))) }
+func sin(x float32) float32 { return float32(math.Sin(float64(x))) }
 
 // Hand is the right hand's position in model space (the bottom of the
 // right arm) in the pose skin, where a held item goes.

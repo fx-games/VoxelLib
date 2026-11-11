@@ -282,6 +282,7 @@ func (p *Pack) loadGun(file string, lang map[string]string, sound func(string) s
 		Default                         string   `json:"use_default_animation"`
 		Zoom                            *float32 `json:"iron_zoom"`
 		StateMachine                    string   `json:"state_machine"`
+		ThirdPersonAnimation            string   `json:"third_person_animation"`
 		ModelFOV                        *float32 `json:"model_fov"`
 		ZoomModelFOV                    *float32 `json:"zoom_model_fov"`
 		Transform                       struct {
@@ -357,6 +358,7 @@ func (p *Pack) loadGun(file string, lang map[string]string, sound func(string) s
 	spec.Zoom = orDefault(disp.Zoom, gunIronZoom)
 	spec.Spin = disp.StateMachine == minigunStateMachine
 	spec.ModelFOV, spec.AimModelFOV = orDefault(disp.ModelFOV, gunModelFOV), orDefault(disp.ZoomModelFOV, gunModelFOV)
+	spec.ThirdPersonHold = weapon.ParseThirdPersonHold(disp.ThirdPersonAnimation)
 	spec.ThirdPersonScale = 1
 	if s := disp.Transform.Scale.ThirdPerson; s != nil {
 		if s[0] != s[1] || s[1] != s[2] {

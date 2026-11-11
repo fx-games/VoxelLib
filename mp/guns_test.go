@@ -157,3 +157,44 @@ func TestGunShot(t *testing.T) {
 		t.Fatalf("kill hit %+v", h)
 	}
 }
+
+// TestAimSync: the client sends only the aim state; the server raises the
+// aiming progress over the held gun's aim time, poses the body's hold with
+// it and syncs it to everyone (AIMING_PROGRESS_KEY), and lowers it again.
+func TestAimSync(t *testing.T) {
+	gun := weapon.Gun{ID: "test:minigun", Aim: 0.2, ThirdPersonHold: weapon.HoldMinigun}
+	s, err := StartServer(ServerConfig{Addr: "127.0.0.1:0", Name: "test", Seed: 7, Generator: "flat",
+		Reg: voxel.NewRegistry(), Logf: t.Logf, Gun: func(string, tacz.Choice, weapon.FireMode) (weapon.Gun, error) { return gun, nil }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(s.Close)
+	a := newBot(t, s.Addr().String(), "A", netcode.Config{})
+	b := newBot(t, s.Addr().String(), "B", netcode.Config{})
+	seen := func() weapon.AimProgress {
+		for _, v := range b.c.Players() {
+			if v.Slot == a.c.Slot() {
+				return v.Aim
+			}
+		}
+		return -1
+	}
+	a.c.SendHold(Hold{Gun: gun.ID})
+	a.c.SendAim(true)
+	run(t, 3*time.Second, nil, func(int) bool {
+		a.step(0, 0, false)
+		b.step(0, 0, false)
+		return a.c.Own().Aim == weapon.Aimed && seen() == weapon.Aimed
+	})
+	var anim Anim
+	s.call(func() { anim = s.players[a.c.Slot()].anim })
+	if !anim.Gun || anim.Hold != weapon.HoldMinigun || anim.Aim != weapon.Aimed {
+		t.Fatalf("server pose %+v", anim)
+	}
+	a.c.SendAim(false)
+	run(t, 3*time.Second, nil, func(int) bool {
+		a.step(0, 0, false)
+		b.step(0, 0, false)
+		return a.c.Own().Aim == 0 && seen() == 0
+	})
+}

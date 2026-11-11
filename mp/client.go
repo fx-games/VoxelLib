@@ -11,6 +11,7 @@ import (
 	"github.com/memmaker/voxellib/netcode"
 	"github.com/memmaker/voxellib/projectile"
 	"github.com/memmaker/voxellib/voxel/collide"
+	"github.com/memmaker/voxellib/weapon"
 )
 
 const (
@@ -130,6 +131,10 @@ func (c *Client) SendHold(h Hold) {
 	h.encode(&b)
 	c.net.SendReliable(b)
 }
+
+// SendAim tells the server whether the player aims the held gun; send it
+// when that changes (LocalPlayerAim.aim).
+func (c *Client) SendAim(on bool) { c.net.SendReliable([]byte{msgAim, flag(on, 1)}) }
 
 // SendMelee lands the held gun's melee hit along look; the server deals the damage.
 func (c *Client) SendMelee(gun string, look Look) {
@@ -457,6 +462,7 @@ func (c *Client) Players() []PlayerView {
 		v := pb
 		v.X, v.Y, v.Z = pa.X+(pb.X-pa.X)*f, pa.Y+(pb.Y-pa.Y)*f, pa.Z+(pb.Z-pa.Z)*f
 		v.Yaw, v.Pitch = lerpAngle(pa.Yaw, pb.Yaw, f), lerpAngle(pa.Pitch, pb.Pitch, f)
+		v.Aim = pa.Aim + (pb.Aim-pa.Aim)*weapon.AimProgress(f)
 		out = append(out, v)
 	}
 	return out

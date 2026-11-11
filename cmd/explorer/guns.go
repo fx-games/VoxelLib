@@ -15,6 +15,7 @@ import (
 	"math"
 	"math/rand"
 	"sync"
+	"time"
 
 	"github.com/go-gl/mathgl/mgl32"
 	"github.com/memmaker/voxellib/actors"
@@ -63,7 +64,8 @@ type gunsState struct {
 	stock     map[string]int              // ammo ID → rounds carried
 	// aim is the aiming progress 0..1 (LocalPlayerAim: 1/aim_time per
 	// second), aimPrev the last tick's.
-	aim, aimPrev float32
+	aim, aimPrev firearm.AimProgress
+	aimSent      bool // the aim state the server has (mp.Client.SendAim)
 	fov          gunFOVState
 	gunRand      *rand.Rand
 	// gunRecoil is the last shot's camera curve, recoilTicks ticks old;
@@ -340,22 +342,21 @@ func cameraAt(world []mgl32.Mat4, b int) mgl32.Mat4 {
 func (g *game) tickGun() {
 	g.Player.MoveSpeed = character.Speed{} // default unless a gun is held
 	if !g.gunOn() {
+		g.setAim(false)
 		return
 	}
 	if g.gun.Phase == firearm.Holstered && g.switching {
 		g.takeGun(g.nextSel)
 		if !g.gunOn() {
+			g.setAim(false)
 			return
 		}
 	}
 	g.aimPrev = g.aim
 	g.recoilTicks++
 	aiming := g.Input.Down(app.ActUse) && !g.ScreenOpen() && g.gun.Phase == firearm.Ready
-	if aiming {
-		g.aim = min(g.aim+g.aimStep(), 1)
-	} else {
-		g.aim = max(g.aim-g.aimStep(), 0)
-	}
+	g.aim = g.aim.Tick(aiming, g.gun.Gun.Aim, time.Second/app.TickRate)
+	g.setAim(aiming)
 	// LivingEntitySpeedModifier: the gun's weight and movement_speed.
 	g.Player.MoveSpeed = character.SpeedOf(character.PlayerMoveSpeed * float64(g.gun.Gun.SpeedFactor(aiming, g.gun.Phase == firearm.Reloading)))
 	in := firearm.GunInput{
@@ -579,15 +580,29 @@ func (g *game) tickGunTracks(v *gunView, dt float32) {
 
 // aimFrac is how far the sights are raised, 0..1, between ticks.
 func (g *game) aimFrac(alpha float64) float32 {
-	return g.aimPrev + (g.aim-g.aimPrev)*float32(alpha)
+	return float32(g.aimPrev + (g.aim-g.aimPrev)*firearm.AimProgress(alpha))
 }
 
-// aimStep is a tick's aiming progress: the gun's aim time (0: at once).
-func (g *game) aimStep() float32 {
-	if t := g.gun.Gun.Aim; t > 0 {
-		return 1 / (t * app.TickRate)
+// setAim tells the server the aim state when it changes; no gun in hand
+// drops the local progress too (LocalPlayerAim.tickAimingProgress).
+func (g *game) setAim(aiming bool) {
+	if !g.gunOn() {
+		g.aim, g.aimPrev = 0, 0
 	}
-	return 1
+	if g.net != nil && aiming != g.aimSent {
+		g.net.cl.SendAim(aiming)
+	}
+	g.aimSent = aiming && g.net != nil
+}
+
+// shotAim is the aiming progress a shot's inaccuracy uses: the server's
+// (InaccuracyType.getInaccuracyType reads the synced AIMING_PROGRESS_KEY),
+// the local one in single player.
+func (g *game) shotAim() firearm.AimProgress {
+	if g.net != nil {
+		return g.net.cl.Own().Aim
+	}
+	return g.aim
 }
 
 // shoot fires one round: its pellets, the sound and the camera kick.
@@ -604,7 +619,7 @@ func (g *game) shoot() {
 	aim := g.aimFrac(1)
 	p := g.Player
 	moving := math.Hypot(p.VX, p.VZ) > 0.01
-	spread := float64(spec.Spread(aim >= 1, moving, g.Input.Down(app.ActSneak)) * g.gun.SpreadFactor())
+	spread := float64(spec.Spread(g.shotAim() == firearm.Aimed, moving, g.Input.Down(app.ActSneak)) * g.gun.SpreadFactor())
 	ex, ey, ez := p.Eye()
 	shot := mp.Shot{Gun: spec.ID}
 	for range spec.Bullet.Pellets {

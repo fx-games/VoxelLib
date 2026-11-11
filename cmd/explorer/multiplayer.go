@@ -421,7 +421,10 @@ func (g *game) netPose(alpha float64) {
 		}
 		ra.Advance(v.X-ra.x, v.Z-ra.z, n.frameTicks)
 		ra.x, ra.z = v.X, v.Z
-		ra.Pitch, ra.Sneak, ra.Gun = v.Pitch, v.Sneak, held.Gun != ""
+		ra.Pitch, ra.Sneak, ra.Gun, ra.Aim = v.Pitch, v.Sneak, held.Gun != "", v.Aim
+		if gv != nil {
+			ra.Hold = gv.spec.ThirdPersonHold
+		}
 		n.skins[i] = n.body.Skin(ra.Anim, n.skins[i])
 		if gv != nil {
 			n.gunAt[v.Slot], n.gunPosed[v.Slot] = remoteGunMat(n.body, n.skins[i], v, gv), true
