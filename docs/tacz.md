@@ -22,7 +22,9 @@ is the gun cycle (draw, idle, shoot, bolt, reload magazine/tube/inventory, inspe
 - [x] arms at lefthand_pos/righthand_pos as TACZ draws them (renderHand pose, player skin, mp.Body.FirstPersonArms)
 - [x] explorer: TACZ GunHudOverlay (hud sprite, ammo, stock, fire mode icon; assets/tacz/hud from the mod); no hotbar in the explorer, so slot icons stay unused
 - [x] explorer: hitscan pellets with spread vs creatures (headshot multiplier, falloff), recoil kick, ADS zoom
-- [x] audio: pack sounds (cues per clip, shoot, dry); 172 cues name sounds missing from the pack
+- [x] audio: pack sounds (cues per clip, shoot, display dry_fire else tacz:dry_fire); an event "ns:path" is assets/<ns>/tacz_sounds/<path>.ogg, as TACZ registers them
+- [x] missing sounds: 172 cue ids have no file at their TACZ location, so TACZ is silent for them too (listed in importer/tacz/testdata/absent_sounds.txt; TestSoundsResolve fails on any other unresolved id). 163 have no namespace (minecraft:<id>; the pack ships no assets/minecraft and the base names exist nowhere in it). 9 are pack typos whose file exists elsewhere, left as is to match TACZ: classicr:mrad/mrad_raise_first_rattle, tacz:ak74m:ak74m_inspect_tilt, tacz:hk_mp7a1/tacz:hk_mp7a1/hk_mp7a1_reload_maghit, tacz:m1014/cloth_move_3, tacz:m95/mag_drup_large_drum_dirt, tacz:qbz_191/qbz_95_reload_empty_fast_rotate, m1866_reload_loop_arm, m249_reload_empty_load_belt, spr15hb_reload_empty_maghit
+- [ ] display sounds besides shoot/dry_fire (shoot_3p, draw, put_away, reload_*, inspect*, melee_*, silence, head_hit, kill ...) are not played; absent among them: <gun>_inspect/_inspect_empty/_reload_empty/_reload_tactical of ai_awp, ak47, aug, hk_g3, hk_mp5a5, m249, p90, timeless50, type_81 (fn_fal reload_*), awp_bolt, m1866/minigun silence(_3p)
 - [x] runtime bone visibility: bullet_in_mag/bullet_in_barrel/bullet_chain with ammo, additional_magazine while keyed
 - [x] explorer: zombie waves (vanilla biped in the zombie skin posed as ZombieModel, always hostile, bare-handed melee), ammo loot (a magazine of the held gun's ammo per kill, into the stock); crossbow and guns exclusive (no arrows from guns)
 - [x] muzzle flash and smoke: TACZ "renew" particle definitions on the particles package (hand space + world)
@@ -35,4 +37,4 @@ is the gun cycle (draw, idle, shoot, bolt, reload magazine/tube/inventory, inspe
 - [x] scope lens parts split out of the gun (tacz.Lens: ring, body, oculars, divisions on the gun skeleton); ring + body drawn plainly
 - [x] scope stencil passes: renderScope/renderBoth/renderSight order on render.HandStencil (cmd/explorer/gunlens.go); view disc at the ocular depth with the reference angular size (80/90·aim)
 - [x] heat (GunHeatData + sp_heat.lua: lock, cooling·t², rpm/inaccuracy factors; HeatBarOverlay)
-- [ ] TACZ movement/camera tracks, missing sounds, guns in multiplayer, README/ARCHITECTURE
+- [ ] TACZ movement/camera tracks, guns in multiplayer, README/ARCHITECTURE

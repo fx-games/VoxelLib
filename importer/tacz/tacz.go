@@ -135,6 +135,9 @@ func Load(pack, defaults fs.FS) (*Pack, error) {
 	return p, nil
 }
 
+// defaultDryFire is GunDisplay's dry_fire sound when a display names none.
+const defaultDryFire = "tacz:dry_fire"
+
 // SoundFile is the pack file of a sound event ("tacz:ak47/ak47_shoot").
 func SoundFile(event string) string {
 	ns, p := split(event)
@@ -296,7 +299,14 @@ func (p *Pack) loadGun(file string, lang map[string]string, sound func(string) s
 	if err != nil {
 		return err
 	}
-	spec.Shoot, spec.Dry = sound(shoot), sound("tacz:dry_fire")
+	dry, err := soundRef(disp.Sounds["dry_fire"])
+	if err != nil {
+		return err
+	}
+	if dry == "" {
+		dry = defaultDryFire
+	}
+	spec.Shoot, spec.Dry = sound(shoot), sound(dry)
 	// GunDisplay's defaults where absent.
 	spec.Zoom = orDefault(disp.Zoom, gunIronZoom)
 	spec.Spin = disp.StateMachine == minigunStateMachine
