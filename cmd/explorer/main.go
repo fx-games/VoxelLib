@@ -112,7 +112,7 @@ func main() {
 	watch := flag.String("watch", "", "debug: in multiplayer, view the first other player from angle,distance (degrees from their facing, blocks) instead of your eyes")
 	flag.StringVar(&o.gun, "gun", "", "gun (a TACZ gun ID, e.g. ak47) in hand at start")
 	flag.StringVar(&o.attach, "attach", "", "debug: attachments installed on the -gun in order, slot=ID comma separated (e.g. scope=tacz:scope_acog_ta31; an empty ID removes one); adapter.slot=ID selects a slot adapter")
-	flag.StringVar(&cfg.Debug.Edits, "edits", "", "debug: 'dx,dy,dz,block;...' edits relative to the player, applied once terrain is ready")
+	flag.StringVar(&cfg.Debug.Edits, "edits", "", "debug: 'dx,dy,dz,block;...' edits relative to the player, applied once terrain is ready as blocks the player placed (shared in multiplayer)")
 	flag.DurationVar(&cfg.Debug.AutoTurn, "autoturn", 0, "debug: stand and turn round from this long into the game on, firing after 5 and 15 s (benchmark under real conditions)")
 	flag.Float64Var(&cfg.Debug.AutoFly, "autofly", 0, "debug: fly forward automatically at this many blocks/s (streaming stress test)")
 	flag.BoolVar(&cfg.Debug.Verbose, "verbose", false, "print frame stats to stdout")

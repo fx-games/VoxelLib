@@ -2,6 +2,7 @@ package app
 
 import (
 	"fmt"
+	"log"
 	"math"
 	"strings"
 
@@ -557,19 +558,22 @@ func (p *Player) HandPose(alpha float64) render.HandPose {
 	return pose
 }
 
-// applyEdits applies Debug.Edits relative to the player, once.
+// applyEdits applies Debug.Edits relative to the player, once, each as a
+// block the player placed (Hooks.BlockPlaced).
 func (a *App) applyEdits() {
 	p := a.Player
 	bx, by, bz := int(math.Floor(p.X)), int(math.Floor(p.Y)), int(math.Floor(p.Z))
 	for _, e := range strings.Split(a.Config.Debug.Edits, ";") {
+		var dx, dy, dz int
 		parts := strings.SplitN(e, ",", 4)
 		if len(parts) != 4 {
+			log.Printf("-edits %q: want dx,dy,dz,block", e)
 			continue
 		}
-		var dx, dy, dz int
-		fmt.Sscan(parts[0], &dx)
-		fmt.Sscan(parts[1], &dy)
-		fmt.Sscan(parts[2], &dz)
+		if _, err := fmt.Sscanf(parts[0]+" "+parts[1]+" "+parts[2], "%d %d %d", &dx, &dy, &dz); err != nil {
+			log.Printf("-edits %q: %v", e, err)
+			continue
+		}
 		id := voxel.Air
 		if parts[3] != "air" {
 			if m := a.Config.Engine.Map; m != nil {
@@ -578,7 +582,14 @@ func (a *App) applyEdits() {
 				id = a.Eng.World.Reg.Parse(parts[3])
 			}
 		}
-		a.Eng.SetBlock(bx+dx, by+dy, bz+dz, id)
+		pos := voxel.BlockPos{X: bx + dx, Y: by + dy, Z: bz + dz}
+		if !a.Eng.SetBlock(pos.X, pos.Y, pos.Z, id) {
+			log.Printf("-edits %q: block %v not loaded", e, pos)
+			continue
+		}
+		if a.Hooks.BlockPlaced != nil { // as placed by the player: multiplayer shares it
+			a.Hooks.BlockPlaced(pos, id)
+		}
 	}
 	a.Config.Debug.Edits = ""
 }

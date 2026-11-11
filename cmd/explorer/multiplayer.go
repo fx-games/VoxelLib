@@ -105,6 +105,7 @@ type netGame struct {
 	cmd     mp.Cmd
 	haveCmd bool
 	dead    bool
+	edits   string // Debug.Edits held back until the first snapshot
 
 	body      *mp.Body
 	bodyModel int
@@ -215,7 +216,10 @@ func (g *game) joinGame(addr string) error {
 		}
 	}
 	g.Config.Start = &[3]float64{w.SpawnX, w.SpawnY, w.SpawnZ}
-	g.net = &netGame{cl: cl, bodyModel: -1, guns: map[string]*gunView{}}
+	// -edits wait for the server's spawn point (the Welcome's is the
+	// world spawn): see ride.
+	g.net = &netGame{cl: cl, bodyModel: -1, guns: map[string]*gunView{}, edits: g.Config.Debug.Edits}
+	g.Config.Debug.Edits = ""
 	log.Printf("mp: joined %s as slot %d (seed %d) at %.1f,%.1f,%.1f", addr, w.Slot, w.Seed, w.SpawnX, w.SpawnY, w.SpawnZ)
 	g.Switch()
 	return nil
@@ -323,6 +327,9 @@ func (g *game) ride(in character.Input) bool {
 		return false
 	}
 	n.cl.Reconcile(g.Player.Character, g.Terrain)
+	if n.edits != "" && n.cl.Ready() { // placed by the server now: apply next tick
+		g.Config.Debug.Edits, n.edits = n.edits, ""
+	}
 	if n.cl.Own().Dead {
 		return true
 	}
