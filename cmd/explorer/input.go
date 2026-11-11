@@ -86,9 +86,6 @@ func (g *game) action(name string, pressed bool) bool {
 		g.cycleAnimation()
 	case "crossbow":
 		g.toggleCrossbow()
-		if g.crossbowOn() {
-			g.gunSel = -1
-		}
 	default:
 		return false
 	}

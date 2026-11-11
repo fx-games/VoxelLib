@@ -70,6 +70,9 @@ type gunsState struct {
 	recoilTicks      int
 	recoilP, recoilY float32
 	sounds           gunSounds
+	// switching: the gun in hand is being put away, then gun nextSel comes out.
+	switching bool
+	nextSel   int
 	// actionVoice plays the last action sound (actionName), as
 	// SoundPlayManager's tmpSoundInstance.
 	actionVoice *audio.Voice
@@ -135,7 +138,11 @@ func (g *game) nextGun() {
 	if g.gunPack == nil {
 		return
 	}
-	g.selectGun(g.gunSel + 1)
+	from := g.gunSel
+	if g.switching {
+		from = g.nextSel // pressed again while putting away
+	}
+	g.selectGun(from + 1)
 }
 
 // selectGunID takes out the gun with this ID.
@@ -166,8 +173,24 @@ func (g *game) gunSpec(id string) *firearm.Gun {
 }
 
 // selectGun takes out gun i of the pack (out of range: no gun).
+// selectGun switches to gun i (-1 or out of range: none). A gun in hand
+// is put away first (LocalPlayerDraw: put_away, then the draw); tickGun
+// takes out the next one once it is holstered.
 func (g *game) selectGun(i int) {
-	if i < 0 || i >= len(g.gunPack.Guns) {
+	if g.gunOn() && g.gun.Phase != firearm.Holstered {
+		g.nextSel, g.switching = i, true
+		if g.gun.Phase != firearm.PuttingAway {
+			g.gunEvents(g.gun.PutAway())
+		}
+		return
+	}
+	g.takeGun(i)
+}
+
+// takeGun takes out gun i at once (-1 or out of range: none).
+func (g *game) takeGun(i int) {
+	g.switching = false
+	if g.gunPack == nil || i < 0 || i >= len(g.gunPack.Guns) {
 		g.gunSel = -1
 		g.sendHold()
 		return
@@ -242,6 +265,12 @@ func cameraAt(world []mgl32.Mat4, b int) mgl32.Mat4 {
 func (g *game) tickGun() {
 	if !g.gunOn() {
 		return
+	}
+	if g.gun.Phase == firearm.Holstered && g.switching {
+		g.takeGun(g.nextSel)
+		if !g.gunOn() {
+			return
+		}
 	}
 	g.aimPrev = g.aim
 	g.recoilTicks++
