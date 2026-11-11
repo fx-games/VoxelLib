@@ -173,7 +173,7 @@ func (g *game) playSolo(gen string, seed int64) error {
 
 // serve starts a server for cfg (with this game's guns) and joins it.
 func (g *game) serve(cfg mp.ServerConfig) error {
-	cfg.Reg = voxel.NewRegistry()
+	cfg.Reg, cfg.Zombies = voxel.NewRegistry(), g.opt.zombies
 	if g.gunPack != nil {
 		cfg.Gun, cfg.Loot = g.gunPack.Gun, mp.NewLoot(g.gunPack)
 	}

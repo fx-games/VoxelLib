@@ -172,6 +172,12 @@ func (a *arsenal) next(cur string) string {
 	return ""
 }
 
+// gunDry reports whether the gun in hand is empty with no rounds to load:
+// a picked-up gun is drawn over it, as into empty hands.
+func (g *game) gunDry() bool {
+	return gunEmpty(&g.gun) && g.stock[g.gun.Gun.Ammo] == 0
+}
+
 // takePickup gives the player what they picked up (mp.Client.OnPickup).
 func (g *game) takePickup(p mp.Pickup) {
 	switch p.Kind {
@@ -181,7 +187,7 @@ func (g *game) takePickup(p mp.Pickup) {
 			log.Printf("pickup: no gun %q in this pack", p.ID)
 			return
 		}
-		if g.arsenal.add(p.ID, g.gunOn() || g.switching) {
+		if g.arsenal.add(p.ID, g.switching || g.gunOn() && !g.gunDry()) {
 			g.selectGunID(p.ID)
 		}
 		g.note("§aPicked up " + spec.Name)
@@ -233,8 +239,34 @@ func compass(yaw, dx, dz float64) string {
 	return "right"
 }
 
+// wantedPickup is the pickup to fetch: the nearest ammunition one of the
+// owned guns takes, else the nearest gun.
+func (g *game) wantedPickup() (mp.PickupView, bool) {
+	takes := map[string]bool{}
+	for _, id := range g.arsenal.owned {
+		if spec := g.gunSpec(id); spec != nil {
+			takes[spec.Ammo] = true
+		}
+	}
+	var gun, ammo mp.PickupView
+	gd, ad := math.Inf(1), math.Inf(1)
+	for _, pk := range g.net.cl.Pickups() {
+		d := math.Hypot(pk.X-g.Player.X, pk.Z-g.Player.Z)
+		switch {
+		case pk.Kind == mp.PickupGun && d < gd:
+			gun, gd = pk, d
+		case pk.Kind == mp.PickupAmmo && takes[pk.Pickup.ID] && d < ad:
+			ammo, ad = pk, d
+		}
+	}
+	if !math.IsInf(ad, 1) {
+		return ammo, true
+	}
+	return gun, !math.IsInf(gd, 1)
+}
+
 // defenseLine is zombie defense's top line: the zombies about, and where
-// the nearest gun (or, holding guns, ammunition) pickup lies.
+// the wanted pickup lies.
 func (g *game) defenseLine() string {
 	n := g.net
 	alive := 0
@@ -244,23 +276,13 @@ func (g *game) defenseLine() string {
 		}
 	}
 	l := fmt.Sprintf("§cZombies: %d", alive)
-	want := mp.PickupGun
-	if len(g.arsenal.owned) > 0 {
-		want = mp.PickupAmmo
-	}
-	best, bd := mp.PickupView{}, math.Inf(1)
-	p := g.Player
-	for _, pk := range n.cl.Pickups() {
-		if d := math.Hypot(pk.X-p.X, pk.Z-p.Z); pk.Kind == want && d < bd {
-			best, bd = pk, d
-		}
-	}
-	if !math.IsInf(bd, 1) {
+	if pk, ok := g.wantedPickup(); ok {
 		what := "gun"
-		if want == mp.PickupAmmo {
+		if pk.Kind == mp.PickupAmmo {
 			what = "ammo"
 		}
-		l += fmt.Sprintf("§r  Nearest %s: %.0f m %s", what, bd, compass(g.Cam.Yaw, best.X-p.X, best.Z-p.Z))
+		p := g.Player
+		l += fmt.Sprintf("§r  Nearest %s: %.0f m %s", what, math.Hypot(pk.X-p.X, pk.Z-p.Z), compass(g.Cam.Yaw, pk.X-p.X, pk.Z-p.Z))
 	}
 	return l
 }

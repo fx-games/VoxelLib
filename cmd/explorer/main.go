@@ -70,7 +70,9 @@ type options struct {
 	signFont, pets, species, anim, gun, press string
 	attach                                    string // -attach: slot=attachment,... on the -gun
 	numMobs                                   int
+	zombies                                   int // -zombies: stress test (mp.ServerConfig.Zombies)
 	night, fly, lineup, help                  bool
+	autoplay                                  bool // -autoplay: autoplay.go
 	// sandbox explores the world instead of playing zombie defense.
 	sandbox bool
 	// fullZoom magnifies the whole screen while aiming (TACZ; cheaper)
@@ -133,6 +135,8 @@ func main() {
 		skinSel = flag.String("skin", "", "multiplayer skin (a file name in -skins without .png)")
 		menu    = flag.Bool("menu", false, "open the main menu at start instead of playing zombie defense")
 	)
+	flag.IntVar(&o.zombies, "zombies", 0, "debug: this many more zombies in zombie defense's first wave; the server logs its tick times (single player and -host)")
+	flag.BoolVar(&o.autoplay, "autoplay", false, "debug: play zombie defense by itself (fetch guns and ammo, shoot zombies), logging each step")
 	flag.BoolVar(&o.sandbox, "sandbox", false, "explore the world (animals, every gun) instead of playing zombie defense; implied by -world, -map, -bench and -autofly")
 	flag.BoolVar(&cfg.Fullscreen, "fullscreen", false, "fullscreen on the primary monitor at its desktop (native) resolution")
 	flag.StringVar(&cfg.VSync, "vsync", "on", "frame pacing: on (vsync), limit (no vsync, sleep to max(display rate, 120Hz)), off (unlimited)")
@@ -297,6 +301,7 @@ type game struct {
 	gunsState
 	combatState
 	zombieState
+	autoplay
 	help     *render.Overlay // F1 help screen
 	showHelp bool
 	debugMsg string // shown in the title (K animation preview)
@@ -343,7 +348,7 @@ func (g *game) start() {
 	g.Player.Flying = o.fly
 	g.Player.HotbarSize = len(g.hotbar)
 	if g.net != nil {
-		o = &options{signFont: o.signFont, pets: o.pets, numMobs: o.numMobs, gun: o.gun, attach: o.attach, press: o.press} // the server's time of day
+		o = &options{signFont: o.signFont, pets: o.pets, numMobs: o.numMobs, gun: o.gun, attach: o.attach, press: o.press, autoplay: o.autoplay} // the server's time of day
 	}
 	// the last session's renderers, freed now rather than by the garbage
 	// collector while this one draws
@@ -430,6 +435,7 @@ func (g *game) tick() {
 		g.tickTorches()
 		g.tickNet()
 		g.tickPlayerHealth() // the hurt flash fades
+		g.tickAutoplay()
 		return
 	}
 	g.tickGun()

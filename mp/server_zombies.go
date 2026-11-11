@@ -6,6 +6,7 @@ package mp
 import (
 	"fmt"
 	"math"
+	"time"
 
 	"github.com/memmaker/voxellib/actors"
 	"github.com/memmaker/voxellib/mobs"
@@ -20,6 +21,7 @@ const firstEntityID = 16
 type defense struct {
 	loot    Loot
 	spawn   int // ticks until the next spawn
+	extra   int // more zombies in the next wave (ServerConfig.Zombies)
 	zombies []*sZombie
 	pickups []*sPickup
 	mobBuf  []*mobs.Mob
@@ -103,12 +105,16 @@ func (s *Server) spawnWave(live []*sPlayer) {
 			math.Hypot(at[0]-feet[0], at[2]-feet[2]), p.name, Seen(views, at, h))
 		return at, true
 	}
-	if at, ok := spot("zombie", ZombieMinDist, ZombieMaxDist, ZombieHeight); ok {
-		m := mobs.New(mobs.Walker, at[0], at[1], at[2], ZombieWidth, ZombieHeight)
-		m.Yaw = s.rng.Float64() * 2 * math.Pi
-		m.Reach, m.Cooldown, m.AttackTicks, m.HitTick = ZombieReach, ZombieCooldown, ZombieAttackTicks, 1
-		s.nextID++
-		d.zombies = append(d.zombies, &sZombie{id: s.nextID, m: m, health: ZombieHealth})
+	n := 1 + d.extra
+	d.extra = 0
+	for range n {
+		if at, ok := spot("zombie", ZombieMinDist, ZombieMaxDist, ZombieHeight); ok {
+			m := mobs.New(mobs.Walker, at[0], at[1], at[2], ZombieWidth, ZombieHeight)
+			m.Yaw = s.rng.Float64() * 2 * math.Pi
+			m.Reach, m.Cooldown, m.AttackTicks, m.HitTick = ZombieReach, ZombieCooldown, ZombieAttackTicks, 1
+			s.nextID++
+			d.zombies = append(d.zombies, &sZombie{id: s.nextID, m: m, health: ZombieHealth})
+		}
 	}
 	for _, pick := range []func() (Pickup, bool){func() (Pickup, bool) { return d.loot.Gun(s.rng) }, func() (Pickup, bool) { return d.loot.RandomAmmo(s.rng) }} {
 		pk, ok := pick()
@@ -124,6 +130,33 @@ func (s *Server) spawnWave(live []*sPlayer) {
 func (s *Server) addPickup(pk Pickup, at [3]float64) {
 	s.nextID++
 	s.def.pickups = append(s.def.pickups, &sPickup{id: s.nextID, Pickup: pk, pos: at})
+}
+
+// tickStatsPeriod is how often ServerConfig.Zombies logs tick times.
+const tickStatsPeriod = 5 * TickRate
+
+// tickStats sums the server's tick times for ServerConfig.Zombies.
+type tickStats struct {
+	n        int
+	sum, max time.Duration
+}
+
+func (t *tickStats) add(s *Server, d time.Duration) {
+	t.n++
+	t.sum += d
+	t.max = max(t.max, d)
+	if t.n < tickStatsPeriod {
+		return
+	}
+	alive := 0
+	for _, z := range s.def.zombies {
+		if z.dead == 0 {
+			alive++
+		}
+	}
+	s.cfg.Logf("mp: zd: %d zombies alive, tick mean %v max %v (budget %v)", alive,
+		(t.sum / time.Duration(t.n)).Round(time.Microsecond), t.max.Round(time.Microsecond), time.Second/TickRate)
+	*t = tickStats{}
 }
 
 // nearest is the living player closest to m (nil: none).

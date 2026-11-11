@@ -63,7 +63,10 @@ type ServerConfig struct {
 	// Loot is what zombie defense spawns (NewLoot of the gun pack); empty:
 	// no pickups.
 	Loot Loot
-	Logf func(format string, args ...any)
+	// Zombies is a stress test: this many more zombies come with zombie
+	// defense's first wave, and the server logs its tick times.
+	Zombies int
+	Logf    func(format string, args ...any)
 }
 
 // Server is the authoritative simulation (Q3's server game): it runs every
@@ -162,7 +165,7 @@ func StartServer(cfg ServerConfig) (*Server, error) {
 	if err != nil {
 		return nil, err
 	}
-	s := &Server{cfg: cfg, edits: NewEditLog(), body: NewBody(), rng: rand.New(rand.NewSource(time.Now().UnixNano())), nextID: firstEntityID,
+	s := &Server{cfg: cfg, edits: NewEditLog(), body: NewBody(), rng: rand.New(rand.NewSource(cfg.Seed)), nextID: firstEntityID,
 		time: TimeDay, calls: make(chan func()), stop: make(chan struct{}), done: make(chan struct{})}
 	s.m.round.Mode = cfg.Mode // before the first tick: a Welcome carries it
 	s.m.interval = max(1, int(cfg.ZoneInterval*TickRate/time.Second))
@@ -177,6 +180,7 @@ func StartServer(cfg ServerConfig) (*Server, error) {
 	s.world.LoadAround(x, z, 32)
 	s.def.loot = cfg.Loot
 	s.def.spawn = SpawnInterval
+	s.def.extra = cfg.Zombies
 
 	nc := cfg.Net
 	nc.Protocol = Protocol
@@ -391,6 +395,7 @@ func (s *Server) run() {
 	defer t.Stop()
 	var frameStart atomic.Int64 // unix ns; 0 between frames
 	go s.watchdog(&frameStart)
+	var stats tickStats
 	for {
 		select {
 		case <-s.stop:
@@ -398,9 +403,13 @@ func (s *Server) run() {
 		case f := <-s.calls:
 			f()
 		case <-t.C:
-			frameStart.Store(time.Now().UnixNano())
+			start := time.Now()
+			frameStart.Store(start.UnixNano())
 			s.frame()
 			frameStart.Store(0)
+			if s.cfg.Zombies > 0 {
+				stats.add(s, time.Since(start))
+			}
 		}
 	}
 }

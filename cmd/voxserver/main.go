@@ -35,6 +35,7 @@ func main() {
 	modeName := flag.String("mode", "zd", "game mode: zd (zombie defense), dm (deathmatch), tdm (team deathmatch) or br (battle royale)")
 	interval := flag.Duration("zone-interval", mp.DefaultZoneInterval, "battle royale: how long the energy wall stands before closing in")
 	shrink := flag.Duration("zone-shrink", mp.DefaultShrinkTime, "battle royale: how long the wall takes to close in")
+	zombies := flag.Int("zombies", 0, "debug: this many more zombies in zombie defense's first wave; logs the tick times")
 	flag.Parse()
 	mp.MapsDir = *maps
 	if *mapName != "" {
@@ -54,7 +55,7 @@ func main() {
 	}
 	log.Printf("generating the %s world (seed %d) for %s...", *gen, *seed, mode)
 	cfg := mp.ServerConfig{Addr: *addr, Name: *name, Seed: *seed, Generator: *gen,
-		Mode: mode, ZoneInterval: *interval, ShrinkTime: *shrink, Reg: voxel.NewRegistry()}
+		Mode: mode, Zombies: *zombies, ZoneInterval: *interval, ShrinkTime: *shrink, Reg: voxel.NewRegistry()}
 	if p, err := tacz.LoadDefault(); err != nil {
 		log.Printf("guns disabled: %v", err)
 	} else {
