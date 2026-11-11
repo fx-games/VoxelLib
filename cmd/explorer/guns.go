@@ -685,9 +685,8 @@ func (g *game) drawGunHand(alpha float64) {
 			v.skin[b] = zero
 		}
 	}
-	f := g.fov.aim.value() // FirstPersonRenderGunEvent's AIMING_DYNAMICS
-	view := g.cameraAnim(v).Mul4(lerpMat(v.idle, v.iron, f))
-	view = mgl32.Translate3D(0, g.gun.Gun.IdleRaise*(1-f), 0).Mul4(view) // a scope's idle height adjust
+	f := g.fov.aim.value()
+	view := g.gunHandView(v)
 	sky, blk := g.Light(g.Cam.X, g.Cam.Y, g.Cam.Z)
 	ins := g.lensInstances(v, view, f, sky, blk)
 	gunAt := len(ins)
@@ -707,7 +706,6 @@ func (g *game) drawGunHand(alpha float64) {
 		}
 		ins = append(ins, render.ModelInstance{Model: a.model, Skin: a.draw[i], Sky: sky, Block: blk})
 	}
-	sprites := g.drawMuzzle(v, view) // world smoke first: the hand clears depth
 	ins = g.shellInstances(v, view, g.fx.dt, sky, blk, ins)
 	if v.lens != nil && v.lens.scope {
 		for i := gunAt; i < len(ins); i++ { // not over the magnified view
@@ -715,12 +713,20 @@ func (g *game) drawGunHand(alpha float64) {
 		}
 	}
 	if g.fov.scope > 0 {
-		g.DrawScopeView(g.fov.scope, g.scopeClip(v, view))
+		g.DrawScopeView(g.fov.scope, g.scopeClip(v, view), alpha)
 	}
 	g.Models.DrawHandInstance(float32(g.Cam.Aspect), view, ins...)
 	if g.fx.rend != nil {
-		g.fx.rend.DrawHand(float32(g.Cam.Aspect), view, sprites, sky, blk)
+		g.fx.rend.DrawHand(float32(g.Cam.Aspect), view, g.fx.sprites, sky, blk)
 	}
+}
+
+// gunHandView is the held gun's hand view this frame, moving from
+// idle_view toward iron_view while aiming.
+func (g *game) gunHandView(v *gunView) mgl32.Mat4 {
+	f := g.fov.aim.value() // FirstPersonRenderGunEvent's AIMING_DYNAMICS
+	view := g.cameraAnim(v).Mul4(lerpMat(v.idle, v.iron, f))
+	return mgl32.Translate3D(0, g.gun.Gun.IdleRaise*(1-f), 0).Mul4(view) // a scope's idle height adjust
 }
 
 // setupArms builds the first-person arms with the player's skin.

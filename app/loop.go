@@ -254,22 +254,12 @@ func (a *App) loop() {
 		}
 		a.Eng.Render(&a.Cam)
 		render.GPUMark("entities, particles, weather")
-		if h, ent, ok := a.Target(); ok && ent == nil && !a.ScreenOpen() {
-			if a.Hooks.SelectBox != nil {
-				if b, ok := a.Hooks.SelectBox(h); ok {
-					a.Eng.Renderer.DrawBoxOutline(&a.Cam, b)
-				}
-			} else {
-				a.Eng.Renderer.DrawBlockOutline(&a.Cam, h.Block.X, h.Block.Y, h.Block.Z)
-			}
+		a.buildEntities(alpha)
+		a.drawWorld(&a.Cam, alpha)
+		if a.Hooks.DrawHand != nil {
+			a.Hooks.DrawHand(alpha)
 		}
-		a.drawDamage(alpha)
-		a.drawEntities(alpha)
-		if a.Hooks.Draw != nil {
-			a.Hooks.Draw(alpha)
-		}
-		a.Eng.Renderer.DrawWeather(&a.Cam) // Options.Weather, after particles as in 1.7
-		render.EndWorld()                  // the crosshair is the HUD's (GuiIngame)
+		render.EndWorld() // the crosshair is the HUD's (GuiIngame)
 		if !a.ScreenOpen() {
 			a.Eng.Renderer.DrawCrosshair(float32(a.Cam.Aspect))
 		}

@@ -16,15 +16,16 @@ import (
 // flash in hand space, the smoke sent to the world. Emitters tick per frame:
 // the flash lives 0.02 s, less than a tick.
 type gunFX struct {
-	rend     *render.ParticleRenderer
-	effects  map[string]*particles.Effect // by definition file
-	sheets   map[string]uint8             // by texture file
-	emitters []*particles.Emitter
-	remote   []*particles.Emitter // other players' shots, placed in the world
-	world    particles.System
-	sprites  []particles.Particle
-	last     time.Time
-	dt       float32 // last frame time (capped)
+	rend          *render.ParticleRenderer
+	effects       map[string]*particles.Effect // by definition file
+	sheets        map[string]uint8             // by texture file
+	emitters      []*particles.Emitter
+	remote        []*particles.Emitter // other players' shots, placed in the world
+	world         particles.System
+	sprites       []particles.Particle // the held gun's, in hand space (fxFrame)
+	remoteSprites []particles.Particle // other players' flashes, in the world
+	last          time.Time
+	dt            float32 // last frame time (capped)
 }
 
 // muzzleBone is TACZ's MUZZLE_FLASH_ORIGIN_NODE.
@@ -106,59 +107,63 @@ func (f *gunFX) frameTime() {
 // maxFrameTime caps a frame's time step (seconds), e.g. after a stall.
 const maxFrameTime = 0.1
 
-// drawMuzzle moves the emitters to the muzzle (model space: the hand view;
-// the world through the camera), ticks them by the frame time and draws the
-// world smoke; it returns the hand-space sprites to draw over the gun.
-func (g *game) drawMuzzle(v *gunView, view mgl32.Mat4) []particles.Particle {
-	f := &g.fx
-	dt := float64(f.dt)
-	f.sprites = f.sprites[:0]
-	if f.rend == nil {
-		return nil
-	}
-	if b := v.m.Bone(muzzleBone); b >= 0 && len(f.emitters) > 0 {
-		// TACZ's muzzle frame is our bone frame turned 180° about Z (see gunArms).
-		local := v.skin[b].Mul4(v.m.Bones[b].InvBind.Inv()).Mul4(mgl32.HomogRotate3DZ(math.Pi))
-		camRot := mgl32.LookAtV(mgl32.Vec3{}, g.Cam.Forward(), mgl32.Vec3{0, 1, 0}).Inv()
-		world := mgl32.Translate3D(float32(g.Cam.X), float32(g.Cam.Y), float32(g.Cam.Z)).Mul4(camRot).Mul4(view).Mul4(local)
-		live := f.emitters[:0]
-		for _, em := range f.emitters {
-			em.Local, em.World = frameOf(local), frameOf(world)
-			em.Tick(dt, &f.world)
-			if !em.Done() {
-				live = append(live, em)
-				f.sprites = em.Sprites(f.sprites)
-			}
-		}
-		f.emitters = live
-	}
-	f.world.Tick(dt, nil)
-	f.rend.Draw(&g.Cam, f.world.P, 1, g.Light)
-	return f.sprites
-}
-
-// drawRemoteMuzzles ticks and draws other players' muzzle flashes, and the
-// world smoke when no gun in hand does (drawMuzzle).
-func (g *game) drawRemoteMuzzles() {
+// fxFrame advances the gun effects by the frame time, once per frame
+// before the views draw them (drawFX, drawGunHand): the held gun's
+// emitters follow its muzzle (model space: the hand view; the world
+// through the camera), other players' shots stay where they were fired.
+func (g *game) fxFrame() {
 	f := &g.fx
 	if f.rend == nil {
 		return
 	}
-	var sprites []particles.Particle
+	dt := float64(f.dt)
+	f.sprites, f.remoteSprites = f.sprites[:0], f.remoteSprites[:0]
+	if g.gunOn() {
+		v := g.gunViews[g.gun.Gun.ID]
+		if b := v.m.Bone(muzzleBone); b >= 0 && len(f.emitters) > 0 {
+			// TACZ's muzzle frame is our bone frame turned 180° about Z (see gunArms).
+			local := v.skin[b].Mul4(v.m.Bones[b].InvBind.Inv()).Mul4(mgl32.HomogRotate3DZ(math.Pi))
+			camRot := mgl32.LookAtV(mgl32.Vec3{}, g.Cam.Forward(), mgl32.Vec3{0, 1, 0}).Inv()
+			world := mgl32.Translate3D(float32(g.Cam.X), float32(g.Cam.Y), float32(g.Cam.Z)).Mul4(camRot).Mul4(g.gunHandView(v)).Mul4(local)
+			f.emitters = tickEmitters(f.emitters, dt, frameOf(local), frameOf(world), &f.world, &f.sprites)
+		}
+	}
 	live := f.remote[:0]
 	for _, em := range f.remote {
-		em.Tick(float64(f.dt), &f.world)
+		em.Tick(dt, &f.world)
 		if !em.Done() {
 			live = append(live, em)
-			sprites = em.Sprites(sprites)
+			f.remoteSprites = em.Sprites(f.remoteSprites)
 		}
 	}
 	f.remote = live
-	f.rend.Draw(&g.Cam, sprites, 1, g.Light)
-	if !g.gunOn() {
-		f.world.Tick(float64(f.dt), nil)
-		f.rend.Draw(&g.Cam, f.world.P, 1, g.Light)
+	f.world.Tick(dt, nil)
+}
+
+// tickEmitters places the held gun's emitters at the muzzle, ticks them
+// and keeps the live ones, appending their hand-space sprites.
+func tickEmitters(ems []*particles.Emitter, dt float64, local, world particles.Frame, sys *particles.System, sprites *[]particles.Particle) []*particles.Emitter {
+	live := ems[:0]
+	for _, em := range ems {
+		em.Local, em.World = local, world
+		em.Tick(dt, sys)
+		if !em.Done() {
+			live = append(live, em)
+			*sprites = em.Sprites(*sprites)
+		}
 	}
+	return live
+}
+
+// drawFX draws the world's gun effects for cam: other players' muzzle
+// flashes and the smoke and sparks shots left (fxFrame).
+func (g *game) drawFX(cam *render.Camera) {
+	f := &g.fx
+	if f.rend == nil {
+		return
+	}
+	f.rend.Draw(cam, f.remoteSprites, 1, g.Light)
+	f.rend.Draw(cam, f.world.P, 1, g.Light)
 }
 
 func frameOf(m mgl32.Mat4) particles.Frame {

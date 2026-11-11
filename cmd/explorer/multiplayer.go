@@ -125,6 +125,7 @@ type netGame struct {
 	insts      []render.ModelInstance
 	bows       []render.ModelInstance
 	mats       []mgl32.Mat4 // per bows entry
+	arrowInsts []render.ModelInstance
 	skins      [][]mgl32.Mat4
 }
 
@@ -335,7 +336,6 @@ func (g *game) tickNet() {
 	g.Player.Dead = own.Dead
 	if own.Dead && !n.dead {
 		n.mu.Lock()
-		g.drawRemoteMuzzles()
 		if r := n.cl.Round(); r.Mode == mp.BattleRoyale && r.Phase == mp.PhasePlaying {
 			n.lines = append(n.lines, "§cYou are out - watching until the next round")
 		} else {
@@ -387,8 +387,9 @@ func (g *game) netFrame() {
 	}
 }
 
-// drawNet draws the other players and every arrow.
-func (g *game) drawNet(alpha float64) {
+// netPose poses the other players and every arrow for this frame's views
+// (drawNet), advancing their walk cycles.
+func (g *game) netPose(alpha float64) {
 	n := g.net
 	n.insts, n.bows, n.mats = n.insts[:0], n.bows[:0], n.mats[:0]
 	views := n.cl.Players()
@@ -439,20 +440,11 @@ func (g *game) drawNet(alpha float64) {
 	for i := range n.bows {
 		n.bows[i].Transform = &n.mats[i]
 	}
-	if len(n.insts) > 0 {
-		g.Models.Draw(&g.Cam, n.insts)
-	}
-	if len(n.bows) > 0 {
-		g.Models.Draw(&g.Cam, n.bows)
-	}
-	if r := n.cl.Round(); r.Mode == mp.BattleRoyale && r.Phase == mp.PhasePlaying {
-		g.drawWall(r.Zone, r.Shrinking)
-	}
+	n.arrowInsts = n.arrowInsts[:0]
 	if g.arrowModel < 0 {
 		return
 	}
 	n.arrows = n.cl.Arrows(g.Terrain, alpha, n.arrows)
-	g.modelInsts = g.modelInsts[:0]
 	for _, a := range n.arrows {
 		if a.Fresh {
 			dx, dy, dz := a.X-g.Cam.X, a.Y-g.Cam.Y, a.Z-g.Cam.Z
@@ -462,9 +454,20 @@ func (g *game) drawNet(alpha float64) {
 		}
 		back := 0.4 * math.Cos(a.Pitch)
 		sky, blk := g.Light(a.X-math.Sin(a.Yaw)*back, a.Y-0.4*math.Sin(a.Pitch), a.Z+math.Cos(a.Yaw)*back)
-		g.modelInsts = append(g.modelInsts, render.ModelInstance{Model: g.arrowModel, X: a.X, Y: a.Y, Z: a.Z, Yaw: a.Yaw, Pitch: a.Pitch, Sky: sky, Block: blk})
+		n.arrowInsts = append(n.arrowInsts, render.ModelInstance{Model: g.arrowModel, X: a.X, Y: a.Y, Z: a.Z, Yaw: a.Yaw, Pitch: a.Pitch, Sky: sky, Block: blk})
 	}
-	g.Models.Draw(&g.Cam, g.modelInsts)
+}
+
+// drawNet draws the other players, their weapons and every arrow as
+// netPose posed them, and the battle royale wall, for cam.
+func (g *game) drawNet(cam *render.Camera) {
+	n := g.net
+	g.Models.Draw(cam, n.insts)
+	g.Models.Draw(cam, n.bows)
+	g.Models.Draw(cam, n.arrowInsts)
+	if r := n.cl.Round(); r.Mode == mp.BattleRoyale && r.Phase == mp.PhasePlaying {
+		g.drawWall(cam, r.Zone, r.Shrinking)
+	}
 }
 
 // sendHold tells the server which gun is in hand (none: the crossbow).

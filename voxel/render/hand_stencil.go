@@ -90,8 +90,12 @@ func usesStencil(ins []ModelInstance) bool {
 }
 
 // beginHandStencil starts a pass on the frame's colour target with the
-// hand depth-stencil buffer, depth cleared to 1 and stencil to 0.
+// hand depth-stencil buffer, depth cleared to 1 and stencil to 0. A
+// shader-pack frame's world ends first (packResolve): the pack's
+// gbuffers have no stencil, so this hand draws with the engine's
+// programs over the composited frame.
 func beginHandStencil() {
+	packResolve()
 	endPass()
 	if dev.enc == nil {
 		return

@@ -94,7 +94,7 @@ func (pr *ParticleRenderer) draw(pf *particleFrame, origin [3]float64, ps []part
 				if sheet > 0 {
 					flag = 1
 				}
-				if pack := pr.r.Opt.Pack != nil; pack && light != nil {
+				if pack := dev.pk != nil; pack && light != nil { // drawn into the pack's gbuffers
 					sky, block := light(x, y, z)
 					flag += 2 * lightCode(sky, max(block, q.Emit)) // the pack lights them (packParticleWGSL); Emit is the particle's own light
 				} else if pack {

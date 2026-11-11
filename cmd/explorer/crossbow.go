@@ -359,9 +359,8 @@ func (c *creature) deathFade(alpha float64) float32 {
 	return float32(math.Max(0, math.Min(1, t)))
 }
 
-// drawArrows draws flying and stuck arrows, and the crossbow in first
-// person. Call after the world, before the held item.
-func (g *game) drawArrows(alpha float64) {
+// drawArrows draws flying and stuck arrows for cam.
+func (g *game) drawArrows(cam *render.Camera, alpha float64) {
 	if g.arrowModel < 0 {
 		return
 	}
@@ -406,7 +405,7 @@ func (g *game) drawArrows(alpha float64) {
 		// the eye. Vanilla does this for snowballs, fireballs, wind charges
 		// and eyes of ender (tickCount < 2 && distSq < 12.25).
 		if a.Flown < 2 { // counted from launch: a shot can stick at once
-			dx, dy, dz := x-g.Cam.X, y-g.Cam.Y, z-g.Cam.Z
+			dx, dy, dz := x-cam.X, y-cam.Y, z-cam.Z
 			if dx*dx+dy*dy+dz*dz < 3.5*3.5 {
 				continue
 			}
@@ -417,7 +416,7 @@ func (g *game) drawArrows(alpha float64) {
 		sky, blk := g.Light(x-math.Sin(yaw)*back, y-0.4*math.Sin(pitch), z+math.Cos(yaw)*back)
 		g.modelInsts = append(g.modelInsts, render.ModelInstance{Model: g.arrowModel, X: x, Y: y, Z: z, Yaw: yaw, Pitch: pitch, Sky: sky, Block: blk, Fade: fade})
 	}
-	g.Models.Draw(&g.Cam, g.modelInsts)
+	g.Models.Draw(cam, g.modelInsts)
 }
 
 // drawCrossbowHand draws the crossbow in the lower right of the view, with

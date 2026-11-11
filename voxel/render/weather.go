@@ -129,7 +129,7 @@ func (r *Renderer) weather(w *Weather, cam *Camera, out []SkyDraw) []SkyDraw {
 			}
 			d := &out[len(out)-1]
 			col := [4]float32{c[0], c[1], c[2], alpha}
-			if r.Opt.Pack != nil { // gbuffers_weather reads lmcoord.s from the colour (packWeatherWGSL)
+			if dev.pk != nil { // drawn into the pack's gbuffers: gbuffers_weather reads lmcoord.s from the colour (packWeatherWGSL)
 				lvl := float32(blk)
 				if kind != PrecipRain {
 					lvl = (3*lvl + 15) / 4

@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"github.com/memmaker/voxellib/voxel"
+	"github.com/memmaker/voxellib/voxel/render"
 	"github.com/memmaker/voxellib/voxel/signtext"
 )
 
@@ -30,8 +31,8 @@ func (g *game) loadSignFont(path string) error {
 }
 
 // drawSigns draws sign text within signtext.Distance of the camera.
-func (g *game) drawSigns() {
+func (g *game) drawSigns(cam *render.Camera) {
 	if g.signs != nil {
-		g.signs.Draw(&g.Cam, g.Eng.World, g.Light)
+		g.signs.Draw(cam, g.Eng.World, g.Light)
 	}
 }

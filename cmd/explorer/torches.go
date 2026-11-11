@@ -107,7 +107,7 @@ func (g *game) tickTorches() {
 }
 
 // drawTorches draws the flame particles.
-func (g *game) drawTorches(alpha float64) {
+func (g *game) drawTorches(cam *render.Camera, alpha float64) {
 	t := &g.torches
 	if t.rend == nil {
 		var err error
@@ -115,5 +115,5 @@ func (g *game) drawTorches(alpha float64) {
 			return
 		}
 	}
-	t.rend.Draw(&g.Cam, t.parts.P, alpha, g.Light)
+	t.rend.Draw(cam, t.parts.P, alpha, g.Light)
 }
