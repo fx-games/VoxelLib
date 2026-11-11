@@ -72,6 +72,7 @@ func loadSkins(dir string) []skin {
 // plainSkin is a stand-in skin: skin-coloured head and hands, a blue shirt
 // and dark trousers on the 64x64 layout, overlays empty.
 func plainSkin() image.Image {
+	const plainHand = 3 // hand length in pixels
 	img := image.NewNRGBA(image.Rect(0, 0, 64, 64))
 	fill := func(x0, y0, x1, y1 int, c color.NRGBA) {
 		for y := y0; y < y1; y++ {
@@ -87,6 +88,12 @@ func plainSkin() image.Image {
 	fill(32, 48, 48, 64, shirt) // left arm
 	fill(0, 16, 16, 32, pants)  // right leg
 	fill(16, 48, 32, 64, pants) // left leg
+	// hands: each arm's bottom face and the lowest plainHand rows of its sides
+	for _, uv := range [][2]int{{40, 16}, {32, 48}} { // right arm, left arm
+		x, y := uv[0], uv[1]
+		fill(x+8, y, x+12, y+4, skinC)
+		fill(x, y+16-plainHand, x+16, y+16, skinC)
+	}
 	fill(8, 12, 16, 13, color.NRGBA{120, 70, 50, 255})
 	return img
 }
