@@ -114,6 +114,10 @@ type Gun struct {
 	Burst struct {
 		Count int     `json:"count"`
 		BPM   float32 `json:"bpm"`
+		// MinInterval is the least time from one burst's first shot to the
+		// next burst's; Continuous keeps bursting while the trigger is held.
+		MinInterval float32 `json:"min_interval"`
+		Continuous  bool    `json:"continuous"`
 	} `json:"burst"`
 	Bullet struct {
 		Damage  float32 `json:"damage"`

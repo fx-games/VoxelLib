@@ -11,7 +11,7 @@ func run(s *GunState, secs float32, in GunInput, stock *int) (shots int) {
 				shots++
 			}
 		}
-		in.Pressed, in.Reload = false, false
+		in.Reload = false
 	}
 	return shots
 }
@@ -23,11 +23,16 @@ func TestGunCycle(t *testing.T) {
 	s := &GunState{Gun: g, ClipLen: lens, Ammo: 30}
 	stock := 100
 	s.Draw()
-	if n := run(s, 0.3, GunInput{Trigger: true, Pressed: true}, &stock); n != 0 {
+	if n := run(s, 0.3, GunInput{Trigger: true}, &stock); n != 0 {
 		t.Fatalf("fired %d while drawing", n)
 	}
+	// a trigger held through the draw fires once ready (ShootKey.autoShoot)
+	if n := run(s, 0.1, GunInput{Trigger: true}, &stock); n != 1 {
+		t.Fatalf("held through draw: %d shots", n)
+	}
 	run(s, 0.1, GunInput{}, &stock)
-	if n := run(s, 1, GunInput{Trigger: true, Pressed: true}, &stock); n != 10 {
+	s.Ammo = 30
+	if n := run(s, 1, GunInput{Trigger: true}, &stock); n != 10 {
 		t.Fatalf("600 rpm for 1 s: %d shots", n)
 	}
 	// Tactical reload on a closed bolt: a full magazine plus the chambered round.
@@ -37,7 +42,7 @@ func TestGunCycle(t *testing.T) {
 	}
 	// Semi: one shot per press.
 	s.NextMode()
-	if n := run(s, 1, GunInput{Trigger: true, Pressed: true}, &stock); n != 1 {
+	if n := run(s, 1, GunInput{Trigger: true}, &stock); n != 1 {
 		t.Fatalf("semi: %d shots", n)
 	}
 
@@ -46,7 +51,7 @@ func TestGunCycle(t *testing.T) {
 	sg.Reload.Kind = Tube
 	s = &GunState{Gun: sg, ClipLen: lens, Phase: Ready, Ammo: 1}
 	stock = 10
-	if n := run(s, 0.1, GunInput{Trigger: true, Pressed: true}, &stock); n != 1 || s.Phase != Ready && s.Ammo != 0 {
+	if n := run(s, 0.1, GunInput{Trigger: true}, &stock); n != 1 || s.Phase != Ready && s.Ammo != 0 {
 		t.Fatalf("pump shot: %d, phase %d", n, s.Phase)
 	}
 	run(s, 0.5+5*0.5+0.5+0.2, GunInput{Reload: true}, &stock)
@@ -59,7 +64,7 @@ func TestGunCycle(t *testing.T) {
 	mg.Reload.Kind = Inventory
 	s = &GunState{Gun: mg, ClipLen: lens, Phase: Ready}
 	stock = 7
-	if n := run(s, 1, GunInput{Trigger: true, Pressed: true}, &stock); n != 7 || stock != 0 {
+	if n := run(s, 1, GunInput{Trigger: true}, &stock); n != 7 || stock != 0 {
 		t.Fatalf("inventory: %d shots, stock %d", n, stock)
 	}
 }
@@ -178,5 +183,22 @@ func TestMeleeReaches(t *testing.T) {
 		if got := m.Reaches(eye, look, c.at); got != c.want {
 			t.Errorf("%v: %v", c.at, got)
 		}
+	}
+}
+
+// Burst: count rounds at bpm, the next burst min_interval after the first
+// shot; non-continuous waits for the trigger's release.
+func TestBurst(t *testing.T) {
+	g := &Gun{Mag: 30, RPM: 600, Modes: []FireMode{Burst}}
+	g.Burst.Count, g.Burst.BPM, g.Burst.MinInterval = 3, 1200, 0.5
+	s := &GunState{Gun: g, Ammo: 30, Phase: Ready}
+	stock := 0
+	if n := run(s, 2, GunInput{Trigger: true}, &stock); n != 3 {
+		t.Fatalf("held: %d shots, want one burst", n)
+	}
+	g.Burst.Continuous = true
+	run(s, 0.05, GunInput{}, &stock)
+	if n := run(s, 1, GunInput{Trigger: true}, &stock); n != 6 {
+		t.Fatalf("continuous 1 s at 0.5 s min interval: %d shots", n)
 	}
 }

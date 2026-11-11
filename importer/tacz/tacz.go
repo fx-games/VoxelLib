@@ -321,6 +321,9 @@ func (p *Pack) AmmoEntityModel(ammo string) (*model.Model, error) {
 	return models[0], nil
 }
 
+// defaultBurstMinInterval is BurstData.minInterval's default, seconds.
+const defaultBurstMinInterval = 1
+
 // TracerModel parses the mod's tracer (InternalAssetLoader's
 // DEFAULT_BULLET_MODEL basic_bullet.json with DEFAULT_BULLET_TEXTURE).
 func (p *Pack) TracerModel() (*model.Model, error) {
@@ -516,6 +519,9 @@ type taczData struct {
 	Burst     struct {
 		Count int     `json:"count"`
 		BPM   float32 `json:"bpm"`
+		// BurstData.minInterval defaults to 1 s
+		MinInterval *float32 `json:"min_interval"`
+		Continuous  bool     `json:"continuous_shoot"`
 	} `json:"burst_data"`
 	Bullet struct {
 		Damage         float32 `json:"damage"`
@@ -616,7 +622,10 @@ func (d *taczData) spec(id, name, class string) (weapon.Gun, error) {
 			g.Modes = append(g.Modes, fm)
 		}
 	}
-	g.Burst.Count, g.Burst.BPM = d.Burst.Count, d.Burst.BPM
+	g.Burst.Count, g.Burst.BPM, g.Burst.MinInterval, g.Burst.Continuous = d.Burst.Count, d.Burst.BPM, defaultBurstMinInterval, d.Burst.Continuous
+	if d.Burst.MinInterval != nil {
+		g.Burst.MinInterval = *d.Burst.MinInterval
+	}
 	g.Slide = d.CanSlide == nil || *d.CanSlide
 	b := &g.Bullet
 	b.Damage, b.Pellets, b.Speed, b.Gravity, b.Pierce = d.Bullet.Damage, max(d.Bullet.Amount, 1), d.Bullet.Speed, d.Bullet.Gravity, d.Bullet.Pierce

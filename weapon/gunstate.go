@@ -58,7 +58,6 @@ type GunEvent struct {
 // GunInput is the player's input for one tick.
 type GunInput struct {
 	Trigger bool // held
-	Pressed bool // went down this tick
 	Reload  bool
 	Inspect bool
 	Melee   bool // went down this tick
@@ -89,6 +88,11 @@ type GunState struct {
 	meleeHit  bool    // the melee's hit has landed
 	meleeLen  float32 // seconds the melee phase lasts
 	bayonet   int     // bayonet clips played (the next is bayonet%meleeBayonetClips+1)
+	// shot: a shot succeeded since the trigger went down
+	// (ShootKey.lastTimeShootSuccess); dry: the dry fire sound played
+	// since (SoundPlayManager.resetDryFireSound on release).
+	shot, dry bool
+	burstMin  float32 // burst: seconds until min_interval past the burst's first shot
 }
 
 // firingGrace is how late a shot may come and still continue a stream of
@@ -156,7 +160,15 @@ func (s *GunState) Tick(dt float32, in GunInput, stock *int) []GunEvent {
 	}
 	defer func() { s.cooldown = max(s.cooldown, 0) }() // no credit kept past a tick without fire
 	s.sinceShot += dt
+	s.burstMin -= dt
 	s.cool(dt)
+	if !in.Trigger {
+		s.shot, s.dry = false, false
+	}
+	// ShootKey.autoShoot: a held trigger tries to shoot every tick until a
+	// shot succeeds (so one held through draw fires once ready); semi and
+	// non-continuous burst then wait for its release.
+	tryShoot := in.Trigger && (!s.shot || s.FireMode() == Auto || s.FireMode() == Burst && g.Burst.Continuous)
 	switch s.Phase {
 	case Drawing:
 		if s.T >= g.Draw {
@@ -167,7 +179,7 @@ func (s *GunState) Tick(dt float32, in GunInput, stock *int) []GunEvent {
 			s.Phase = Holstered
 		}
 	case Inspecting:
-		if s.T >= s.ClipLen(ClipInspect) || in.Pressed || in.Reload {
+		if s.T >= s.ClipLen(ClipInspect) || tryShoot || in.Reload {
 			s.ready(&ev)
 		}
 	case Bolting:
@@ -211,10 +223,10 @@ func (s *GunState) Tick(dt float32, in GunInput, stock *int) []GunEvent {
 		}
 		return append(ev, GunEvent{Clip: clip, Sound: sound})
 	}
-	if in.Pressed {
+	if tryShoot && s.cooldown <= 0 && s.burstLeft == 0 {
 		switch s.FireMode() {
 		case Burst:
-			s.burstLeft = max(g.Burst.Count, 1)
+			s.burstLeft, s.burstMin = max(g.Burst.Count, 1), g.Burst.MinInterval
 		case Semi:
 			s.burstLeft = 1
 		}
@@ -230,12 +242,14 @@ func (s *GunState) Tick(dt float32, in GunInput, stock *int) []GunEvent {
 		}
 		if *rounds == 0 {
 			s.burstLeft = 0
-			if in.Pressed {
+			if !s.dry {
+				s.dry = true
 				ev = append(ev, GunEvent{Dry: true})
 			}
 			break
 		}
 		*rounds--
+		s.shot = true
 		ev = append(ev, GunEvent{Clip: ClipShoot, Shot: true})
 		interval := 60 / (g.RPM * s.heatFactor(func(h *Heat) [2]float32 { return h.RPM }))
 		s.heat()
@@ -244,6 +258,11 @@ func (s *GunState) Tick(dt float32, in GunInput, stock *int) []GunEvent {
 			if s.FireMode() == Burst && s.burstLeft > 0 && g.Burst.BPM > 0 {
 				interval = 60 / g.Burst.BPM
 			}
+		}
+		if s.FireMode() == Burst && s.burstLeft == 0 {
+			// getShootCoolDown in burst: min_interval from the burst's
+			// first shot, not the gun's rpm
+			s.cooldown, interval = 0, max(s.burstMin, 0)
 		}
 		s.cooldown += interval
 		s.sinceShot, s.interval = 0, interval

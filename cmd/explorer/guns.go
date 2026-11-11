@@ -92,9 +92,8 @@ type gunsState struct {
 	cueT    float32
 	cueNext int
 	// keys last tick, for presses
-	triggerWas bool
-	hits       hitMarks        // the HUD hit marker and kill streak
-	keyWas     map[string]bool // gun keys down last tick (keyPressed)
+	hits   hitMarks        // the HUD hit marker and kill streak
+	keyWas map[string]bool // gun keys down last tick (keyPressed)
 }
 
 // gunView is a gun's model on the GPU with its animator.
@@ -297,11 +296,14 @@ func (g *game) newGunView(id string, c tacz.Choice, mode firearm.FireMode) (*gun
 	}
 	v.anim.FadeTime = 0
 	v.anim.Play(firearm.ClipIdle, true)
-	v.anim.Layers = []model.Layer{mainTrack: {}, movementTrack: {Blend: true}, slideTrack: {Blend: true}}
+	v.anim.Layers = []model.Layer{boltTrack: {}, mainTrack: {}, movementTrack: {Blend: true}, slideTrack: {Blend: true}}
 	v.camBone = m.Bone(cameraBone)
 	rest := model.NewAnimator(m)
 	rest.Play(firearm.ClipIdle, true)
 	v.rest = rest.Skin(nil)
+	// the empty gun at rest shows static_bolt_caught over static_idle
+	rest.Layers = []model.Layer{{Clip: m.Clips[clipStaticBoltCaught]}}
+	v.restEmpty = rest.Skin(nil)
 	v.thirdHand = mgl32.Ident4() // TACZ: no positioning node, no positioning
 	if b := m.Bone(thirdPersonHandBone); b >= 0 {
 		v.thirdHand = v.rest[b].Mul4(m.Bones[b].InvBind.Inv()).Inv()
@@ -311,7 +313,6 @@ func (g *game) newGunView(id string, c tacz.Choice, mode firearm.FireMode) (*gun
 	for _, n := range ammoBones {
 		v.ammo = append(v.ammo, m.Descendants(m.Bone(n))...)
 	}
-	v.restEmpty = append([]mgl32.Mat4(nil), v.rest...)
 	for _, b := range v.ammo {
 		v.restEmpty[b] = mgl32.Mat4{}
 	}
@@ -385,8 +386,6 @@ func (g *game) tickGun() {
 		Melee:   g.keyPressed("melee"),
 		Unload:  g.keyPressed("unload"),
 	}
-	in.Pressed = in.Trigger && !g.triggerWas
-	g.triggerWas = in.Trigger
 	// Fire select first (TACZ handles the key before the tick's shot), its
 	// spec resolved (postChangeEvent), so a shot this tick uses the new mode.
 	if g.keyPressed("firemode") {
@@ -492,10 +491,11 @@ func (g *game) stopActionSound() {
 // and stops, overriding what it keys; each shot runs "shoot" on its own
 // gun kick track, blended (added) over the pose.
 const (
-	mainTrack     = 0
-	movementTrack = 1 // blended, run by tickMovement
-	slideTrack    = 2 // blended, run by tickSlide
-	fixedTracks   = 3 // layers past these come and go
+	boltTrack     = 0 // BOLT_CAUGHT_TRACK: static_bolt_caught looping while empty, under the main track
+	mainTrack     = 1
+	movementTrack = 2 // blended, run by tickMovement
+	slideTrack    = 3 // blended, run by tickSlide
+	fixedTracks   = 4 // layers past these come and go
 	// mainTransition is runAnimation's transition for main track clips
 	// other than draw (0).
 	mainTransition = 0.2
@@ -539,6 +539,7 @@ const (
 	clipSpin              = "spin"
 	clipOverHeat          = "over_heat"
 	clipStaticOverHeating = "static_over_heating"
+	clipStaticBoltCaught  = "static_bolt_caught"
 )
 
 // stateTracks runs the blending tracks the state machines drive from the
@@ -547,6 +548,13 @@ const (
 // spin_states (spin while the main track is idle, once more while firing).
 func (g *game) stateTracks(v *gunView) {
 	s := &g.gun
+	// bolt_caught_states: static_bolt_caught loops while no round is left
+	// (isNoAmmo), e.g. the rpg7's rocket hidden after the shot
+	if b := &v.anim.Layers[boltTrack]; !gunEmpty(s) {
+		b.Clip = nil
+	} else if b.Clip == nil {
+		*b = model.Layer{Clip: v.m.Clips[clipStaticBoltCaught], Play: model.LoopRepeat}
+	}
 	if s.Overheated != v.overheated {
 		v.overheated = s.Overheated
 		if c := v.m.Clips[clipOverHeat]; c != nil && s.Overheated {
