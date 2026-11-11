@@ -496,6 +496,9 @@ func (p *Player) bobTick(yaw, pitch float64, sneakEdge, riding bool) {
 	p.armPitch += (pitch - p.armPitch) * 0.5
 }
 
+// WalkDist is Entity.walkDist (distanceWalkedModified) as of the last tick.
+func (p *Player) WalkDist() float64 { return p.walkDist }
+
 // ViewBob is EntityRenderer.setupViewBobbing at this frame's alpha.
 func (p *Player) ViewBob(alpha float64) mgl32.Mat4 {
 	f1 := p.walkDist - p.prevWalk
