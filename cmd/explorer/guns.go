@@ -376,10 +376,11 @@ func (g *game) gunEvents(ev []firearm.GunEvent) {
 
 // Display sound volumes and pitches (SoundPlayManager).
 const (
-	shotSoundVolume   = 0.8
-	pitchBase         = 0.9
-	pitchRandomRange  = 0.125
-	actionSoundVolume = 1
+	shotSoundVolume    = 0.8
+	silenceSoundVolume = 0.6
+	pitchBase          = 0.9
+	pitchRandomRange   = 0.125
+	actionSoundVolume  = 1
 )
 
 // soundPitch is SoundPlayManager's 0.9 + random·0.125.
@@ -540,7 +541,11 @@ func (g *game) shoot() {
 	if g.actionName == firearm.SoundInspect { // firing interrupts inspecting
 		g.stopActionSound()
 	}
-	g.gunSound(firearm.SoundShoot, shotSoundVolume, g.soundPitch())
+	if s := spec.Silence; s != nil && s.UseSilenceSound {
+		g.gunSound(firearm.SoundSilence, silenceSoundVolume, g.soundPitch())
+	} else {
+		g.gunSound(firearm.SoundShoot, shotSoundVolume, g.soundPitch())
+	}
 	aim := g.aimFrac(1)
 	p := g.Player
 	moving := math.Hypot(p.VX, p.VZ) > 0.01

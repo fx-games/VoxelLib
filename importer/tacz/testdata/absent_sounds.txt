@@ -209,3 +209,7 @@ wfoly_sh_jak12_raise
 wfoly_sh_jak12_reload_empty_boltpull
 wfoly_sh_jak12_reload_raise
 wfoly_sm_mpapa5_drop
+tacz:m1866/m1866_silence
+tacz:m1866/m1866_silence_3p
+tacz:minigun/minigun_silence
+tacz:minigun/minigun_silence_3p

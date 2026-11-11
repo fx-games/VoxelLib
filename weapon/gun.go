@@ -236,13 +236,15 @@ const (
 	SoundMeleeStock     GunSound = "melee_stock"
 	SoundMeleeBayonet   GunSound = "melee_bayonet"
 	SoundUnload         GunSound = "unload"
+	SoundSilence        GunSound = "silence"    // the shooter's shot with a silencing muzzle
+	SoundSilence3P      GunSound = "silence_3p" // that shot heard by everyone else
 )
 
 // GunSounds lists the display sounds the game plays.
 var GunSounds = []GunSound{SoundShoot, SoundShoot3P, SoundDryFire, SoundDraw, SoundPutAway,
 	SoundReloadEmpty, SoundReloadTactical, SoundInspect, SoundInspectEmpty, SoundBolt,
 	SoundFireSelect, SoundHeadHit, SoundFleshHit, SoundKill,
-	SoundMeleePush, SoundMeleeStock, SoundMeleeBayonet, SoundUnload}
+	SoundMeleePush, SoundMeleeStock, SoundMeleeBayonet, SoundUnload, SoundSilence, SoundSilence3P}
 
 // Heat is a gun data's "heat" block (TACZ GunHeatData, sp_heat.lua): each
 // shot adds PerShot up to Max, where the gun locks; Delay seconds after the
