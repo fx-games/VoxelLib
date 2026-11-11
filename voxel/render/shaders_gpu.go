@@ -482,7 +482,9 @@ type pipelines struct {
 	blockFlash                  *wgpu.RenderPipeline
 	blit                        *wgpu.RenderPipeline
 
-	specs map[*wgpu.RenderPipeline]pipeSpec // what each was made from (shader pack variants)
+	specs        map[*wgpu.RenderPipeline]pipeSpec // what each was made from (shader pack variants)
+	modules      map[string]*wgpu.ShaderModule     // by WGSL source
+	handVariants map[handVariant]*wgpu.RenderPipeline
 }
 
 var (
@@ -604,31 +606,12 @@ func (ps *pipelines) init() error {
 		{&ps.blockFlash, pipeSpec{"block flash", blockWGSL, ps.terrainTex, terrainBuf, tri, back, blendSrcAlphaOne, true, false, false}},
 		{&ps.blit, pipeSpec{"capture blit", blitWGSL, nil, nil, tri, none, nil, false, false, true}},
 	}
-	modules := map[string]*wgpu.ShaderModule{}
+	ps.modules = map[string]*wgpu.ShaderModule{}
 	ps.specs = map[*wgpu.RenderPipeline]pipeSpec{}
+	ps.handVariants = map[handVariant]*wgpu.RenderPipeline{}
 	for _, s := range specs {
 		sp := s.spec
-		mod := modules[sp.wgsl]
-		if mod == nil {
-			if mod, err = dev.device.CreateShaderModule(&wgpu.ShaderModuleDescriptor{Label: sp.label, WGSL: sp.wgsl}); err != nil {
-				return err
-			}
-			modules[sp.wgsl] = mod
-		}
-		groups := []*wgpu.BindGroupLayout{dev.uniLayout}
-		if sp.group1 != nil {
-			groups = append(groups, sp.group1)
-		}
-		if sp.blit {
-			groups = []*wgpu.BindGroupLayout{ps.tex2D}
-		}
-		if s.dst == &ps.itemGlint || s.dst == &ps.modelGlint {
-			groups = append(groups, ps.tex2D)
-		}
-		pl, err := dev.device.CreatePipelineLayout(&wgpu.PipelineLayoutDescriptor{Label: sp.label, BindGroupLayouts: groups})
-		if err != nil {
-			return err
-		}
+		glint := s.dst == &ps.itemGlint || s.dst == &ps.modelGlint // group 2: the glint texture
 		depth := &wgpu.DepthStencilState{Format: gputypes.TextureFormatDepth32Float, DepthWriteEnabled: sp.depthWrite,
 			DepthCompare: gputypes.CompareFunctionLessEqual}
 		if !sp.depthTest {
@@ -640,19 +623,52 @@ func (ps *pipelines) init() error {
 		if sp.blit {
 			depth = nil
 		}
-		if *s.dst, err = dev.device.CreateRenderPipeline(&wgpu.RenderPipelineDescriptor{
-			Label:        sp.label,
-			Layout:       pl,
-			Vertex:       wgpu.VertexState{Module: mod, EntryPoint: "vs", Buffers: sp.buffers},
-			Primitive:    gputypes.PrimitiveState{Topology: sp.topology, FrontFace: gputypes.FrontFaceCCW, CullMode: sp.cull},
-			DepthStencil: depth,
-			Multisample:  gputypes.MultisampleState{Count: 1, Mask: 0xFFFFFFFF},
-			Fragment: &wgpu.FragmentState{Module: mod, EntryPoint: "fs", Targets: []gputypes.ColorTargetState{
-				{Format: dev.format, Blend: sp.blend, WriteMask: gputypes.ColorWriteMaskAll}}},
-		}); err != nil {
-			return fmt.Errorf("pipeline %s: %w", sp.label, err)
+		if *s.dst, err = ps.build(sp, glint, depth, gputypes.ColorWriteMaskAll); err != nil {
+			return err
 		}
 		ps.specs[*s.dst] = sp
 	}
 	return nil
+}
+
+// build makes sp's pipeline with the depth state depth (nil: no depth
+// attachment), writing the colour channels in mask; glint adds group 2,
+// the glint texture.
+func (ps *pipelines) build(sp pipeSpec, glint bool, depth *wgpu.DepthStencilState, mask gputypes.ColorWriteMask) (*wgpu.RenderPipeline, error) {
+	mod := ps.modules[sp.wgsl]
+	if mod == nil {
+		var err error
+		if mod, err = dev.device.CreateShaderModule(&wgpu.ShaderModuleDescriptor{Label: sp.label, WGSL: sp.wgsl}); err != nil {
+			return nil, err
+		}
+		ps.modules[sp.wgsl] = mod
+	}
+	groups := []*wgpu.BindGroupLayout{dev.uniLayout}
+	if sp.group1 != nil {
+		groups = append(groups, sp.group1)
+	}
+	if sp.blit {
+		groups = []*wgpu.BindGroupLayout{ps.tex2D}
+	}
+	if glint {
+		groups = append(groups, ps.tex2D)
+	}
+	pl, err := dev.device.CreatePipelineLayout(&wgpu.PipelineLayoutDescriptor{Label: sp.label, BindGroupLayouts: groups})
+	if err != nil {
+		return nil, err
+	}
+	p, err := dev.device.CreateRenderPipeline(&wgpu.RenderPipelineDescriptor{
+		Label:        sp.label,
+		Layout:       pl,
+		Vertex:       wgpu.VertexState{Module: mod, EntryPoint: "vs", Buffers: sp.buffers},
+		Primitive:    gputypes.PrimitiveState{Topology: sp.topology, FrontFace: gputypes.FrontFaceCCW, CullMode: sp.cull},
+		DepthStencil: depth,
+		Multisample:  gputypes.MultisampleState{Count: 1, Mask: 0xFFFFFFFF},
+		Fragment: &wgpu.FragmentState{Module: mod, EntryPoint: "fs", Targets: []gputypes.ColorTargetState{
+			{Format: dev.format, Blend: sp.blend, WriteMask: mask}}},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("pipeline %s: %w", sp.label, err)
+	}
+	return p, nil
 }
