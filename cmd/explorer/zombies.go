@@ -85,6 +85,7 @@ func (g *game) loadZombie() error {
 		return fmt.Errorf("%s: %w", zombieSkinFile, err)
 	}
 	body := mp.NewBody()
+	bipedLimbs(body.Geo)
 	m, err := cuboid.Build(body.Geo, img)
 	if err != nil {
 		return err
@@ -171,4 +172,22 @@ func (g *game) takeAmmo() {
 		g.stock[id] += max(g.ammoLoot[id], 1)
 		return true
 	})
+}
+
+// bipedLimbs gives a player geometry ModelBiped's left limbs, which the
+// zombie skin has no own texture for: the right limb's UV, mirrored.
+func bipedLimbs(g *cuboid.Geometry) {
+	right := map[string]string{"leftArm": "rightArm", "leftLeg": "rightLeg"}
+	uv := map[string][2]int{}
+	for _, p := range g.Parts {
+		if len(p.Boxes) > 0 {
+			uv[p.Name] = p.Boxes[0].UV
+		}
+	}
+	for i := range g.Parts {
+		if r, ok := right[g.Parts[i].Name]; ok {
+			b := &g.Parts[i].Boxes[0]
+			b.UV, b.Mirror = uv[r], true
+		}
+	}
 }
