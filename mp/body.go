@@ -55,7 +55,10 @@ type Anim struct {
 	Gun                   bool
 	Hold                  weapon.ThirdPersonHold
 	Aim                   weapon.AimProgress
-	Age                   float64 // ticks lived: the idle arm bob (each side's own clock)
+	// Age is the server tick the pose is at, the idle arm bob's clock: the
+	// server records its tick, clients draw at Client.RenderTime, so the
+	// arrow hit body and the drawing bob as one.
+	Age float64
 }
 
 // Walk advances the walk cycle by one tick in which the body moved dx, dz
@@ -64,7 +67,6 @@ func (a *Anim) Walk(dx, dz float64) {
 	d := math.Min(1, math.Hypot(dx, dz)*4)
 	a.LimbAmount += (d - a.LimbAmount) * 0.4
 	a.LimbSwing += a.LimbAmount
-	a.Age++
 }
 
 // Advance runs the walk cycle over a frame of ticks (fractional) in which
@@ -77,7 +79,6 @@ func (a *Anim) Advance(dx, dz, ticks float64) {
 	d := math.Min(1, math.Hypot(dx, dz)/ticks*4)
 	a.LimbAmount += (d - a.LimbAmount) * math.Min(1, 0.4*ticks)
 	a.LimbSwing += a.LimbAmount * ticks
-	a.Age += ticks
 }
 
 // Lerp blends two animation states (the previous and current tick).

@@ -13,6 +13,7 @@ import (
 	"math"
 
 	"github.com/go-gl/mathgl/mgl32"
+	"github.com/memmaker/voxellib/character"
 )
 
 // display is an item model's display transform: rotation in degrees
@@ -311,7 +312,7 @@ func tickHeadTurn(bodyYaw, yRot, t float32) float32 {
 
 // --- The render chain ---
 
-const eyeHeight = 1.62 // the player's, standing
+const eyeHeight = character.PlayerEyeHeight // the player's, standing
 
 // rotateZYX is JOML's Matrix4f.rotateZYX: m * Rz * Ry * Rx.
 func rotateZYX(m mgl32.Mat4, z, y, x float32) mgl32.Mat4 {

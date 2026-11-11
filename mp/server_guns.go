@@ -89,7 +89,7 @@ func (s *Server) bulletTargets(p *sPlayer, tick uint32) ([]projectile.BulletTarg
 			vel = [3]float64{r.x - q.x, r.y - q.y, r.z - q.z}
 		}
 		ts = append(ts, projectile.BulletTarget{Box: projectile.HitBox(r.Box(), vel, true, r.anim.Sneak),
-			Feet: [3]float64{o.ch.X, o.ch.Y, o.ch.Z}, EyeHeight: o.ch.EyeHeight})
+			Feet: [3]float64{r.x, r.y, r.z}, EyeHeight: character.PlayerEye(r.anim.Sneak)})
 		who = append(who, o)
 	}
 	return ts, who
@@ -164,7 +164,7 @@ func (s *Server) melee(p *sPlayer, gun string, l Look) {
 	reach := p.ch.Box().Grow(dist, dist, dist)
 	for _, t := range s.targets(p, atomic.LoadUint32(&s.tick)) {
 		r := t.(*rewound)
-		te := [3]float64{r.x, r.y + character.PlayerEyeHeight, r.z}
+		te := [3]float64{r.x, r.y + character.PlayerEye(r.anim.Sneak), r.z}
 		if !reach.Intersects(r.Box()) || !m.Reaches(eye, d, te) || !projectile.InSight(s.world, boxes, eye, te) {
 			continue
 		}

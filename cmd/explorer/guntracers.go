@@ -6,6 +6,7 @@ import (
 	"slices"
 
 	"github.com/go-gl/mathgl/mgl32"
+	"github.com/memmaker/voxellib/app"
 	"github.com/memmaker/voxellib/character"
 	"github.com/memmaker/voxellib/mp"
 	"github.com/memmaker/voxellib/projectile"
@@ -71,7 +72,7 @@ func (g *game) drawTracers(cam *render.Camera, alpha float64) {
 	}
 	var list []tracer
 	p := g.Player
-	me := [3]float64{p.PrevX + (p.X-p.PrevX)*alpha, p.PrevY + (p.Y-p.PrevY)*alpha + p.EyeHeight, p.PrevZ + (p.Z-p.PrevZ)*alpha}
+	me := [3]float64{p.PrevX + (p.X-p.PrevX)*alpha, p.PrevY + (p.Y-p.PrevY)*alpha + character.PlayerEye(g.Input.Down(app.ActSneak)), p.PrevZ + (p.Z-p.PrevZ)*alpha}
 	if g.net == nil {
 		for _, b := range g.bullets {
 			if b.Tracer {
@@ -94,8 +95,7 @@ func (g *game) drawTracers(cam *render.Camera, alpha float64) {
 					continue // the shooter left: TACZ draws no tracer without its owner
 				}
 				v := views[i]
-				// ponytail: standing eye height; a sneaking shooter's is lower.
-				tr.eye = [3]float64{v.X, v.Y + character.PlayerEyeHeight, v.Z}
+				tr.eye = [3]float64{v.X, v.Y + character.PlayerEye(v.Sneak), v.Z}
 			}
 			list = append(list, tr)
 		}

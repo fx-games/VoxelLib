@@ -438,7 +438,7 @@ func (g *game) netPose(alpha float64) {
 			ra.x, ra.z, ra.seen = v.X, v.Z, true
 		}
 		ra.Advance(v.X-ra.x, v.Z-ra.z, n.frameTicks)
-		ra.x, ra.z = v.X, v.Z
+		ra.x, ra.z, ra.Age = v.X, v.Z, n.cl.RenderTime()
 		ra.Pitch, ra.Sneak, ra.Gun, ra.Aim, ra.Bare = v.Pitch, v.Sneak, held.Gun != "", v.Aim, held.Bare
 		if gv != nil {
 			ra.Hold = gv.spec.ThirdPersonHold

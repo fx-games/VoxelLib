@@ -431,6 +431,7 @@ func (s *Server) frame() {
 			p.protect--
 		}
 		s.tickAim(p)
+		p.anim.Age = float64(tick)
 		p.hist[tick%historyTicks] = pose{tick: tick, x: p.ch.X, y: p.ch.Y, z: p.ch.Z, yaw: p.yaw, anim: p.anim,
 			alive: p.dead == 0}
 	}
@@ -644,6 +645,7 @@ func (s *Server) runCmd(p *sPlayer, c Cmd) {
 	p.ch.Tick(s.world, in)
 	p.anim.Walk(p.ch.X-x0, p.ch.Z-z0)
 	p.anim.Pitch, p.anim.Sneak = c.Pitch, in.Sneak
+	p.ch.EyeHeight = character.PlayerEye(in.Sneak)
 	if c.Buttons&BtnAttack != 0 && p.reload == 0 && p.held.Gun == "" && !p.held.Bare { // the crossbow in hand
 		ex, ey, ez := p.ch.Eye()
 		a := p.arrows.Shoot(ex, ey-0.1, ez, c.Yaw, c.Pitch, projectile.Speed)

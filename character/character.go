@@ -138,7 +138,18 @@ const (
 	PlayerEyeHeight = 1.62
 	// PlayerCrouchHeight is a crouching player's height (1.20 crouching pose).
 	PlayerCrouchHeight = 1.5
+	// PlayerCrouchEyeHeight is a crouching player's eye (1.20
+	// Player.getStandingEyeHeight for Pose.CROUCHING).
+	PlayerCrouchEyeHeight = 1.27
 )
+
+// PlayerEye is a player's eye above its feet, crouching or standing.
+func PlayerEye(sneak bool) float64 {
+	if sneak {
+		return PlayerCrouchEyeHeight
+	}
+	return PlayerEyeHeight
+}
 
 // New returns a player-sized character standing at x,y,z.
 func New(x, y, z float64) *Character {
