@@ -55,7 +55,7 @@ func main() {
 	}
 	log.Printf("generating the %s world (seed %d) for %s...", *gen, *seed, mode)
 	srv, err := mp.StartServer(mp.ServerConfig{Addr: *addr, Name: *name, Seed: *seed, Generator: *gen,
-		Mode: mode, ZoneInterval: *interval, ShrinkTime: *shrink, Reg: voxel.NewRegistry(), Guns: loadGuns()})
+		Mode: mode, ZoneInterval: *interval, ShrinkTime: *shrink, Reg: voxel.NewRegistry(), Gun: loadGuns()})
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -222,13 +222,13 @@ func timeCommand(srv *mp.Server, arg string) {
 	timeCommand(srv, "")
 }
 
-// loadGuns is the TACZ gun pack's guns players may hold (none when it is
+// loadGuns resolves the guns players may hold from the TACZ pack (nil when it is
 // missing: run from the repo root).
-func loadGuns() []weapon.Gun {
+func loadGuns() func(string, tacz.Choice) (weapon.Gun, error) {
 	p, err := tacz.LoadDefault()
 	if err != nil {
 		log.Printf("guns disabled: %v", err)
 		return nil
 	}
-	return p.Guns
+	return p.Gun
 }

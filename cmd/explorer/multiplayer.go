@@ -27,6 +27,7 @@ import (
 	"github.com/memmaker/voxellib/app"
 	"github.com/memmaker/voxellib/audio"
 	"github.com/memmaker/voxellib/character"
+	"github.com/memmaker/voxellib/importer/tacz"
 	"github.com/memmaker/voxellib/mp"
 	"github.com/memmaker/voxellib/netcode"
 	"github.com/memmaker/voxellib/voxel"
@@ -114,9 +115,10 @@ type netGame struct {
 	mu      sync.Mutex // the client's callbacks (tick) vs drawing
 	skinNew [4][]byte  // skins to upload (nil entry: none pending)
 	skinSet [4]bool
-	lines   []string  // kill feed lines to show
-	held    [4]string // by slot: the gun in hand (PlayerInfo.Gun)
-	fired   []int     // slots whose gun went off, to show and play
+	lines   []string            // kill feed lines to show
+	held    [4]mp.Hold          // by slot: the gun in hand (PlayerInfo.Held)
+	guns    map[string]*gunView // other players' gun views by gun ID + tacz.Choice.Key
+	fired   []int               // slots whose gun went off, to show and play
 
 	anims      [4]remoteAnim
 	lastFrame  time.Time
@@ -151,11 +153,11 @@ func (g *game) hostGame(name string, seed int64, gen string, mode mp.Mode) error
 	if seed == 0 {
 		seed = time.Now().UnixNano() & 0xFFFFFFF
 	}
-	var guns []firearm.Gun
+	var gun func(string, tacz.Choice) (firearm.Gun, error)
 	if g.gunPack != nil {
-		guns = g.gunPack.Guns
+		gun = g.gunPack.Gun
 	}
-	srv, err := mp.StartServer(mp.ServerConfig{Name: name, Seed: seed, Generator: gen, Mode: mode, Reg: voxel.NewRegistry(), Guns: guns})
+	srv, err := mp.StartServer(mp.ServerConfig{Name: name, Seed: seed, Generator: gen, Mode: mode, Reg: voxel.NewRegistry(), Gun: gun})
 	if err != nil {
 		return err
 	}
@@ -207,7 +209,7 @@ func (g *game) joinGame(addr string) error {
 		}
 	}
 	g.Config.Start = &[3]float64{w.SpawnX, w.SpawnY, w.SpawnZ}
-	g.net = &netGame{cl: cl, bodyModel: -1}
+	g.net = &netGame{cl: cl, bodyModel: -1, guns: map[string]*gunView{}}
 	log.Printf("mp: joined %s as slot %d (seed %d) at %.1f,%.1f,%.1f", addr, w.Slot, w.Seed, w.SpawnX, w.SpawnY, w.SpawnZ)
 	g.Switch()
 	return nil
@@ -221,6 +223,11 @@ func (g *game) leaveGame(reason string) {
 		return
 	}
 	n.cl.Close()
+	for _, v := range n.guns {
+		if v != nil {
+			g.freeGunView(v)
+		}
+	}
 	if n.srv != nil {
 		n.srv.Close()
 	}
@@ -261,7 +268,7 @@ func (g *game) netStart() {
 	cl.OnPlayer = func(p mp.PlayerInfo) {
 		n.mu.Lock()
 		n.skinNew[p.Slot], n.skinSet[p.Slot] = p.Skin, true
-		n.held[p.Slot] = p.Gun // "" when the slot was freed
+		n.held[p.Slot] = p.Held // no gun when the slot was freed
 		n.mu.Unlock()
 	}
 	cl.OnFired = func(slot int) {
@@ -475,24 +482,28 @@ func (g *game) sendHold() {
 	if g.net == nil {
 		return
 	}
-	id := ""
+	var h mp.Hold
 	if g.gunOn() {
-		id = g.gun.Gun.ID
+		h = mp.Hold{Gun: g.gun.Gun.ID, Choice: g.gunChoice(g.gun.Gun.ID)}
 	}
-	g.net.cl.SendHold(id)
+	g.net.cl.SendHold(h)
 }
 
-// remoteGun is the model of another player's held gun (nil: none, or not
-// in this pack).
-func (g *game) remoteGun(id string) *gunView {
-	if g.gunSpec(id) == nil {
+// remoteGun is another player's held gun with its attachments (nil: none,
+// or not in this pack), built once per gun and choice.
+func (g *game) remoteGun(h mp.Hold) *gunView {
+	if g.gunSpec(h.Gun) == nil {
 		return nil
 	}
-	v, err := g.gunView(id)
+	key := h.Gun + "|" + h.Choice.Key()
+	if v, ok := g.net.guns[key]; ok {
+		return v
+	}
+	v, err := g.newGunView(h.Gun, h.Choice)
 	if err != nil {
-		log.Printf("gun %s: %v", id, err)
-		return nil
+		log.Printf("gun %s %v: %v", h.Gun, h.Choice, err)
 	}
+	g.net.guns[key] = v // nil on error: logged once, not rebuilt every frame
 	return v
 }
 
@@ -518,17 +529,22 @@ func remoteGunPose(v mp.PlayerView, gv *gunView) mgl32.Mat4 {
 
 // remoteShot plays another player's shot: the gun's sound where they stand
 // and its muzzle flash at their gun's muzzle.
-func (g *game) remoteShot(slot int, gun string) {
-	spec, gv := g.gunSpec(gun), g.remoteGun(gun)
-	if spec == nil || gv == nil {
+func (g *game) remoteShot(slot int, h mp.Hold) {
+	gv := g.remoteGun(h)
+	if gv == nil {
 		return
+	}
+	spec := &gv.spec
+	dist := spec.SoundDistance()
+	if dist <= 0 {
+		return // unheard (ModernKineticGunScriptAPI.shoot: soundDistance > 0)
 	}
 	for _, v := range g.net.cl.Players() {
 		if v.Slot != slot || v.Dead {
 			continue
 		}
 		x, y, z := remoteGunOrigin(v)
-		g.sounds.play(spec.Sounds[firearm.SoundShoot3P], audio.At(x, y, z, remoteShotVolume, g.soundPitch()))
+		g.sounds.play(spec.Sounds[spec.ShotSound3P()], audio.At(x, y, z, float32(dist)/blocksPerVolume, g.soundPitch()))
 		m := mgl32.Translate3D(float32(x), float32(y), float32(z)).Mul4(remoteGunPose(v, gv))
 		if b := gv.m.Bone(muzzleBone); b >= 0 {
 			m = m.Mul4(gv.rest[b]).Mul4(gv.m.Bones[b].InvBind.Inv()).Mul4(mgl32.HomogRotate3DZ(math.Pi)) // see drawMuzzle
@@ -538,8 +554,9 @@ func (g *game) remoteShot(slot int, gun string) {
 	}
 }
 
-// remoteShotVolume reaches 16 × 4 = 64 blocks (audio.Params.Volume).
-const remoteShotVolume = 4
+// blocksPerVolume is how far a sound of volume 1 reaches (audio.Params.Volume):
+// a remote shot's volume is its weapon.Gun.SoundDistance over it.
+const blocksPerVolume = 16
 
 // sendEdit reports a block the player changed at pos.
 func (g *game) sendEdit(pos voxel.BlockPos) {

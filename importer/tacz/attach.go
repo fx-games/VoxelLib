@@ -48,6 +48,18 @@ var Slots = []Slot{SlotScope, SlotMuzzle, SlotStock, SlotGrip, SlotLaser, SlotEx
 // has none.
 type Choice map[Slot]string
 
+// Key is the choice as a string, equal for equal choices (empty slots
+// ignored): a map key for things built per choice.
+func (c Choice) Key() string {
+	var b strings.Builder
+	for _, s := range Slots {
+		if c[s] != "" {
+			fmt.Fprintf(&b, "%s=%s;", s, c[s])
+		}
+	}
+	return b.String()
+}
+
 // RefitSound names an attachment display sound (SoundManager's keys).
 type RefitSound string
 

@@ -1,11 +1,13 @@
 package mp
 
 import (
+	"fmt"
 	"math"
 	"slices"
 	"testing"
 	"time"
 
+	"github.com/memmaker/voxellib/importer/tacz"
 	"github.com/memmaker/voxellib/netcode"
 	"github.com/memmaker/voxellib/voxel"
 	"github.com/memmaker/voxellib/weapon"
@@ -22,10 +24,63 @@ func TestShotEncoding(t *testing.T) {
 	if r.err != nil || out.Gun != in.Gun || !slices.Equal(out.Pellets, in.Pellets) {
 		t.Fatalf("got %+v (%v), want %+v", out, r.err, in)
 	}
-	info := PlayerInfo{Slot: 2, Joined: true, Name: "a", Team: TeamRed, Gun: "tacz:ak47"}
+	info := PlayerInfo{Slot: 2, Joined: true, Name: "a", Team: TeamRed,
+		Held: Hold{Gun: "tacz:ak47", Choice: tacz.Choice{tacz.SlotMuzzle: "tacz:muzzle_silencer_ursus", tacz.SlotScope: ""}}}
 	r = rbuf{p: info.encode()[1:]}
-	if got := decodePlayerInfo(&r); r.err != nil || got.Gun != info.Gun || got.Team != info.Team {
+	got := decodePlayerInfo(&r)
+	if r.err != nil || got.Held.Gun != info.Held.Gun || got.Team != info.Team || len(got.Held.Choice) != 1 ||
+		got.Held.Choice[tacz.SlotMuzzle] != info.Held.Choice[tacz.SlotMuzzle] {
 		t.Fatalf("got %+v (%v)", got, r.err)
+	}
+}
+
+// TestHoldChoice: a held gun's attachments reach the server's resolver and
+// everyone's PlayerInfo; the server deals the resolved spec's damage, and a
+// hold the resolver rejects is ignored.
+func TestHoldChoice(t *testing.T) {
+	const id, silencer = "test:rifle", "test:silencer"
+	resolve := func(gid string, c tacz.Choice) (weapon.Gun, error) {
+		if gid != id || (c[tacz.SlotMuzzle] != "" && c[tacz.SlotMuzzle] != silencer) {
+			return weapon.Gun{}, fmt.Errorf("not allowed: %v", c)
+		}
+		g := weapon.Gun{ID: id}
+		g.Bullet.Damage, g.Bullet.Pellets = 3, 1
+		if c[tacz.SlotMuzzle] == silencer {
+			g.Bullet.Damage = 5
+		}
+		return g, nil
+	}
+	s, err := StartServer(ServerConfig{Addr: "127.0.0.1:0", Name: "test", Seed: 7, Generator: "flat",
+		Reg: voxel.NewRegistry(), Logf: t.Logf, Gun: resolve,
+		Spawn: func(slot int, w *World) (float64, float64, float64) {
+			return 0.5, float64(w.Surface(0, 0)), 0.5 - float64(slot)*10
+		}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(s.Close)
+	a := newBot(t, s.Addr().String(), "A", netcode.Config{})
+	b := newBot(t, s.Addr().String(), "B", netcode.Config{})
+	step := func() { a.step(0, 0, false); b.step(0, 0, false) }
+	a.c.SendHold(Hold{Gun: id, Choice: tacz.Choice{tacz.SlotMuzzle: silencer}})
+	run(t, 3*time.Second, nil, func(int) bool {
+		step()
+		return a.c.Ready() && b.c.Ready() && b.c.Info[a.c.Slot()].Held.Choice[tacz.SlotMuzzle] == silencer
+	})
+	a.c.SendHold(Hold{Gun: id, Choice: tacz.Choice{tacz.SlotMuzzle: "test:bogus"}}) // rejected: stays silenced
+	s.call(func() { s.players[b.c.Slot()].protect = 0 })
+	ex, ey, ez := a.ch.Eye()
+	pitch := math.Atan2(b.ch.Y+1-ey, math.Hypot(b.ch.X-ex, b.ch.Z-ez))
+	a.c.SendShot(Shot{Gun: id, Pellets: []Look{{0, pitch}}})
+	run(t, 3*time.Second, nil, func(int) bool {
+		step()
+		return len(b.hits) >= 1
+	})
+	if h := b.hits[0]; h.Damage != 5 {
+		t.Fatalf("hit %+v, want the silenced spec's 5", h)
+	}
+	if c := b.c.Info[a.c.Slot()].Held.Choice; c[tacz.SlotMuzzle] != silencer {
+		t.Fatalf("rejected hold reached the others: %v", c)
 	}
 }
 
@@ -36,7 +91,7 @@ func TestGunShot(t *testing.T) {
 	gun := weapon.Gun{ID: "test:shotgun"}
 	gun.Bullet.Damage, gun.Bullet.Pellets = 4, 2
 	s, err := StartServer(ServerConfig{Addr: "127.0.0.1:0", Name: "test", Seed: 7, Generator: "flat",
-		Reg: voxel.NewRegistry(), Logf: t.Logf, Guns: []weapon.Gun{gun},
+		Reg: voxel.NewRegistry(), Logf: t.Logf, Gun: func(string, tacz.Choice) (weapon.Gun, error) { return gun, nil },
 		Spawn: func(slot int, w *World) (float64, float64, float64) {
 			return 0.5, float64(w.Surface(0, 0)), 0.5 - float64(slot)*10 // slot 1 stands 10 blocks north
 		}})
@@ -52,11 +107,11 @@ func TestGunShot(t *testing.T) {
 			fired++
 		}
 	}
-	a.c.SendHold(gun.ID)
+	a.c.SendHold(Hold{Gun: gun.ID})
 	run(t, 3*time.Second, nil, func(int) bool {
 		a.step(0, 0, false)
 		b.step(0, 0, false)
-		return a.c.Ready() && b.c.Ready() && b.c.Info[a.c.Slot()].Gun == gun.ID
+		return a.c.Ready() && b.c.Ready() && b.c.Info[a.c.Slot()].Held.Gun == gun.ID
 	})
 	s.call(func() { s.players[b.c.Slot()].protect = 0 })
 	ex, ey, ez := a.ch.Eye()

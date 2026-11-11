@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/memmaker/voxellib/character"
+	"github.com/memmaker/voxellib/importer/tacz"
 	"github.com/memmaker/voxellib/netcode"
 	"github.com/memmaker/voxellib/projectile"
 	"github.com/memmaker/voxellib/voxel"
@@ -59,9 +60,9 @@ type ServerConfig struct {
 	// Spawn, when set, picks where a player (re)spawns: feet position.
 	// Without it players spawn around the world spawn.
 	Spawn func(slot int, w *World) (x, y, z float64)
-	// Guns are the guns players may hold (a TACZ pack's); shots with
-	// any other are ignored.
-	Guns []weapon.Gun
+	// Gun resolves a held gun with its attachments (tacz.Pack.Gun); a
+	// hold it rejects is logged and ignored. Nil: players hold no guns.
+	Gun  func(id string, c tacz.Choice) (weapon.Gun, error)
 	Logf func(format string, args ...any)
 }
 
@@ -84,7 +85,6 @@ type Server struct {
 	spawnTop float64
 	players  [4]*sPlayer
 	arrows   map[*projectile.Arrow]arrowMeta
-	guns     map[string]*weapon.Gun // cfg.Guns by ID
 	nextID   uint32
 	m        match
 
@@ -112,11 +112,12 @@ type sPlayer struct {
 	shots   uint16
 	kills   int
 	deaths  int
-	wins    int     // battle royale rounds won
-	team    int     // TeamRed, TeamBlue or 0
-	gun     string  // the held gun's ID, "" for none
-	out     bool    // out of the battle royale round: watching until the next
-	lag     float64 // smoothed ticks between the server's time and what the player saw
+	wins    int         // battle royale rounds won
+	team    int         // TeamRed, TeamBlue or 0
+	held    Hold        // the gun in hand
+	gun     *weapon.Gun // held's spec (cfg.Gun), nil for none
+	out     bool        // out of the battle royale round: watching until the next
+	lag     float64     // smoothed ticks between the server's time and what the player saw
 
 	hist   [historyTicks]pose
 	arrows projectile.World
@@ -164,10 +165,6 @@ func StartServer(cfg ServerConfig) (*Server, error) {
 	}
 	s := &Server{cfg: cfg, edits: NewEditLog(), body: NewBody(), arrows: map[*projectile.Arrow]arrowMeta{},
 		time: TimeDay, calls: make(chan func()), stop: make(chan struct{}), done: make(chan struct{})}
-	s.guns = map[string]*weapon.Gun{}
-	for i := range cfg.Guns {
-		s.guns[cfg.Guns[i].ID] = &cfg.Guns[i]
-	}
 	s.m.interval = max(1, int(cfg.ZoneInterval*TickRate/time.Second))
 	s.m.shrinkTicks = max(1, int(cfg.ShrinkTime*TickRate/time.Second))
 	minY, height := Heights(cfg.Generator)
@@ -208,7 +205,7 @@ func (p *sPlayer) score() Score {
 }
 
 func (p *sPlayer) info() PlayerInfo {
-	return PlayerInfo{Slot: p.slot, Joined: true, Name: p.name, Skin: p.skin, Team: p.team, Gun: p.gun}
+	return PlayerInfo{Slot: p.slot, Joined: true, Name: p.name, Skin: p.skin, Team: p.team, Held: p.held}
 }
 
 // Ranking is the players by kills, most first, then by fewest deaths.
@@ -508,12 +505,25 @@ func (s *Server) reliable(p *sPlayer, msg []byte) {
 		p.skin = append([]byte(nil), msg[1:]...)
 		s.broadcast(p.info().encode())
 	case msgHold:
-		id := string(msg[1:])
-		if id != "" && s.guns[id] == nil {
-			s.cfg.Logf("mp: %s holds unknown gun %q", p.name, id)
+		h := decodeHold(&r)
+		if r.err != nil {
+			s.cfg.Logf("mp: %s: bad hold: %v", p.name, r.err)
 			return
 		}
-		p.gun = id
+		var spec *weapon.Gun
+		if h.Gun != "" {
+			if s.cfg.Gun == nil {
+				s.cfg.Logf("mp: %s holds gun %q, but this server has no guns", p.name, h.Gun)
+				return
+			}
+			g, err := s.cfg.Gun(h.Gun, h.Choice)
+			if err != nil {
+				s.cfg.Logf("mp: %s holds invalid gun %q %v: %v", p.name, h.Gun, h.Choice, err)
+				return
+			}
+			spec = &g
+		}
+		p.held, p.gun = h, spec
 		s.broadcast(p.info().encode())
 	case msgMelee:
 		gun, l := r.str(), Look{Yaw: r.f32(), Pitch: r.f32()}
