@@ -170,6 +170,11 @@ type Gun struct {
 	// the one it narrows to while aiming (the scope's, or the gun's).
 	ModelFOV    float32 `json:"model_fov"`
 	AimModelFOV float32 `json:"aim_model_fov"`
+	// AdsPath eases the hand's move to the sight per axis (nil: linear);
+	// AdsFovWorld and AdsFovModel ease the zoom and the hand's FOV (nil:
+	// easeInExpo, smoothed). The display's, else its ads_preset's.
+	AdsPath                  *AdsPath       `json:"ads_path,omitempty"`
+	AdsFovWorld, AdsFovModel *AdsFovChannel `json:"-"`
 	// ThirdPersonScale scales the gun in another player's hand (the display's
 	// transform.scale.thirdperson, uniform; 1 without one).
 	ThirdPersonScale float32 `json:"third_person_scale"`

@@ -931,8 +931,24 @@ func (g *game) drawGunHand(alpha float64) {
 // idle_view toward iron_view while aiming.
 func (g *game) gunHandView(v *gunView) mgl32.Mat4 {
 	f := g.fov.aim.value() // FirstPersonRenderGunEvent's AIMING_DYNAMICS
-	view := g.cameraAnim(v).Mul4(lerpMat(v.idle, v.iron, f))
-	return mgl32.Translate3D(0, g.gun.Gun.IdleRaise*(1-f), 0).Mul4(view) // a scope's idle height adjust
+	return g.cameraAnim(v).Mul4(adsPose(v.idle, v.iron, f, g.gun.Gun.AdsPath, g.gun.Gun.IdleRaise))
+}
+
+// adsPose is applyFirstPersonPositioningTransform's move from idle to
+// aim at progress f: the rotation (and the move) by the path's rotation
+// curve, each translation axis then shifted to its own curve, and a
+// scope's idle height adjust fading by the y curve; linear without a path.
+func adsPose(idle, aim mgl32.Mat4, f float32, path *firearm.AdsPath, idleRaise float32) mgl32.Mat4 {
+	rot, height := f, f
+	m := lerpMat(idle, aim, f)
+	if path != nil {
+		rot, height = path.Rotation.At(f), path.Y.At(f)
+		m = lerpMat(idle, aim, rot)
+		for i, c := range []firearm.AdsCurve{path.X, path.Y, path.Z} {
+			m[12+i] += (aim[12+i] - idle[12+i]) * (c.At(f) - rot)
+		}
+	}
+	return mgl32.Translate3D(0, idleRaise*(1-height), 0).Mul4(m)
 }
 
 // setupArms builds the first-person arms with the player's skin.

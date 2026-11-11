@@ -48,6 +48,10 @@ func TestLoadPack(t *testing.T) {
 		if m, err := p.AmmoEntityModel(g.Ammo); err != nil || (m != nil) != (g.Ammo == "rpg_rocket" || g.Ammo == "40mm") {
 			t.Errorf("%s: ammo %s entity model %v: %v", g.ID, g.Ammo, m != nil, err)
 		}
+		// ads_preset tacz:renew: z waits for 20 % of the aim
+		if g.ID == "ak47" && (g.AdsPath == nil || g.AdsPath.Z.Start != 0.2 || g.AdsFovModel == nil || g.AdsFovWorld == nil) {
+			t.Errorf("ak47 ads %+v %+v %+v", g.AdsPath, g.AdsFovModel, g.AdsFovWorld)
+		}
 		if g.ID == "ak47" && g.RecoilPush != nil {
 			t.Errorf("ak47 recoil push %+v, want none", g.RecoilPush)
 		}

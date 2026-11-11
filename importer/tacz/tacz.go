@@ -8,10 +8,12 @@ package tacz
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"image"
 	"image/png"
 	"io/fs"
+	"log"
 	"math"
 	"os"
 	"path"
@@ -321,6 +323,54 @@ func (p *Pack) AmmoEntityModel(ammo string) (*model.Model, error) {
 	return models[0], nil
 }
 
+// adsPreset is an ads_presets file, and the display's own overrides
+// (AdsPreset).
+type adsPreset struct {
+	Path *weapon.AdsPath `json:"ads_path"`
+	Fov  *struct {
+		Model, World *weapon.AdsFovChannel
+	} `json:"ads_fov"`
+}
+
+// legacyAdsPreset is the preset a display without ads_preset uses.
+const legacyAdsPreset = "tacz:legacy"
+
+// applyAds sets the gun's ADS curves as GunDisplayInstance: the display's
+// ads_path / ads_fov, else its preset's (a missing preset falls back to
+// legacy); an invalid path or channel is none.
+func (p *Pack) applyAds(spec *weapon.Gun, own adsPreset, id string) error {
+	if id == "" {
+		id = legacyAdsPreset
+	}
+	var pre adsPreset
+	if err := readJSON(p.FS, asset("ads_presets", id)+".json", &pre); errors.Is(err, fs.ErrNotExist) && id != legacyAdsPreset {
+		log.Printf("tacz: missing ADS preset %s; falling back to %s", id, legacyAdsPreset)
+		return p.applyAds(spec, own, legacyAdsPreset)
+	} else if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return err
+	}
+	path, fov := own.Path, own.Fov
+	if path == nil {
+		path = pre.Path
+	}
+	if fov == nil {
+		fov = pre.Fov
+	}
+	if path != nil && path.Valid() {
+		spec.AdsPath = path
+	}
+	if fov != nil {
+		valid := func(c *weapon.AdsFovChannel) *weapon.AdsFovChannel {
+			if c != nil && c.Valid() {
+				return c
+			}
+			return nil
+		}
+		spec.AdsFovModel, spec.AdsFovWorld = valid(fov.Model), valid(fov.World)
+	}
+	return nil
+}
+
 // defaultBurstMinInterval is BurstData.minInterval's default, seconds.
 const defaultBurstMinInterval = 1
 
@@ -375,7 +425,9 @@ func (p *Pack) loadGun(file string, lang map[string]string, sound func(string) s
 		ThirdPersonAnimation            string   `json:"third_person_animation"`
 		ModelFOV                        *float32 `json:"model_fov"`
 		ZoomModelFOV                    *float32 `json:"zoom_model_fov"`
-		Transform                       struct {
+		adsPreset
+		AdsPreset string `json:"ads_preset"`
+		Transform struct {
 			Scale struct {
 				ThirdPerson *[3]float32 `json:"thirdperson"`
 			}
@@ -452,6 +504,9 @@ func (p *Pack) loadGun(file string, lang map[string]string, sound func(string) s
 	spec.Zoom = orDefault(disp.Zoom, gunIronZoom)
 	spec.Spin = disp.StateMachine == minigunStateMachine
 	spec.ModelFOV, spec.AimModelFOV = orDefault(disp.ModelFOV, gunModelFOV), orDefault(disp.ZoomModelFOV, gunModelFOV)
+	if err := p.applyAds(&spec, disp.adsPreset, disp.AdsPreset); err != nil {
+		return fmt.Errorf("%s: %w", file, err)
+	}
 	spec.ThirdPersonHold = weapon.ParseThirdPersonHold(disp.ThirdPersonAnimation)
 	spec.ThirdPersonScale = 1
 	if s := disp.Transform.Scale.ThirdPerson; s != nil {

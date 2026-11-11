@@ -3,7 +3,8 @@ package main
 // Aiming zoom as TACZ's CameraSetupEvent: the scope view narrows to the
 // gun's magnification (applyScopeMagnification) and the hand lens from
 // the gun's model_fov to its aiming one (applyGunModelFovModifying), both
-// by easeInExpo of the aim progress and smoothed by SecondOrderDynamics.
+// by the gun's ads_fov curves of the aim progress (easeInExpo without) and
+// smoothed by SecondOrderDynamics unless a curve says otherwise.
 // Unlike TACZ, the magnification applies only inside a scope's view disc
 // (gunFOVState.scope, App.DrawScopeView, gunlens.go): the screen keeps baseFOV, and sights and
 // guns without a scope lens are not magnified (docs/tacz.md).
@@ -68,17 +69,6 @@ type gunFOVState struct {
 	scope            float64 // this frame's scope view FOV (radians); 0: none
 }
 
-// easeInExpo is TACZ's Easing.easeInExpo.
-func easeInExpo(x float32) float32 {
-	switch {
-	case x <= 0:
-		return 0
-	case x >= 1:
-		return 1
-	}
-	return float32(math.Pow(2, float64(10*x-10)))
-}
-
 // magnificationToFov is TACZ's MathUtil.magnificationToFov (degrees).
 func magnificationToFov(mag, fov float32) float32 {
 	return float32(2 * math.Atan(math.Tan(float64(fov)*math.Pi/360)/float64(mag)) * 180 / math.Pi)
@@ -93,12 +83,13 @@ func (g *game) gunFOV(alpha float64) {
 		g.cameraView()
 	}
 	world, hand, aim := float32(baseFOV), float32(render.DefaultHandFOV), float32(0)
+	worldSmooth, handSmooth := true, true
 	if g.gunOn() {
 		spec := g.gun.Gun
 		aim = g.aimFrac(alpha)
-		p := easeInExpo(aim)
-		world = magnificationToFov(1+(spec.Zoom-1)*p, baseFOV)
-		hand = spec.ModelFOV + (spec.AimModelFOV-spec.ModelFOV)*p
+		world = magnificationToFov(1+(spec.Zoom-1)*spec.AdsFovWorld.FovProgress(aim), baseFOV)
+		hand = spec.ModelFOV + (spec.AimModelFOV-spec.ModelFOV)*spec.AdsFovModel.FovProgress(aim)
+		worldSmooth, handSmooth = spec.AdsFovWorld.Smoothed(), spec.AdsFovModel.Smoothed()
 	}
 	s := &g.fov
 	if !s.world.started {
@@ -114,12 +105,19 @@ func (g *game) gunFOV(alpha float64) {
 	}
 	g.Cam.FOV = baseFOV * math.Pi / 180
 	s.scope = 0
+	worldFOV, handFOV := s.world.value(), s.hand.value()
+	if !worldSmooth { // the dynamics still run, as TACZ updates them either way
+		worldFOV = world
+	}
+	if !handSmooth {
+		handFOV = hand
+	}
 	if g.opt.fullZoom {
-		g.Cam.FOV = float64(s.world.value()) * math.Pi / 180
+		g.Cam.FOV = float64(worldFOV) * math.Pi / 180
 	} else if g.gunOn() {
 		if v := g.heldView(); v != nil && v.lens != nil && v.lens.scope && s.aim.value() > 0 {
-			s.scope = float64(s.world.value()) * math.Pi / 180 // lensViews' disc shows it
+			s.scope = float64(worldFOV) * math.Pi / 180 // lensViews' disc shows it
 		}
 	}
-	g.Eng.Renderer.HandFOV = s.hand.value()
+	g.Eng.Renderer.HandFOV = handFOV
 }
