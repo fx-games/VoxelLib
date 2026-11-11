@@ -41,6 +41,10 @@ type Pack struct {
 	adapters map[string]slotAdapter // by slot adapter ID
 	defaults map[string][]*bbmodel.Animation
 	internal fs.FS // the mod's own resources (DefaultsDir)
+	// ammoEntity are the ammo displays' "entity" models drawn on their
+	// bullets in flight (ClientAmmoIndex.checkAmmoEntity), by ammo ID, as
+	// file paths; an ammo without both files has none.
+	ammoEntity map[string]shellFiles
 }
 
 // shellFiles names a casing's geometry and texture (resource ids).
@@ -135,6 +139,7 @@ func Load(pack, defaults fs.FS) (*Pack, error) {
 		var disp struct {
 			Slot   string `json:"slot"`
 			Shell  shellFiles
+			Entity shellFiles
 			Tracer string `json:"tracer_color"`
 		}
 		if err := readJSON(pack, asset("display/ammo", in.Display)+".json", &disp); err != nil {
@@ -142,6 +147,12 @@ func Load(pack, defaults fs.FS) (*Pack, error) {
 		}
 		id := strings.TrimSuffix(path.Base(f), ".json")
 		ammoShell[id], ammoTracer[id] = disp.Shell, disp.Tracer
+		if e := disp.Entity; e.Model != "" && e.Texture != "" {
+			if p.ammoEntity == nil {
+				p.ammoEntity = map[string]shellFiles{}
+			}
+			p.ammoEntity[id] = shellFiles{Model: asset("geo_models", e.Model) + ".json", Texture: asset("textures", e.Texture) + ".png"}
+		}
 		p.Ammo = append(p.Ammo, weapon.Ammo{ID: id, Name: lang[in.Name], Stack: in.Stack, Icon: asset("textures", disp.Slot) + ".png"})
 	}
 	// Tracer colour: the gun display's (GunDisplayInstance.checkGunAmmo),
@@ -283,6 +294,29 @@ func (p *Pack) ShellModel(g *weapon.Gun) (*model.Model, error) {
 	models, err := bbmodel.ParseGeometry(geo, func(string) image.Image { return tex })
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", g.Shell.Model, err)
+	}
+	return models[0], nil
+}
+
+// AmmoEntityModel parses the model ammo's bullets are drawn with in
+// flight (EntityBulletRenderer: BedrockAmmoModel with its texture); nil
+// for an ammo without one.
+func (p *Pack) AmmoEntityModel(ammo string) (*model.Model, error) {
+	f, ok := p.ammoEntity[ammo]
+	if !ok {
+		return nil, nil
+	}
+	tex, err := readPNG(p.FS, f.Texture)
+	if err != nil {
+		return nil, err
+	}
+	geo, err := fs.ReadFile(p.FS, f.Model)
+	if err != nil {
+		return nil, err
+	}
+	models, err := bbmodel.ParseGeometry(geo, func(string) image.Image { return tex })
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", f.Model, err)
 	}
 	return models[0], nil
 }

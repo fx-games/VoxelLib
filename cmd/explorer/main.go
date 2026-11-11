@@ -487,6 +487,7 @@ func (g *game) drawWorld(cam *render.Camera, alpha float64) {
 	g.drawTorches(cam, alpha)
 	g.drawPickups(cam)
 	g.drawFX(cam)
+	g.drawAmmoEntities(cam, alpha)
 	g.drawTracers(cam, alpha)
 }
 

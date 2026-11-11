@@ -44,6 +44,10 @@ func TestLoadPack(t *testing.T) {
 		if want := (weapon.RecoilPush{Ground: 0.05, Air: 0.25, Sneak: 0.025, ProjectileMultiplier: 1}); g.ID == "m95" && (g.RecoilPush == nil || *g.RecoilPush != want) {
 			t.Errorf("m95 recoil push %+v", g.RecoilPush)
 		}
+		// ammo entity models: rpg_rocket and 40mm have one, 762x39's is commented out
+		if m, err := p.AmmoEntityModel(g.Ammo); err != nil || (m != nil) != (g.Ammo == "rpg_rocket" || g.Ammo == "40mm") {
+			t.Errorf("%s: ammo %s entity model %v: %v", g.ID, g.Ammo, m != nil, err)
+		}
 		if g.ID == "ak47" && g.RecoilPush != nil {
 			t.Errorf("ak47 recoil push %+v, want none", g.RecoilPush)
 		}
