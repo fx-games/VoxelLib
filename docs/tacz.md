@@ -37,4 +37,5 @@ is the gun cycle (draw, idle, shoot, bolt, reload magazine/tube/inventory, inspe
 - [x] scope lens parts split out of the gun (tacz.Lens: ring, body, oculars, divisions on the gun skeleton); ring + body drawn plainly
 - [x] scope stencil passes: renderScope/renderBoth/renderSight order on render.HandStencil (cmd/explorer/gunlens.go); view disc at the ocular depth with the reference angular size (80/90·aim)
 - [x] heat (GunHeatData + sp_heat.lua: lock, cooling·t², rpm/inaccuracy factors; HeatBarOverlay)
-- [ ] TACZ movement/camera tracks, guns in multiplayer, README/ARCHITECTURE
+- [x] movement track: movement_track_states (idle/walk/run, run_start/run/run_hold/run_end, walk_forward/backward/sideway/aiming, walkDist progress) on a blended layer with per-track transitions (model.Layer.Run); camera bone turns world and hand views (cmd/explorer/gunmove.go). Verified: transitions traced against the Lua, sprint pose screenshot, draw camera angles match the clip keys. Unverified: TACZ's Java input triggers (INPUT_RUN = sprinting, WALK = any move key) and camera axis signs/multiplier (no Java source here; derived as the viewer riding the camera bone); progress not set during a transition; slide track not done
+- [ ] guns in multiplayer, README/ARCHITECTURE

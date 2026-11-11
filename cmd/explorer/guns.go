@@ -97,6 +97,8 @@ type gunView struct {
 	times      []float32 // layer times saved while posing between ticks
 	lens       *lensView // nil: no scope
 	overheated bool      // the over_heat clip has run for the current lock
+	move       movement  // the movement track's state
+	camBone    int       // "camera" (-1: none)
 }
 
 // gunArms draws the player's arms at a gun's hand bones as TACZ does
@@ -195,7 +197,8 @@ func (g *game) gunView(spec *firearm.Gun) (*gunView, error) {
 	}
 	v.anim.FadeTime = 0
 	v.anim.Play(firearm.ClipIdle, true)
-	v.anim.Layers = []model.Layer{mainTrack: {}}
+	v.anim.Layers = []model.Layer{mainTrack: {}, movementTrack: {Blend: true}}
+	v.camBone = m.Bone(cameraBone)
 	world := m.BindWorld()
 	v.idle, v.iron = cameraAt(world, m.Bone("idle_view")), cameraAt(world, m.Bone(spec.Sight))
 	for _, n := range ammoBones {
@@ -249,6 +252,7 @@ func (g *game) tickGun() {
 	v := g.gunViews[g.gun.Gun.ID]
 	g.stateTracks(v)
 	g.tickGunTracks(v, 1.0/app.TickRate)
+	g.tickMovement(v)
 	g.cueT += 1.0 / app.TickRate
 	cues := g.gun.Gun.Cues[g.cueClip]
 	for ; g.cueNext < len(cues) && cues[g.cueNext].T <= g.cueT; g.cueNext++ {
@@ -277,7 +281,9 @@ func (g *game) gunEvents(ev []firearm.GunEvent) {
 // and stops, overriding what it keys; each shot runs "shoot" on its own
 // gun kick track, blended (added) over the pose.
 const (
-	mainTrack = 0
+	mainTrack     = 0
+	movementTrack = 1 // blended, run by tickMovement
+	fixedTracks   = 2 // layers past these come and go
 	// mainTransition is runAnimation's transition for main track clips
 	// other than draw (0).
 	mainTransition = 0.2
@@ -337,7 +343,7 @@ func setLoops(v *gunView, c *model.Clip, n int) {
 		return
 	}
 	for i := range v.anim.Layers {
-		if l := &v.anim.Layers[i]; i != mainTrack && l.Clip == c {
+		if l := &v.anim.Layers[i]; i >= fixedTracks && l.Clip == c {
 			if n > 0 {
 				n--
 			} else {
@@ -367,8 +373,8 @@ func (g *game) tickGunTracks(v *gunView, dt float32) {
 	if ls[mainTrack].Done() {
 		ls[mainTrack].Clip = nil
 	}
-	kept := ls[:mainTrack+1]
-	for _, l := range ls[mainTrack+1:] {
+	kept := ls[:fixedTracks]
+	for _, l := range ls[fixedTracks:] {
 		if !l.Done() {
 			kept = append(kept, l)
 		}
@@ -463,9 +469,9 @@ func (c *creature) isHead(part int) bool {
 	return part >= 0 && part < len(head) && head[part]
 }
 
-// drawGunHand draws the held gun, its clip posed between ticks, the camera
-// moving from idle_view toward iron_view while aiming.
-func (g *game) drawGunHand(alpha float64) {
+// poseGun poses the held gun's tracks between ticks (render hook, before
+// the world: the camera bone turns the world view).
+func (g *game) poseGun(alpha float64) {
 	v := g.gunViews[g.gun.Gun.ID]
 	// Pose between ticks: every track alpha of a tick further on.
 	da := float32(alpha) / app.TickRate
@@ -488,6 +494,12 @@ func (g *game) drawGunHand(alpha float64) {
 	for i, lt := range v.times {
 		v.anim.Layers[i].Time = lt
 	}
+}
+
+// drawGunHand draws the held gun as poseGun posed it, the camera moving
+// from idle_view toward iron_view while aiming.
+func (g *game) drawGunHand(alpha float64) {
+	v := g.gunViews[g.gun.Gun.ID]
 	zero := mgl32.Mat4{}
 	if g.gun.Ammo == 0 && g.gun.Gun.Reload.Kind != firearm.Inventory {
 		for _, b := range v.ammo {
@@ -500,7 +512,7 @@ func (g *game) drawGunHand(alpha float64) {
 		}
 	}
 	f := g.fov.aim.value() // FirstPersonRenderGunEvent's AIMING_DYNAMICS
-	view := lerpMat(v.idle, v.iron, f)
+	view := g.cameraAnim(v).Mul4(lerpMat(v.idle, v.iron, f))
 	view = mgl32.Translate3D(0, g.gun.Gun.IdleRaise*(1-f), 0).Mul4(view) // a scope's idle height adjust
 	sky, blk := g.Light(g.Cam.X, g.Cam.Y, g.Cam.Z)
 	ins := g.lensInstances(v, view, f, sky, blk)

@@ -78,6 +78,10 @@ func (s *GunState) Firing() bool {
 	return s.interval > 0 && s.sinceShot <= s.interval+firingGrace
 }
 
+// CoolingDown reports whether the next shot must still wait (TACZ's
+// getShootCoolDown() > 0).
+func (s *GunState) CoolingDown() bool { return s.cooldown > 0 }
+
 // Draw starts taking the gun out.
 func (s *GunState) Draw() []GunEvent {
 	s.Phase, s.T, s.burstLeft = Drawing, 0, 0

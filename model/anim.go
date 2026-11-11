@@ -125,10 +125,28 @@ func CatmullRomVec(p0, p1, p2, p3 mgl32.Vec4, t float32) mgl32.Vec4 {
 // bind pose, as the base clip does), overriding layers below; a Blend layer
 // adds its values to the pose so far (translations and rotations add,
 // scales multiply). Its Time is advanced by the caller.
+//
+// A Blend layer may be in a transition (TACZ's runAnimation transition
+// time, see Run): while Time < 0 it shows From frozen at FromTime fading
+// into Clip's first frame, -Time of Fade seconds left.
 type Layer struct {
-	Clip  *Clip // nil: off
-	Time  float32
-	Blend bool
+	Clip     *Clip // nil: off
+	Time     float32
+	Blend    bool
+	From     *Clip
+	FromTime float32
+	Fade     float32
+}
+
+// Run starts clip c on a Blend layer with a transition of d seconds from
+// what the layer shows now (nil: nothing, so c fades in).
+// ponytail: a transition started mid-transition fades from the clip being
+// faded to, not the blend shown.
+func (l *Layer) Run(c *Clip, d float32) {
+	*l = Layer{Clip: c, Blend: l.Blend, From: l.Clip, FromTime: max(l.Time, 0), Fade: d, Time: -d}
+	if d <= 0 {
+		l.Time, l.From = 0, nil
+	}
 }
 
 // Done reports whether the layer is off or its clip has played once through.
@@ -229,9 +247,15 @@ func (a *Animator) Skin(dst []mgl32.Mat4) []mgl32.Mat4 {
 		a.poses[i] = pose{b.T, b.R, b.S}
 		euler[i].t = b.Euler
 	}
-	a.apply(a.Clip, a.Time, false, euler)
+	a.apply(a.Clip, a.Time, false, euler, 1)
 	for _, l := range a.Layers {
-		a.apply(l.Clip, l.Time, l.Blend, euler)
+		if l.Time < 0 && l.Fade > 0 {
+			w := 1 + l.Time/l.Fade
+			a.apply(l.From, l.FromTime, l.Blend, euler, 1-w)
+			a.apply(l.Clip, 0, l.Blend, euler, w)
+			continue
+		}
+		a.apply(l.Clip, max(l.Time, 0), l.Blend, euler, 1)
 	}
 	for i, b := range m.Bones {
 		if b.UseEuler {
@@ -265,9 +289,10 @@ func (a *Animator) Skin(dst []mgl32.Mat4) []mgl32.Mat4 {
 	return dst
 }
 
-// apply poses the channels of clip c at time t (see Layer for blend).
+// apply poses the channels of clip c at time t (see Layer for blend) with
+// weight w (below 1 for Blend layers in a transition only).
 // euler holds the Euler accumulators of UseEuler bones in .t.
-func (a *Animator) apply(c *Clip, t float32, blend bool, euler []pose) {
+func (a *Animator) apply(c *Clip, t float32, blend bool, euler []pose, w float32) {
 	if c == nil {
 		return
 	}
@@ -285,25 +310,30 @@ func (a *Animator) apply(c *Clip, t float32, blend bool, euler []pose) {
 			if reset {
 				p.t = b.T
 			}
-			p.t = p.t.Add(v.Vec3())
+			p.t = p.t.Add(v.Vec3().Mul(w))
 		case ch.Target == Translation:
-			p.t = v.Vec3()
+			p.t = p.t.Add(v.Vec3().Sub(p.t).Mul(w))
 		case ch.Target == Rotation && ch.Additive:
 			if reset {
 				euler[ch.Bone].t = b.Euler
 			}
-			euler[ch.Bone].t = euler[ch.Bone].t.Add(v.Vec3())
+			euler[ch.Bone].t = euler[ch.Bone].t.Add(v.Vec3().Mul(w))
 		case ch.Target == Rotation:
-			p.r = mgl32.Quat{W: v[3], V: v.Vec3()}.Normalize()
+			p.r = mgl32.QuatNlerp(p.r, mgl32.Quat{W: v[3], V: v.Vec3()}.Normalize(), w)
 		case ch.Target == Scale && ch.Additive:
 			if reset {
 				p.s = b.S
 			}
-			p.s = mgl32.Vec3{p.s[0] * v[0], p.s[1] * v[1], p.s[2] * v[2]}
+			p.s = mgl32.Vec3{p.s[0] * (1 + (v[0]-1)*w), p.s[1] * (1 + (v[1]-1)*w), p.s[2] * (1 + (v[2]-1)*w)}
 		case ch.Target == Scale:
-			p.s = v.Vec3()
+			p.s = p.s.Add(v.Vec3().Sub(p.s).Mul(w))
 		}
 	}
+}
+
+// LocalRotation is bone b's local rotation in the last Skin's pose.
+func (a *Animator) LocalRotation(b int) mgl32.Quat {
+	return a.poses[b].r
 }
 
 // BindWorld returns each bone's bind-pose world matrix (no animation);

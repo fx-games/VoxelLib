@@ -87,6 +87,10 @@ func magnificationToFov(mag, fov float32) float32 {
 func (g *game) gunFOV(alpha float64) {
 	g.fx.frameTime()
 	g.applyRecoil(alpha)
+	if g.gunOn() {
+		g.poseGun(alpha)
+		g.cameraView()
+	}
 	world, hand, aim := float32(baseFOV), float32(render.DefaultHandFOV), float32(0)
 	if g.gunOn() {
 		spec := g.gun.Gun
