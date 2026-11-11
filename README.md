@@ -35,6 +35,8 @@ Agents should also read [AGENTS.md](AGENTS.md).
 | `mobs` | Ambient creature behaviour (walkers, flyers) reporting Idle/Walk/Run/Jump/Trick states |
 | `items/sheet` | Automatic sprite-sheet cutter (grid cells, divider lines, label text rejection) |
 | `netcode` | Own module, stdlib only: Quake 3-style UDP netchan (sequencing, fragments, piggybacked reliables), connect handshake, LAN discovery, delta-compressed snapshots |
+| `weapon` | Gun specs (`Gun`, `Heat`, muzzle flash, shells) and the gun cycle `GunState` (draw, fire modes, bolt, magazine/tube/inventory reloads, heat), damage falloff, spread, TACZ camera recoil; also the reference's charge-and-release maths |
+| `importer/tacz` | TACZ gun packs read in their original formats: specs, Bedrock models with built-in attachments and scope lenses, animations, sound cues |
 | `mp` | LAN multiplayer game layer on netcode: authoritative 20 Hz server, client prediction, interpolated players, real-physics arrows with unlagged hit tests, block edits kept in sync |
 
 ## Demo
@@ -59,6 +61,13 @@ each other apart, and the player pushes them aside.
 Debugging models: `-lineup -species NAME -anim CLIP` stands one creature per matching species
 in front of you, playing CLIP (`bind` shows the rest pose).
 
+**Guns and zombies.** The explorer is a zombie-apocalypse demo with every gun of the TACZ default
+pack (`assets/tacz`, kept in the pack's own formats; details and status in [docs/tacz.md](docs/tacz.md)).
+Waves of zombies come for you; each kill drops a magazine of the held gun's ammo. V takes the next
+gun, LMB fires, RMB aims, R reloads, H inspects, B switches the fire mode; C still swaps to the crossbow.
+Scopes magnify only inside the lens (a second, lens-clipped world render); `-full-zoom` magnifies the
+whole screen instead, as TACZ does, for slower machines. `-gun ID` starts with a gun in hand.
+
 **Multiplayer** (LAN, up to 4 players): the main menu's Multiplayer screen sets your name and skin,
 lists the games found on the LAN, joins one by address and creates a game (name, seed, world
 type, mode) hosted in the game itself. Modes: deathmatch; team deathmatch (Red against Blue,
@@ -68,7 +77,7 @@ that kills on touch and closes in to a smaller square every 5 minutes; the last 
 wins the round). `-host` and
 `-connect HOST[:PORT]` skip the menu; `-name` and `-skin NAME` preset the choice. Skins are the
 64x64 PNGs in `-skins` (default `skins/`, filled by `go run ./cmd/fetchskins`, not in git).
-Everyone carries the crossbow; a head shot kills. After (re)spawning a player is protected for
+Everyone carries the crossbow, and guns work too (the server casts each pellet); a head shot kills. After (re)spawning a player is protected for
 3 seconds (blinking; arrows fly through). Hold Tab for the ranking (kills, deaths); it also shows
 while dead. The time of day is the server's. Placed and broken blocks (and doors) sync to
 everyone, late joiners included. The server uses UDP port 28960 (allow it in the firewall).

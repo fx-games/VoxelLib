@@ -2,7 +2,7 @@
 
 ## Layers
 ```
-cmd/explorer ── demo: items, creatures, combat, crossbow, torches, signs (hooks on app)
+cmd/explorer ── demo: items, creatures, combat, crossbow, TACZ guns, zombie waves, torches, signs (hooks on app)
    │
 app ─────────── game shell: window, input mapping, 20 Hz tick + render loop,
    │            player (controller, camera, hand, reach, break/place), entities,
@@ -13,6 +13,8 @@ app ─────────── game shell: window, input mapping, 20 Hz t
    ├── mobs             creature behaviour (needs only collide.Solids)
    ├── actors           NPCs/monsters/mounts on character physics, nav, projectile
    ├── quest            quests, dialogs, triggers, Go hooks (stdlib only)
+   ├── weapon           gun specs and the gun cycle (GunState), recoil, spread, heat
+   ├── importer/tacz    TACZ gun packs → weapon.Gun + model (via importer/bbmodel)
    ├── projectile       arrows: ballistic flight, sticking in blocks and targets
    ├── ragdoll          kicks (Kick, Flight: impacts) and verlet ragdolls of humanoid models (Doll)
    ├── bettercombat     Better Combat attack animations on a player-shaped body (Humanoid: pose, first-person item; pure, mgl32 only)
@@ -99,6 +101,20 @@ design is covered in README.md and the comments in engine.go and render/region.g
   for the hand draws (`DrawBlockHand`, `ModelRenderer.DrawHand`, `ItemRenderer.DrawHandModel`)
   made orthographic by `Renderer.Icons`, so no icon is stretched by the hand's 70° lens; `ModelRenderer.Bounds` gives a model's extent to fit. Blocks
   come from `mesh.Block`.
+
+## Guns (TACZ)
+- **Specs and cycle.** `importer/tacz.Load` reads a pack's guns and ammo into `weapon.Gun`; `Pack.Model`
+  builds a gun's model on demand, grafts its built-in attachments and splits scope lenses out
+  (`tacz.Lens`). `weapon.GunState` is the gun cycle the TACZ Lua state machines drive (they are
+  not run); its `GunEvent`s name the clip to play and whether a round left the barrel.
+- **First person** (`cmd/explorer/gun*.go`). Animator layers stand for TACZ's tracks: the main
+  track, a blended movement track, kick, over_heat and the minigun spin. Arms are posed at the
+  gun's hand bones. Scope lenses draw with stencil passes on the hand pass
+  (`render.HandStencil`), like BedrockAttachmentModel; inside a scope's view disc the world is
+  rendered again with the scope's FOV, clipped to the lens (`render.BeginScopeView`,
+  `App.DrawScopeView`). FOVs and aiming follow TACZ's SecondOrderDynamics.
+- **Multiplayer.** A shot is an `mp.Shot` (gun ID, pellet directions); the server casts it
+  against lag-compensated players and applies damage through the same path as arrows.
 
 ## Gameplay pieces
 - **`character`.** A reference-game movement model at 20 Hz: ground and air drag, sprint-jump,
