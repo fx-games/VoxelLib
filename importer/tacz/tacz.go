@@ -17,6 +17,7 @@ import (
 	"path"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/memmaker/voxellib/importer/bbmodel"
@@ -55,6 +56,7 @@ type gunFiles struct {
 	melee                        taczGunMelee                   // the gun data's melee, before attachments
 	adjust                       map[weapon.FireMode]modeAdjust // fire_mode_adjust
 	shell                        shellFiles                     // the display's own casing, if any
+	tracer                       string                         // the display's ammo tracer_color, if any
 	texture, animation, defaults string
 }
 
@@ -76,6 +78,7 @@ func Load(pack, defaults fs.FS) (*Pack, error) {
 	}
 	p := &Pack{FS: pack, guns: map[string]gunFiles{}, defaults: map[string][]*bbmodel.Animation{}}
 	ammoShell := map[string]shellFiles{} // by ammo ID
+	ammoTracer := map[string]string{}    // tracer_color by ammo ID
 	for _, d := range []string{"rifle", "pistol"} {
 		data, err := fs.ReadFile(defaults, d+"_default.animation.json")
 		if err != nil {
@@ -128,15 +131,32 @@ func Load(pack, defaults fs.FS) (*Pack, error) {
 			return nil, err
 		}
 		var disp struct {
-			Slot  string `json:"slot"`
-			Shell shellFiles
+			Slot   string `json:"slot"`
+			Shell  shellFiles
+			Tracer string `json:"tracer_color"`
 		}
 		if err := readJSON(pack, asset("display/ammo", in.Display)+".json", &disp); err != nil {
 			return nil, err
 		}
 		id := strings.TrimSuffix(path.Base(f), ".json")
-		ammoShell[id] = disp.Shell
+		ammoShell[id], ammoTracer[id] = disp.Shell, disp.Tracer
 		p.Ammo = append(p.Ammo, weapon.Ammo{ID: id, Name: lang[in.Name], Stack: in.Stack, Icon: asset("textures", disp.Slot) + ".png"})
+	}
+	// Tracer colour: the gun display's (GunDisplayInstance.checkGunAmmo),
+	// else the ammo display's (ClientAmmoIndex), else white.
+	for i := range p.Guns {
+		g := &p.Guns[i]
+		gf := p.guns[g.ID]
+		text := gf.tracer
+		if text == "" {
+			text = ammoTracer[g.Ammo]
+		}
+		c, err := tracerColor(text)
+		if err != nil {
+			return nil, fmt.Errorf("%s tracer_color: %w", g.ID, err)
+		}
+		g.Bullet.TracerColor, gf.base.Bullet.TracerColor = c, c
+		p.guns[g.ID] = gf
 	}
 	// A gun without its own casing throws its ammo's.
 	for i := range p.Guns {
@@ -162,6 +182,19 @@ func Load(pack, defaults fs.FS) (*Pack, error) {
 	}
 	sort.Strings(p.Missing)
 	return p, nil
+}
+
+// tracerColor parses a "#RRGGBB" tracer_color (ColorHex.colorTextToRbgFloatArray);
+// "" is white.
+func tracerColor(text string) ([3]float32, error) {
+	if text == "" {
+		return [3]float32{1, 1, 1}, nil
+	}
+	v, err := strconv.ParseUint(strings.TrimPrefix(text, "#"), 16, 32)
+	if err != nil || len(strings.TrimPrefix(text, "#")) != 6 {
+		return [3]float32{}, fmt.Errorf("bad colour %q", text)
+	}
+	return [3]float32{float32(v>>16&0xFF) / 255, float32(v>>8&0xFF) / 255, float32(v&0xFF) / 255}, nil
 }
 
 // defaultSounds are GunDisplayInstance.checkSounds' defaults for sounds a
@@ -291,6 +324,9 @@ func (p *Pack) loadGun(file string, lang map[string]string, sound func(string) s
 			}
 		}
 		Sounds map[string]json.RawMessage
+		Ammo   struct {
+			Tracer string `json:"tracer_color"`
+		}
 		Muzzle json.RawMessage `json:"muzzle_flash"`
 		Shell  *struct {
 			shellFiles
@@ -304,7 +340,7 @@ func (p *Pack) loadGun(file string, lang map[string]string, sound func(string) s
 	if err := readJSON(p.FS, asset("display/guns", index.Display)+".json", &disp); err != nil {
 		return err
 	}
-	var data taczData
+	data := newTaczData()
 	if err := readJSON(p.FS, dataPath("guns", index.Data), &data); err != nil {
 		return err
 	}
@@ -378,6 +414,7 @@ func (p *Pack) loadGun(file string, lang map[string]string, sound func(string) s
 	if spec.Muzzle, err = muzzleFlash(disp.Muzzle); err != nil {
 		return fmt.Errorf("%s: muzzle_flash: %w", id, err)
 	}
+	files.tracer = disp.Ammo.Tracer
 	files.base, files.allow, files.extMag, files.exclusive, files.melee, files.adjust = spec, data.Allow, data.ExtMag, data.Exclusive, data.Melee, data.Adjust
 	files.builtin = map[Slot]builtinSlot{}
 	for slot, raw := range data.Builtin {
@@ -426,11 +463,14 @@ type taczData struct {
 		BPM   float32 `json:"bpm"`
 	} `json:"burst_data"`
 	Bullet struct {
-		Damage  float32 `json:"damage"`
-		Amount  int     `json:"bullet_amount"`
-		Speed   float32 `json:"speed"`
-		Gravity float32 `json:"gravity"`
-		Pierce  int     `json:"pierce"`
+		Damage         float32 `json:"damage"`
+		Amount         int     `json:"bullet_amount"`
+		Speed          float32 `json:"speed"`
+		Gravity        float32 `json:"gravity"`
+		Friction       float32 `json:"friction"`
+		Life           float32 `json:"life"`
+		Pierce         int     `json:"pierce"`
+		TracerInterval int     `json:"tracer_count_interval"`
 		// Knockback is BulletData's knockback (default 0: TACZ bullets
 		// replace the vanilla push with it).
 		Knockback float32 `json:"knockback"`
@@ -487,6 +527,25 @@ func (h *taczHeat) UnmarshalJSON(b []byte) error {
 	return err
 }
 
+// BulletData's defaults.
+const (
+	bulletDamage   = 5
+	bulletSpeed    = 5
+	bulletFriction = 0.01
+	bulletLife     = 10 // seconds
+)
+
+// newTaczData is a gun data holding BulletData's defaults, to read a file over.
+func newTaczData() taczData {
+	var d taczData
+	b := &d.Bullet
+	b.Damage, b.Amount, b.Speed, b.Friction, b.Life, b.Pierce, b.TracerInterval = bulletDamage, 1, bulletSpeed, bulletFriction, bulletLife, 1, weapon.NoTracer
+	// ExtraDamage's default. ponytail: a gun without extra_damage has
+	// HeadShotModifier's 0 in TACZ (a head hit deals nothing); every pack gun has one.
+	b.Extra.Headshot = 1
+	return d
+}
+
 func (d *taczData) spec(id, name, class string) (weapon.Gun, error) {
 	g := weapon.Gun{ID: id, Name: name, Class: class, Ammo: strings.TrimPrefix(d.Ammo, "tacz:"), Mag: d.Mag, RPM: d.RPM}
 	switch d.Bolt {
@@ -505,6 +564,7 @@ func (d *taczData) spec(id, name, class string) (weapon.Gun, error) {
 	g.Slide = d.CanSlide == nil || *d.CanSlide
 	b := &g.Bullet
 	b.Damage, b.Pellets, b.Speed, b.Gravity, b.Pierce = d.Bullet.Damage, max(d.Bullet.Amount, 1), d.Bullet.Speed, d.Bullet.Gravity, d.Bullet.Pierce
+	b.Friction, b.Life, b.TracerInterval = d.Bullet.Friction, d.Bullet.Life, d.Bullet.TracerInterval
 	b.Headshot, b.Knockback = d.Bullet.Extra.Headshot, d.Bullet.Knockback
 	for _, a := range d.Bullet.Extra.Adjust {
 		dist := float32(math.MaxFloat32) // DistanceDamagePairSerializer: "infinite"

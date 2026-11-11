@@ -9,49 +9,140 @@ import (
 	"github.com/memmaker/voxellib/projectile"
 	"github.com/memmaker/voxellib/voxel"
 	"github.com/memmaker/voxellib/voxel/collide"
+	"github.com/memmaker/voxellib/weapon"
 )
 
-// GunRange is how far a bullet reaches, in blocks.
-const GunRange = 256
+// sBullet is a flying bullet and who fired it.
+type sBullet struct {
+	id      uint32
+	shooter int // slot
+	gun     string
+	b       *projectile.Bullet
+}
 
-// shoot runs a round of p's held gun: each pellet is a hitscan ray from
-// p's eye against the players as p saw them; damage falls off with
-// distance and head hits multiply it. Everyone else hears it.
+// shoot fires a round of p's held gun (ModernKineticGunScriptAPI.shootOnce):
+// bullet_amount bullets from p's eye along the shot's look, the spread
+// rolled here from p's state as the server sees it (InaccuracyType), each
+// spawned to every client (they fly and draw it) and flown by tickBullets.
+// Everyone else hears it.
 //
-// ponytail: the client's ammo, fire rate and spread are trusted (a LAN
+// ponytail: the client's ammo, fire rate and heat are trusted (a LAN
 // game); validate them here against the gun's spec if cheating matters.
 func (s *Server) shoot(p *sPlayer, sh Shot) {
 	gun := p.gun
-	if gun == nil || sh.Gun != p.held.Gun || p.dead > 0 || len(sh.Pellets) > max(gun.Bullet.Pellets, 1) {
+	if gun == nil || sh.Gun != p.held.Gun || p.dead > 0 {
 		return
 	}
-	targets := s.targets(p, atomic.LoadUint32(&s.tick))
-	boxes := func(x, y, z int, id voxel.StateID, buf []collide.AABB) []collide.AABB {
-		return s.world.W.StateBoxes(id, x, y, z, buf)
-	}
-	ex, ey, ez := p.ch.Eye()
-	for _, l := range sh.Pellets {
-		d := l.Dir()
-		h, ok := projectile.Hitscan(s.world, boxes, [3]float64{ex, ey, ez}, d, GunRange, targets)
-		if !ok || h.Block {
-			continue
-		}
-		r, ok := h.Target.(*rewound)
-		if !ok || r.p.dead > 0 {
-			continue // killed by an earlier pellet
-		}
-		dmg := gun.DamageAt(float32(h.Dist))
-		head := IsHead(h.Part)
-		if head && gun.Bullet.Headshot > 0 {
-			dmg *= gun.Bullet.Headshot
-		}
-		s.damage(Hit{Attacker: p.slot, Victim: r.p.slot, Damage: max(1, int(math.Round(float64(dmg)))), Head: head, Gun: true}, d[0], d[2], float64(gun.Bullet.Knockback))
+	tick := atomic.LoadUint32(&s.tick)
+	prev := s.lastPos(p, tick)
+	at := projectile.BulletSpawn(prev, [3]float64{p.ch.X, p.ch.Y, p.ch.Z}, p.ch.EyeHeight)
+	moving := math.Sqrt(sq(p.ch.X-prev[0])+sq(p.ch.Y-prev[1])+sq(p.ch.Z-prev[2])) > weapon.MoveThreshold
+	inacc := float64(gun.Spread(p.aim == weapon.Aimed, moving, p.anim.Sneak) * heatFactor(gun, sh.Heat))
+	for _, b := range projectile.Fire(at, sh.Look.Dir(), gun, inacc, &p.tracers, s.rng) {
+		s.nextID++
+		sb := &sBullet{id: s.nextID, shooter: p.slot, gun: gun.ID, b: b}
+		s.bullets = append(s.bullets, sb)
+		s.broadcast(BulletSpawn{ID: sb.id, Shooter: p.slot, Gun: gun.ID, Pos: b.Pos, Vel: b.Vel,
+			Gravity: float32(b.Gravity), Friction: float32(b.Friction), Life: b.Life, Tracer: b.Tracer}.encode())
 	}
 	for _, o := range s.players {
 		if o != nil && o != p {
 			s.net.SendReliable(o.slot, []byte{msgFired, uint8(p.slot)})
 		}
 	}
+}
+
+// heatFactor is the client's heat inaccuracy factor, kept within the gun's range.
+func heatFactor(g *weapon.Gun, f float32) float32 {
+	h := g.Heat
+	if h == nil || h.Max <= 0 {
+		return 1
+	}
+	lo, hi := min(h.Inaccuracy[0], h.Inaccuracy[1]), max(h.Inaccuracy[0], h.Inaccuracy[1])
+	return min(max(f, lo), hi)
+}
+
+// lastPos is p's feet at the last tick (xOld), or now if there is none.
+func (s *Server) lastPos(p *sPlayer, tick uint32) [3]float64 {
+	if q := p.hist[tick%historyTicks]; q.tick == tick && tick != 0 {
+		return [3]float64{q.x, q.y, q.z}
+	}
+	return [3]float64{p.ch.X, p.ch.Y, p.ch.Z}
+}
+
+// bulletTargets are p's enemies as bullet boxes (HitboxHelper's lag
+// compensation: each box as p saw it, with the velocity it had then), and
+// who each is.
+func (s *Server) bulletTargets(p *sPlayer, tick uint32) ([]projectile.BulletTarget, []*sPlayer) {
+	var ts []projectile.BulletTarget
+	var who []*sPlayer
+	for _, o := range s.players {
+		if o == nil || !enemies(p, o) || o.dead > 0 || o.protect > 0 {
+			continue
+		}
+		r, ok := s.rewind(o, tick, p.lag)
+		if !ok {
+			continue
+		}
+		vel := [3]float64{}
+		if q, ok := s.rewind(o, tick, p.lag+1); ok {
+			vel = [3]float64{r.x - q.x, r.y - q.y, r.z - q.z}
+		}
+		ts = append(ts, projectile.BulletTarget{Box: projectile.HitBox(r.Box(), vel, true, r.anim.Sneak),
+			Feet: [3]float64{o.ch.X, o.ch.Y, o.ch.Z}, EyeHeight: o.ch.EyeHeight})
+		who = append(who, o)
+	}
+	return ts, who
+}
+
+// tickBullets flies every bullet a tick against its shooter's enemies as
+// the shooter saw them (EntityKineticBullet.onBulletTick, hits dealt by
+// Server.damage) and tells everyone which are gone.
+func (s *Server) tickBullets(tick uint32) {
+	boxes := func(x, y, z int, id voxel.StateID, buf []collide.AABB) []collide.AABB {
+		return s.world.W.StateBoxes(id, x, y, z, buf)
+	}
+	type shooterTargets struct {
+		ts  []projectile.BulletTarget
+		who []*sPlayer
+	}
+	bySlot := map[int]shooterTargets{}
+	live := s.bullets[:0]
+	for _, sb := range s.bullets {
+		p := s.players[sb.shooter]
+		if p == nil { // the shooter left
+			s.broadcast(bulletGone(sb.id))
+			continue
+		}
+		t, ok := bySlot[sb.shooter]
+		if !ok {
+			t.ts, t.who = s.bulletTargets(p, tick)
+			bySlot[sb.shooter] = t
+		}
+		sb.b.Tick(s.world, &projectile.BulletCollider{Boxes: boxes, Targets: t.ts,
+			Hit: func(b *projectile.Bullet, h projectile.BulletHit) {
+				v := t.who[h.Target]
+				if v.dead > 0 {
+					return // killed by an earlier bullet
+				}
+				// LivingEntity.hurt pushes away from the source's entity, the shooter.
+				s.damage(Hit{Attacker: p.slot, Victim: v.slot, Damage: max(1, int(math.Round(float64(b.Damage(h.Pos, h.Head))))), Head: h.Head, Gun: true},
+					v.ch.X-p.ch.X, v.ch.Z-p.ch.Z, float64(b.Gun.Bullet.Knockback))
+			}})
+		if sb.b.Gone {
+			s.broadcast(bulletGone(sb.id))
+			continue
+		}
+		live = append(live, sb)
+	}
+	clear(s.bullets[len(live):])
+	s.bullets = live
+}
+
+func bulletGone(id uint32) []byte {
+	b := wbuf{msgBulletGone}
+	b.u32(id)
+	return b
 }
 
 // melee lands p's held gun's melee hit along l (ModernKineticGunItem.doMelee)

@@ -43,6 +43,11 @@ type Client struct {
 	OnPlayer func(PlayerInfo)
 	OnFired  func(slot int) // another player's gun went off
 
+	// Bullets are the server's flying bullets by ID, flown on by
+	// TickBullets (the client-side entity tick) until the server says
+	// they are gone.
+	Bullets map[uint32]*RemoteBullet
+
 	net  *netcode.Client
 	dec  netcode.Decoder
 	gone string // disconnect reason once disconnected
@@ -106,7 +111,24 @@ func Connect(addr, name string, cfg netcode.Config) (*Client, error) {
 		nc.Close()
 		return nil, err
 	}
-	return &Client{Welcome: w, Edits: NewEditLog(), net: nc, nextCmd: 1, serverTime: float64(w.Tick)}, nil
+	return &Client{Welcome: w, Edits: NewEditLog(), Bullets: map[uint32]*RemoteBullet{}, net: nc, nextCmd: 1, serverTime: float64(w.Tick)}, nil
+}
+
+// RemoteBullet is a bullet the server fired, as a client flies and draws it.
+type RemoteBullet struct {
+	Shooter int    // slot
+	Gun     string // the shooter's gun ID
+	*projectile.Bullet
+}
+
+// TickBullets flies the server's bullets one tick through w (motion only:
+// the server decides what they hit); one past its life is dropped.
+func (c *Client) TickBullets(w projectile.BulletWorld) {
+	for id, b := range c.Bullets {
+		if b.Tick(w, nil); b.Gone {
+			delete(c.Bullets, id)
+		}
+	}
 }
 
 // Slot is the local player's slot.
@@ -203,6 +225,15 @@ func (c *Client) reliable(msg []byte) {
 		h := decodeHit(&r)
 		if r.err == nil && c.OnHit != nil {
 			c.OnHit(h)
+		}
+	case msgBullet:
+		if b := decodeBulletSpawn(&r); r.err == nil {
+			c.Bullets[b.ID] = &RemoteBullet{Shooter: b.Shooter, Gun: b.Gun, Bullet: &projectile.Bullet{Pos: b.Pos, Prev: b.Pos, Start: b.Pos, Vel: b.Vel,
+				Gravity: float64(b.Gravity), Friction: float64(b.Friction), Life: b.Life, Pierce: 1, Tracer: b.Tracer}}
+		}
+	case msgBulletGone:
+		if id := r.u32(); r.err == nil {
+			delete(c.Bullets, id)
 		}
 	case msgFired:
 		slot := int(r.u8())

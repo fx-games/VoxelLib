@@ -24,6 +24,7 @@ type species struct {
 	clips  [mobs.NumStates]string // clip per mobs.State ("" = fall back to idle)
 	width  float64
 	height float64
+	eye    float64    // eye height above the feet (0: mobEyeFraction of the height)
 	static bool       // props: stay put
 	shape  *shapeInfo // for exact arrow hits, built on first use
 	body   *mp.Body   // posed as the vanilla zombie instead of by clips (zombies.go)

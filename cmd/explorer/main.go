@@ -441,6 +441,7 @@ func (g *game) tick() {
 	g.tickCreatures()
 	g.tickWaves()
 	g.tickArrows()
+	g.tickBullets()
 	g.tickTorches()
 	g.tickPlayerHealth()
 }

@@ -409,15 +409,21 @@ func (g *Gun) DamageAt(dist float32) float32 {
 	return 0 // EntityKineticBullet.getDamage: past the last pair
 }
 
-// Spread is the cone half-angle (degrees) of a shot.
+// MoveThreshold is how far (blocks per tick) a shooter must have moved
+// in the last tick to shoot with the moving inaccuracy (InaccuracyType.isMove).
+const MoveThreshold = 0.05
+
+// Spread is a shot's inaccuracy (Projectile.shoot's units) as
+// InaccuracyType.getInaccuracyType picks it: aiming (progress exactly 1)
+// first, then crouching, then moving, else standing.
 func (g *Gun) Spread(aiming, moving, sneaking bool) float32 {
 	switch {
 	case aiming:
 		return g.Inaccuracy.Aim
-	case moving:
-		return g.Inaccuracy.Move
 	case sneaking:
 		return g.Inaccuracy.Sneak
+	case moving:
+		return g.Inaccuracy.Move
 	}
 	return g.Inaccuracy.Stand
 }

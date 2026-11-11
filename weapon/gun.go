@@ -116,12 +116,23 @@ type Gun struct {
 		BPM   float32 `json:"bpm"`
 	} `json:"burst"`
 	Bullet struct {
-		Damage   float32 `json:"damage"`
-		Pellets  int     `json:"pellets"`
+		Damage  float32 `json:"damage"`
+		Pellets int     `json:"pellets"` // bullet_amount: bullets per round, each dealing 1/Pellets of the damage
+		// Speed is blocks per second at the muzzle (BulletData speed; the
+		// bullet moves Speed/20 a tick), Gravity blocks/tick² and Friction
+		// the fraction of the velocity lost each tick.
 		Speed    float32 `json:"speed"`
 		Gravity  float32 `json:"gravity"`
+		Friction float32 `json:"friction"`
+		Life     float32 `json:"life"` // seconds until the bullet is gone
 		Pierce   int     `json:"pierce"`
 		Headshot float32 `json:"headshot"`
+		// TracerInterval is BulletData's tracer_count_interval: every
+		// (TracerInterval+1)th bullet is a tracer; NoTracer: none.
+		TracerInterval int `json:"tracer_interval"`
+		// TracerColor is the tracer's RGB (the gun display's ammo
+		// tracer_color, else the ammo display's, else white).
+		TracerColor [3]float32 `json:"tracer_color"`
 		// Knockback is the push (blocks/tick) a hit gives, replacing the
 		// hit's default (TACZ KnockBackModifier).
 		Knockback float32   `json:"knockback"`
@@ -356,6 +367,9 @@ type ShellEjection struct {
 	Model   string `json:"model"`
 	Texture string `json:"texture"`
 }
+
+// NoTracer is a TracerInterval without tracers (TACZ's -1).
+const NoTracer = -1
 
 type Ammo struct {
 	ID    string `json:"id"`

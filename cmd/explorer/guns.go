@@ -5,8 +5,8 @@ package main
 // fires, right click aims down the iron sights, R reloads, H inspects, B
 // switches the fire mode. firearm.GunState runs each gun's cycle; its clips
 // play on the gun's own model, which holds the camera locators idle_view and
-// iron_view. Each pellet is a hitscan ray within the gun's spread; damage
-// falls off with distance and head hits multiply it.
+// iron_view. Each pellet is a projectile.Bullet (TACZ EntityKineticBullet)
+// flown tick by tick; damage falls off with distance and head hits multiply it.
 
 import (
 	"bytes"
@@ -68,6 +68,10 @@ type gunsState struct {
 	gunSent      mp.GunFlags // the held gun's state the server has (mp.Client.SendGun)
 	fov          gunFOVState
 	gunRand      *rand.Rand
+	// bullets fly in single player (tickBullets); tracers counts them for
+	// the held gun's tracer rounds.
+	bullets []*projectile.Bullet
+	tracers projectile.Shooter
 	// gunRecoil is the last shot's camera curve, recoilTicks ticks old;
 	// recoilP/recoilY are its values already applied to the camera.
 	gunRecoil        firearm.Recoil
@@ -189,7 +193,7 @@ func (g *game) gunSpec(id string) *firearm.Gun {
 func (g *game) selectGun(i int) {
 	// The draw resets the gun's synced state (ShooterDataHolder.initialData),
 	// here and on the server (msgHold with another gun).
-	g.aim, g.aimPrev, g.gunSent = 0, 0, 0
+	g.aim, g.aimPrev, g.gunSent, g.tracers = 0, 0, 0, projectile.Shooter{}
 	g.sendNextHold(i)
 	if g.gunOn() && g.gun.Phase != firearm.Holstered {
 		g.nextSel, g.switching = i, true
@@ -653,24 +657,17 @@ func (g *game) shoot() {
 		g.gunSound(firearm.SoundShoot, shotSoundVolume, g.soundPitch())
 	}
 	aim := g.aimFrac(1)
-	p := g.Player
-	moving := math.Hypot(p.VX, p.VZ) > 0.01
-	spread := float64(spec.Spread(g.shotAim() == firearm.Aimed, moving, g.Input.Down(app.ActSneak)) * g.gun.SpreadFactor())
-	ex, ey, ez := p.Eye()
-	shot := mp.Shot{Gun: spec.ID}
-	for range spec.Bullet.Pellets {
-		yaw, pitch := g.Cam.Yaw, g.Cam.Pitch
-		// a uniform direction in the cone: angle from the axis and around it
-		r := spread * math.Sqrt(g.gunRand.Float64()) * math.Pi / 180
-		a := g.gunRand.Float64() * 2 * math.Pi
-		yaw += r * math.Cos(a) / math.Max(math.Cos(pitch), 0.1)
-		pitch += r * math.Sin(a)
-		shot.Pellets = append(shot.Pellets, mp.Look{Yaw: yaw, Pitch: pitch})
-	}
+	look := mp.Look{Yaw: g.Cam.Yaw, Pitch: g.Cam.Pitch}
 	if g.net != nil {
-		g.net.cl.SendShot(shot) // the server deals the damage
+		// the server rolls the spread, flies the bullets and deals the damage
+		g.net.cl.SendShot(mp.Shot{Gun: spec.ID, Look: look, Heat: g.gun.SpreadFactor()})
 	} else {
-		g.hitscan(shot, [3]float64{ex, ey, ez})
+		p := g.Player
+		prev, now := [3]float64{p.PrevX, p.PrevY, p.PrevZ}, [3]float64{p.X, p.Y, p.Z}
+		moving := math.Sqrt(sq(now[0]-prev[0])+sq(now[1]-prev[1])+sq(now[2]-prev[2])) > firearm.MoveThreshold
+		inacc := float64(spec.Spread(g.shotAim() == firearm.Aimed, moving, g.Input.Down(app.ActSneak)) * g.gun.SpreadFactor())
+		at := projectile.BulletSpawn(prev, now, p.EyeHeight)
+		g.bullets = append(g.bullets, projectile.Fire(at, look.Dir(), spec, inacc, &g.tracers, g.gunRand)...)
 	}
 	g.startMuzzle(spec, nil)
 	g.ejectShells(spec, g.gunViews[spec.ID])
@@ -678,32 +675,59 @@ func (g *game) shoot() {
 	g.recoilTicks, g.recoilP, g.recoilY = 0, 0, 0
 }
 
-// hitscan casts a shot's pellets from eye against the creatures (single
-// player; in multiplayer the server does it against the players).
-func (g *game) hitscan(shot mp.Shot, eye [3]float64) {
-	spec := g.gun.Gun
-	targets := g.creatureTargets()
+func sq(v float64) float64 { return v * v }
+
+// bulletWorld is what the explorer's bullets fly through.
+type bulletWorld struct {
+	w *voxel.World
+	t *app.Terrain
+}
+
+func (b bulletWorld) Block(x, y, z int) voxel.StateID     { return b.w.Block(x, y, z) }
+func (b bulletWorld) Liquid(x, y, z int) character.Liquid { return b.t.Liquid(x, y, z) }
+
+// tickBullets flies the single player's bullets a tick against the
+// creatures (in multiplayer the server flies them against the players).
+func (g *game) tickBullets() {
+	if len(g.bullets) == 0 {
+		return
+	}
 	w := g.Eng.World
-	boxes := func(x, y, z int, id voxel.StateID, buf []collide.AABB) []collide.AABB {
-		return w.StateBoxes(id, x, y, z, buf)
-	}
-	for _, l := range shot.Pellets {
-		d := l.Dir()
-		h, ok := projectile.Hitscan(w, boxes, eye, d, mp.GunRange, targets)
-		if !ok || h.Block {
+	var targets []projectile.BulletTarget
+	var who []*creature
+	for _, c := range g.creatures {
+		if c.dying != 0 {
 			continue
 		}
-		c, isCreature := h.Target.(*creature)
-		if !isCreature {
-			continue
-		}
-		dmg := spec.DamageAt(float32(h.Dist))
-		if c.isHead(h.Part) && spec.Bullet.Headshot > 0 {
-			dmg *= spec.Bullet.Headshot
-		}
-		head := c.isHead(h.Part)
-		g.hitMark(head, g.hitCreature(c, dmg, d, float64(spec.Bullet.Knockback)))
+		m := c.mob
+		targets = append(targets, projectile.BulletTarget{Box: projectile.HitBox(m.Box(), [3]float64{m.X - m.PrevX, m.Y - m.PrevY, m.Z - m.PrevZ}, false, false),
+			Feet: [3]float64{m.X, m.Y, m.Z}, EyeHeight: c.sp.eyeHeight()})
+		who = append(who, c)
 	}
+	col := &projectile.BulletCollider{
+		Boxes: func(x, y, z int, id voxel.StateID, buf []collide.AABB) []collide.AABB {
+			return w.StateBoxes(id, x, y, z, buf)
+		},
+		Targets: targets,
+		Hit: func(b *projectile.Bullet, h projectile.BulletHit) {
+			c := who[h.Target]
+			if c.dying != 0 {
+				return // killed by an earlier bullet
+			}
+			// LivingEntity.hurt pushes away from the shooter
+			away := [3]float64{c.mob.X - g.Player.X, 0, c.mob.Z - g.Player.Z}
+			g.hitMark(h.Head, g.hitCreature(c, b.Damage(h.Pos, h.Head), away, float64(b.Gun.Bullet.Knockback)))
+		},
+	}
+	bw := bulletWorld{w, g.Terrain}
+	live := g.bullets[:0]
+	for _, b := range g.bullets {
+		if b.Tick(bw, col); !b.Gone {
+			live = append(live, b)
+		}
+	}
+	clear(g.bullets[len(live):])
+	g.bullets = live
 }
 
 // hitMark is TACZ's ClientHitMark sound for the shooter's bullet hit:
@@ -757,6 +781,14 @@ func pushCreature(c *creature, power, xd, zd float64) {
 // default eye height, 0.85 of the height).
 const mobEyeFraction = 0.85
 
+// eyeHeight is the species' eye above its feet: its own, else the default.
+func (sp *species) eyeHeight() float64 {
+	if sp.eye != 0 {
+		return sp.eye
+	}
+	return sp.height * mobEyeFraction
+}
+
 // melee lands the gun's melee hit (ModernKineticGunItem.doMelee): on the
 // creatures in single player, by the server on the players in multiplayer.
 func (g *game) melee() {
@@ -780,7 +812,7 @@ func (g *game) melee() {
 		if !reach.Intersects(b) {
 			continue
 		}
-		eye := [3]float64{c.mob.X, b.MinY + (b.MaxY-b.MinY)*mobEyeFraction, c.mob.Z}
+		eye := [3]float64{c.mob.X, c.mob.Y + c.sp.eyeHeight(), c.mob.Z}
 		if !m.Reaches([3]float64{ex, ey, ez}, d, eye) || !projectile.InSight(w, boxes, [3]float64{ex, ey, ez}, eye) {
 			continue
 		}
@@ -789,12 +821,6 @@ func (g *game) melee() {
 		pushCreature(c, float64(m.Knockback), -d[0], -d[2])
 		g.hitCreature(c, m.Damage, [3]float64{c.mob.X - ex, 0, c.mob.Z - ez}, actors.HurtKnockback)
 	}
-}
-
-// isHead reports whether a hit on part (a bone, -1 for none) struck the head.
-func (c *creature) isHead(part int) bool {
-	head := c.sp.shape.head
-	return part >= 0 && part < len(head) && head[part]
 }
 
 // poseGun poses the held gun's tracks between ticks (render hook, before

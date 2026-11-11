@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"math"
+	"math/rand"
 	"net"
 	"runtime"
 	"slices"
@@ -85,6 +86,8 @@ type Server struct {
 	spawnTop float64
 	players  [4]*sPlayer
 	arrows   map[*projectile.Arrow]arrowMeta
+	bullets  []*sBullet
+	rng      *rand.Rand // bullet spread
 	nextID   uint32
 	m        match
 
@@ -121,10 +124,11 @@ type sPlayer struct {
 	out     bool               // out of the battle royale round: watching until the next
 	lag     float64            // smoothed ticks between the server's time and what the player saw
 
-	hist   [historyTicks]pose
-	arrows projectile.World
-	enc    netcode.Encoder
-	sentTo int // edit log entries queued for this client
+	hist    [historyTicks]pose
+	arrows  projectile.World
+	tracers projectile.Shooter // the held gun's bullet count, for its tracers
+	enc     netcode.Encoder
+	sentTo  int // edit log entries queued for this client
 }
 
 // pose is a player at one server tick, for lag compensation.
@@ -165,7 +169,7 @@ func StartServer(cfg ServerConfig) (*Server, error) {
 	if err != nil {
 		return nil, err
 	}
-	s := &Server{cfg: cfg, edits: NewEditLog(), body: NewBody(), arrows: map[*projectile.Arrow]arrowMeta{},
+	s := &Server{cfg: cfg, edits: NewEditLog(), body: NewBody(), arrows: map[*projectile.Arrow]arrowMeta{}, rng: rand.New(rand.NewSource(time.Now().UnixNano())),
 		time: TimeDay, calls: make(chan func()), stop: make(chan struct{}), done: make(chan struct{})}
 	s.m.interval = max(1, int(cfg.ZoneInterval*TickRate/time.Second))
 	s.m.shrinkTicks = max(1, int(cfg.ShrinkTime*TickRate/time.Second))
@@ -432,6 +436,7 @@ func (s *Server) frame() {
 	}
 	s.tickMatch()
 	s.tickArrows(tick)
+	s.tickBullets(tick)
 	s.streamEdits()
 	for _, p := range s.players {
 		if p != nil {
@@ -527,7 +532,7 @@ func (s *Server) reliable(p *sPlayer, msg []byte) {
 			spec = &g
 		}
 		if h.Gun != p.held.Gun { // a draw: ShooterDataHolder.initialData
-			p.flags, p.aim = 0, 0
+			p.flags, p.aim, p.tracers = 0, 0, projectile.Shooter{}
 		}
 		p.held, p.gun = h, spec
 		s.broadcast(p.info().encode())

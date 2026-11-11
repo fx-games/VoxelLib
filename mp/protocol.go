@@ -13,7 +13,7 @@ import (
 // Protocol is the netcode protocol id: "VLMP" plus a version byte. Bump the
 // version on any wire change; older peers are refused and stay invisible to
 // discovery.
-const Protocol = 0x564C4D00 | 11
+const Protocol = 0x564C4D00 | 12
 
 // DefaultPort is the server's UDP port.
 const DefaultPort = 28960
@@ -393,12 +393,14 @@ const (
 	msgMelee     = 6 // gun ID, yaw, pitch f32: the held gun's melee hit lands
 	msgGun       = 7 // GunFlags u8: the held gun's state changed (aim, reload, empty)
 	// server → client
-	msgPlayer = 10 // slot u8, joined u8, name, skin png: a player joined, changed skin or left
-	msgBlock  = 11 // x, y, z i32, state name: a block changed
-	msgHit    = 12 // attacker u8, victim u8, damage u8, flags (head, killed, gun)
-	msgText   = 13 // a line for the chat/kill feed
-	msgScore  = 14 // slot u8, kills u16, deaths u16: a player's score changed
-	msgFired  = 15 // slot u8: that player's gun went off (not sent to the shooter)
+	msgPlayer     = 10 // slot u8, joined u8, name, skin png: a player joined, changed skin or left
+	msgBlock      = 11 // x, y, z i32, state name: a block changed
+	msgHit        = 12 // attacker u8, victim u8, damage u8, flags (head, killed, gun)
+	msgText       = 13 // a line for the chat/kill feed
+	msgScore      = 14 // slot u8, kills u16, deaths u16: a player's score changed
+	msgFired      = 15 // slot u8: that player's gun went off (not sent to the shooter)
+	msgBullet     = 16 // BulletSpawn: the server fired a bullet
+	msgBulletGone = 17 // id u32: that bullet is gone (hit something or its life ran out)
 )
 
 // BlockEdit is one block change.
@@ -544,30 +546,70 @@ func (l Look) Dir() [3]float64 {
 	return [3]float64{math.Sin(l.Yaw) * math.Cos(l.Pitch), math.Sin(l.Pitch), -math.Cos(l.Yaw) * math.Cos(l.Pitch)}
 }
 
-// Shot is one round of the shooter's held gun: each pellet's direction
-// from their eye (the client rolls the spread). The server casts the rays
-// against the players as the shooter saw them and deals the damage.
+// Shot is one round of the shooter's held gun (ClientMessagePlayerShoot):
+// the look when it went off and the gun's heat inaccuracy factor. The
+// server rolls the spread, flies the bullets against the players as the
+// shooter saw them and deals the damage.
 type Shot struct {
-	Gun     string // the held gun's ID
-	Pellets []Look
+	Gun  string // the held gun's ID
+	Look Look
+	Heat float32 // weapon.GunState.SpreadFactor; 1 for a gun without heat
 }
 
 func (s Shot) encode() []byte {
 	b := wbuf{msgShoot}
 	b.str(s.Gun)
-	b.u8(uint8(min(len(s.Pellets), math.MaxUint8)))
-	for _, l := range s.Pellets[:min(len(s.Pellets), math.MaxUint8)] {
-		b.f32(l.Yaw)
-		b.f32(l.Pitch)
-	}
+	b.f32(s.Look.Yaw)
+	b.f32(s.Look.Pitch)
+	b.f32(float64(s.Heat))
 	return b
 }
 
 func decodeShot(r *rbuf) Shot {
-	s := Shot{Gun: r.str()}
-	n := int(r.u8())
-	for range n {
-		s.Pellets = append(s.Pellets, Look{Yaw: r.f32(), Pitch: r.f32()})
+	return Shot{Gun: r.str(), Look: Look{Yaw: r.f32(), Pitch: r.f32()}, Heat: float32(r.f32())}
+}
+
+// BulletSpawn is a bullet the server fired (EntityKineticBullet's spawn
+// data): clients fly it on with the same motion and draw it until
+// msgBulletGone.
+type BulletSpawn struct {
+	ID       uint32
+	Shooter  int    // slot
+	Gun      string // the shooter's gun ID (tracer colour, display)
+	Pos, Vel [3]float64
+	Gravity  float32
+	Friction float32
+	Life     int // ticks
+	Tracer   bool
+}
+
+func (s BulletSpawn) encode() []byte {
+	b := wbuf{msgBullet}
+	b.u32(s.ID)
+	b.u8(uint8(s.Shooter))
+	b.str(s.Gun)
+	for _, v := range s.Pos {
+		b.f64(v)
 	}
+	for _, v := range s.Vel {
+		b.f64(v)
+	}
+	b.f32(float64(s.Gravity))
+	b.f32(float64(s.Friction))
+	b.u32(uint32(s.Life))
+	b.u8(flag(s.Tracer, 1))
+	return b
+}
+
+func decodeBulletSpawn(r *rbuf) BulletSpawn {
+	s := BulletSpawn{ID: r.u32(), Shooter: int(r.u8()), Gun: r.str()}
+	for i := range s.Pos {
+		s.Pos[i] = r.f64()
+	}
+	for i := range s.Vel {
+		s.Vel[i] = r.f64()
+	}
+	s.Gravity, s.Friction = float32(r.f32()), float32(r.f32())
+	s.Life, s.Tracer = int(r.u32()), r.u8()&1 != 0
 	return s
 }

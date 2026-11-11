@@ -96,9 +96,12 @@ func (g *game) loadZombie() error {
 	if err != nil {
 		return err
 	}
-	g.zombie = &species{model: m, handle: h, kind: mobs.Walker, width: 0.6, height: 1.95, body: body}
+	g.zombie = &species{model: m, handle: h, kind: mobs.Walker, width: 0.6, height: 1.95, eye: zombieEyeHeight, body: body}
 	return nil
 }
+
+// zombieEyeHeight is Zombie.getStandingEyeHeight for an adult.
+const zombieEyeHeight = 1.74
 
 // tickWaves starts waves and lets their zombies appear.
 func (g *game) tickWaves() {

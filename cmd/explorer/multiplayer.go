@@ -342,6 +342,7 @@ func (g *game) tickNet() {
 		n.haveCmd = false
 	}
 	n.cl.Poll()
+	n.cl.TickBullets(bulletWorld{g.Eng.World, g.Terrain})
 	if reason := n.cl.Gone(); reason != "" {
 		g.leaveGame("disconnected: " + reason)
 		return

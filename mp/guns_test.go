@@ -3,7 +3,6 @@ package mp
 import (
 	"fmt"
 	"math"
-	"slices"
 	"testing"
 	"time"
 
@@ -14,15 +13,19 @@ import (
 )
 
 func TestShotEncoding(t *testing.T) {
-	in := Shot{Gun: "tacz:m870", Pellets: []Look{{0.5, -0.25}, {-3, 1}}}
+	in := Shot{Gun: "tacz:m870", Look: Look{0.5, -0.25}, Heat: 1.5}
 	msg := in.encode()
 	if msg[0] != msgShoot {
 		t.Fatalf("type %d", msg[0])
 	}
 	r := rbuf{p: msg[1:]}
-	out := decodeShot(&r)
-	if r.err != nil || out.Gun != in.Gun || !slices.Equal(out.Pellets, in.Pellets) {
+	if out := decodeShot(&r); r.err != nil || out != in {
 		t.Fatalf("got %+v (%v), want %+v", out, r.err, in)
+	}
+	bs := BulletSpawn{ID: 9, Shooter: 2, Gun: "tacz:ak47", Pos: [3]float64{1, 2.5, -3}, Vel: [3]float64{0.1, -0.2, 4}, Gravity: 0.03, Friction: 0.01, Life: 200, Tracer: true}
+	r = rbuf{p: bs.encode()[1:]}
+	if out := decodeBulletSpawn(&r); r.err != nil || out != bs {
+		t.Fatalf("bullet spawn: got %+v (%v), want %+v", out, r.err, bs)
 	}
 	info := PlayerInfo{Slot: 2, Joined: true, Name: "a", Team: TeamRed,
 		Held: Hold{Gun: "tacz:ak47", Choice: tacz.Choice{
@@ -54,8 +57,8 @@ func TestHoldChoice(t *testing.T) {
 		if gid != id || (m != "" && m != silencer) || (c.Adapters[tacz.SlotMuzzle] != "" && c.Adapters[tacz.SlotMuzzle] != riser) {
 			return weapon.Gun{}, fmt.Errorf("not allowed: %v", c)
 		}
-		g := weapon.Gun{ID: id}
-		g.Bullet.Damage, g.Bullet.Pellets = 3, 1
+		g := testGun(id)
+		g.Bullet.Damage = 3
 		if m == silencer {
 			g.Bullet.Damage = 5
 		}
@@ -89,7 +92,7 @@ func TestHoldChoice(t *testing.T) {
 	s.call(func() { s.players[b.c.Slot()].protect = 0 })
 	ex, ey, ez := a.ch.Eye()
 	pitch := math.Atan2(b.ch.Y+1-ey, math.Hypot(b.ch.X-ex, b.ch.Z-ez))
-	a.c.SendShot(Shot{Gun: id, Pellets: []Look{{0, pitch}}})
+	a.c.SendShot(Shot{Gun: id, Look: Look{0, pitch}, Heat: 1})
 	run(t, 3*time.Second, nil, func(int) bool {
 		step()
 		return len(b.hits) >= 1
@@ -103,11 +106,12 @@ func TestHoldChoice(t *testing.T) {
 }
 
 // TestGunShot: the shooter's held gun shows in everyone's PlayerInfo, a
-// shot deals the gun's damage once per pellet on the server, and the
-// others hear it go off.
+// shot's pellets fly on the server, each dealing its share of the damage
+// (applyShotgunDamageSpread), everyone is sent the bullets, and the others
+// hear it go off.
 func TestGunShot(t *testing.T) {
-	gun := weapon.Gun{ID: "test:shotgun"}
-	gun.Bullet.Damage, gun.Bullet.Pellets = 4, 2
+	gun := testGun("test:shotgun")
+	gun.Bullet.Damage, gun.Bullet.Pellets = 8, 2
 	s, err := StartServer(ServerConfig{Addr: "127.0.0.1:0", Name: "test", Seed: 7, Generator: "flat",
 		Reg: voxel.NewRegistry(), Logf: t.Logf, Gun: func(string, tacz.Choice, weapon.FireMode) (weapon.Gun, error) { return gun, nil },
 		Spawn: func(slot int, w *World) (float64, float64, float64) {
@@ -134,12 +138,17 @@ func TestGunShot(t *testing.T) {
 	s.call(func() { s.players[b.c.Slot()].protect = 0 })
 	ex, ey, ez := a.ch.Eye()
 	pitch := math.Atan2(b.ch.Y+1-ey, math.Hypot(b.ch.X-ex, b.ch.Z-ez)) // the chest
-	a.c.SendShot(Shot{Gun: gun.ID, Pellets: []Look{{0, pitch}, {0, pitch}}})
+	a.c.SendShot(Shot{Gun: gun.ID, Look: Look{0, pitch}, Heat: 1})
+	spawned := 0
 	run(t, 3*time.Second, nil, func(int) bool {
 		a.step(0, 0, false)
 		b.step(0, 0, false)
+		spawned = max(spawned, len(b.c.Bullets))
 		return len(b.hits) >= 2 && len(a.hits) >= 2 && fired > 0
 	})
+	if spawned == 0 {
+		t.Fatal("no bullet reached the other client")
+	}
 	for _, h := range b.hits {
 		if h.Damage != 4 || h.Attacker != a.c.Slot() || h.Victim != b.c.Slot() || h.Head || !h.Gun {
 			t.Fatalf("hit %+v", h)
@@ -155,7 +164,7 @@ func TestGunShot(t *testing.T) {
 	}
 	// a killing pellet: the shooter's hit mark says kill
 	s.call(func() { s.players[b.c.Slot()].health = 4 })
-	a.c.SendShot(Shot{Gun: gun.ID, Pellets: []Look{{0, pitch}}})
+	a.c.SendShot(Shot{Gun: gun.ID, Look: Look{0, pitch}, Heat: 1})
 	run(t, 3*time.Second, nil, func(int) bool {
 		a.step(0, 0, false)
 		b.step(0, 0, false)
@@ -164,6 +173,13 @@ func TestGunShot(t *testing.T) {
 	if h := a.hits[2]; !h.Killed || !h.Gun || h.Attacker != a.c.Slot() {
 		t.Fatalf("kill hit %+v", h)
 	}
+}
+
+// testGun is a gun whose bullets fly 2 blocks a tick for 2 s, straight.
+func testGun(id string) weapon.Gun {
+	g := weapon.Gun{ID: id}
+	g.Bullet.Pellets, g.Bullet.Speed, g.Bullet.Life, g.Bullet.Pierce, g.Bullet.TracerInterval = 1, 40, 2, 1, weapon.NoTracer
+	return g
 }
 
 // TestAimSync: the client sends only the aim state; the server raises the
