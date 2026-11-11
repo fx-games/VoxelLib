@@ -11,6 +11,9 @@ package voxel
 // terrain) and only flood-fills from the heightmap "edges", which is what keeps
 // it cheap. Edits use the classic two-queue removal / re-propagation update.
 
+// MaxLight is the brightest light level of either channel.
+const MaxLight = 15
+
 type lightNode struct {
 	x, y, z int32
 	l       uint8
@@ -85,48 +88,59 @@ func (w *World) stateAt(x, y, z int) StateID {
 	return c.Get(x&15, y, z&15)
 }
 
-// propagate runs the add queue for one channel.
+// propagate runs the add queue (the seeds in lightQ) for one channel.
+//
+// Nodes are expanded brightest first, one bucket per light level, so each
+// block is expanded once at its final level: light only flows from a
+// brighter block to a darker one, so nothing a later (darker) bucket does
+// can raise a block of an earlier one. A plain stack instead re-expands a
+// block every time a shorter path raises it, many times over in open caves
+// and water. The result is the same fixed point.
 func (w *World) propagate(sky bool, t []StateInfo) {
-	q := w.lightQ
-	for len(q) > 0 {
-		n := q[len(q)-1]
-		q = q[:len(q)-1]
-		x, y, z := int(n.x), int(n.y), int(n.z)
-		lvl, ok := w.lightAt(x, y, z, sky)
-		if !ok || lvl <= 1 {
-			continue
+	b := &w.lightBuckets
+	for _, n := range w.lightQ {
+		if lvl, ok := w.lightAt(int(n.x), int(n.y), int(n.z), sky); ok && lvl > 1 {
+			b[lvl] = append(b[lvl], n)
 		}
-		for f := Face(0); f < FaceCount; f++ {
-			d := faceNormals[f]
-			nx, ny, nz := x+d.X, y+d.Y, z+d.Z
-			if ny < w.MinY || ny >= w.MaxY() {
-				continue
+	}
+	w.lightQ = w.lightQ[:0]
+	for lvl := uint8(MaxLight); lvl > 1; lvl-- {
+		for len(b[lvl]) > 0 {
+			q := b[lvl]
+			n := q[len(q)-1]
+			b[lvl] = q[:len(q)-1]
+			x, y, z := int(n.x), int(n.y), int(n.z)
+			if cur, _ := w.lightAt(x, y, z, sky); cur != lvl {
+				continue // raised after it was queued: expanded in a brighter bucket
 			}
-			cur, ok := w.lightAt(nx, ny, nz, sky)
-			if !ok || cur >= lvl {
-				continue
-			}
-			op := t[w.stateAt(nx, ny, nz)].Opacity
-			var nl uint8
-			if sky && f == FaceDown && lvl == 15 && op == 0 {
-				nl = 15
-			} else {
-				loss := op
-				if loss < 1 {
-					loss = 1
-				}
-				if loss >= lvl {
+			for f := Face(0); f < FaceCount; f++ {
+				d := faceNormals[f]
+				nx, ny, nz := x+d.X, y+d.Y, z+d.Z
+				if ny < w.MinY || ny >= w.MaxY() {
 					continue
 				}
-				nl = lvl - loss
-			}
-			if nl > cur {
-				w.setLight(nx, ny, nz, sky, nl)
-				q = append(q, lightNode{int32(nx), int32(ny), int32(nz), nl})
+				cur, ok := w.lightAt(nx, ny, nz, sky)
+				if !ok || cur >= lvl {
+					continue
+				}
+				op := t[w.stateAt(nx, ny, nz)].Opacity
+				var nl uint8
+				if sky && f == FaceDown && lvl == MaxLight && op == 0 {
+					nl = MaxLight
+				} else {
+					loss := max(op, 1)
+					if loss >= lvl {
+						continue
+					}
+					nl = lvl - loss
+				}
+				if nl > cur {
+					w.setLight(nx, ny, nz, sky, nl)
+					b[nl] = append(b[nl], lightNode{int32(nx), int32(ny), int32(nz), nl})
+				}
 			}
 		}
 	}
-	w.lightQ = q[:0]
 }
 
 // unpropagate runs the removal queue, collecting re-light seeds into lightQ.

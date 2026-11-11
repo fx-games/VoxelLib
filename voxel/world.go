@@ -25,6 +25,8 @@ type World struct {
 
 	lightQ  []lightNode
 	removeQ []lightNode
+	// lightBuckets: propagate's queue, one stack per light level
+	lightBuckets [MaxLight + 1][]lightNode
 	cache   *Chunk
 	// blockCache is Block's last column: set by any reader (a pointer
 	// compared by position, so a race only costs a miss), cleared under
