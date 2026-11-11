@@ -90,6 +90,7 @@ type gunsState struct {
 // gunView is a gun's model on the GPU with its animator.
 type gunView struct {
 	spec       firearm.Gun // the gun with its attachments
+	slide      slideState
 	handle     int
 	m          *model.Model
 	anim       *model.Animator
@@ -250,7 +251,7 @@ func (g *game) gunView(id string) (*gunView, error) {
 	}
 	v.anim.FadeTime = 0
 	v.anim.Play(firearm.ClipIdle, true)
-	v.anim.Layers = []model.Layer{mainTrack: {}, movementTrack: {Blend: true}}
+	v.anim.Layers = []model.Layer{mainTrack: {}, movementTrack: {Blend: true}, slideTrack: {Blend: true}}
 	v.camBone = m.Bone(cameraBone)
 	rest := model.NewAnimator(m)
 	rest.Play(firearm.ClipIdle, true)
@@ -335,6 +336,7 @@ func (g *game) tickGun() {
 	g.stateTracks(v)
 	g.tickGunTracks(v, 1.0/app.TickRate)
 	g.tickMovement(v)
+	g.tickSlide(v)
 	g.cueT += 1.0 / app.TickRate
 	cues := g.gun.Gun.Cues[g.cueClip]
 	for ; g.cueNext < len(cues) && cues[g.cueNext].T <= g.cueT; g.cueNext++ {
@@ -423,7 +425,8 @@ func (g *game) stopActionSound() {
 const (
 	mainTrack     = 0
 	movementTrack = 1 // blended, run by tickMovement
-	fixedTracks   = 2 // layers past these come and go
+	slideTrack    = 2 // blended, run by tickSlide
+	fixedTracks   = 3 // layers past these come and go
 	// mainTransition is runAnimation's transition for main track clips
 	// other than draw (0).
 	mainTransition = 0.2

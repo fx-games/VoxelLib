@@ -163,6 +163,8 @@ type Gun struct {
 	Spin bool `json:"spin,omitempty"`
 	// Heat is the overheating; nil: the gun never heats.
 	Heat *Heat `json:"heat,omitempty"`
+	// Slide: crouching shows the slide pose (gun data can_slide).
+	Slide bool `json:"slide,omitempty"`
 	// Melee is the gun's melee attack; nil: it has none.
 	Melee *Melee `json:"melee,omitempty"`
 	// Unload: the rounds in the gun can be taken out (CommonGunIndex.canUnloadAmmo).

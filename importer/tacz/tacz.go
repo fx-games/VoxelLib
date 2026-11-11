@@ -435,6 +435,7 @@ type taczData struct {
 	Inaccuracy  struct{ Stand, Move, Sneak, Aim float32 }
 	Heat        *taczHeat
 	Melee       taczGunMelee
+	CanSlide    *bool `json:"can_slide"` // GunData's default: true
 	Script      string `json:"script"`
 	AllowUnload bool   `json:"allow_ammo_unload"`
 }
@@ -475,6 +476,7 @@ func (d *taczData) spec(id, name, class string) (weapon.Gun, error) {
 		}
 	}
 	g.Burst.Count, g.Burst.BPM = d.Burst.Count, d.Burst.BPM
+	g.Slide = d.CanSlide == nil || *d.CanSlide
 	b := &g.Bullet
 	b.Damage, b.Pellets, b.Speed, b.Gravity, b.Pierce = d.Bullet.Damage, max(d.Bullet.Amount, 1), d.Bullet.Speed, d.Bullet.Gravity, d.Bullet.Pierce
 	b.Headshot = d.Bullet.Extra.Headshot
