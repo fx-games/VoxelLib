@@ -32,6 +32,9 @@ const (
 	slotExtendedMag = "extended_mag"
 )
 
+// attachmentFOV is AttachmentDisplay's default fov.
+const attachmentFOV = 70
+
 // ironView is the gun's own aiming bone (FirstPersonRenderGunEvent's iron sight path).
 const ironView = "iron_view"
 
@@ -45,7 +48,8 @@ type attachment struct {
 	adapter    string // attachment_adapter child shown
 	showMount  bool
 	showMuzzle bool
-	zoom       float32 // scopes: first magnification
+	zoom       float32 // scope slot: first magnification (1 for none)
+	fov        float32 // scope slot: the hand's field of view while aiming (views_fov[0], else fov)
 	view       int     // scopes: scope_view index (0 = "scope_view", n = "scope_view_n")
 	idleAdjust float32 // scopes: idle view raised by this many pixels
 	magLevel   int     // extended magazines
@@ -107,6 +111,8 @@ func (p *Pack) loadAttachments(builtin map[string]json.RawMessage) (map[string]a
 			Views          []int     `json:"views"`
 			IdleAdjust     float32   `json:"idle_scope_height_adjust"`
 			Scope, Sight   bool
+			Fov            *float32  `json:"fov"`
+			ViewsFov       []float32 `json:"views_fov"`
 		}
 		if err := readJSON(p.FS, asset("display/attachments", index.Display)+".json", &disp); err != nil {
 			return nil, err
@@ -123,8 +129,15 @@ func (p *Pack) loadAttachments(builtin map[string]json.RawMessage) (map[string]a
 		if disp.Model != "" {
 			a.model, a.texture = asset("geo_models", disp.Model)+".json", asset("textures", disp.Texture)+".png"
 		}
+		a.zoom, a.fov = 1, attachmentFOV // AttachmentDisplay defaults; getAimingZoom: no zoom list is 1×
 		if len(disp.Zoom) > 0 {
 			a.zoom = disp.Zoom[0]
+		}
+		switch {
+		case len(disp.ViewsFov) > 0:
+			a.fov = disp.ViewsFov[0]
+		case disp.Fov != nil:
+			a.fov = *disp.Fov
 		}
 		if len(disp.Views) > 0 {
 			a.view = disp.Views[0] - 1

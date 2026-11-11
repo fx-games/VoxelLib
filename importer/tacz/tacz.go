@@ -235,9 +235,11 @@ func (p *Pack) loadGun(file string, lang map[string]string, sound func(string) s
 	var disp struct {
 		Model, Texture, Slot, Animation string
 		Hud                             string
-		HudEmpty                        string  `json:"hud_empty"`
-		Default                         string  `json:"use_default_animation"`
-		Zoom                            float32 `json:"iron_zoom"`
+		HudEmpty                        string   `json:"hud_empty"`
+		Default                         string   `json:"use_default_animation"`
+		Zoom                            *float32 `json:"iron_zoom"`
+		ModelFOV                        *float32 `json:"model_fov"`
+		ZoomModelFOV                    *float32 `json:"zoom_model_fov"`
 		Sounds                          map[string]json.RawMessage
 		Muzzle                          json.RawMessage `json:"muzzle_flash"`
 		Shell                           *struct {
@@ -294,7 +296,9 @@ func (p *Pack) loadGun(file string, lang map[string]string, sound func(string) s
 		return err
 	}
 	spec.Shoot, spec.Dry = sound(shoot), sound("tacz:dry_fire")
-	spec.Zoom = disp.Zoom
+	// GunDisplay's defaults where absent.
+	spec.Zoom = orDefault(disp.Zoom, gunIronZoom)
+	spec.ModelFOV, spec.AimModelFOV = orDefault(disp.ModelFOV, gunModelFOV), orDefault(disp.ZoomModelFOV, gunModelFOV)
 	spec.Model, spec.Icon = asset("geo_models", disp.Model)+".json", asset("textures", disp.Slot)+".png"
 	spec.Hud = asset("textures", disp.Hud) + ".png"
 	if sh := disp.Shell; sh != nil {
@@ -311,18 +315,32 @@ func (p *Pack) loadGun(file string, lang map[string]string, sound func(string) s
 		return fmt.Errorf("%s: %w", id, err)
 	}
 	spec.Sight = ironView
-	if sc, ok := files.atts[slotScope]; ok && sc.model != "" {
-		if spec.Sight, err = p.scopeView(sc); err != nil {
-			return fmt.Errorf("%s: %w", id, err)
-		}
-		spec.IdleRaise = sc.idleAdjust / 16
-		if sc.zoom > 0 {
-			spec.Zoom = sc.zoom
+	if sc, ok := files.atts[slotScope]; ok { // IGun.getAimingZoom, CameraSetupEvent.applyGunModelFovModifying
+		spec.Zoom, spec.AimModelFOV = sc.zoom, sc.fov
+		if sc.model != "" {
+			if spec.Sight, err = p.scopeView(sc); err != nil {
+				return fmt.Errorf("%s: %w", id, err)
+			}
+			spec.IdleRaise = sc.idleAdjust / 16
 		}
 	}
 	p.Guns = append(p.Guns, spec)
 	p.guns[id] = files
 	return nil
+}
+
+// GunDisplay's defaults.
+const (
+	gunIronZoom = 1.2
+	gunModelFOV = 70
+)
+
+// orDefault is *v, or def when the key was absent.
+func orDefault(v *float32, def float32) float32 {
+	if v == nil {
+		return def
+	}
+	return *v
 }
 
 // taczData is the part of a TACZ gun data file we convert.

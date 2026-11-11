@@ -85,15 +85,23 @@ func (g *game) muzzleEffect(file string) (*particles.Effect, uint8) {
 	return fx, sheet
 }
 
+// frameTime measures the frame (fx.dt, capped), once per frame before
+// the guns draw.
+func (f *gunFX) frameTime() {
+	now := time.Now()
+	f.dt = float32(math.Min(now.Sub(f.last).Seconds(), maxFrameTime))
+	f.last = now
+}
+
+// maxFrameTime caps a frame's time step (seconds), e.g. after a stall.
+const maxFrameTime = 0.1
+
 // drawMuzzle moves the emitters to the muzzle (model space: the hand view;
 // the world through the camera), ticks them by the frame time and draws the
 // world smoke; it returns the hand-space sprites to draw over the gun.
 func (g *game) drawMuzzle(v *gunView, view mgl32.Mat4) []particles.Particle {
 	f := &g.fx
-	now := time.Now()
-	dt := math.Min(now.Sub(f.last).Seconds(), 0.1)
-	f.last = now
-	f.dt = float32(dt)
+	dt := float64(f.dt)
 	f.sprites = f.sprites[:0]
 	if f.rend == nil {
 		return nil

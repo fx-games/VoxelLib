@@ -10,8 +10,16 @@ func (r *Renderer) handProj(aspect float32) mgl32.Mat4 {
 	if r.Icons {
 		return mgl32.Ortho(-aspect, aspect, -1, 1, 0.05, 10)
 	}
-	return mgl32.Perspective(mgl32.DegToRad(70), aspect, 0.05, 10)
+	fov := r.HandFOV
+	if fov <= 0 {
+		fov = DefaultHandFOV
+	}
+	return mgl32.Perspective(mgl32.DegToRad(fov), aspect, 0.05, 10)
 }
+
+// DefaultHandFOV is the hand draws' field of view (degrees), as
+// ItemRenderer.DrawHand's.
+const DefaultHandFOV = 70
 
 // IconView places something whose bounds are lo..hi as an icon for the
 // hand draws with Renderer.Icons set (ModelRenderer.DrawHand,

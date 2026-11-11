@@ -43,10 +43,6 @@ const (
 	startRounds = 300
 	// gunKnockback is the push (blocks/tick) a creature gets from a hit.
 	gunKnockback = 0.15
-	// aimTicks is how long raising the sights takes.
-	aimTicks = 4
-	// handFOV is the field of view (degrees) the hand projection draws with.
-	handFOV = 70
 )
 
 // Bones a gun shows only while it holds rounds (TACZ's GunModelConstant).
@@ -68,9 +64,11 @@ type gunsState struct {
 	lensDisc  int                   // the scopes' view disc model (-1: not uploaded)
 	gunViews  map[string]*gunView   // by gun ID, loaded on first use
 	stock     map[string]int        // ammo ID → rounds carried
-	aim       int                   // ticks of aiming, 0..aimTicks
-	aimPrev   int
-	gunRand   *rand.Rand
+	// aim is the aiming progress 0..1 (LocalPlayerAim: 1/aim_time per
+	// second), aimPrev the last tick's.
+	aim, aimPrev float32
+	fov          gunFOVState
+	gunRand      *rand.Rand
 	// gunRecoil is the last shot's camera curve, recoilTicks ticks old;
 	// recoilP/recoilY are its values already applied to the camera.
 	gunRecoil        firearm.Recoil
@@ -226,9 +224,9 @@ func (g *game) tickGun() {
 	g.recoilTicks++
 	aiming := g.Input.Down(app.ActUse) && !g.ScreenOpen() && g.gun.Phase == firearm.Ready
 	if aiming {
-		g.aim = min(g.aim+1, aimTicks)
+		g.aim = min(g.aim+g.aimStep(), 1)
 	} else {
-		g.aim = max(g.aim-1, 0)
+		g.aim = max(g.aim-g.aimStep(), 0)
 	}
 	in := firearm.GunInput{
 		Trigger:  g.Input.Down(app.ActAttack) && !g.ScreenOpen(),
@@ -326,7 +324,15 @@ func (g *game) tickGunTracks(v *gunView, dt float32) {
 
 // aimFrac is how far the sights are raised, 0..1, between ticks.
 func (g *game) aimFrac(alpha float64) float32 {
-	return (float32(g.aimPrev) + float32(g.aim-g.aimPrev)*float32(alpha)) / aimTicks
+	return g.aimPrev + (g.aim-g.aimPrev)*float32(alpha)
+}
+
+// aimStep is a tick's aiming progress: the gun's aim time (0: at once).
+func (g *game) aimStep() float32 {
+	if t := g.gun.Gun.Aim; t > 0 {
+		return 1 / (t * app.TickRate)
+	}
+	return 1
 }
 
 // shoot fires one round: its pellets, the sound and the camera kick.
@@ -403,17 +409,6 @@ func (c *creature) isHead(part int) bool {
 	return part >= 0 && part < len(head) && head[part]
 }
 
-// gunFOV narrows the camera while aiming by the gun's iron sight zoom.
-func (g *game) gunFOV(alpha float64) {
-	g.applyRecoil(alpha)
-	fov := 70.0
-	if g.gunOn() && g.gun.Gun.Zoom > 1 {
-		z := 1 + (float64(g.gun.Gun.Zoom)-1)*float64(g.aimFrac(alpha))
-		fov /= z
-	}
-	g.Cam.FOV = fov * math.Pi / 180
-}
-
 // drawGunHand draws the held gun, its clip posed between ticks, the camera
 // moving from idle_view toward iron_view while aiming.
 func (g *game) drawGunHand(alpha float64) {
@@ -450,7 +445,7 @@ func (g *game) drawGunHand(alpha float64) {
 			v.skin[b] = zero
 		}
 	}
-	f := g.aimFrac(alpha)
+	f := g.fov.aim.value() // FirstPersonRenderGunEvent's AIMING_DYNAMICS
 	view := lerpMat(v.idle, v.iron, f)
 	view = mgl32.Translate3D(0, g.gun.Gun.IdleRaise*(1-f), 0).Mul4(view) // a scope's idle height adjust
 	sky, blk := g.Light(g.Cam.X, g.Cam.Y, g.Cam.Z)

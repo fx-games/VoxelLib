@@ -189,8 +189,10 @@ type Renderer struct {
 	Opt   Options
 	Stats Stats
 	// Icons makes the hand draws orthographic, for icons placed with
-	// IconView; unset, they see through the hand's 70° lens.
-	Icons bool
+	// IconView; unset, they see through the hand's lens of HandFOV degrees
+	// (0: DefaultHandFOV).
+	Icons   bool
+	HandFOV float32
 
 	world      *voxel.World
 	src        TextureSource

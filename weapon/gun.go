@@ -136,6 +136,10 @@ type Gun struct {
 		Aim   float32 `json:"aim"`
 	} `json:"inaccuracy"`
 	Zoom float32 `json:"zoom"` // aiming magnification (the iron sight's, or the built-in scope's)
+	// ModelFOV is the hand projection's field of view (degrees), AimModelFOV
+	// the one it narrows to while aiming (the scope's, or the gun's).
+	ModelFOV    float32 `json:"model_fov"`
+	AimModelFOV float32 `json:"aim_model_fov"`
 	// Sight is the bone the camera aims through: iron_view, or the view
 	// bone of a built-in scope; IdleRaise lifts the idle view (blocks) by
 	// the scope's idle_scope_height_adjust, fading out while aiming.
