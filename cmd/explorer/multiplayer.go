@@ -485,11 +485,10 @@ func (g *game) sendHold() {
 // remoteGun is the model of another player's held gun (nil: none, or not
 // in this pack).
 func (g *game) remoteGun(id string) *gunView {
-	spec := g.gunSpec(id)
-	if spec == nil {
+	if g.gunSpec(id) == nil {
 		return nil
 	}
-	v, err := g.gunView(spec)
+	v, err := g.gunView(id)
 	if err != nil {
 		log.Printf("gun %s: %v", id, err)
 		return nil

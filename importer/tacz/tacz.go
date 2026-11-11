@@ -34,6 +34,8 @@ type Pack struct {
 	Missing []string
 
 	guns     map[string]gunFiles
+	attIndex map[string]attIndex // by attachment ID
+	tags     map[string][]string // attachment tags by ID ("tacz:muzzle")
 	defaults map[string][]*bbmodel.Animation
 }
 
@@ -43,8 +45,13 @@ type shellFiles struct {
 }
 
 type gunFiles struct {
-	atts                         map[string]attachment // shown attachments by slot type
-	shell                        shellFiles            // the display's own casing, if any
+	base                         weapon.Gun // the spec without attachments
+	builtin                      map[Slot]builtinSlot
+	allow                        []Slot                     // allow_attachment_types
+	extMag                       []int                      // extended_mag_ammo_amount by level
+	exclusive                    map[string]json.RawMessage // exclusive_attachments: data by attachment ID
+	melee                        taczGunMelee               // the gun data's melee, before attachments
+	shell                        shellFiles                 // the display's own casing, if any
 	texture, animation, defaults string
 }
 
@@ -87,6 +94,9 @@ func Load(pack, defaults fs.FS) (*Pack, error) {
 		return id
 	}
 
+	if err := p.loadAttachmentIndex(lang, sound); err != nil {
+		return nil, err
+	}
 	idx, err := fs.Glob(pack, "data/tacz/index/guns/*.json")
 	if err != nil {
 		return nil, err
@@ -134,6 +144,9 @@ func Load(pack, defaults fs.FS) (*Pack, error) {
 		}
 		if f.Model == "" || f.Texture == "" {
 			g.Shell = nil // TACZ draws nothing without a model
+			gf := p.guns[g.ID]
+			gf.base.Shell = nil // Gun copies the spec from base (Shell is shared otherwise)
+			p.guns[g.ID] = gf
 			continue
 		}
 		g.Shell.Model, g.Shell.Texture = asset("geo_models", f.Model)+".json", asset("textures", f.Texture)+".png"
@@ -167,12 +180,16 @@ func (p *Pack) Icon(file string) (image.Image, error) { return readPNG(p.FS, fil
 // Model parses a gun's model with its clips: the gun's animations, plus the
 // default animation set's for clips the gun lacks. The bones TACZ hides on a
 // gun without attachments are removed.
-func (p *Pack) Model(id string) (*model.Model, *Lens, error) {
+func (p *Pack) Model(id string, c Choice) (*model.Model, *Lens, error) {
 	i := slices.IndexFunc(p.Guns, func(g weapon.Gun) bool { return g.ID == id })
 	if i < 0 {
 		return nil, nil, fmt.Errorf("tacz: no gun %q", id)
 	}
 	f := p.guns[id]
+	atts, err := p.shown(id, c)
+	if err != nil {
+		return nil, nil, err
+	}
 	tex, err := readPNG(p.FS, f.texture)
 	if err != nil {
 		return nil, nil, err
@@ -199,12 +216,12 @@ func (p *Pack) Model(id string) (*model.Model, *Lens, error) {
 			m.Clips[a.Name] = c
 		}
 	}
-	stripHidden(m, f.atts)
-	if err := p.graftAttachments(m, f.atts); err != nil {
+	stripHidden(m, atts)
+	if err := p.graftAttachments(m, atts); err != nil {
 		return nil, nil, fmt.Errorf("%s: %w", id, err)
 	}
 	var lens *Lens
-	if a, ok := f.atts[slotScope]; ok && a.model != "" && m.Bone(slotScope+"_pos") >= 0 {
+	if a, ok := atts[SlotScope]; ok && a.model != "" && m.Bone(string(SlotScope)+"_pos") >= 0 {
 		if lens, err = splitLens(m, a); err != nil {
 			return nil, nil, err
 		}
@@ -341,22 +358,18 @@ func (p *Pack) loadGun(file string, lang map[string]string, sound func(string) s
 	if spec.Muzzle, err = muzzleFlash(disp.Muzzle); err != nil {
 		return fmt.Errorf("%s: muzzle_flash: %w", id, err)
 	}
-	if files.atts, err = p.loadAttachments(data.Builtin); err != nil {
-		return fmt.Errorf("%s: %w", id, err)
-	}
-	spec.Melee = gunMelee(data.Melee, files.atts)
-	spec.Sight = ironView
-	if sc, ok := files.atts[slotScope]; ok { // IGun.getAimingZoom, CameraSetupEvent.applyGunModelFovModifying
-		spec.Zoom, spec.AimModelFOV = sc.zoom, sc.fov
-		if sc.model != "" {
-			if spec.Sight, err = p.scopeView(sc); err != nil {
-				return fmt.Errorf("%s: %w", id, err)
-			}
-			spec.IdleRaise = sc.idleAdjust / 16
+	files.base, files.allow, files.extMag, files.exclusive, files.melee = spec, data.Allow, data.ExtMag, data.Exclusive, data.Melee
+	files.builtin = map[Slot]builtinSlot{}
+	for slot, raw := range data.Builtin {
+		if files.builtin[slot], err = parseBuiltin(raw); err != nil {
+			return fmt.Errorf("%s: builtin_attachments %s: %w", id, slot, err)
 		}
 	}
-	p.Guns = append(p.Guns, spec)
 	p.guns[id] = files
+	if spec, err = p.Gun(id, p.DefaultChoice(id)); err != nil {
+		return err
+	}
+	p.Guns = append(p.Guns, spec)
 	return nil
 }
 
@@ -378,13 +391,16 @@ func orDefault(v *float32, def float32) float32 {
 
 // taczData is the part of a TACZ gun data file we convert.
 type taczData struct {
-	Builtin map[string]json.RawMessage `json:"builtin_attachments"`
-	Ammo    string                     `json:"ammo"`
-	Mag     int                        `json:"ammo_amount"`
-	RPM     float32                    `json:"rpm"`
-	Bolt    string                     `json:"bolt"`
-	Modes   []string                   `json:"fire_mode"`
-	Burst   struct {
+	Builtin   map[Slot]json.RawMessage   `json:"builtin_attachments"`
+	Allow     []Slot                     `json:"allow_attachment_types"`
+	ExtMag    []int                      `json:"extended_mag_ammo_amount"`
+	Exclusive map[string]json.RawMessage `json:"exclusive_attachments"`
+	Ammo      string                     `json:"ammo"`
+	Mag       int                        `json:"ammo_amount"`
+	RPM       float32                    `json:"rpm"`
+	Bolt      string                     `json:"bolt"`
+	Modes     []string                   `json:"fire_mode"`
+	Burst     struct {
 		Count int     `json:"count"`
 		BPM   float32 `json:"bpm"`
 	} `json:"burst_data"`
@@ -546,7 +562,7 @@ func soundRef(raw json.RawMessage) (string, error) {
 // stripHidden removes the triangles (and vertices) of bones hidden with the
 // attachments shown and their descendants, and of attachment_adapter's
 // children but the adapters of those attachments.
-func stripHidden(m *model.Model, atts map[string]attachment) {
+func stripHidden(m *model.Model, atts map[Slot]attachment) {
 	adapters := map[string]bool{}
 	for _, a := range atts {
 		adapters[a.adapter] = a.adapter != ""

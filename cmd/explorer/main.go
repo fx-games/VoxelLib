@@ -32,6 +32,7 @@ import (
 	"strings"
 
 	"github.com/memmaker/voxellib/app"
+	"github.com/memmaker/voxellib/importer/tacz"
 	"github.com/memmaker/voxellib/mp"
 	"github.com/memmaker/voxellib/resloc"
 	"github.com/memmaker/voxellib/ui/uiapp"
@@ -60,6 +61,7 @@ var hotbarNames = []string{
 
 type options struct {
 	itemDir, signFont, pets, modelPack, species, anim, hold, gun, press string
+	attach                                                              string // -attach: slot=attachment,... on the -gun
 	numItems, numMobs                                                   int
 	night, fly, lineup, help, aim                                       bool
 	// fullZoom magnifies the whole screen while aiming (TACZ; cheaper)
@@ -100,6 +102,7 @@ func main() {
 	flag.StringVar(&o.press, "press", "", "debug: actions held down from the start, comma separated (e.g. use,attack: aim and fire)")
 	flag.BoolVar(&o.fullZoom, "full-zoom", false, "aiming magnifies the whole screen as TACZ does, instead of a second render inside scope lenses (for slower machines)")
 	flag.StringVar(&o.gun, "gun", "", "gun (a TACZ gun ID, e.g. ak47) in hand at start")
+	flag.StringVar(&o.attach, "attach", "", "debug: attachments installed on the -gun, slot=ID comma separated (e.g. scope=tacz:scope_acog_ta31; an empty ID removes one)")
 	flag.StringVar(&cfg.Debug.Edits, "edits", "", "debug: 'dx,dy,dz,block;...' edits relative to the player, applied once terrain is ready")
 	flag.DurationVar(&cfg.Debug.AutoTurn, "autoturn", 0, "debug: stand and turn round from this long into the game on, firing after 5 and 15 s (benchmark under real conditions)")
 	flag.Float64Var(&cfg.Debug.AutoFly, "autofly", 0, "debug: fly forward automatically at this many blocks/s (streaming stress test)")
@@ -308,7 +311,7 @@ func (g *game) start() {
 	g.Player.Flying = o.fly
 	g.Player.HotbarSize = len(g.hotbar)
 	if g.net != nil {
-		o = &options{hold: "", signFont: o.signFont, modelPack: o.modelPack, gun: o.gun} // no items, creatures or pets
+		o = &options{hold: "", signFont: o.signFont, modelPack: o.modelPack, gun: o.gun, attach: o.attach} // no items, creatures or pets
 	}
 	// the last session's renderers, freed now rather than by the garbage
 	// collector while this one draws
@@ -334,6 +337,14 @@ func (g *game) start() {
 	g.setupZombies()
 	if o.gun != "" {
 		g.selectGunID(o.gun)
+	}
+	if o.attach != "" && g.gunOn() {
+		for _, kv := range strings.Split(o.attach, ",") {
+			slot, id, _ := strings.Cut(kv, "=")
+			if err := g.refit(tacz.Slot(slot), id); err != nil {
+				log.Printf("-attach %s: %v", kv, err)
+			}
+		}
 	}
 	for _, a := range strings.Split(o.press, ",") {
 		if a != "" {

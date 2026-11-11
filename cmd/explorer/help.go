@@ -39,6 +39,7 @@ var helpLines = [][2]string{
 	{"K", "preview nearest creature's animations"},
 	{"Tab", "multiplayer ranking (hold)"},
 	{"C", "take out / put away the crossbow (LMB shoots)"},
+	{"J", "refit the gun in hand (attachments)"},
 	{"F2", "screenshot to screenshots/ (with position)"},
 	{"F3", "frame stats on stdout"},
 	{"F1", "show / hide this help"},

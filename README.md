@@ -64,7 +64,7 @@ in front of you, playing CLIP (`bind` shows the rest pose).
 **Guns and zombies.** The explorer is a zombie-apocalypse demo with every gun of the TACZ default
 pack (`assets/tacz`, kept in the pack's own formats; details and status in [docs/tacz.md](docs/tacz.md)).
 Waves of zombies come for you; each kill drops a magazine of the held gun's ammo. V takes the next
-gun, LMB fires, RMB aims, R reloads, H inspects, B switches the fire mode, Z melees, X unloads; C still swaps to the crossbow.
+gun, LMB fires, RMB aims, R reloads, H inspects, B switches the fire mode, Z melees, X unloads, J opens the refit screen (click a slot to cycle its attachments); C still swaps to the crossbow.
 Scopes magnify only inside the lens (a second, lens-clipped world render); `-full-zoom` magnifies the
 whole screen instead, as TACZ does, for slower machines. `-gun ID` starts with a gun in hand.
 
