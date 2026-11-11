@@ -154,11 +154,30 @@ func (m *Manager) Knockback(t *Actor, power, xd, zd float64) {
 	for xd*xd+zd*zd < float64(float32(1e-5)) {
 		xd, zd = (m.Rand.Float64()-m.Rand.Float64())*0.01, (m.Rand.Float64()-m.Rand.Float64())*0.01
 	}
-	l := math.Hypot(xd, zd)
 	b := t.carrier().Body
-	b.VX = b.VX/2 - xd/l*power
-	if b.OnGround {
-		b.VY = min(0.4, b.VY/2+power)
+	b.VX, b.VY, b.VZ = KnockbackMotion(b.VX, b.VY, b.VZ, b.OnGround, power, xd, zd)
+}
+
+// HurtKnockback is the knockback power LivingEntity.hurt gives a hit from
+// an attacker (TACZ's KnockBackModifier replaces it for a bullet).
+const HurtKnockback = 0.4
+
+// knockbackMaxLift caps the upward motion a knockback gives on the ground.
+const knockbackMaxLift = 0.4
+
+// KnockbackMotion is the motion after LivingEntity.knockback of power
+// (resistance already taken off) against xd, zd (pointing from the target
+// to the source, not both 0): the old motion halves and is pushed power
+// away; on the ground it is lifted by power, at most to 0.4. A power of 0
+// or less leaves the motion as it is. Bodies outside the actors (creatures,
+// multiplayer players) call this directly.
+func KnockbackMotion(vx, vy, vz float64, onGround bool, power, xd, zd float64) (float64, float64, float64) {
+	l := math.Hypot(xd, zd)
+	if power <= 0 || l == 0 {
+		return vx, vy, vz
 	}
-	b.VZ = b.VZ/2 - zd/l*power
+	if onGround {
+		vy = min(knockbackMaxLift, vy/2+power)
+	}
+	return vx/2 - xd/l*power, vy, vz/2 - zd/l*power
 }
