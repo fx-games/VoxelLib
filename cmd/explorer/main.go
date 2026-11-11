@@ -69,6 +69,9 @@ type options struct {
 	fullZoom bool
 }
 
+// attachAdapterPrefix marks a slot adapter in -attach (adapter.scope=ID).
+const attachAdapterPrefix = "adapter."
+
 func main() {
 	var (
 		o        options
@@ -102,7 +105,7 @@ func main() {
 	flag.StringVar(&o.press, "press", "", "debug: actions held down from the start, comma separated (e.g. use,attack: aim and fire)")
 	flag.BoolVar(&o.fullZoom, "full-zoom", false, "aiming magnifies the whole screen as TACZ does, instead of a second render inside scope lenses (for slower machines)")
 	flag.StringVar(&o.gun, "gun", "", "gun (a TACZ gun ID, e.g. ak47) in hand at start")
-	flag.StringVar(&o.attach, "attach", "", "debug: attachments installed on the -gun, slot=ID comma separated (e.g. scope=tacz:scope_acog_ta31; an empty ID removes one)")
+	flag.StringVar(&o.attach, "attach", "", "debug: attachments installed on the -gun in order, slot=ID comma separated (e.g. scope=tacz:scope_acog_ta31; an empty ID removes one); adapter.slot=ID selects a slot adapter")
 	flag.StringVar(&cfg.Debug.Edits, "edits", "", "debug: 'dx,dy,dz,block;...' edits relative to the player, applied once terrain is ready")
 	flag.DurationVar(&cfg.Debug.AutoTurn, "autoturn", 0, "debug: stand and turn round from this long into the game on, firing after 5 and 15 s (benchmark under real conditions)")
 	flag.Float64Var(&cfg.Debug.AutoFly, "autofly", 0, "debug: fly forward automatically at this many blocks/s (streaming stress test)")
@@ -341,7 +344,11 @@ func (g *game) start() {
 	if o.attach != "" && g.gunOn() {
 		for _, kv := range strings.Split(o.attach, ",") {
 			slot, id, _ := strings.Cut(kv, "=")
-			if err := g.refit(tacz.Slot(slot), id); err != nil {
+			install := g.refit
+			if s, ok := strings.CutPrefix(slot, attachAdapterPrefix); ok {
+				slot, install = s, g.refitAdapter
+			}
+			if err := install(tacz.Slot(slot), id); err != nil {
 				log.Printf("-attach %s: %v", kv, err)
 			}
 		}
