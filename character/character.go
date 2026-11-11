@@ -170,13 +170,17 @@ func (c *Character) ToggleFly() {
 	}
 }
 
+// PlayerMoveSpeed is the player's ground acceleration per tick at full
+// input, walking (its movementSpeed attribute base, 0.1).
+const PlayerMoveSpeed = 0.1
+
 // Movement constants (blocks/tick), from the reference's LivingEntity.travel.
 const (
 	gravity      = 0.08
 	airDrag      = 0.98 // vertical, per tick
 	groundDrag   = 0.546
 	airFriction  = 0.91
-	walkAccel    = 0.1
+	walkAccel    = PlayerMoveSpeed
 	sprintAccel  = 0.13
 	airAccel     = 0.02
 	sprintAirAcc = 0.026

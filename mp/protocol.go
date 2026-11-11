@@ -12,7 +12,7 @@ import (
 // Protocol is the netcode protocol id: "VLMP" plus a version byte. Bump the
 // version on any wire change; older peers are refused and stay invisible to
 // discovery.
-const Protocol = 0x564C4D00 | 7
+const Protocol = 0x564C4D00 | 8
 
 // DefaultPort is the server's UDP port.
 const DefaultPort = 28960
@@ -478,11 +478,12 @@ type Hold struct {
 	Choice tacz.Choice // the installed attachments (tacz.Pack.Gun)
 }
 
-// encode writes the gun and its filled slots in tacz.Slots order.
+// encode writes the gun and its filled slots (adapter, attachment) in
+// tacz.Slots order.
 func (h Hold) encode(b *wbuf) {
 	var set []tacz.Slot
 	for _, s := range tacz.Slots {
-		if h.Choice[s] != "" {
+		if h.Choice.Attachments[s] != "" || h.Choice.Adapters[s] != "" {
 			set = append(set, s)
 		}
 	}
@@ -490,19 +491,21 @@ func (h Hold) encode(b *wbuf) {
 	b.u8(uint8(len(set)))
 	for _, s := range set {
 		b.str(string(s))
-		b.str(h.Choice[s])
+		b.str(h.Choice.Adapters[s])
+		b.str(h.Choice.Attachments[s])
 	}
 }
 
 func decodeHold(r *rbuf) Hold {
 	h := Hold{Gun: r.str()}
-	n := int(r.u8())
-	if n > 0 {
-		h.Choice = tacz.Choice{}
-	}
-	for range n {
+	for range int(r.u8()) {
 		s := tacz.Slot(r.str())
-		h.Choice[s] = r.str()
+		if ad := r.str(); ad != "" {
+			h.Choice.Adapt(s, ad)
+		}
+		if att := r.str(); att != "" {
+			h.Choice.Attach(s, att)
+		}
 	}
 	return h
 }

@@ -1,7 +1,8 @@
 // Package tacz loads TACZ gun packs in their own formats: Bedrock gun
 // models and animations (played as authored by importer/bbmodel), gun and
-// ammo data mapped to weapon.Gun, slot icons and sounds. Lua state machines,
-// attachments and third-person animations are not used.
+// ammo data mapped to weapon.Gun, attachments (attach.go, modifier.go),
+// slot icons and sounds. Lua state machines and third-person animations
+// are not used.
 package tacz
 
 import (
@@ -34,8 +35,9 @@ type Pack struct {
 	Missing []string
 
 	guns     map[string]gunFiles
-	attIndex map[string]attIndex // by attachment ID
-	tags     map[string][]string // attachment tags by ID ("tacz:muzzle")
+	attIndex map[string]attIndex    // by attachment ID
+	tags     map[string][]string    // attachment tags by ID ("tacz:muzzle")
+	adapters map[string]slotAdapter // by slot adapter ID
 	defaults map[string][]*bbmodel.Animation
 }
 
@@ -95,6 +97,9 @@ func Load(pack, defaults fs.FS) (*Pack, error) {
 	}
 
 	if err := p.loadAttachmentIndex(lang, sound); err != nil {
+		return nil, err
+	}
+	if err := p.loadSlotAdapters(lang); err != nil {
 		return nil, err
 	}
 	idx, err := fs.Glob(pack, "data/tacz/index/guns/*.json")
@@ -423,10 +428,12 @@ type taczData struct {
 		Feed     struct{ Empty, Tactical float32 }
 		Cooldown struct{ Empty, Tactical float32 }
 	}
-	Draw    float32 `json:"draw_time"`
-	PutAway float32 `json:"put_away_time"`
-	Aim     float32 `json:"aim_time"`
-	Recoil  struct {
+	Draw      float32          `json:"draw_time"`
+	PutAway   float32          `json:"put_away_time"`
+	Aim       float32          `json:"aim_time"`
+	Weight    float32          `json:"weight"`
+	MoveSpeed weapon.MoveSpeed `json:"movement_speed"`
+	Recoil    struct {
 		Pitch, Yaw []struct {
 			Time  float32
 			Value [2]float32
@@ -498,6 +505,7 @@ func (d *taczData) spec(id, name, class string) (weapon.Gun, error) {
 	r.FeedEmpty, r.FeedTactical = d.Reload.Feed.Empty, d.Reload.Feed.Tactical
 	r.DoneEmpty, r.DoneTactical = d.Reload.Cooldown.Empty, d.Reload.Cooldown.Tactical
 	g.Draw, g.PutAway, g.Aim = d.Draw, d.PutAway, d.Aim
+	g.Weight, g.MoveSpeed = d.Weight, d.MoveSpeed
 	for _, k := range d.Recoil.Pitch {
 		g.Recoil.Pitch = append(g.Recoil.Pitch, weapon.RecoilKey{T: k.Time, Min: k.Value[0], Max: k.Value[1]})
 	}

@@ -19,6 +19,7 @@ import (
 	"github.com/go-gl/mathgl/mgl32"
 	"github.com/memmaker/voxellib/app"
 	"github.com/memmaker/voxellib/audio"
+	"github.com/memmaker/voxellib/character"
 	"github.com/memmaker/voxellib/importer/cuboid"
 	"github.com/memmaker/voxellib/importer/tacz"
 	"github.com/memmaker/voxellib/model"
@@ -312,6 +313,7 @@ func cameraAt(world []mgl32.Mat4, b int) mgl32.Mat4 {
 
 // tickGun runs the held gun's cycle for one tick.
 func (g *game) tickGun() {
+	g.Player.MoveSpeed = 0 // default unless a gun is held
 	if !g.gunOn() {
 		return
 	}
@@ -329,6 +331,8 @@ func (g *game) tickGun() {
 	} else {
 		g.aim = max(g.aim-g.aimStep(), 0)
 	}
+	// LivingEntitySpeedModifier: the gun's weight and movement_speed.
+	g.Player.MoveSpeed = character.PlayerMoveSpeed * float64(g.gun.Gun.SpeedFactor(aiming, g.gun.Phase == firearm.Reloading))
 	in := firearm.GunInput{
 		Trigger:  g.Input.Down(app.ActAttack) && !g.ScreenOpen(),
 		Reload:   g.Input.Down("reload"),

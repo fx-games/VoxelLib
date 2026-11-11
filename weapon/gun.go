@@ -171,6 +171,38 @@ type Gun struct {
 	Unload bool `json:"unload,omitempty"`
 	// Silence is the installed muzzle attachment's; nil: none silences the gun.
 	Silence *Silence `json:"silence,omitempty"`
+	// Weight (kg, with the installed attachments') and MoveSpeed slow the
+	// holder (SpeedFactor).
+	Weight    float32   `json:"weight,omitempty"`
+	MoveSpeed MoveSpeed `json:"move_speed"`
+}
+
+// MoveSpeed is a gun data's movement_speed (TACZ MoveSpeed): the holder's
+// extra speed fraction normally, while aiming and while reloading.
+type MoveSpeed struct {
+	Base   float32 `json:"base"`
+	Aim    float32 `json:"aim"`
+	Reload float32 `json:"reload"`
+}
+
+// WeightSpeedMultiplier is the speed fraction a kilogram takes off (TACZ
+// SyncConfig WeightSpeedMultiplier's default).
+const WeightSpeedMultiplier = 0.015
+
+// SpeedFactor scales the holder's movement speed as TACZ's
+// LivingEntitySpeedModifier does: the weight's MULTIPLY_BASE modifier
+// (-Weight·WeightSpeedMultiplier) times MoveSpeed's MULTIPLY_TOTAL one
+// (Reload while reloading, else Aim while aiming, else Base); the
+// attribute never goes below 0.
+func (g *Gun) SpeedFactor(aiming, reloading bool) float32 {
+	extra := g.MoveSpeed.Base
+	switch {
+	case reloading:
+		extra = g.MoveSpeed.Reload
+	case aiming:
+		extra = g.MoveSpeed.Aim
+	}
+	return max(0, (1-g.Weight*WeightSpeedMultiplier)*(1+extra))
 }
 
 // MeleeKind is which melee a gun does (its animation and sound).

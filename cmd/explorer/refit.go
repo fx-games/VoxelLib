@@ -9,7 +9,6 @@ package main
 import (
 	"fmt"
 	"log"
-	"maps"
 	"slices"
 	"strings"
 
@@ -39,10 +38,28 @@ func (g *game) gunChoice(id string) tacz.Choice {
 // refit installs attachment att ("": none) in a slot of the held gun and
 // rebuilds its view, keeping the gun's state.
 func (g *game) refit(slot tacz.Slot, att string) error {
+	c := g.gunChoice(g.gun.Gun.ID).Clone()
+	c.Attach(slot, att)
+	return g.applyChoice(slot, c)
+}
+
+// refitAdapter selects slot adapter ad ("": none) for a slot of the held
+// gun; an installed attachment the adapter doesn't take comes off.
+func (g *game) refitAdapter(slot tacz.Slot, ad string) error {
 	id := g.gun.Gun.ID
-	c := maps.Clone(g.gunChoice(id))
-	old := c[slot]
-	c[slot] = att
+	c := g.gunChoice(id).Clone()
+	c.Adapt(slot, ad)
+	if !slices.Contains(g.gunPack.Allowed(id, slot, ad), c.Attachments[slot]) {
+		c.Attach(slot, "")
+	}
+	return g.applyChoice(slot, c)
+}
+
+// applyChoice refits the held gun with c, which changed slot, and plays the
+// slot's install or uninstall sound.
+func (g *game) applyChoice(slot tacz.Slot, c tacz.Choice) error {
+	id := g.gun.Gun.ID
+	old, att := g.gunChoice(id).Attachments[slot], c.Attachments[slot]
 	if _, err := g.gunPack.Gun(id, c); err != nil {
 		return err
 	}
@@ -58,9 +75,11 @@ func (g *game) refit(slot tacz.Slot, att string) error {
 	g.gun = st
 	g.sounds.preload(&v.spec)
 	g.sendHold()
-	if att != "" {
+	switch {
+	case att == old:
+	case att != "":
 		g.refitSound(att, tacz.SoundInstall)
-	} else {
+	default:
 		g.refitSound(old, tacz.SoundUninstall)
 	}
 	return nil
@@ -79,8 +98,10 @@ func (g *game) openRefit() {
 	id := g.gun.Gun.ID
 	var evs []string
 	for _, s := range g.gunPack.AttachmentSlots(id) {
-		for _, a := range g.gunPack.Allowed(id, s) {
-			evs = append(evs, g.gunPack.AttachmentSound(a, tacz.SoundInstall), g.gunPack.AttachmentSound(a, tacz.SoundUninstall))
+		for _, ad := range append([]string{""}, g.gunPack.SlotAdapters(id, s)...) {
+			for _, a := range g.gunPack.Allowed(id, s, ad) {
+				evs = append(evs, g.gunPack.AttachmentSound(a, tacz.SoundInstall), g.gunPack.AttachmentSound(a, tacz.SoundUninstall))
+			}
 		}
 	}
 	g.sounds.preloadEvents(evs)
@@ -100,25 +121,33 @@ func (s *refitScreen) Init(ctx *ui.Context) {
 	id := g.gun.Gun.ID
 	c := g.gunChoice(id)
 	x := ctx.W/2 - refitButtonW/2
-	for i, slot := range g.gunPack.AttachmentSlots(id) {
-		allowed := g.gunPack.Allowed(id, slot)
-		cur := c[slot]
+	row := 0
+	// button cycles cur through options: the next after it; after the last, none.
+	button := func(title, cur string, options []string, name func(string) string, set func(string) error) {
 		label := "None"
 		if cur != "" {
-			label = g.gunPack.AttachmentName(cur)
+			label = name(cur)
 		}
-		s.Add(ui.NewButton(x, refitTop+i*refitRow, refitButtonW, fmt.Sprintf("%s: %s", slotTitle(slot), label), func() {
-			// The next allowed attachment after the current one; after the last, none.
+		s.Add(ui.NewButton(x, refitTop+row*refitRow, refitButtonW, fmt.Sprintf("%s: %s", title, label), func() {
 			next := ""
-			if k := slices.Index(allowed, cur); k+1 < len(allowed) {
-				next = allowed[k+1]
+			if k := slices.Index(options, cur); k+1 < len(options) {
+				next = options[k+1]
 			}
-			if err := g.refit(slot, next); err != nil {
+			if err := set(next); err != nil {
 				log.Printf("refit: %v", err)
 				s.status = "§c" + err.Error()
 			}
 			s.Init(ctx)
 		}))
+		row++
+	}
+	for _, slot := range g.gunPack.AttachmentSlots(id) {
+		if ads := g.gunPack.SlotAdapters(id, slot); len(ads) > 0 {
+			button(slotTitle(slot)+" adapter", c.Adapters[slot], ads, g.gunPack.SlotAdapterName,
+				func(ad string) error { return g.refitAdapter(slot, ad) })
+		}
+		button(slotTitle(slot), c.Attachments[slot], g.gunPack.Allowed(id, slot, c.Adapters[slot]), g.gunPack.AttachmentName,
+			func(att string) error { return g.refit(slot, att) })
 	}
 	s.Add(ui.NewButton(x, ctx.H-28, refitButtonW, ctx.T("gui.done"), func() { ctx.Screens.Back() }))
 }

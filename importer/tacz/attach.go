@@ -20,14 +20,16 @@ import (
 // Attachments, as TACZ's refit screen installs them: a gun allows the
 // attachments its allow_attachments tag list expands to (tacz_tags), of the
 // types in its allow_attachment_types. A Choice names the attachment
-// installed in each slot; its data (extended magazine level, silence)
-// changes the gun's spec. A slot without one shows its builtin display
-// attachment (data not applied). The default choice is builtin_attachments'
-// default_attached. As BedrockGunModel draws them: an adapter child of
-// attachment_adapter, the attachment's model in the <type>_pos bone frame
-// (grafted into the gun model, so it animates with the gun), and the bones
-// that depend on the slots shown or hidden. Slot adapters (risers) and the
-// other data modifiers (ads, recoil, inaccuracy, ammo mods) are not used.
+// installed in each slot and the slot adapter (riser) selected for it; the
+// installed attachments' data (modifier.go: extended magazine level,
+// silence, melee and the modifiers) changes the gun's spec. A slot without
+// one shows its builtin display attachment (data not applied). The default
+// choice is builtin_attachments' default_attached. As BedrockGunModel and
+// AttachmentRender draw them: an adapter child of attachment_adapter, the
+// slot adapter's model in the <type>_pos bone frame and the attachment's
+// model above it by the adapter's mount_offset (grafted into the gun model,
+// so they animate with the gun), and the bones that depend on the slots
+// shown or hidden. Attachment variants are not used (the pack has none).
 
 // Slot is an attachment type (TACZ AttachmentType, lower case as in the files).
 type Slot string
@@ -44,17 +46,42 @@ const (
 // Slots lists the slot types in refit screen order.
 var Slots = []Slot{SlotScope, SlotMuzzle, SlotStock, SlotGrip, SlotLaser, SlotExtendedMag}
 
-// Choice is the attachment ID installed per slot; a slot left out (or "")
-// has none.
-type Choice map[Slot]string
+// Choice is what a gun is refitted with; a slot left out (or "") has none.
+type Choice struct {
+	Attachments map[Slot]string // installed attachment ID by slot
+	// Adapters is the slot adapter ID selected by slot (SlotAdapterHelper's
+	// SlotAdapters tag): its allowed_attachments replace the gun's for the slot.
+	Adapters map[Slot]string
+}
+
+// Clone is a copy of c that shares no maps with it.
+func (c Choice) Clone() Choice {
+	return Choice{Attachments: maps.Clone(c.Attachments), Adapters: maps.Clone(c.Adapters)}
+}
+
+// Attach installs attachment id ("": none) in slot s.
+func (c *Choice) Attach(s Slot, id string) {
+	if c.Attachments == nil {
+		c.Attachments = map[Slot]string{}
+	}
+	c.Attachments[s] = id
+}
+
+// Adapt selects slot adapter id ("": none) for slot s.
+func (c *Choice) Adapt(s Slot, id string) {
+	if c.Adapters == nil {
+		c.Adapters = map[Slot]string{}
+	}
+	c.Adapters[s] = id
+}
 
 // Key is the choice as a string, equal for equal choices (empty slots
 // ignored): a map key for things built per choice.
 func (c Choice) Key() string {
 	var b strings.Builder
 	for _, s := range Slots {
-		if c[s] != "" {
-			fmt.Fprintf(&b, "%s=%s;", s, c[s])
+		if c.Attachments[s] != "" || c.Adapters[s] != "" {
+			fmt.Fprintf(&b, "%s=%s+%s;", s, c.Adapters[s], c.Attachments[s])
 		}
 	}
 	return b.String()
@@ -117,6 +144,114 @@ type attachment struct {
 	melee    *taczMelee      // installed only: the attachment's melee (bayonets, stocks); nil: none
 	// scope, sight: the display's lens kinds (BedrockAttachmentModel isScope/isSight).
 	scope, sight bool
+	mods         attMods      // installed only
+	slotAdapter  *slotAdapter // the slot adapter it sits on (SlotAdapterHelper.getEffectiveSlotAdapter); nil: none
+}
+
+// slotAdapter is a slot adapter (CommonSlotAdapterIndex, ClientSlotAdapterIndex).
+type slotAdapter struct {
+	name           string
+	slot           Slot
+	allowed        []string // allowed_attachments: attachment IDs and #tags
+	sort           int
+	model, texture string  // "" for none
+	lift           float32 // mount_offset's y (pixels): the attachment sits this much higher
+}
+
+// Slot adapter sort bounds (CommonSlotAdapterIndex.checkIndex).
+const maxAdapterSort = 65536
+
+// adapterTagPrefix marks the allow-list tags that list slot adapters
+// (SlotAdapterHelper.ADAPTER_TAG_PATH_PREFIX).
+const adapterTagPrefix = "adapter/"
+
+// adapterBone prefixes a grafted slot adapter's bones (after the slot type).
+const adapterBone = "adapter/"
+
+// loadSlotAdapters reads every slot adapter's index and display.
+func (p *Pack) loadSlotAdapters(lang map[string]string) error {
+	p.adapters = map[string]slotAdapter{}
+	files, err := fs.Glob(p.FS, "data/*/index/slot_adapters/*.json")
+	if err != nil {
+		return err
+	}
+	for _, f := range files {
+		var in struct {
+			Name, Display, Data string
+			Slot                Slot
+			Allowed             []string `json:"allowed_attachments"`
+			Sort                int
+		}
+		if err := readJSON(p.FS, f, &in); err != nil {
+			return err
+		}
+		if !slices.Contains(Slots, in.Slot) {
+			return fmt.Errorf("%s: slot %q", f, in.Slot)
+		}
+		if _, err := fs.Stat(p.FS, dataPath("slot_adapters", in.Data)); err != nil { // checkData: required, its content unused (SlotAdapterData has no fields)
+			return fmt.Errorf("%s: %w", f, err)
+		}
+		var disp struct {
+			Model, Texture string
+			Offset         [3]float32 `json:"mount_offset"`
+		}
+		dispFile := asset("display/slot_adapters", in.Display) + ".json"
+		if err := readJSON(p.FS, dispFile, &disp); err != nil {
+			return err
+		}
+		if disp.Offset[0] != 0 || disp.Offset[2] != 0 {
+			return fmt.Errorf("%s: mount_offset %v: only a vertical offset is supported", dispFile, disp.Offset)
+		}
+		a := slotAdapter{name: lang[in.Name], slot: in.Slot, allowed: in.Allowed, sort: min(max(in.Sort, 0), maxAdapterSort), lift: disp.Offset[1]}
+		if disp.Model != "" && disp.Texture != "" {
+			a.model, a.texture = asset("geo_models", disp.Model)+".json", asset("textures", disp.Texture)+".png"
+		}
+		ns := strings.Split(f, "/")[1]
+		p.adapters[ns+":"+strings.TrimSuffix(path.Base(f), ".json")] = a
+	}
+	return nil
+}
+
+// SlotAdapters lists the slot adapters a gun takes in a slot, by sort then
+// ID (SlotAdapterHelper.getAvailableSlotAdapters: the gun's allow-list tags
+// under adapter/, expanded through nested tags).
+func (p *Pack) SlotAdapters(gun string, s Slot) []string {
+	if f, ok := p.guns[gun]; !ok || !slices.Contains(f.allow, s) {
+		return nil
+	}
+	var roots []string
+	for _, e := range p.tags[allowTag(gun)] {
+		if tag, ok := strings.CutPrefix(e, tagPrefix); ok {
+			if _, path := split(tag); strings.HasPrefix(path, adapterTagPrefix) {
+				roots = append(roots, e)
+			}
+		}
+	}
+	ids := map[string]bool{}
+	p.expandTag(roots, ids, map[string]bool{})
+	var out []string
+	for id := range ids {
+		if a, ok := p.adapters[id]; ok && a.slot == s {
+			out = append(out, id)
+		}
+	}
+	slices.SortFunc(out, func(a, b string) int {
+		if d := p.adapters[a].sort - p.adapters[b].sort; d != 0 {
+			return d
+		}
+		return strings.Compare(a, b)
+	})
+	return out
+}
+
+// SlotAdapterName is a slot adapter's display name.
+func (p *Pack) SlotAdapterName(id string) string { return p.adapters[id].name }
+
+// adapterAllows is CommonSlotAdapterIndex.allowsAttachment.
+func (p *Pack) adapterAllows(adapter, att string) bool {
+	ids := map[string]bool{}
+	p.expandTag(p.adapters[adapter].allowed, ids, map[string]bool{})
+	return ids[att]
 }
 
 // parseBuiltin reads a builtin_attachments entry.
@@ -209,22 +344,28 @@ func (p *Pack) expandTag(list []string, out, visited map[string]bool) {
 func (p *Pack) AttachmentSlots(gun string) []Slot {
 	var out []Slot
 	for _, s := range Slots {
-		if len(p.Allowed(gun, s)) > 0 {
+		if len(p.Allowed(gun, s, "")) > 0 || len(p.SlotAdapters(gun, s)) > 0 {
 			out = append(out, s)
 		}
 	}
 	return out
 }
 
-// Allowed lists the attachment IDs a gun takes in a slot, sorted (none when
-// allow_attachment_types leaves the slot out).
-func (p *Pack) Allowed(gun string, s Slot) []string {
+// Allowed lists the attachment IDs a gun takes in a slot with slot adapter
+// adapter ("": none), sorted (SlotAdapterHelper.allowsAttachment: the
+// adapter's allowed_attachments, else the gun's; none when
+// allow_attachment_types leaves the slot out or the gun doesn't take the adapter).
+func (p *Pack) Allowed(gun string, s Slot, adapter string) []string {
 	f, ok := p.guns[gun]
 	if !ok || !slices.Contains(f.allow, s) {
 		return nil
 	}
 	ids := map[string]bool{}
-	p.expandTag(p.tags[allowTag(gun)], ids, map[string]bool{})
+	if adapter == "" {
+		p.expandTag(p.tags[allowTag(gun)], ids, map[string]bool{})
+	} else if slices.Contains(p.SlotAdapters(gun, s), adapter) {
+		p.expandTag(p.adapters[adapter].allowed, ids, map[string]bool{})
+	}
 	var out []string
 	for id := range ids {
 		if a, ok := p.attIndex[id]; ok && a.slot == s {
@@ -240,7 +381,7 @@ func (p *Pack) DefaultChoice(gun string) Choice {
 	c := Choice{}
 	for s, b := range p.guns[gun].builtin {
 		if b.installed != "" {
-			c[s] = b.installed
+			c.Attach(s, b.installed)
 		}
 	}
 	return c
@@ -259,14 +400,19 @@ func (p *Pack) shown(gun string, c Choice) (map[Slot]attachment, error) {
 	if !ok {
 		return nil, fmt.Errorf("tacz: no gun %q", gun)
 	}
-	for s, id := range c {
-		if id != "" && !slices.Contains(p.Allowed(gun, s), id) {
+	for s, id := range c.Adapters {
+		if id != "" && !slices.Contains(p.SlotAdapters(gun, s), id) {
+			return nil, fmt.Errorf("%s: %s slot does not take slot adapter %q", gun, s, id)
+		}
+	}
+	for s, id := range c.Attachments {
+		if id != "" && !slices.Contains(p.Allowed(gun, s, c.Adapters[s]), id) {
 			return nil, fmt.Errorf("%s: %s slot does not take %q", gun, s, id)
 		}
 	}
 	out := map[Slot]attachment{}
 	for _, s := range Slots {
-		id, installed := c[s], true
+		id, installed := c.Attachments[s], true
 		if id == "" {
 			id, installed = f.builtin[s].display, false
 		}
@@ -279,6 +425,10 @@ func (p *Pack) shown(gun string, c Choice) (map[Slot]attachment, error) {
 		a, err := p.attachment(id, f.exclusive[id], installed)
 		if err != nil {
 			return nil, fmt.Errorf("%s: %s: %w", gun, s, err)
+		}
+		if ad := c.Adapters[s]; ad != "" && p.adapterAllows(ad, id) {
+			sa := p.adapters[ad]
+			a.slotAdapter = &sa
 		}
 		out[s] = a
 	}
@@ -319,18 +469,27 @@ func (p *Pack) attachment(id string, exclusive json.RawMessage, installed bool) 
 			UseSilenceSound bool `json:"use_silence_sound"`
 		}
 	}
-	if exclusive != nil {
-		if err := json.Unmarshal(exclusive, &data); err != nil {
-			return attachment{}, fmt.Errorf("exclusive_attachments %s: %w", id, err)
+	raw, src := []byte(exclusive), "exclusive_attachments "+id
+	if exclusive == nil {
+		src = dataPath("attachments", index.data)
+		b, err := fs.ReadFile(p.FS, src)
+		if err != nil {
+			return attachment{}, err
 		}
-	} else if err := readJSON(p.FS, dataPath("attachments", index.data), &data); err != nil {
-		return attachment{}, err
+		raw = Clean(b)
+	}
+	if err := json.Unmarshal(raw, &data); err != nil {
+		return attachment{}, fmt.Errorf("%s: %w", src, err)
 	}
 	a := attachment{id: id, adapter: disp.Adapter, showMount: disp.ShowMount == nil || *disp.ShowMount,
 		showMuzzle: disp.ShowMuzzle, idleAdjust: disp.IdleAdjust, magLevel: min(max(data.MagLevel, 0), maxMagLevel),
 		scope: disp.Scope, sight: disp.Sight}
 	if installed {
 		a.melee = data.Melee
+		var err error
+		if a.mods, err = parseMods(raw); err != nil {
+			return attachment{}, fmt.Errorf("%s: %w", src, err)
+		}
 	}
 	if sl := data.Silence; sl != nil && installed {
 		a.silence = &weapon.Silence{DistanceAddend: sl.DistanceAddend, UseSilenceSound: sl.UseSilenceSound}
@@ -362,9 +521,10 @@ func (p *Pack) attachment(id string, exclusive json.RawMessage, installed bool) 
 
 // Gun is a gun's spec with a choice of attachments: the shown scope's zoom,
 // hand FOV and view bone, the installed extended magazine's capacity
-// (extended_mag_ammo_amount), the installed muzzle's silence and the melee
-// (gunMelee: the installed muzzle's, else stock's, else the gun's). Pack.Guns
-// holds each gun's with its DefaultChoice.
+// (extended_mag_ammo_amount), the installed muzzle's silence, the melee
+// (gunMelee: the installed muzzle's, else stock's, else the gun's) and the
+// installed attachments' modifiers (applyMods). Pack.Guns holds each gun's
+// with its DefaultChoice.
 func (p *Pack) Gun(id string, c Choice) (weapon.Gun, error) {
 	atts, err := p.shown(id, c)
 	if err != nil {
@@ -382,15 +542,24 @@ func (p *Pack) Gun(id string, c Choice) (weapon.Gun, error) {
 			spec.IdleRaise = sc.idleAdjust / 16
 		}
 	}
-	if c[SlotExtendedMag] != "" { // AttachmentDataUtils.getAmmoCountWithAttachment
+	if c.Attachments[SlotExtendedMag] != "" { // AttachmentDataUtils.getAmmoCountWithAttachment
 		if l := atts[SlotExtendedMag].magLevel; l > 0 && len(f.extMag) >= l {
 			spec.Mag = f.extMag[l-1]
 		}
 	}
-	if c[SlotMuzzle] != "" {
+	if c.Attachments[SlotMuzzle] != "" {
 		spec.Silence = atts[SlotMuzzle].silence
 	}
 	spec.Melee = gunMelee(f.melee, atts)
+	var mods []attMods // AttachmentDataUtils.getAllAttachmentData: the installed ones, by slot
+	for _, s := range Slots {
+		if c.Attachments[s] != "" {
+			mods = append(mods, atts[s].mods)
+		}
+	}
+	if err := applyMods(&spec, mods); err != nil {
+		return weapon.Gun{}, fmt.Errorf("%s: %w", id, err)
+	}
 	return spec, nil
 }
 
@@ -424,37 +593,61 @@ func graftName(slot Slot, bone string) string { return string(slot) + "/" + bone
 
 // graftAttachments parses each shown attachment's model and grafts it on
 // its slot's <type>_pos bone (after the gun's clips are bound: they never
-// address grafted bones).
+// address grafted bones): first its slot adapter's model, if any, then the
+// attachment raised by the adapter's mount_offset (AttachmentRender).
 func (p *Pack) graftAttachments(m *model.Model, atts map[Slot]attachment) error {
 	for slot, a := range atts {
-		if a.model == "" {
-			continue
-		}
 		pos := m.Bone(string(slot) + "_pos")
 		if pos < 0 {
 			continue // the gun has no place for it (TACZ draws nothing either)
 		}
-		tex, err := readPNG(p.FS, a.texture)
-		if err != nil {
-			return err
+		var lift float32
+		if sa := a.slotAdapter; sa != nil {
+			lift = sa.lift / 16
+			if sa.model != "" {
+				if err := p.graft(m, pos, sa.model, sa.texture, slot, adapterBone, 0); err != nil {
+					return err
+				}
+			}
 		}
-		geo, err := fs.ReadFile(p.FS, a.model)
-		if err != nil {
-			return err
-		}
-		subs, err := bbmodel.ParseGeometry(geo, func(string) image.Image { return tex })
-		if err != nil {
-			return fmt.Errorf("%s: %w", a.model, err)
-		}
-		sub := subs[0]
-		for i := range sub.Bones {
-			sub.Bones[i].Name = graftName(slot, sub.Bones[i].Name)
-		}
-		if err := m.Graft(pos, sub); err != nil {
-			return err
+		if a.model != "" {
+			if err := p.graft(m, pos, a.model, a.texture, slot, "", lift); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
+}
+
+// graft parses a geometry file and grafts it on bone pos of m, raised by
+// lift blocks, its bones named graftName(slot, prefix+name).
+func (p *Pack) graft(m *model.Model, pos int, geoFile, texFile string, slot Slot, prefix string, lift float32) error {
+	tex, err := readPNG(p.FS, texFile)
+	if err != nil {
+		return err
+	}
+	geo, err := fs.ReadFile(p.FS, geoFile)
+	if err != nil {
+		return err
+	}
+	subs, err := bbmodel.ParseGeometry(geo, func(string) image.Image { return tex })
+	if err != nil {
+		return fmt.Errorf("%s: %w", geoFile, err)
+	}
+	sub := subs[0]
+	for i := range sub.Bones {
+		b := &sub.Bones[i]
+		b.Name = graftName(slot, prefix+b.Name)
+		if b.Parent < 0 {
+			b.T[1] += lift
+		}
+	}
+	for mi := range sub.Meshes {
+		for vi := range sub.Meshes[mi].Verts {
+			sub.Meshes[mi].Verts[vi].Pos[1] += lift
+		}
+	}
+	return m.Graft(pos, sub)
 }
 
 // hiddenBone reports whether BedrockGunModel's functional renderers hide a

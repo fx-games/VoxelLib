@@ -25,11 +25,13 @@ func TestShotEncoding(t *testing.T) {
 		t.Fatalf("got %+v (%v), want %+v", out, r.err, in)
 	}
 	info := PlayerInfo{Slot: 2, Joined: true, Name: "a", Team: TeamRed,
-		Held: Hold{Gun: "tacz:ak47", Choice: tacz.Choice{tacz.SlotMuzzle: "tacz:muzzle_silencer_ursus", tacz.SlotScope: ""}}}
+		Held: Hold{Gun: "tacz:ak47", Choice: tacz.Choice{
+			Attachments: map[tacz.Slot]string{tacz.SlotMuzzle: "tacz:muzzle_silencer_ursus", tacz.SlotScope: "", tacz.SlotGrip: "tacz:grip_x"},
+			Adapters:    map[tacz.Slot]string{tacz.SlotGrip: "tacz:riser"}}}}
 	r = rbuf{p: info.encode()[1:]}
 	got := decodePlayerInfo(&r)
-	if r.err != nil || got.Held.Gun != info.Held.Gun || got.Team != info.Team || len(got.Held.Choice) != 1 ||
-		got.Held.Choice[tacz.SlotMuzzle] != info.Held.Choice[tacz.SlotMuzzle] {
+	if r.err != nil || got.Held.Gun != info.Held.Gun || got.Team != info.Team || got.Held.Choice.Key() != info.Held.Choice.Key() ||
+		len(got.Held.Choice.Attachments) != 2 || got.Held.Choice.Adapters[tacz.SlotGrip] != "tacz:riser" {
 		t.Fatalf("got %+v (%v)", got, r.err)
 	}
 }
@@ -38,14 +40,15 @@ func TestShotEncoding(t *testing.T) {
 // everyone's PlayerInfo; the server deals the resolved spec's damage, and a
 // hold the resolver rejects is ignored.
 func TestHoldChoice(t *testing.T) {
-	const id, silencer = "test:rifle", "test:silencer"
+	const id, silencer, riser = "test:rifle", "test:silencer", "test:riser"
 	resolve := func(gid string, c tacz.Choice) (weapon.Gun, error) {
-		if gid != id || (c[tacz.SlotMuzzle] != "" && c[tacz.SlotMuzzle] != silencer) {
+		m := c.Attachments[tacz.SlotMuzzle]
+		if gid != id || (m != "" && m != silencer) || (c.Adapters[tacz.SlotMuzzle] != "" && c.Adapters[tacz.SlotMuzzle] != riser) {
 			return weapon.Gun{}, fmt.Errorf("not allowed: %v", c)
 		}
 		g := weapon.Gun{ID: id}
 		g.Bullet.Damage, g.Bullet.Pellets = 3, 1
-		if c[tacz.SlotMuzzle] == silencer {
+		if m == silencer {
 			g.Bullet.Damage = 5
 		}
 		return g, nil
@@ -62,12 +65,15 @@ func TestHoldChoice(t *testing.T) {
 	a := newBot(t, s.Addr().String(), "A", netcode.Config{})
 	b := newBot(t, s.Addr().String(), "B", netcode.Config{})
 	step := func() { a.step(0, 0, false); b.step(0, 0, false) }
-	a.c.SendHold(Hold{Gun: id, Choice: tacz.Choice{tacz.SlotMuzzle: silencer}})
+	held := tacz.Choice{}
+	held.Adapt(tacz.SlotMuzzle, riser)
+	held.Attach(tacz.SlotMuzzle, silencer)
+	a.c.SendHold(Hold{Gun: id, Choice: held})
 	run(t, 3*time.Second, nil, func(int) bool {
 		step()
-		return a.c.Ready() && b.c.Ready() && b.c.Info[a.c.Slot()].Held.Choice[tacz.SlotMuzzle] == silencer
+		return a.c.Ready() && b.c.Ready() && b.c.Info[a.c.Slot()].Held.Choice.Key() == held.Key()
 	})
-	a.c.SendHold(Hold{Gun: id, Choice: tacz.Choice{tacz.SlotMuzzle: "test:bogus"}}) // rejected: stays silenced
+	a.c.SendHold(Hold{Gun: id, Choice: tacz.Choice{Attachments: map[tacz.Slot]string{tacz.SlotMuzzle: silencer}, Adapters: map[tacz.Slot]string{tacz.SlotMuzzle: "test:bogus"}}}) // rejected: stays silenced
 	s.call(func() { s.players[b.c.Slot()].protect = 0 })
 	ex, ey, ez := a.ch.Eye()
 	pitch := math.Atan2(b.ch.Y+1-ey, math.Hypot(b.ch.X-ex, b.ch.Z-ez))
@@ -79,7 +85,7 @@ func TestHoldChoice(t *testing.T) {
 	if h := b.hits[0]; h.Damage != 5 {
 		t.Fatalf("hit %+v, want the silenced spec's 5", h)
 	}
-	if c := b.c.Info[a.c.Slot()].Held.Choice; c[tacz.SlotMuzzle] != silencer {
+	if c := b.c.Info[a.c.Slot()].Held.Choice; c.Key() != held.Key() {
 		t.Fatalf("rejected hold reached the others: %v", c)
 	}
 }
