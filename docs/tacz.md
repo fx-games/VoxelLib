@@ -25,4 +25,6 @@ is the gun cycle (draw, idle, shoot, bolt, reload magazine/tube/inventory, inspe
 - [x] audio: pack sounds (cues per clip, shoot, dry); 172 cues name sounds missing from the pack
 - [x] runtime bone visibility: bullet_in_mag/bullet_in_barrel/bullet_chain with ammo, additional_magazine while keyed
 - [ ] explorer: zombies (hostile, waves), ammo loot
-- [ ] later: muzzle flash, shells, attachments (builtin stocks on AK etc. are currently stripped), minigun heat
+- [x] muzzle flash and smoke: TACZ "renew" particle definitions on the particles package (hand space + world)
+- [x] animation tracks: static_idle base, main track override, blended shoot per shot (model.Animator layers)
+- [ ] later: shells, attachments (builtin stocks on AK etc. are currently stripped), minigun heat

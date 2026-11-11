@@ -119,12 +119,31 @@ func CatmullRomVec(p0, p1, p2, p3 mgl32.Vec4, t float32) mgl32.Vec4 {
 	return out
 }
 
+// Layer is a clip played over the Animator's Clip, like a TACZ animation
+// track: layers apply in order, each to the channels its clip has. A layer
+// without Blend sets those channels (additive channels relative to the
+// bind pose, as the base clip does), overriding layers below; a Blend layer
+// adds its values to the pose so far (translations and rotations add,
+// scales multiply). Its Time is advanced by the caller.
+type Layer struct {
+	Clip  *Clip // nil: off
+	Time  float32
+	Blend bool
+}
+
+// Done reports whether the layer is off or its clip has played once through.
+func (l *Layer) Done() bool {
+	return l.Clip == nil || l.Clip.Loop != LoopRepeat && l.Time >= l.Clip.Length
+}
+
 // Animator plays clips on a model and produces skinning matrices.
 type Animator struct {
 	Model *Model
 	Clip  *Clip
 	Time  float32
-	Speed float32 // playback rate, 1 = normal
+	// Layers play over Clip in order.
+	Layers []Layer
+	Speed  float32 // playback rate, 1 = normal
 	// Fade blends from the previous pose over FadeTime seconds.
 	prev     []pose
 	fade     float32
@@ -164,6 +183,17 @@ func (a *Animator) Play(name string, restart bool) bool {
 	return true
 }
 
+// FadeFrom blends from the current pose over d seconds (a TACZ track
+// transition), whatever changes next.
+func (a *Animator) FadeFrom(d float32) {
+	if d <= 0 || len(a.poses) != len(a.Model.Bones) {
+		a.fade = 0
+		return
+	}
+	a.prev = append(a.prev[:0], a.poses...)
+	a.fade, a.FadeTime = d, d
+}
+
 // Done reports whether a LoopOnce clip has finished.
 func (a *Animator) Done() bool {
 	return a.Clip != nil && a.Clip.Loop != LoopRepeat && a.Time >= a.Clip.Length
@@ -199,28 +229,9 @@ func (a *Animator) Skin(dst []mgl32.Mat4) []mgl32.Mat4 {
 		a.poses[i] = pose{b.T, b.R, b.S}
 		euler[i].t = b.Euler
 	}
-	if c := a.Clip; c != nil {
-		for _, ch := range c.Channels {
-			if ch.Bone < 0 || ch.Bone >= n {
-				continue
-			}
-			v := ch.Track.Sample(a.Time)
-			p := &a.poses[ch.Bone]
-			switch {
-			case ch.Target == Translation && ch.Additive:
-				p.t = p.t.Add(v.Vec3())
-			case ch.Target == Translation:
-				p.t = v.Vec3()
-			case ch.Target == Rotation && ch.Additive:
-				euler[ch.Bone].t = euler[ch.Bone].t.Add(v.Vec3())
-			case ch.Target == Rotation:
-				p.r = mgl32.Quat{W: v[3], V: v.Vec3()}.Normalize()
-			case ch.Target == Scale && ch.Additive:
-				p.s = mgl32.Vec3{p.s[0] * v[0], p.s[1] * v[1], p.s[2] * v[2]}
-			case ch.Target == Scale:
-				p.s = v.Vec3()
-			}
-		}
+	a.apply(a.Clip, a.Time, false, euler)
+	for _, l := range a.Layers {
+		a.apply(l.Clip, l.Time, l.Blend, euler)
 	}
 	for i, b := range m.Bones {
 		if b.UseEuler {
@@ -252,6 +263,47 @@ func (a *Animator) Skin(dst []mgl32.Mat4) []mgl32.Mat4 {
 		dst[i] = root.Mul4(a.world[i]).Mul4(b.InvBind)
 	}
 	return dst
+}
+
+// apply poses the channels of clip c at time t (see Layer for blend).
+// euler holds the Euler accumulators of UseEuler bones in .t.
+func (a *Animator) apply(c *Clip, t float32, blend bool, euler []pose) {
+	if c == nil {
+		return
+	}
+	bones, n := a.Model.Bones, len(a.Model.Bones)
+	for _, ch := range c.Channels {
+		if ch.Bone < 0 || ch.Bone >= n {
+			continue
+		}
+		v := ch.Track.Sample(t)
+		p, b := &a.poses[ch.Bone], bones[ch.Bone]
+		// A setting layer over others restarts additive channels from the bind pose.
+		reset := !blend && ch.Additive
+		switch {
+		case ch.Target == Translation && ch.Additive:
+			if reset {
+				p.t = b.T
+			}
+			p.t = p.t.Add(v.Vec3())
+		case ch.Target == Translation:
+			p.t = v.Vec3()
+		case ch.Target == Rotation && ch.Additive:
+			if reset {
+				euler[ch.Bone].t = b.Euler
+			}
+			euler[ch.Bone].t = euler[ch.Bone].t.Add(v.Vec3())
+		case ch.Target == Rotation:
+			p.r = mgl32.Quat{W: v[3], V: v.Vec3()}.Normalize()
+		case ch.Target == Scale && ch.Additive:
+			if reset {
+				p.s = b.S
+			}
+			p.s = mgl32.Vec3{p.s[0] * v[0], p.s[1] * v[1], p.s[2] * v[2]}
+		case ch.Target == Scale:
+			p.s = v.Vec3()
+		}
+	}
 }
 
 // BindWorld returns each bone's bind-pose world matrix (no animation);

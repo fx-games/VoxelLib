@@ -61,6 +61,7 @@ type gunsState struct {
 	gunSel   int // index into gunPack.Guns; -1 = no gun in hand
 	gun      firearm.GunState
 	arms     gunArms
+	fx       gunFX
 	hudTex   map[string]ui.Texture // HUD sprites by pack/hud path
 	gunViews map[string]*gunView   // by gun ID, loaded on first use
 	stock    map[string]int        // ammo ID → rounds carried
@@ -92,6 +93,7 @@ type gunView struct {
 	addMagBone int
 	hands      [2]int // lefthand_pos, righthand_pos (-1: no arm)
 	skin       []mgl32.Mat4
+	times      []float32 // layer times saved while posing between ticks
 }
 
 // gunArms draws the player's arms at a gun's hand bones as TACZ does
@@ -183,7 +185,9 @@ func (g *game) gunView(spec *firearm.Gun) (*gunView, error) {
 		return nil, err
 	}
 	v := &gunView{handle: h, m: m, anim: model.NewAnimator(m)}
-	v.anim.FadeTime = 0.05
+	v.anim.FadeTime = 0
+	v.anim.Play(firearm.ClipIdle, true)
+	v.anim.Layers = []model.Layer{mainTrack: {}}
 	world := m.BindWorld()
 	v.idle, v.iron = cameraAt(world, m.Bone("idle_view")), cameraAt(world, m.Bone("iron_view"))
 	for _, n := range ammoBones {
@@ -252,10 +256,7 @@ func (g *game) tickGun() {
 	g.gunEvents(ev)
 
 	v := g.gunViews[g.gun.Gun.ID]
-	v.anim.Update(1.0 / app.TickRate)
-	if v.anim.Done() && g.gun.Phase == firearm.Ready {
-		g.playGunClip(v, firearm.ClipIdle)
-	}
+	g.tickGunTracks(v, 1.0/app.TickRate)
 	g.cueT += 1.0 / app.TickRate
 	cues := g.gun.Gun.Cues[g.cueClip]
 	for ; g.cueNext < len(cues) && cues[g.cueNext].T <= g.cueT; g.cueNext++ {
@@ -278,9 +279,57 @@ func (g *game) gunEvents(ev []firearm.GunEvent) {
 	}
 }
 
+// TACZ's default state machine tracks, as Animator layers over the base
+// track's looping static_idle (the Animator's Clip): the main track
+// (layer mainTrack) plays draw, bolt, reload, inspect and put away once
+// and stops, overriding what it keys; each shot runs "shoot" on its own
+// gun kick track, blended (added) over the pose.
+const (
+	mainTrack = 0
+	// mainTransition is runAnimation's transition for main track clips
+	// other than draw (0).
+	mainTransition = 0.2
+)
+
+// playGunClip starts a clip on its track.
 func (g *game) playGunClip(v *gunView, clip string) {
-	v.anim.Play(clip, true)
+	c := v.m.Clips[clip]
+	switch clip {
+	case firearm.ClipIdle:
+		v.anim.Layers[mainTrack].Clip = nil // the base track shows through
+		return
+	case firearm.ClipShoot:
+		if c != nil {
+			v.anim.Layers = append(v.anim.Layers, model.Layer{Clip: c, Blend: true})
+		}
+		return
+	}
+	if clip == firearm.ClipDraw {
+		v.anim.FadeFrom(0)
+	} else {
+		v.anim.FadeFrom(mainTransition)
+	}
+	v.anim.Layers[mainTrack] = model.Layer{Clip: c}
 	g.cueClip, g.cueT, g.cueNext = clip, 0, 0
+}
+
+// tickGunTracks advances the tracks by dt; finished clips stop (PLAY_ONCE_STOP).
+func (g *game) tickGunTracks(v *gunView, dt float32) {
+	v.anim.Update(dt)
+	ls := v.anim.Layers
+	for i := range ls {
+		ls[i].Time += dt
+	}
+	if ls[mainTrack].Done() {
+		ls[mainTrack].Clip = nil
+	}
+	kept := ls[:mainTrack+1]
+	for _, l := range ls[mainTrack+1:] {
+		if !l.Done() {
+			kept = append(kept, l)
+		}
+	}
+	v.anim.Layers = kept
 }
 
 // aimFrac is how far the sights are raised, 0..1, between ticks.
@@ -324,6 +373,7 @@ func (g *game) shoot() {
 		}
 		g.hitCreature(c, dmg, d)
 	}
+	g.startMuzzle(spec)
 	g.gunRecoil = spec.NewRecoil(g.gunRand, firearm.AimRecoil(aim, spec.Zoom))
 	g.recoilTicks, g.recoilP, g.recoilY = 0, 0, 0
 }
@@ -375,20 +425,34 @@ func (g *game) gunFOV(alpha float64) {
 // moving from idle_view toward iron_view while aiming.
 func (g *game) drawGunHand(alpha float64) {
 	v := g.gunViews[g.gun.Gun.ID]
+	// Pose between ticks: every track alpha of a tick further on.
+	da := float32(alpha) / app.TickRate
+	ahead := func(c *model.Clip, t float32) float32 {
+		if c != nil && c.Loop != model.LoopRepeat {
+			return min(t+da, c.Length)
+		}
+		return t + da
+	}
 	t := v.anim.Time
-	v.anim.Time += float32(alpha) / app.TickRate
-	if c := v.anim.Clip; c != nil && c.Loop != model.LoopRepeat {
-		v.anim.Time = min(v.anim.Time, c.Length)
+	v.times = v.times[:0]
+	v.anim.Time = ahead(v.anim.Clip, t)
+	for i := range v.anim.Layers {
+		l := &v.anim.Layers[i]
+		v.times = append(v.times, l.Time)
+		l.Time = ahead(l.Clip, l.Time)
 	}
 	v.skin = v.anim.Skin(v.skin)
 	v.anim.Time = t
+	for i, lt := range v.times {
+		v.anim.Layers[i].Time = lt
+	}
 	zero := mgl32.Mat4{}
 	if g.gun.Ammo == 0 && g.gun.Gun.Reload.Kind != firearm.Inventory {
 		for _, b := range v.ammo {
 			v.skin[b] = zero
 		}
 	}
-	if !clipAnimates(v.anim.Clip, v.addMagBone) {
+	if !clipAnimates(v.anim.Layers[mainTrack].Clip, v.addMagBone) {
 		for _, b := range v.addMag {
 			v.skin[b] = zero
 		}
@@ -412,7 +476,11 @@ func (g *game) drawGunHand(alpha float64) {
 		}
 		ins = append(ins, render.ModelInstance{Model: a.model, Skin: a.draw[i], Sky: sky, Block: blk})
 	}
+	sprites := g.drawMuzzle(v, view) // world smoke first: the hand clears depth
 	g.Models.DrawHandInstance(float32(g.Cam.Aspect), view, ins...)
+	if g.fx.rend != nil {
+		g.fx.rend.DrawHand(float32(g.Cam.Aspect), view, sprites, sky, blk)
+	}
 }
 
 // setupArms builds the first-person arms with the player's skin.

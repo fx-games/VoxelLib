@@ -56,7 +56,25 @@ func (pr *ParticleRenderer) Draw(cam *Camera, ps []particles.Particle, alpha flo
 	f := cam.Forward()
 	right := f.Cross(mgl32.Vec3{0, 1, 0}).Normalize()
 	pf := particleFrame{vp: cam.ViewProj(), right: right, up: right.Cross(f).Normalize(), fog: pr.r.CurrentFog()}
-	pr.begin(&pf)
+	pr.draw(&pf, [3]float64{cam.X, cam.Y, cam.Z}, ps, alpha, light)
+}
+
+// DrawHand draws particles in hand space like ModelRenderer.DrawHand
+// (view places them, the hand projection, no fog), after the hand models
+// so they share its depth (a gun's muzzle flash). light is the light at
+// the player.
+func (pr *ParticleRenderer) DrawHand(aspect float32, view mgl32.Mat4, ps []particles.Particle, sky, block uint8) {
+	if len(ps) == 0 {
+		return
+	}
+	inv := view.Inv()
+	pf := particleFrame{vp: pr.r.handProj(aspect).Mul4(view), right: inv.Col(0).Vec3().Normalize(), up: inv.Col(1).Vec3().Normalize(),
+		fog: Fog{Start: 1e6, End: 2e6}}
+	pr.draw(&pf, [3]float64{}, ps, 1, func(x, y, z float64) (uint8, uint8) { return sky, block })
+}
+
+func (pr *ParticleRenderer) draw(pf *particleFrame, origin [3]float64, ps []particles.Particle, alpha float64, light func(x, y, z float64) (sky, block uint8)) {
+	pr.begin(pf)
 	sheets := 0
 	for i := range ps {
 		sheets = max(sheets, int(ps[i].Sheet))
@@ -85,11 +103,11 @@ func (pr *ParticleRenderer) Draw(cam *Camera, ps []particles.Particle, alpha flo
 					sky, block := light(x, y, z)
 					lc = pr.r.LightColor(sky, max(block, q.Emit))
 				}
-				pr.buf = append(pr.buf, float32(x-cam.X), float32(y-cam.Y), float32(z-cam.Z), size,
+				pr.buf = append(pr.buf, float32(x-origin[0]), float32(y-origin[1]), float32(z-origin[2]), size,
 					col[0]*lc[0], col[1]*lc[1], col[2]*lc[2], col[3], float32(q.Sprite), flag, uv[0], uv[1], uv[2], uv[3], q.Roll)
 			}
 			if len(pr.buf) > 0 {
-				pr.drawPass(&pf, additive, sheet, pr.buf)
+				pr.drawPass(pf, additive, sheet, pr.buf)
 			}
 		}
 	}
