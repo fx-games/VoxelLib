@@ -177,23 +177,30 @@ func (s *Server) hit(shooter, victim *sPlayer, a *projectile.Arrow) {
 	if h.Head {
 		h.Damage = HeadDamage
 	}
-	s.damage(h, a.VX, a.VZ)
+	s.damage(h, a.VX, a.VZ, hitKnockback)
 }
 
 // damage deals a hit (arrow or bullet) to a live, unprotected victim and
 // knocks them back along dx,dz, like an arrow's knockback in the reference.
-func (s *Server) damage(h Hit, dx, dz float64) {
+// hitKnockback is the push (blocks/tick) of an arrow or bullet hit.
+const hitKnockback = 0.4
+
+// damage applies a hit, pushing the victim knock blocks/tick along (dx, dz).
+func (s *Server) damage(h Hit, dx, dz, knock float64) {
 	shooter, victim := s.players[h.Attacker], s.players[h.Victim]
 	victim.health -= h.Damage
 	if l := math.Hypot(dx, dz); l > 0 {
-		victim.ch.VX += dx / l * 0.4
-		victim.ch.VZ += dz / l * 0.4
+		victim.ch.VX += dx / l * knock
+		victim.ch.VZ += dz / l * knock
 		victim.ch.VY = math.Max(victim.ch.VY, 0.3)
 	}
 	if victim.health <= 0 {
 		h.Killed = true
 		how := "shot"
-		if h.Head {
+		switch {
+		case h.Melee:
+			how = "struck down"
+		case h.Head:
 			how = "head-shot"
 		}
 		dist := math.Sqrt(sq(victim.ch.X-shooter.ch.X) + sq(victim.ch.Y-shooter.ch.Y) + sq(victim.ch.Z-shooter.ch.Z))

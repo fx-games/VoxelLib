@@ -127,6 +127,15 @@ func (c *Client) SendSkin(png []byte) { c.net.SendReliable(append([]byte{msgSkin
 // for none); everyone sees it in PlayerInfo.Gun.
 func (c *Client) SendHold(gun string) { c.net.SendReliable(append([]byte{msgHold}, gun...)) }
 
+// SendMelee lands the held gun's melee hit along look; the server deals the damage.
+func (c *Client) SendMelee(gun string, look Look) {
+	b := wbuf{msgMelee}
+	b.str(gun)
+	b.f32(look.Yaw)
+	b.f32(look.Pitch)
+	c.net.SendReliable(b)
+}
+
 // SendShot fires a round of the held gun; the server deals the damage.
 func (c *Client) SendShot(s Shot) { c.net.SendReliable(s.encode()) }
 

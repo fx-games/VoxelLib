@@ -344,6 +344,7 @@ func (p *Pack) loadGun(file string, lang map[string]string, sound func(string) s
 	if files.atts, err = p.loadAttachments(data.Builtin); err != nil {
 		return fmt.Errorf("%s: %w", id, err)
 	}
+	spec.Melee = gunMelee(data.Melee, files.atts)
 	spec.Sight = ironView
 	if sc, ok := files.atts[slotScope]; ok { // IGun.getAimingZoom, CameraSetupEvent.applyGunModelFovModifying
 		spec.Zoom, spec.AimModelFOV = sc.zoom, sc.fov
@@ -415,8 +416,11 @@ type taczData struct {
 			Value [2]float32
 		}
 	}
-	Inaccuracy struct{ Stand, Move, Sneak, Aim float32 }
-	Heat       *taczHeat
+	Inaccuracy  struct{ Stand, Move, Sneak, Aim float32 }
+	Heat        *taczHeat
+	Melee       taczGunMelee
+	Script      string `json:"script"`
+	AllowUnload bool   `json:"allow_ammo_unload"`
 }
 
 // taczHeat is a gun's "heat" block, GunHeatData's defaults where absent.
@@ -471,6 +475,8 @@ func (d *taczData) spec(id, name, class string) (weapon.Gun, error) {
 	if d.Reload.Type == "inventory" {
 		r.Kind = weapon.Inventory
 	}
+	// canUnloadAmmo (the pack's scripted guns all allow it, so no script's unload_ammo is consulted)
+	g.Unload = r.Kind != weapon.Inventory && (d.Script == "" || d.AllowUnload)
 	r.FeedEmpty, r.FeedTactical = d.Reload.Feed.Empty, d.Reload.Feed.Tactical
 	r.DoneEmpty, r.DoneTactical = d.Reload.Cooldown.Empty, d.Reload.Cooldown.Tactical
 	g.Draw, g.PutAway, g.Aim = d.Draw, d.PutAway, d.Aim

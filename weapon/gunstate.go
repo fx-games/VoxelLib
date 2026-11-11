@@ -1,5 +1,7 @@
 package weapon
 
+import "strconv"
+
 // GunPhase is what a held gun is doing.
 type GunPhase uint8
 
@@ -11,6 +13,7 @@ const (
 	Bolting // manual action cycling after a shot
 	PuttingAway
 	Holstered
+	Meleeing // a melee attack: the hit lands at Melee.Prep
 )
 
 // Clip names of the TACZ gun animations the cycle plays.
@@ -27,13 +30,23 @@ const (
 	ClipReloadIntro    = "reload_intro"
 	ClipReloadLoop     = "reload_loop"
 	ClipReloadEnd      = "reload_end"
+	ClipMeleePush      = "melee_push"
+	ClipMeleeStock     = "melee_stock"
+	ClipMeleeBayonet   = "melee_bayonet_" // + 1..meleeBayonetClips in turn
 )
+
+// meleeBayonetClips is how many bayonet clips the state machine cycles through.
+const meleeBayonetClips = 3
 
 // GunEvent is something the game must show or apply this tick.
 type GunEvent struct {
 	Clip string // clip to play now ("" for none)
 	Shot bool   // a round left the barrel
 	Dry  bool   // trigger pulled on an empty gun
+	// Melee: the melee attack's hit lands now (Gun.Melee).
+	Melee bool
+	// Unloaded is the rounds unloading took out (they went back to the stock).
+	Unloaded int
 	// Sound is the display sound an action starts (draw, put away, reload,
 	// inspect, bolt, fire select; "" for none). Shots and Dry have their own.
 	Sound GunSound
@@ -46,6 +59,8 @@ type GunInput struct {
 	Reload   bool
 	Inspect  bool
 	NextMode bool
+	Melee    bool // went down this tick
+	Unload   bool // went down this tick
 }
 
 // GunState runs one gun's cycle. Ammo counts the rounds in the gun,
@@ -69,6 +84,9 @@ type GunState struct {
 	ending    bool    // tube reload: reload_end playing
 	sinceShot float32 // seconds since the last shot
 	interval  float32 // the last shot's interval (0: none fired yet)
+	meleeHit  bool    // the melee's hit has landed
+	meleeLen  float32 // seconds the melee phase lasts
+	bayonet   int     // bayonet clips played (the next is bayonet%meleeBayonetClips+1)
 }
 
 // firingGrace is how late a shot may come and still continue a stream of
@@ -136,11 +154,30 @@ func (s *GunState) Tick(dt float32, in GunInput, stock *int) []GunEvent {
 		}
 	case Reloading:
 		s.tickReload(&ev, stock)
+	case Meleeing:
+		if !s.meleeHit && s.T >= g.Melee.Prep {
+			s.meleeHit = true
+			ev = append(ev, GunEvent{Melee: true})
+		}
+		if s.meleeHit && s.T >= s.meleeLen {
+			s.ready(&ev)
+		}
+	}
+	// Melee and unload break out of inspecting (INPUT_INSPECT_BREAK_OUT).
+	if s.Phase == Inspecting && (in.Melee && g.Melee != nil || in.Unload && s.canUnload()) {
+		s.ready(&ev)
 	}
 	if s.Phase != Ready {
 		return ev
 	}
 	switch {
+	case in.Melee && g.Melee != nil:
+		return append(ev, s.melee())
+	case in.Unload && s.canUnload():
+		n := s.Ammo
+		*stock += n
+		s.Ammo, s.burstLeft = 0, 0
+		return append(ev, GunEvent{Sound: SoundUnload, Unloaded: n})
 	case in.Reload && g.Reload.Kind != Inventory && s.Ammo < s.capacity() && *stock > 0:
 		s.startReload(&ev)
 		return ev
@@ -200,6 +237,27 @@ func (s *GunState) Tick(dt float32, in GunInput, stock *int) []GunEvent {
 	}
 	return ev
 }
+
+// melee starts the melee attack: its clip and sound by kind
+// (LocalPlayerMelee), the bayonet's three clips in turn. It lasts the
+// cooldown, or the clip if longer (the idle pose would cut it).
+func (s *GunState) melee() GunEvent {
+	m := s.Gun.Melee
+	s.Phase, s.T, s.meleeHit, s.burstLeft = Meleeing, 0, false, 0
+	e := GunEvent{Clip: ClipMeleePush, Sound: SoundMeleePush}
+	switch m.Kind {
+	case MeleeStock:
+		e = GunEvent{Clip: ClipMeleeStock, Sound: SoundMeleeStock}
+	case MeleeBayonet:
+		e = GunEvent{Clip: ClipMeleeBayonet + strconv.Itoa(s.bayonet%meleeBayonetClips+1), Sound: SoundMeleeBayonet}
+		s.bayonet++
+	}
+	s.meleeLen = max(m.Cooldown, m.Prep, s.ClipLen(e.Clip))
+	return e
+}
+
+// canUnload: the gun unloads (Gun.Unload) and holds a round.
+func (s *GunState) canUnload() bool { return s.Gun.Unload && s.Ammo > 0 }
 
 // heatCoolingScale: calcHeatReduction takes ms/10000, i.e. seconds/10.
 const heatCoolingScale = 10

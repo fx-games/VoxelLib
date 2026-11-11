@@ -515,6 +515,11 @@ func (s *Server) reliable(p *sPlayer, msg []byte) {
 		}
 		p.gun = id
 		s.broadcast(p.info().encode())
+	case msgMelee:
+		gun, l := r.str(), Look{Yaw: r.f32(), Pitch: r.f32()}
+		if r.err == nil {
+			s.melee(p, gun, l)
+		}
 	case msgShoot:
 		if sh := decodeShot(&r); r.err == nil {
 			s.shoot(p, sh)

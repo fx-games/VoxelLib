@@ -48,11 +48,12 @@ type attachment struct {
 	adapter    string // attachment_adapter child shown
 	showMount  bool
 	showMuzzle bool
-	zoom       float32 // scope slot: first magnification (1 for none)
-	fov        float32 // scope slot: the hand's field of view while aiming (views_fov[0], else fov)
-	view       int     // scopes: scope_view index (0 = "scope_view", n = "scope_view_n")
-	idleAdjust float32 // scopes: idle view raised by this many pixels
-	magLevel   int     // extended magazines
+	zoom       float32    // scope slot: first magnification (1 for none)
+	fov        float32    // scope slot: the hand's field of view while aiming (views_fov[0], else fov)
+	view       int        // scopes: scope_view index (0 = "scope_view", n = "scope_view_n")
+	idleAdjust float32    // scopes: idle view raised by this many pixels
+	magLevel   int        // extended magazines
+	melee      *taczMelee // the attachment's melee (bayonets, stocks); nil: none
 	// scope, sight: the display's lens kinds (BedrockAttachmentModel isScope/isSight).
 	scope, sight bool
 }
@@ -118,13 +119,14 @@ func (p *Pack) loadAttachments(builtin map[string]json.RawMessage) (map[string]a
 			return nil, err
 		}
 		var data struct {
-			MagLevel int `json:"extended_mag_level"`
+			MagLevel int        `json:"extended_mag_level"`
+			Melee    *taczMelee `json:"melee"`
 		}
 		if err := readJSON(p.FS, dataPath("attachments", index.Data), &data); err != nil {
 			return nil, err
 		}
 		a := attachment{id: id, adapter: disp.Adapter, showMount: disp.ShowMount == nil || *disp.ShowMount,
-			showMuzzle: disp.ShowMuzzle, idleAdjust: disp.IdleAdjust, magLevel: data.MagLevel,
+			showMuzzle: disp.ShowMuzzle, idleAdjust: disp.IdleAdjust, magLevel: data.MagLevel, melee: data.Melee,
 			scope: disp.Scope, sight: disp.Sight}
 		if disp.Model != "" {
 			a.model, a.texture = asset("geo_models", disp.Model)+".json", asset("textures", disp.Texture)+".png"

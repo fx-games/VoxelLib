@@ -82,7 +82,8 @@ type gunsState struct {
 	cueT    float32
 	cueNext int
 	// keys last tick, for presses
-	triggerWas, inspectWas, modeWas bool
+	triggerWas bool
+	keyWas     map[string]bool // gun keys down last tick (keyPressed)
 }
 
 // gunView is a gun's model on the GPU with its animator.
@@ -283,15 +284,13 @@ func (g *game) tickGun() {
 	in := firearm.GunInput{
 		Trigger:  g.Input.Down(app.ActAttack) && !g.ScreenOpen(),
 		Reload:   g.Input.Down("reload"),
-		Inspect:  g.Input.Down("inspect"),
-		NextMode: g.Input.Down("firemode"),
+		Inspect:  g.keyPressed("inspect"),
+		NextMode: g.keyPressed("firemode"),
+		Melee:    g.keyPressed("melee"),
+		Unload:   g.keyPressed("unload"),
 	}
 	in.Pressed = in.Trigger && !g.triggerWas
 	g.triggerWas = in.Trigger
-	in.Inspect = in.Inspect && !g.inspectWas
-	g.inspectWas = g.Input.Down("inspect")
-	in.NextMode = in.NextMode && !g.modeWas
-	g.modeWas = g.Input.Down("firemode")
 	stock := g.stock[g.gun.Gun.Ammo]
 	ev := g.gun.Tick(1.0/app.TickRate, in, &stock)
 	g.stock[g.gun.Gun.Ammo] = stock
@@ -308,6 +307,17 @@ func (g *game) tickGun() {
 	}
 }
 
+// keyPressed reports whether a gun key went down since the last tick.
+func (g *game) keyPressed(name string) bool {
+	if g.keyWas == nil {
+		g.keyWas = map[string]bool{}
+	}
+	down := g.Input.Down(name)
+	was := g.keyWas[name]
+	g.keyWas[name] = down
+	return down && !was
+}
+
 func (g *game) gunEvents(ev []firearm.GunEvent) {
 	v := g.gunViews[g.gun.Gun.ID]
 	for _, e := range ev {
@@ -322,6 +332,9 @@ func (g *game) gunEvents(ev []firearm.GunEvent) {
 		}
 		if e.Sound != "" {
 			g.actionSound(e.Sound)
+		}
+		if e.Melee {
+			g.melee()
 		}
 	}
 }
@@ -543,7 +556,7 @@ func (g *game) hitscan(shot mp.Shot, eye [3]float64) {
 			dmg *= spec.Bullet.Headshot
 		}
 		head := c.isHead(h.Part)
-		g.hitMark(head, g.hitCreature(c, dmg, d))
+		g.hitMark(head, g.hitCreature(c, dmg, d, gunKnockback))
 	}
 }
 
@@ -570,9 +583,9 @@ func (g *game) applyRecoil(alpha float64) {
 	g.recoilP, g.recoilY = p, y
 }
 
-// hitCreature applies a bullet's damage, killing at creatureHealth; it
-// reports a kill.
-func (g *game) hitCreature(c *creature, dmg float32, dir [3]float64) bool {
+// hitCreature applies a hit's damage, killing at creatureHealth, and
+// pushes the creature knock blocks/tick along dir; it reports a kill.
+func (g *game) hitCreature(c *creature, dmg float32, dir [3]float64, knock float64) bool {
 	c.damage += dmg
 	yaw := math.Atan2(-dir[0], -dir[2])
 	if c.damage >= creatureHealth {
@@ -583,10 +596,45 @@ func (g *game) hitCreature(c *creature, dmg float32, dir [3]float64) bool {
 	g.provoke(c)
 	if m := c.mob; !m.Static {
 		l := math.Hypot(dir[0], dir[2]) + 1e-9
-		m.VX += dir[0] / l * gunKnockback
-		m.VZ += dir[2] / l * gunKnockback
+		m.VX += dir[0] / l * knock
+		m.VZ += dir[2] / l * knock
 	}
 	return false
+}
+
+// mobEyeFraction is where a creature's eye sits up its box (Minecraft's
+// default eye height, 0.85 of the height).
+const mobEyeFraction = 0.85
+
+// melee lands the gun's melee hit (ModernKineticGunItem.doMelee): on the
+// creatures in single player, by the server on the players in multiplayer.
+func (g *game) melee() {
+	look := mp.Look{Yaw: g.Cam.Yaw, Pitch: g.Cam.Pitch}
+	if g.net != nil {
+		g.net.cl.SendMelee(g.gun.Gun.ID, look)
+		return
+	}
+	m := g.gun.Gun.Melee
+	dist := float64(m.Distance)
+	ex, ey, ez := g.Player.Eye()
+	d := look.Dir()
+	reach := g.Player.Box().Grow(dist, dist, dist)
+	w := g.Eng.World
+	boxes := func(x, y, z int, id voxel.StateID, buf []collide.AABB) []collide.AABB {
+		return w.StateBoxes(id, x, y, z, buf)
+	}
+	for _, t := range g.creatureTargets() {
+		c := t.(*creature)
+		b := c.Box()
+		if !reach.Intersects(b) {
+			continue
+		}
+		eye := [3]float64{c.mob.X, b.MinY + (b.MaxY-b.MinY)*mobEyeFraction, c.mob.Z}
+		if !m.Reaches([3]float64{ex, ey, ez}, d, eye) || !projectile.InSight(w, boxes, [3]float64{ex, ey, ez}, eye) {
+			continue
+		}
+		g.hitCreature(c, m.Damage, d, float64(m.Knockback))
+	}
 }
 
 // isHead reports whether a hit on part (a bone, -1 for none) struck the head.

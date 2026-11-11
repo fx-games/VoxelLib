@@ -15,11 +15,12 @@ import (
 //	K                 preview the nearest creature's animations one by one
 //	Tab (hold)        multiplayer ranking
 //	V                 next gun (guns.go; then R reloads, H inspects, B fire mode,
-//	                  right click aims)
+//	                  Z melee, X unloads, right click aims)
 func (g *game) bindKeys() {
 	for name, k := range map[string]glfw.Key{"fly": glfw.KeyF, "noclip": glfw.KeyG, "daynight": glfw.KeyN,
 		"respawn": glfw.KeyR, "drop": glfw.KeyQ, "door": glfw.KeyE, "help": glfw.KeyF1, "anim": glfw.KeyK, "crossbow": glfw.KeyC, "scores": glfw.KeyTab,
-		"gun": glfw.KeyV, "reload": glfw.KeyR, "inspect": glfw.KeyH, "firemode": glfw.KeyB} {
+		"gun": glfw.KeyV, "reload": glfw.KeyR, "inspect": glfw.KeyH, "firemode": glfw.KeyB,
+		"melee": glfw.KeyZ, "unload": glfw.KeyX} {
 		g.Input.Bind(name, app.Key(k))
 	}
 }
@@ -45,14 +46,14 @@ func (g *game) action(name string, pressed bool) bool {
 	}
 	if g.gunOn() {
 		switch name {
-		case app.ActAttack, app.ActUse, "respawn", "reload", "inspect", "firemode":
+		case app.ActAttack, app.ActUse, "respawn", "reload", "inspect", "firemode", "melee", "unload":
 			return true // read by tickGun; R reloads instead of respawning
 		}
 	}
 	switch name {
 	case "gun":
 		g.nextGun()
-	case "reload", "inspect", "firemode":
+	case "reload", "inspect", "firemode", "melee", "unload":
 		return false
 	case app.ActAttack:
 		if !g.crossbowOn() {

@@ -148,8 +148,8 @@ type Gun struct {
 	Model     string  `json:"model"` // model file in the pack
 	Icon      string  `json:"icon"`  // slot sprite file in the pack
 	// HUD sprites (39x13) beside the ammo count; HudEmpty "" tints Hud red when empty.
-	Hud      string           `json:"hud"`
-	HudEmpty string           `json:"hud_empty"`
+	Hud      string `json:"hud"`
+	HudEmpty string `json:"hud_empty"`
 	// Sounds are the display's sound events by name (GunDisplay "sounds",
 	// with its defaults); Cues are the animations' own, played alongside.
 	Sounds map[GunSound]string `json:"sounds"`
@@ -163,6 +163,43 @@ type Gun struct {
 	Spin bool `json:"spin,omitempty"`
 	// Heat is the overheating; nil: the gun never heats.
 	Heat *Heat `json:"heat,omitempty"`
+	// Melee is the gun's melee attack; nil: it has none.
+	Melee *Melee `json:"melee,omitempty"`
+	// Unload: the rounds in the gun can be taken out (CommonGunIndex.canUnloadAmmo).
+	Unload bool `json:"unload,omitempty"`
+}
+
+// MeleeKind is which melee a gun does (its animation and sound).
+type MeleeKind uint8
+
+const (
+	MeleePush    MeleeKind = iota // the gun's own push, no stock
+	MeleeStock                    // a butt stroke with the stock
+	MeleeBayonet                  // a muzzle attachment's stab
+)
+
+var meleeKindNames = []string{"push", "stock", "bayonet"}
+
+func (k MeleeKind) MarshalText() ([]byte, error) { return enumText(meleeKindNames, uint8(k)) }
+func (k *MeleeKind) UnmarshalText(t []byte) error {
+	v, err := enumParse(meleeKindNames, t)
+	*k = MeleeKind(v)
+	return err
+}
+
+// Melee is a gun's resolved melee attack (TACZ LivingEntityMelee and
+// ModernKineticGunItem.doMelee): the muzzle attachment's, else the stock's,
+// else the gun's default. The hit lands Prep seconds in; targets within
+// Distance blocks and Angle degrees (the full cone) of the look take Damage
+// and Knockback; the next melee waits Cooldown seconds from the start.
+type Melee struct {
+	Kind      MeleeKind `json:"kind"`
+	Distance  float32   `json:"distance"`
+	Angle     float32   `json:"angle"`
+	Cooldown  float32   `json:"cooldown"`
+	Damage    float32   `json:"damage"`
+	Knockback float32   `json:"knockback"`
+	Prep      float32   `json:"prep"`
 }
 
 // GunSound names a display sound (TACZ SoundManager's keys).
@@ -170,26 +207,31 @@ type GunSound string
 
 // The display sounds the game plays (SoundPlayManager's callers).
 const (
-	SoundShoot          GunSound = "shoot"           // the shooter's shot
-	SoundShoot3P        GunSound = "shoot_3p"        // a shot heard by everyone else
-	SoundDryFire        GunSound = "dry_fire"        // trigger on an empty or overheat-locked gun
+	SoundShoot          GunSound = "shoot"    // the shooter's shot
+	SoundShoot3P        GunSound = "shoot_3p" // a shot heard by everyone else
+	SoundDryFire        GunSound = "dry_fire" // trigger on an empty or overheat-locked gun
 	SoundDraw           GunSound = "draw"
 	SoundPutAway        GunSound = "put_away"
-	SoundReloadEmpty    GunSound = "reload_empty"    // reload start with no round in the barrel
+	SoundReloadEmpty    GunSound = "reload_empty" // reload start with no round in the barrel
 	SoundReloadTactical GunSound = "reload_tactical"
 	SoundInspect        GunSound = "inspect"
 	SoundInspectEmpty   GunSound = "inspect_empty"
 	SoundBolt           GunSound = "bolt"
 	SoundFireSelect     GunSound = "fire_select"
-	SoundHeadHit        GunSound = "head_hit"        // the shooter's hit marks
+	SoundHeadHit        GunSound = "head_hit" // the shooter's hit marks
 	SoundFleshHit       GunSound = "flesh_hit"
 	SoundKill           GunSound = "kill"
+	SoundMeleePush      GunSound = "melee_push"
+	SoundMeleeStock     GunSound = "melee_stock"
+	SoundMeleeBayonet   GunSound = "melee_bayonet"
+	SoundUnload         GunSound = "unload"
 )
 
 // GunSounds lists the display sounds the game plays.
 var GunSounds = []GunSound{SoundShoot, SoundShoot3P, SoundDryFire, SoundDraw, SoundPutAway,
 	SoundReloadEmpty, SoundReloadTactical, SoundInspect, SoundInspectEmpty, SoundBolt,
-	SoundFireSelect, SoundHeadHit, SoundFleshHit, SoundKill}
+	SoundFireSelect, SoundHeadHit, SoundFleshHit, SoundKill,
+	SoundMeleePush, SoundMeleeStock, SoundMeleeBayonet, SoundUnload}
 
 // Heat is a gun data's "heat" block (TACZ GunHeatData, sp_heat.lua): each
 // shot adds PerShot up to Max, where the gun locks; Delay seconds after the

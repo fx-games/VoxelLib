@@ -11,7 +11,7 @@ import (
 // Protocol is the netcode protocol id: "VLMP" plus a version byte. Bump the
 // version on any wire change; older peers are refused and stay invisible to
 // discovery.
-const Protocol = 0x564C4D00 | 5
+const Protocol = 0x564C4D00 | 6
 
 // DefaultPort is the server's UDP port.
 const DefaultPort = 28960
@@ -370,6 +370,7 @@ const (
 	msgRespawnMe = 3 // (unused: respawn is automatic)
 	msgHold      = 4 // gun ID ("": none): the gun in the player's hand
 	msgShoot     = 5 // Shot: a round of the held gun
+	msgMelee     = 6 // gun ID, yaw, pitch f32: the held gun's melee hit lands
 	// server → client
 	msgPlayer = 10 // slot u8, joined u8, name, skin png: a player joined, changed skin or left
 	msgBlock  = 11 // x, y, z i32, state name: a block changed
@@ -404,6 +405,7 @@ type Hit struct {
 	Damage           int
 	Head, Killed     bool
 	Gun              bool // a bullet: the shooter plays TACZ's hit marks
+	Melee            bool // a gun's melee attack
 }
 
 func (h Hit) encode() []byte {
@@ -411,14 +413,14 @@ func (h Hit) encode() []byte {
 	b.u8(uint8(h.Attacker))
 	b.u8(uint8(h.Victim))
 	b.u8(uint8(h.Damage))
-	b.u8(flag(h.Head, 1) | flag(h.Killed, 2) | flag(h.Gun, 4))
+	b.u8(flag(h.Head, 1) | flag(h.Killed, 2) | flag(h.Gun, 4) | flag(h.Melee, 8))
 	return b
 }
 
 func decodeHit(r *rbuf) Hit {
 	h := Hit{Attacker: int(r.u8()), Victim: int(r.u8()), Damage: int(r.u8())}
 	f := r.u8()
-	h.Head, h.Killed, h.Gun = f&1 != 0, f&2 != 0, f&4 != 0
+	h.Head, h.Killed, h.Gun, h.Melee = f&1 != 0, f&2 != 0, f&4 != 0, f&8 != 0
 	return h
 }
 

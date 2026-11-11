@@ -132,3 +132,51 @@ func TestActionSounds(t *testing.T) {
 		}
 	}
 }
+
+func TestMeleeAndUnload(t *testing.T) {
+	lens := func(string) float32 { return 0.3 }
+	g := &Gun{Mag: 5, RPM: 600, Modes: []FireMode{Semi}, Unload: true,
+		Melee: &Melee{Kind: MeleeBayonet, Cooldown: 0.7, Prep: 0.1}}
+	s := &GunState{Gun: g, ClipLen: lens, Phase: Ready, Ammo: 5}
+	stock := 0
+	var clips []string
+	hits := 0
+	for i := range 40 { // 2 s: three melees at 0, 0.7, 1.4 s
+		in := GunInput{Melee: true}
+		for _, e := range s.Tick(tick, in, &stock) {
+			if e.Melee {
+				hits++
+				if s.T < g.Melee.Prep {
+					t.Errorf("tick %d: hit before prep", i)
+				}
+			}
+			if e.Clip != "" && e.Clip != ClipIdle {
+				clips = append(clips, e.Clip)
+			}
+		}
+	}
+	if hits != 3 || len(clips) != 3 || clips[0] != "melee_bayonet_1" || clips[2] != "melee_bayonet_3" {
+		t.Fatalf("hits %d clips %v", hits, clips)
+	}
+	s.Phase, s.T = Inspecting, 0 // unload breaks out of inspecting
+	ev := s.Tick(tick, GunInput{Unload: true}, &stock)
+	if s.Ammo != 0 || stock != 5 || ev[len(ev)-1].Sound != SoundUnload || ev[len(ev)-1].Unloaded != 5 {
+		t.Fatalf("unload: ammo %d stock %d ev %+v", s.Ammo, stock, ev)
+	}
+	if ev := s.Tick(tick, GunInput{Unload: true}, &stock); len(ev) != 0 {
+		t.Fatalf("empty gun unloaded: %+v", ev)
+	}
+}
+
+func TestMeleeReaches(t *testing.T) {
+	m := &Melee{Distance: 2, Angle: 40}
+	eye, look := [3]float64{0, 0, 0}, [3]float64{0, 0, -1}
+	for _, c := range []struct {
+		at   [3]float64
+		want bool
+	}{{[3]float64{0, 0, -1}, true}, {[3]float64{0, 0, 1}, false}, {[3]float64{3, 0, -1}, false}, {[3]float64{0.3, 0, -1.5}, true}} {
+		if got := m.Reaches(eye, look, c.at); got != c.want {
+			t.Errorf("%v: %v", c.at, got)
+		}
+	}
+}
