@@ -1,6 +1,7 @@
 package tacz
 
 import (
+	"encoding/json"
 	"os"
 	"slices"
 	"testing"
@@ -56,5 +57,18 @@ func TestRefit(t *testing.T) {
 				}
 			}
 		}
+	}
+}
+
+func TestDefaultMeleeKnockback(t *testing.T) {
+	var m taczGunMelee
+	if err := json.Unmarshal([]byte(`{"default":{"damage":2}}`), &m); err != nil {
+		t.Fatal(err)
+	}
+	if m.Default == nil || m.Default.Knockback != defaultKnockback || m.Default.Prep != 0.1 || m.Cooldown != 1 {
+		t.Fatalf("%+v %+v", m, m.Default)
+	}
+	if err := json.Unmarshal([]byte(`{"distance":2}`), &m); err != nil || m.Default != nil {
+		t.Fatalf("no default: %+v %v", m, err)
 	}
 }

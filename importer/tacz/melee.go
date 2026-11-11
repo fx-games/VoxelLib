@@ -34,11 +34,27 @@ type taczGunMelee struct {
 }
 
 func (m *taczGunMelee) UnmarshalJSON(b []byte) error {
-	type plain taczGunMelee
-	p := plain{Distance: 1, Cooldown: 1}
-	err := json.Unmarshal(b, &p)
-	*m = taczGunMelee(p)
-	return err
+	var p struct {
+		Distance float32         `json:"distance"`
+		Cooldown float32         `json:"cooldown"`
+		Default  json.RawMessage `json:"default"`
+	}
+	p.Distance, p.Cooldown = 1, 1
+	if err := json.Unmarshal(b, &p); err != nil {
+		return err
+	}
+	*m = taczGunMelee{Distance: p.Distance, Cooldown: p.Cooldown}
+	if len(p.Default) == 0 || string(p.Default) == "null" {
+		return nil
+	}
+	// GunDefaultMeleeData: MeleeData's defaults but knockback defaultKnockback.
+	d := taczMelee{Distance: 1, Angle: 30, Prep: 0.1, Knockback: defaultKnockback}
+	type plain taczMelee
+	if err := json.Unmarshal(p.Default, (*plain)(&d)); err != nil {
+		return err
+	}
+	m.Default = &d
+	return nil
 }
 
 // defaultKnockback is GunDefaultMeleeData's knockback (MeleeData's is 0).

@@ -6,6 +6,7 @@ import (
 	_ "image/png"
 	"io"
 	"io/fs"
+	"log"
 	"strings"
 	"unicode"
 
@@ -156,7 +157,11 @@ func (f *Font) SetASCII(img image.Image) {
 func (f *Font) page(p int) Texture {
 	if !f.pageTried[p] {
 		f.pageTried[p] = true
-		if img, err := loadImage(f.fsys, fmt.Sprintf(fontPage, p)); err == nil && f.newTex != nil {
+		img, err := loadImage(f.fsys, fmt.Sprintf(fontPage, p))
+		switch {
+		case err != nil:
+			log.Printf("ui: font: unicode page %02x: %v (its characters draw as nothing)", p, err)
+		case f.newTex != nil:
 			f.pages[p] = f.newTex(img)
 		}
 	}

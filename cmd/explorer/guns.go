@@ -84,6 +84,7 @@ type gunsState struct {
 	cueNext int
 	// keys last tick, for presses
 	triggerWas bool
+	hits       hitMarks        // the HUD hit marker and kill streak
 	keyWas     map[string]bool // gun keys down last tick (keyPressed)
 }
 
@@ -607,6 +608,7 @@ func (g *game) hitscan(shot mp.Shot, eye [3]float64) {
 // kill, else head_hit or flesh_hit. Single player and multiplayer (the
 // server's mp.Hit) both play it here.
 func (g *game) hitMark(head, killed bool) {
+	g.hits.mark(head, killed)
 	switch {
 	case killed:
 		g.gunSound(firearm.SoundKill, actionSoundVolume, 1)

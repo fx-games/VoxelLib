@@ -83,6 +83,7 @@ func (g *game) drawGunHUD(ctx *ui.Context) {
 		ui.DrawTexScaled(c, t, float32(int(float32(w)-68.5+curW)), float32(h-38), 10, 10, 0, 0, 1, 1, 1, 1, hudWhite)
 	}
 	g.drawGunHeat(ctx)
+	g.drawHitMarks(ctx)
 }
 
 // drawGunHeat is TACZ's HeatBarOverlay: around the crosshair, the heat
