@@ -15,12 +15,12 @@ import (
 //	K                 preview the nearest creature's animations one by one
 //	Tab (hold)        multiplayer ranking
 //	V                 next gun (guns.go; then R reloads, H inspects, B fire mode,
-//	                  Z melee, X unloads, right click aims)
+//	                  Z melee, X unloads, J refits: refit.go, right click aims)
 func (g *game) bindKeys() {
 	for name, k := range map[string]glfw.Key{"fly": glfw.KeyF, "noclip": glfw.KeyG, "daynight": glfw.KeyN,
 		"respawn": glfw.KeyR, "drop": glfw.KeyQ, "door": glfw.KeyE, "help": glfw.KeyF1, "anim": glfw.KeyK, "crossbow": glfw.KeyC, "scores": glfw.KeyTab,
 		"gun": glfw.KeyV, "reload": glfw.KeyR, "inspect": glfw.KeyH, "firemode": glfw.KeyB,
-		"melee": glfw.KeyZ, "unload": glfw.KeyX} {
+		"melee": glfw.KeyZ, "unload": glfw.KeyX, "refit": glfw.KeyJ} {
 		g.Input.Bind(name, app.Key(k))
 	}
 }
@@ -53,6 +53,8 @@ func (g *game) action(name string, pressed bool) bool {
 	switch name {
 	case "gun":
 		g.nextGun()
+	case "refit":
+		g.openRefit()
 	case "reload", "inspect", "firemode", "melee", "unload":
 		return false
 	case app.ActAttack:

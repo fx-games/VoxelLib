@@ -20,7 +20,7 @@ func TestLoadPack(t *testing.T) {
 	}
 	shells := 0
 	for _, g := range p.Guns {
-		m, _, err := p.Model(g.ID)
+		m, _, err := p.Model(g.ID, p.DefaultChoice(g.ID))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -49,11 +49,11 @@ func TestLoadPack(t *testing.T) {
 	}
 	if g := p.Guns[slices.IndexFunc(p.Guns, func(g weapon.Gun) bool { return g.ID == "svd" })]; g.Sight != "scope/scope_view" || g.Zoom != 8.25 {
 		t.Errorf("svd aims through %q at %vx, want the PSO-1's scope_view at 8.25x", g.Sight, g.Zoom)
-	} else if m, lens, err := p.Model("svd"); err != nil || m.Bone(g.Sight) < 0 || lens == nil || !lens.Scope || len(lens.Oculars) == 0 || len(lens.Divisions) == 0 || lens.Body == nil {
+	} else if m, lens, err := p.Model("svd", p.DefaultChoice("svd")); err != nil || m.Bone(g.Sight) < 0 || lens == nil || !lens.Scope || len(lens.Oculars) == 0 || len(lens.Divisions) == 0 || lens.Body == nil {
 		t.Errorf("svd: no grafted %s (%v)", g.Sight, err)
 	}
 	for id, bone := range map[string]string{"ak47": "oem_stock_tactical", "rpk": "oem_stock_heavy"} {
-		m, _, err := p.Model(id)
+		m, _, err := p.Model(id, p.DefaultChoice(id))
 		if err != nil {
 			t.Fatal(err)
 		}

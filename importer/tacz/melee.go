@@ -50,13 +50,13 @@ const meleeStockAnimation = "melee_stock"
 // gunMelee resolves the gun's melee as LivingEntityMelee: the muzzle
 // attachment's, else the stock's, else the gun's default; distances and
 // cooldowns add the gun's own. Nil: no melee.
-func gunMelee(gun taczGunMelee, atts map[string]attachment) *weapon.Melee {
+func gunMelee(gun taczGunMelee, atts map[Slot]attachment) *weapon.Melee {
 	m, kind := gun.Default, weapon.MeleePush
 	switch {
-	case atts[slotMuzzle].melee != nil:
-		m, kind = atts[slotMuzzle].melee, weapon.MeleeBayonet
-	case atts[slotStock].melee != nil:
-		m, kind = atts[slotStock].melee, weapon.MeleeStock
+	case atts[SlotMuzzle].melee != nil:
+		m, kind = atts[SlotMuzzle].melee, weapon.MeleeBayonet
+	case atts[SlotStock].melee != nil:
+		m, kind = atts[SlotStock].melee, weapon.MeleeStock
 	case m == nil:
 		return nil
 	case m.Animation == meleeStockAnimation:

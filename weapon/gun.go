@@ -167,6 +167,8 @@ type Gun struct {
 	Melee *Melee `json:"melee,omitempty"`
 	// Unload: the rounds in the gun can be taken out (CommonGunIndex.canUnloadAmmo).
 	Unload bool `json:"unload,omitempty"`
+	// Silence is the installed muzzle attachment's; nil: none silences the gun.
+	Silence *Silence `json:"silence,omitempty"`
 }
 
 // MeleeKind is which melee a gun does (its animation and sound).
@@ -200,6 +202,15 @@ type Melee struct {
 	Damage    float32   `json:"damage"`
 	Knockback float32   `json:"knockback"`
 	Prep      float32   `json:"prep"`
+}
+
+// Silence is an attachment data's "silence" block (TACZ SilenceModifier):
+// the fire sound carries DistanceAddend blocks further (negative: less) than
+// the default 64, and with UseSilenceSound the display's silence sounds
+// replace shoot and shoot_3p.
+type Silence struct {
+	DistanceAddend  int  `json:"distance_addend"`
+	UseSilenceSound bool `json:"use_silence_sound"`
 }
 
 // GunSound names a display sound (TACZ SoundManager's keys).

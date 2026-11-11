@@ -54,11 +54,12 @@ type gunsState struct {
 	arms      gunArms
 	fx        gunFX
 	shells    gunShells
-	hudTex    map[string]ui.Texture // HUD sprites by pack/hud path
-	heatScale float32               // HeatBarOverlay's eased scale
-	lensDisc  int                   // the scopes' view disc model (-1: not uploaded)
-	gunViews  map[string]*gunView   // by gun ID, loaded on first use
-	stock     map[string]int        // ammo ID → rounds carried
+	hudTex    map[string]ui.Texture  // HUD sprites by pack/hud path
+	heatScale float32                // HeatBarOverlay's eased scale
+	lensDisc  int                    // the scopes' view disc model (-1: not uploaded)
+	gunViews  map[string]*gunView    // by gun ID, loaded on first use
+	choices   map[string]tacz.Choice // refitted guns' attachments by gun ID (refit.go)
+	stock     map[string]int         // ammo ID → rounds carried
 	// aim is the aiming progress 0..1 (LocalPlayerAim: 1/aim_time per
 	// second), aimPrev the last tick's.
 	aim, aimPrev float32
@@ -88,6 +89,7 @@ type gunsState struct {
 
 // gunView is a gun's model on the GPU with its animator.
 type gunView struct {
+	spec       firearm.Gun // the gun with its attachments
 	handle     int
 	m          *model.Model
 	anim       *model.Animator
@@ -122,7 +124,7 @@ func (g *game) setupGuns() {
 		log.Printf("guns disabled: %v", err)
 		return
 	}
-	g.gunPack, g.gunViews, g.stock = p, map[string]*gunView{}, map[string]int{}
+	g.gunPack, g.gunViews, g.stock, g.choices = p, map[string]*gunView{}, map[string]int{}, map[string]tacz.Choice{}
 	g.gunRand = rand.New(rand.NewSource(1))
 	for _, a := range p.Ammo {
 		g.stock[a.ID] = startRounds
@@ -196,32 +198,43 @@ func (g *game) takeGun(i int) {
 		g.sendHold()
 		return
 	}
-	spec := &g.gunPack.Guns[i]
-	v, err := g.gunView(spec)
+	v, err := g.gunView(g.gunPack.Guns[i].ID)
 	if err != nil {
-		log.Printf("gun %s: %v", spec.ID, err)
+		log.Printf("gun %s: %v", g.gunPack.Guns[i].ID, err)
 		g.gunSel = -1
 		g.sendHold()
 		return
 	}
 	g.equipped = false // the crossbow goes away
 	g.gunSel = i
-	g.gun = firearm.GunState{Gun: spec, Ammo: spec.Mag, ClipLen: func(c string) float32 {
-		if cl := v.m.Clips[c]; cl != nil {
-			return cl.Length
-		}
-		return 0
-	}}
+	spec := &v.spec
+	g.gun = firearm.GunState{Gun: spec, Ammo: spec.Mag, ClipLen: clipLen(v)}
 	g.sendHold()
 	g.sounds.preload(spec)
 	g.gunEvents(g.gun.Draw())
 }
 
-func (g *game) gunView(spec *firearm.Gun) (*gunView, error) {
-	if v := g.gunViews[spec.ID]; v != nil {
+// clipLen is GunState.ClipLen for a gun's view.
+func clipLen(v *gunView) func(string) float32 {
+	return func(c string) float32 {
+		if cl := v.m.Clips[c]; cl != nil {
+			return cl.Length
+		}
+		return 0
+	}
+}
+
+// gunView is gun id's view with its attachments (gunChoice), built on first use.
+func (g *game) gunView(id string) (*gunView, error) {
+	if v := g.gunViews[id]; v != nil {
 		return v, nil
 	}
-	m, lens, err := g.gunPack.Model(spec.ID)
+	c := g.gunChoice(id)
+	spec, err := g.gunPack.Gun(id, c)
+	if err != nil {
+		return nil, err
+	}
+	m, lens, err := g.gunPack.Model(id, c)
 	if err != nil {
 		return nil, err
 	}
@@ -229,7 +242,7 @@ func (g *game) gunView(spec *firearm.Gun) (*gunView, error) {
 	if err != nil {
 		return nil, err
 	}
-	v := &gunView{handle: h, m: m, anim: model.NewAnimator(m)}
+	v := &gunView{spec: spec, handle: h, m: m, anim: model.NewAnimator(m)}
 	if lens != nil {
 		if v.lens, err = g.lensView(lens); err != nil {
 			return nil, err
@@ -250,8 +263,30 @@ func (g *game) gunView(spec *firearm.Gun) (*gunView, error) {
 	v.addMagBone = m.Bone(additionalMag)
 	v.addMag = m.Descendants(v.addMagBone)
 	v.hands = [2]int{m.Bone("lefthand_pos"), m.Bone("righthand_pos")}
-	g.gunViews[spec.ID] = v
+	g.gunViews[id] = v
 	return v, nil
+}
+
+// dropGunView frees gun id's view (its models; the shared lens disc stays).
+func (g *game) dropGunView(id string) {
+	v := g.gunViews[id]
+	if v == nil {
+		return
+	}
+	g.Models.Remove(v.handle)
+	if l := v.lens; l != nil {
+		for _, h := range append([]int{l.ring, l.body}, l.divisions...) {
+			if h >= 0 {
+				g.Models.Remove(h)
+			}
+		}
+		for _, o := range l.oculars {
+			if o.handle >= 0 {
+				g.Models.Remove(o.handle)
+			}
+		}
+	}
+	delete(g.gunViews, id)
 }
 
 // cameraAt is the view matrix that puts the camera at bone b's bind pose.
@@ -782,6 +817,14 @@ func (s *gunSounds) preload(spec *firearm.Gun) {
 	}
 	for _, ev := range spec.Sounds {
 		evs = append(evs, ev)
+	}
+	s.preloadEvents(evs)
+}
+
+// preloadEvents decodes sound events in the background.
+func (s *gunSounds) preloadEvents(evs []string) {
+	if s.mixer == nil {
+		return
 	}
 	go func() {
 		for _, ev := range evs {
