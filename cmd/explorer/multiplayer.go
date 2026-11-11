@@ -13,7 +13,6 @@ import (
 	"fmt"
 	"github.com/memmaker/voxellib/ui/nametag"
 	"image"
-	"image/color"
 	"image/png"
 	"log"
 	"math"
@@ -46,60 +45,57 @@ type skin struct {
 	img  image.Image
 }
 
-// loadSkins reads the 64x64 PNG skins in dir (cmd/fetchskins fills it);
-// without any there is one plain skin.
-func loadSkins(dir string) []skin {
-	var out []skin
-	paths, _ := filepath.Glob(filepath.Join(dir, "*.png"))
-	slices.Sort(paths)
-	for _, p := range paths {
-		b, err := os.ReadFile(p)
-		if err != nil {
-			continue
-		}
-		img, err := png.Decode(bytes.NewReader(b))
-		if err != nil || img.Bounds().Dx() != 64 || img.Bounds().Dy() != 64 {
-			log.Printf("skins: %s: not a 64x64 png", p)
-			continue
-		}
-		out = append(out, skin{name: strings.TrimSuffix(filepath.Base(p), ".png"), png: b, img: img})
+// defaultSkinFile is the vanilla default skin (DefaultPlayerSkin: Steve,
+// wide arms), worn by a player without a custom one.
+const defaultSkinFile = "assets/pixelperfection/assets/minecraft/textures/entity/player/wide/steve.png"
+
+// readSkin reads a 64x64 PNG skin.
+func readSkin(path string) (skin, error) {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return skin{}, err
 	}
-	if len(out) == 0 {
-		img := plainSkin()
-		var b bytes.Buffer
-		png.Encode(&b, img)
-		out = append(out, skin{name: "Plain", png: b.Bytes(), img: img})
+	img, err := decodeSkin(b)
+	if err != nil {
+		return skin{}, fmt.Errorf("%s: %w", path, err)
 	}
-	return out
+	return skin{name: strings.TrimSuffix(filepath.Base(path), ".png"), png: b, img: img}, nil
 }
 
-// plainSkin is a stand-in skin: skin-coloured head and hands, a blue shirt
-// and dark trousers on the 64x64 layout, overlays empty.
-func plainSkin() image.Image {
-	const plainHand = 3 // hand length in pixels
-	img := image.NewNRGBA(image.Rect(0, 0, 64, 64))
-	fill := func(x0, y0, x1, y1 int, c color.NRGBA) {
-		for y := y0; y < y1; y++ {
-			for x := x0; x < x1; x++ {
-				img.Set(x, y, c)
-			}
+// decodeSkin decodes a 64x64 PNG skin.
+func decodeSkin(b []byte) (image.Image, error) {
+	img, err := png.Decode(bytes.NewReader(b))
+	if err != nil {
+		return nil, err
+	}
+	if img.Bounds().Dx() != 64 || img.Bounds().Dy() != 64 {
+		return nil, fmt.Errorf("skin is %v, not 64x64", img.Bounds().Size())
+	}
+	return img, nil
+}
+
+// loadSkins returns the default skin and the 64x64 PNG skins in dir
+// (cmd/fetchskins fills it); without any, the choice is the default.
+func loadSkins(dir string) (def skin, choice []skin, err error) {
+	if def, err = readSkin(defaultSkinFile); err != nil {
+		return def, nil, err
+	}
+	paths, err := filepath.Glob(filepath.Join(dir, "*.png"))
+	if err != nil {
+		return def, nil, err
+	}
+	slices.Sort(paths)
+	for _, p := range paths {
+		s, err := readSkin(p)
+		if err != nil {
+			return def, nil, err
 		}
+		choice = append(choice, s)
 	}
-	skinC, shirt, pants := color.NRGBA{200, 150, 110, 255}, color.NRGBA{40, 110, 180, 255}, color.NRGBA{50, 50, 90, 255}
-	fill(0, 0, 32, 16, skinC)   // head
-	fill(16, 16, 40, 32, shirt) // body
-	fill(40, 16, 56, 32, shirt) // right arm
-	fill(32, 48, 48, 64, shirt) // left arm
-	fill(0, 16, 16, 32, pants)  // right leg
-	fill(16, 48, 32, 64, pants) // left leg
-	// hands: each arm's bottom face and the lowest plainHand rows of its sides
-	for _, uv := range [][2]int{{40, 16}, {32, 48}} { // right arm, left arm
-		x, y := uv[0], uv[1]
-		fill(x+8, y, x+12, y+4, skinC)
-		fill(x, y+16-plainHand, x+16, y+16, skinC)
+	if len(choice) == 0 {
+		choice = []skin{def}
 	}
-	fill(8, 12, 16, 13, color.NRGBA{120, 70, 50, 255})
-	return img
+	return def, choice, nil
 }
 
 // netGame is a multiplayer session's state.
@@ -267,7 +263,7 @@ func (g *game) netStart() {
 		log.Printf("mp: player model: %v", err)
 		n.bodyModel = -1
 	}
-	n.defTex = g.Models.AddTexture(plainSkin())
+	n.defTex = g.Models.AddTexture(g.defaultSkin.img)
 	cl.SendSkin(g.skins[g.skinIdx].png)
 	g.sendHold() // the crossbow, or an empty hand without one
 	cl.OnBlock = func(e mp.BlockEdit) {
@@ -390,7 +386,9 @@ func (g *game) netFrame() {
 		}
 		n.tex[slot] = 0
 		if b := n.skinNew[slot]; b != nil {
-			if img, err := png.Decode(bytes.NewReader(b)); err == nil && img.Bounds().Dx() == 64 && img.Bounds().Dy() == 64 {
+			if img, err := decodeSkin(b); err != nil {
+				log.Printf("mp: player %d's skin: %v (drawn with the default)", slot, err)
+			} else {
 				n.tex[slot] = g.Models.AddTexture(img)
 			}
 		}

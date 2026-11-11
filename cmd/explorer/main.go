@@ -215,7 +215,10 @@ func main() {
 		log.Fatal(err)
 	}
 	a.RenderScale = *scale
-	g := &game{App: a, opt: o, playerName: *name, skins: loadSkins(*skinDir)}
+	g := &game{App: a, opt: o, playerName: *name}
+	if g.defaultSkin, g.skins, err = loadSkins(*skinDir); err != nil {
+		log.Fatal(err)
+	}
 	if g.playerName == "" {
 		g.playerName = defaultName()
 	}
@@ -297,6 +300,7 @@ type game struct {
 	sp          *spWorld // the single-player world to return to
 	playerName  string
 	skins       []skin
+	defaultSkin skin // the vanilla default (Steve), for players without one
 	skinIdx     int
 	pendingNote string       // why the last game ended, for the main menu
 	autoNet     func() error // -host / -connect, run in the first session
