@@ -153,6 +153,9 @@ type Gun struct {
 	// the one it narrows to while aiming (the scope's, or the gun's).
 	ModelFOV    float32 `json:"model_fov"`
 	AimModelFOV float32 `json:"aim_model_fov"`
+	// ThirdPersonScale scales the gun in another player's hand (the display's
+	// transform.scale.thirdperson, uniform; 1 without one).
+	ThirdPersonScale float32 `json:"third_person_scale"`
 	// Sight is the bone the camera aims through: iron_view, or the view
 	// bone of a built-in scope; IdleRaise lifts the idle view (blocks) by
 	// the scope's idle_scope_height_adjust, fading out while aiming.

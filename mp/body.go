@@ -43,11 +43,13 @@ const (
 
 // Anim is what poses a player's body: the look pitch (radians, up
 // positive), the walk cycle (ModelBiped's limbSwing and limbSwingAmount) and
-// sneaking. The body faces the look yaw.
+// sneaking. The body faces the look yaw. Gun: a gun is in hand (TACZ's
+// third-person hold), else the crossbow is raised.
 type Anim struct {
 	Pitch                 float64
 	LimbSwing, LimbAmount float64
 	Sneak                 bool
+	Gun                   bool
 }
 
 // Walk advances the walk cycle by one tick in which the body moved dx, dz
@@ -73,7 +75,7 @@ func (a *Anim) Advance(dx, dz, ticks float64) {
 // Lerp blends two animation states (the previous and current tick).
 func (a Anim) Lerp(b Anim, t float64) Anim {
 	return Anim{Pitch: a.Pitch + (b.Pitch-a.Pitch)*t, LimbSwing: a.LimbSwing + (b.LimbSwing-a.LimbSwing)*t,
-		LimbAmount: a.LimbAmount + (b.LimbAmount-a.LimbAmount)*t, Sneak: b.Sneak}
+		LimbAmount: a.LimbAmount + (b.LimbAmount-a.LimbAmount)*t, Sneak: b.Sneak, Gun: b.Gun}
 }
 
 // Body is the player model shared by drawing and hit tests, so an arrow hits
@@ -95,13 +97,27 @@ func NewBody() *Body {
 	return &Body{Geo: g, Model: m, pose: g.RestPose()}
 }
 
+// TACZ ThirdPersonManager's default animateGunHold: the arms' pitch
+// (added to the head's) and yaws.
+const (
+	gunHoldArmPitch    = -1.4
+	gunHoldRightArmYaw = -0.3
+	gunHoldLeftArmYaw  = 0.8
+)
+
 // Skin poses the body for a (ModelBiped.setRotationAngles with aimedBow:
-// the crossbow is always raised) and returns its skinning matrices.
+// the crossbow is always raised; with a gun, TACZ's default hold) and
+// returns its skinning matrices.
 func (b *Body) Skin(a Anim, dst []mgl32.Mat4) []mgl32.Mat4 {
 	pp, head := b.legs(a)
-	// aimedBow: both arms forward along the look, the left one across.
-	pp[partRightArm].Rot = [3]float32{-math.Pi/2 + head, -0.1, 0}
-	pp[partLeftArm].Rot = [3]float32{-math.Pi/2 + head, 0.1 + 0.4, 0}
+	if a.Gun {
+		pp[partRightArm].Rot = [3]float32{gunHoldArmPitch + head, gunHoldRightArmYaw, 0}
+		pp[partLeftArm].Rot = [3]float32{gunHoldArmPitch + head, gunHoldLeftArmYaw, 0}
+	} else {
+		// aimedBow: both arms forward along the look, the left one across.
+		pp[partRightArm].Rot = [3]float32{-math.Pi/2 + head, -0.1, 0}
+		pp[partLeftArm].Rot = [3]float32{-math.Pi/2 + head, 0.1 + 0.4, 0}
+	}
 	b.sneak(a)
 	return b.pose.Skin(b.Model, b.Geo, dst)
 }
@@ -164,11 +180,17 @@ func cos(x float32) float32 { return float32(math.Cos(float64(x))) }
 // Hand is the right hand's position in model space (the bottom of the
 // right arm) in the pose skin, where a held item goes.
 func (b *Body) Hand(skin []mgl32.Mat4) mgl32.Vec3 {
+	return mgl32.TransformCoordinate(mgl32.Vec3{-1, 10, 0}, b.RightArm(skin))
+}
+
+// RightArm maps the right arm's part space (the reference's ModelPart
+// space, pixels, y down) to model space in the pose skin: translateToHand.
+func (b *Body) RightArm(skin []mgl32.Mat4) mgl32.Mat4 {
 	arm := b.Model.Bones[partRightArm].InvBind.Inv()
 	if partRightArm < len(skin) {
 		arm = skin[partRightArm].Mul4(arm)
 	}
-	return mgl32.TransformCoordinate(mgl32.Vec3{-1, 10, 0}, arm)
+	return arm
 }
 
 // IsHead reports whether a bone (Model part) is the head or the hat.

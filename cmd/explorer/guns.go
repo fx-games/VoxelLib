@@ -105,6 +105,7 @@ type gunView struct {
 	times      []float32    // layer times saved while posing between ticks
 	lens       *lensView    // nil: no scope
 	rest       []mgl32.Mat4 // static_idle at its start: the gun in other players' hands
+	thirdHand  mgl32.Mat4   // inverse of thirdperson_hand's frame in rest (identity without it)
 	overheated bool         // the over_heat clip has run for the current lock
 	move       movement     // the movement track's state
 	camBone    int          // "camera" (-1: none)
@@ -287,6 +288,10 @@ func (g *game) newGunView(id string, c tacz.Choice, mode firearm.FireMode) (*gun
 	rest := model.NewAnimator(m)
 	rest.Play(firearm.ClipIdle, true)
 	v.rest = rest.Skin(nil)
+	v.thirdHand = mgl32.Ident4() // TACZ: no positioning node, no positioning
+	if b := m.Bone(thirdPersonHandBone); b >= 0 {
+		v.thirdHand = v.rest[b].Mul4(m.Bones[b].InvBind.Inv()).Inv()
+	}
 	world := m.BindWorld()
 	v.idle, v.iron = cameraAt(world, m.Bone("idle_view")), cameraAt(world, m.Bone(spec.Sight))
 	for _, n := range ammoBones {

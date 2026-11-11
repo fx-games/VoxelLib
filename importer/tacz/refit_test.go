@@ -349,3 +349,15 @@ func TestFireModeAdjust(t *testing.T) {
 		t.Error("type_81 resolved in burst, which it lacks")
 	}
 }
+
+// TestThirdPersonScale reads the display's transform.scale.thirdperson.
+func TestThirdPersonScale(t *testing.T) {
+	p := loadPack(t)
+	g, err := p.Gun("ak47", p.DefaultChoice("ak47"), firstMode(p, "ak47"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if g.ThirdPersonScale != 0.6 {
+		t.Errorf("ak47 thirdperson scale %v, want 0.6", g.ThirdPersonScale)
+	}
+}

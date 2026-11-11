@@ -29,7 +29,10 @@ type gunFX struct {
 }
 
 // muzzleBone is TACZ's MUZZLE_FLASH_ORIGIN_NODE.
-const muzzleBone = "muzzle_flash"
+const (
+	muzzleBone          = "muzzle_flash"
+	thirdPersonHandBone = "thirdperson_hand" // GunModelConstant THIRD_PERSON_HAND_ORIGIN_NODE
+)
 
 // startMuzzle starts a shot's emitters (none when the flash is scaled to 0,
 // as TACZ): at the held gun's muzzle, or for another player's shot (at not

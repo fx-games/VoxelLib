@@ -624,7 +624,7 @@ func (s *Server) runCmd(p *sPlayer, c Cmd) {
 	s.world.LoadAround(p.ch.X, p.ch.Z, 8)
 	p.ch.Tick(s.world, in)
 	p.anim.Walk(p.ch.X-x0, p.ch.Z-z0)
-	p.anim.Pitch, p.anim.Sneak = c.Pitch, in.Sneak
+	p.anim.Pitch, p.anim.Sneak, p.anim.Gun = c.Pitch, in.Sneak, p.held.Gun != ""
 	if c.Buttons&BtnAttack != 0 && p.reload == 0 {
 		ex, ey, ez := p.ch.Eye()
 		a := p.arrows.Shoot(ex, ey-0.1, ez, c.Yaw, c.Pitch, projectile.Speed)

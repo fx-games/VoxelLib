@@ -33,6 +33,7 @@ import (
 	"github.com/memmaker/voxellib/voxel"
 	"github.com/memmaker/voxellib/voxel/engine"
 	"github.com/memmaker/voxellib/voxel/render"
+	"github.com/memmaker/voxellib/voxel/respack"
 	firearm "github.com/memmaker/voxellib/weapon"
 )
 
@@ -126,7 +127,9 @@ type netGame struct {
 	arrows     []mp.ArrowPose
 	insts      []render.ModelInstance
 	bows       []render.ModelInstance
-	mats       []mgl32.Mat4 // per bows entry
+	mats       []mgl32.Mat4  // per bows entry
+	gunAt      [4]mgl32.Mat4 // by slot: the held gun's model→world this frame (remoteGunMat)
+	gunPosed   [4]bool       // gunAt is set
 	arrowInsts []render.ModelInstance
 	skins      [][]mgl32.Mat4
 }
@@ -403,21 +406,29 @@ func (g *game) netPose(alpha float64) {
 	if len(n.skins) < len(views) {
 		n.skins = make([][]mgl32.Mat4, len(views))
 	}
+	n.gunPosed = [4]bool{}
 	for i, v := range views {
 		if v.Dead || n.bodyModel < 0 {
 			continue
 		}
+		n.mu.Lock()
+		held := n.held[v.Slot]
+		n.mu.Unlock()
+		gv := g.remoteGun(held)
 		ra := &n.anims[v.Slot]
 		if !ra.seen {
 			ra.x, ra.z, ra.seen = v.X, v.Z, true
 		}
 		ra.Advance(v.X-ra.x, v.Z-ra.z, n.frameTicks)
 		ra.x, ra.z = v.X, v.Z
-		ra.Pitch, ra.Sneak = v.Pitch, v.Sneak
+		ra.Pitch, ra.Sneak, ra.Gun = v.Pitch, v.Sneak, held.Gun != ""
+		n.skins[i] = n.body.Skin(ra.Anim, n.skins[i])
+		if gv != nil {
+			n.gunAt[v.Slot], n.gunPosed[v.Slot] = remoteGunMat(n.body, n.skins[i], v, gv), true
+		}
 		if v.Protected && time.Now().UnixMilli()/150%2 == 0 {
 			continue // blinks while spawn-protected (the walk cycle runs on)
 		}
-		n.skins[i] = n.body.Skin(ra.Anim, n.skins[i])
 		tex := n.tex[v.Slot]
 		if tex == 0 {
 			tex = n.defTex
@@ -425,13 +436,22 @@ func (g *game) netPose(alpha float64) {
 		sky, blk := g.Light(v.X, v.Y+1, v.Z)
 		n.insts = append(n.insts, render.ModelInstance{Model: n.bodyModel, X: v.X, Y: v.Y, Z: v.Z, Yaw: v.Yaw,
 			Skin: n.skins[i], Texture: tex, Sky: sky, Block: blk})
-		n.mu.Lock()
-		held := n.held[v.Slot]
-		n.mu.Unlock()
-		if gv := g.remoteGun(held); gv != nil {
-			n.mats = append(n.mats, remoteGunPose(v, gv))
-			x, y, z := remoteGunOrigin(v)
-			n.bows = append(n.bows, render.ModelInstance{Model: gv.handle, X: x, Y: y, Z: z, Skin: gv.rest, Sky: sky, Block: blk})
+		if gv != nil {
+			m := n.gunAt[v.Slot]
+			t := m.Col(3)
+			m.SetCol(3, mgl32.Vec4{0, 0, 0, 1})
+			parts := []int{gv.handle}
+			if l := gv.lens; l != nil {
+				// BedrockAttachmentModel out of first person: the scope
+				// body and ocular ring drawn plainly, no oculars or reticles.
+				parts = append(parts, l.body, l.ring)
+			}
+			for _, h := range parts {
+				if h >= 0 {
+					n.mats = append(n.mats, m)
+					n.bows = append(n.bows, render.ModelInstance{Model: h, X: float64(t[0]), Y: float64(t[1]), Z: float64(t[2]), Skin: gv.rest, Sky: sky, Block: blk})
+				}
+			}
 		} else if g.bowModel >= 0 {
 			// The crossbow at the right hand, aimed along the look, its
 			// cut-out on edge (rolled from the first-person hold, which
@@ -507,25 +527,22 @@ func (g *game) remoteGun(h mp.Hold) *gunView {
 	return v
 }
 
-// Another player's gun is the first-person model as its holder sees it
-// (camera at idle_view), turned to their look, lowered from their eye
-// toward the hand and scaled down: the first-person model is drawn with
-// the hand's field of view, its muzzle over 2 blocks out.
-const (
-	remoteGunDrop  = 0.35
-	remoteGunScale = 0.4
-)
-
-func remoteGunOrigin(v mp.PlayerView) (x, y, z float64) {
-	return v.X, v.Y + character.PlayerEyeHeight - remoteGunDrop, v.Z
+// remoteGunMat maps another player's gun model to the world, as TACZ
+// draws a gun in the right hand: ItemInHandLayer (translateToHand, then
+// ThirdPersonHeld with builtin/entity's empty display), then
+// GunItemTransforms for THIRD_PERSON_RIGHT_HAND, which puts the
+// thirdperson_hand node at (0.5, 0.5, 0.5) of the item, axes aligned, and
+// scales by the display's thirdperson scale.
+func remoteGunMat(body *mp.Body, skin []mgl32.Mat4, v mp.PlayerView, gv *gunView) mgl32.Mat4 {
+	s := gv.spec.ThirdPersonScale
+	return mp.Matrix(v.X, v.Y, v.Z, v.Yaw).Mul4(body.RightArm(skin)).
+		Mul4(mgl32.Scale3D(pixelsPerBlock, pixelsPerBlock, pixelsPerBlock)).
+		Mul4(render.ThirdPersonHeld(false, respack.HeldDisplay{})).
+		Mul4(mgl32.Translate3D(0.5, 0.5, 0.5)).Mul4(mgl32.Scale3D(s, s, s)).Mul4(gv.thirdHand)
 }
 
-// remoteGunPose maps gun model space to the world, less the translation
-// to remoteGunOrigin: the view turned to the look (render.Camera.Forward).
-func remoteGunPose(v mp.PlayerView, gv *gunView) mgl32.Mat4 {
-	return mgl32.HomogRotate3DY(float32(-v.Yaw)).Mul4(mgl32.HomogRotate3DX(float32(v.Pitch))).
-		Mul4(mgl32.Scale3D(remoteGunScale, remoteGunScale, remoteGunScale)).Mul4(gv.idle)
-}
+// pixelsPerBlock turns the reference's ModelPart pixels into blocks' worth.
+const pixelsPerBlock = 16
 
 // remoteShot plays another player's shot: the gun's sound where they stand
 // and its muzzle flash at their gun's muzzle.
@@ -539,19 +556,17 @@ func (g *game) remoteShot(slot int, h mp.Hold) {
 	if dist <= 0 {
 		return // unheard (ModernKineticGunScriptAPI.shoot: soundDistance > 0)
 	}
-	for _, v := range g.net.cl.Players() {
-		if v.Slot != slot || v.Dead {
-			continue
-		}
-		x, y, z := remoteGunOrigin(v)
-		g.sounds.play(spec.Sounds[spec.ShotSound3P()], audio.At(x, y, z, float32(dist)/blocksPerVolume, g.soundPitch()))
-		m := mgl32.Translate3D(float32(x), float32(y), float32(z)).Mul4(remoteGunPose(v, gv))
-		if b := gv.m.Bone(muzzleBone); b >= 0 {
-			m = m.Mul4(gv.rest[b]).Mul4(gv.m.Bones[b].InvBind.Inv()).Mul4(mgl32.HomogRotate3DZ(math.Pi)) // see drawMuzzle
-		}
-		f := frameOf(m)
-		g.startMuzzle(spec, &f)
+	if !g.net.gunPosed[slot] {
+		return // not posed this frame (dead, or no body)
 	}
+	m := g.net.gunAt[slot]
+	t := m.Col(3)
+	g.sounds.play(spec.Sounds[spec.ShotSound3P()], audio.At(float64(t[0]), float64(t[1]), float64(t[2]), float32(dist)/blocksPerVolume, g.soundPitch()))
+	if b := gv.m.Bone(muzzleBone); b >= 0 {
+		m = m.Mul4(gv.rest[b]).Mul4(gv.m.Bones[b].InvBind.Inv()).Mul4(mgl32.HomogRotate3DZ(math.Pi)) // see drawMuzzle
+	}
+	f := frameOf(m)
+	g.startMuzzle(spec, &f)
 }
 
 // blocksPerVolume is how far a sound of volume 1 reaches (audio.Params.Volume):
