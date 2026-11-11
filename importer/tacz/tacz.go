@@ -238,6 +238,7 @@ func (p *Pack) loadGun(file string, lang map[string]string, sound func(string) s
 		HudEmpty                        string   `json:"hud_empty"`
 		Default                         string   `json:"use_default_animation"`
 		Zoom                            *float32 `json:"iron_zoom"`
+		StateMachine                    string   `json:"state_machine"`
 		ModelFOV                        *float32 `json:"model_fov"`
 		ZoomModelFOV                    *float32 `json:"zoom_model_fov"`
 		Sounds                          map[string]json.RawMessage
@@ -298,6 +299,7 @@ func (p *Pack) loadGun(file string, lang map[string]string, sound func(string) s
 	spec.Shoot, spec.Dry = sound(shoot), sound("tacz:dry_fire")
 	// GunDisplay's defaults where absent.
 	spec.Zoom = orDefault(disp.Zoom, gunIronZoom)
+	spec.Spin = disp.StateMachine == minigunStateMachine
 	spec.ModelFOV, spec.AimModelFOV = orDefault(disp.ModelFOV, gunModelFOV), orDefault(disp.ZoomModelFOV, gunModelFOV)
 	spec.Model, spec.Icon = asset("geo_models", disp.Model)+".json", asset("textures", disp.Slot)+".png"
 	spec.Hud = asset("textures", disp.Hud) + ".png"
@@ -332,6 +334,8 @@ func (p *Pack) loadGun(file string, lang map[string]string, sound func(string) s
 // GunDisplay's defaults.
 const (
 	gunIronZoom = 1.2
+	// minigunStateMachine is the script that spins the barrel.
+	minigunStateMachine = "tacz:minigun_state_machine"
 	gunModelFOV = 70
 )
 

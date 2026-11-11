@@ -30,6 +30,7 @@ is the gun cycle (draw, idle, shoot, bolt, reload magazine/tube/inventory, inspe
 - [x] shells: ShellRender per shot at shell/shell_N bones (display's shell model, else the ammo's), camera space from the bone's first-frame pose
 - [x] attachments: builtin_attachments shown as TACZ shows them (adapters, <type>_pos grafts via model.Graft, bone visibility), scope aiming (scope_view_N, zoom, idle_scope_height_adjust)
 - [x] zoom as CameraSetupEvent: world FOV magnificationToFov(1+(zoom−1)·easeInExpo(aim)), hand FOV model_fov→scope views_fov/fov (else zoom_model_fov), both via SecondOrderDynamics(0.5,1.2,0.5); hand pose via AIMING_DYNAMICS(1.2,1.2,0.5). Verified: SVD 8.25×, AUG 4.25× reticle; P90 sight reticle faint (unverified against the mod)
+- [x] state tracks: over_heat once / static_over_heating looping while locked; minigun spin (minigun_state_machine: spin while main track idle, stacked while Firing). Unverified: barrel spin seen on screen; spin_low absent from the pack
 - [x] scope lens parts split out of the gun (tacz.Lens: ring, body, oculars, divisions on the gun skeleton); ring + body drawn plainly
 - [x] scope stencil passes: renderScope/renderBoth/renderSight order on render.HandStencil (cmd/explorer/gunlens.go); view disc at the ocular depth with the reference angular size (80/90·aim)
 - [x] heat (GunHeatData + sp_heat.lua: lock, cooling·t², rpm/inaccuracy factors; HeatBarOverlay)

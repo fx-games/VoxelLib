@@ -64,7 +64,18 @@ type GunState struct {
 	fed       bool    // reload: magazine in / tube intro over
 	empty     bool    // the reload started on an empty gun
 	ending    bool    // tube reload: reload_end playing
-	sinceShot float32 // seconds since then
+	sinceShot float32 // seconds since the last shot
+	interval  float32 // the last shot's interval (0: none fired yet)
+}
+
+// firingGrace is how late a shot may come and still continue a stream of
+// fire (the minigun script's 100 ms against game stutter).
+const firingGrace = 0.1
+
+// Firing reports whether the gun is firing continuously: the next shot is
+// due (minigun_state_machine spin_states.fire).
+func (s *GunState) Firing() bool {
+	return s.interval > 0 && s.sinceShot <= s.interval+firingGrace
 }
 
 // Draw starts taking the gun out.
@@ -97,6 +108,7 @@ func (s *GunState) Tick(dt float32, in GunInput, stock *int) []GunEvent {
 		s.cooldown -= dt // may go below 0: the credit lets fast guns fire twice in a tick
 	}
 	defer func() { s.cooldown = max(s.cooldown, 0) }() // no credit kept past a tick without fire
+	s.sinceShot += dt
 	s.cool(dt)
 	switch s.Phase {
 	case Drawing:
@@ -171,6 +183,7 @@ func (s *GunState) Tick(dt float32, in GunInput, stock *int) []GunEvent {
 			}
 		}
 		s.cooldown += interval
+		s.sinceShot, s.interval = 0, interval
 		if g.Bolt == ManualAction && s.Ammo > 0 {
 			s.Phase, s.T, s.burstLeft = Bolting, 0, 0
 			ev = append(ev, GunEvent{Clip: ClipBolt})
@@ -190,7 +203,6 @@ func (s *GunState) heat() {
 		return
 	}
 	s.Heat = min(s.Heat+h.PerShot, h.Max)
-	s.sinceShot = 0
 	s.Overheated = s.Overheated || s.Heat >= h.Max
 }
 
@@ -202,7 +214,6 @@ func (s *GunState) cool(dt float32) {
 	if h == nil {
 		return
 	}
-	s.sinceShot += dt
 	wait := h.Delay
 	if s.Overheated {
 		wait = h.Lock

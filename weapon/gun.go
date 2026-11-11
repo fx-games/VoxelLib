@@ -157,6 +157,9 @@ type Gun struct {
 	Muzzle *MuzzleFlash `json:"muzzle,omitempty"`
 	// Shell is the casing ejection; nil: the gun ejects none.
 	Shell *ShellEjection `json:"shell,omitempty"`
+	// Spin: the barrel spins as minigun_state_machine drives it (the
+	// "spin" clip looping while the main track is idle, again on top while firing).
+	Spin bool `json:"spin,omitempty"`
 	// Heat is the overheating; nil: the gun never heats.
 	Heat *Heat `json:"heat,omitempty"`
 }

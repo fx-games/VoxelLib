@@ -96,6 +96,7 @@ type gunView struct {
 	skin       []mgl32.Mat4
 	times      []float32 // layer times saved while posing between ticks
 	lens       *lensView // nil: no scope
+	overheated bool      // the over_heat clip has run for the current lock
 }
 
 // gunArms draws the player's arms at a gun's hand bones as TACZ does
@@ -246,6 +247,7 @@ func (g *game) tickGun() {
 	g.gunEvents(ev)
 
 	v := g.gunViews[g.gun.Gun.ID]
+	g.stateTracks(v)
 	g.tickGunTracks(v, 1.0/app.TickRate)
 	g.cueT += 1.0 / app.TickRate
 	cues := g.gun.Gun.Cues[g.cueClip]
@@ -301,6 +303,58 @@ func (g *game) playGunClip(v *gunView, clip string) {
 	}
 	v.anim.Layers[mainTrack] = model.Layer{Clip: c}
 	g.cueClip, g.cueT, g.cueNext = clip, 0, 0
+}
+
+// Blending track clips the scripts run by state, not by gun event.
+const (
+	clipSpin              = "spin"
+	clipOverHeat          = "over_heat"
+	clipStaticOverHeating = "static_over_heating"
+)
+
+// stateTracks runs the blending tracks the state machines drive from the
+// gun's state: over_heat_states (over_heat once on overheating,
+// static_over_heating looping while overheated) and the minigun's
+// spin_states (spin while the main track is idle, once more while firing).
+func (g *game) stateTracks(v *gunView) {
+	s := &g.gun
+	if s.Overheated != v.overheated {
+		v.overheated = s.Overheated
+		if c := v.m.Clips[clipOverHeat]; c != nil && s.Overheated {
+			v.anim.Layers = append(v.anim.Layers, model.Layer{Clip: c, Blend: true})
+		}
+	}
+	setLoops(v, v.m.Clips[clipStaticOverHeating], b2i(s.Overheated))
+	if s.Gun.Spin {
+		idle := v.anim.Layers[mainTrack].Clip == nil
+		setLoops(v, v.m.Clips[clipSpin], b2i(idle)+b2i(idle && s.Firing()))
+	}
+}
+
+// setLoops keeps n blended layers of a looping clip (nil: none to play).
+func setLoops(v *gunView, c *model.Clip, n int) {
+	if c == nil {
+		return
+	}
+	for i := range v.anim.Layers {
+		if l := &v.anim.Layers[i]; i != mainTrack && l.Clip == c {
+			if n > 0 {
+				n--
+			} else {
+				l.Clip = nil // pruned by tickGunTracks
+			}
+		}
+	}
+	for ; n > 0; n-- {
+		v.anim.Layers = append(v.anim.Layers, model.Layer{Clip: c, Blend: true})
+	}
+}
+
+func b2i(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
 }
 
 // tickGunTracks advances the tracks by dt; finished clips stop (PLAY_ONCE_STOP).
