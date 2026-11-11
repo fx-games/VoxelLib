@@ -472,6 +472,9 @@ func curPass() *wgpu.RenderPassEncoder {
 	if err != nil {
 		panic(err)
 	}
+	if scope.active {
+		p.SetScissorRect(scope.clip)
+	}
 	dev.pass, dev.clearNext, dev.clearDepth = p, false, false
 	return p
 }

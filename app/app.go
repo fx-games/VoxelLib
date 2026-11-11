@@ -184,12 +184,9 @@ type App struct {
 	Mixer  *audio.Mixer // nil without Config.Audio
 
 	// Per session (rebuilt by NewGame):
-	Eng    *engine.Engine
-	Models *render.ModelRenderer // shared model renderer (entities, games)
-	Cam    render.Camera
-	// ScopeFOV (vertical, radians) renders a magnified scope view of the
-	// world each frame for a hand-pass HandStencil.ScopeView draw; 0: none.
-	ScopeFOV float64
+	Eng      *engine.Engine
+	Models   *render.ModelRenderer // shared model renderer (entities, games)
+	Cam      render.Camera
 	Player   *Player
 	Entities Entities
 	Terrain  *Terrain // the world as character.World / collide.Solids

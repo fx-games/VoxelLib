@@ -1,6 +1,8 @@
 package render
 
 import (
+	"image"
+
 	"github.com/gogpu/gputypes"
 	"github.com/gogpu/wgpu"
 )
@@ -13,8 +15,9 @@ var scope struct {
 	color, depth texture2D
 	bg           *wgpu.BindGroup
 	w, h         int
-	active       bool // between BeginScopeView and EndScopeView
-	ready        bool // drawn this frame
+	clip         gputypes.ScissorRect // the pixels BeginScopeView draws
+	active       bool                 // between BeginScopeView and EndScopeView
+	ready        bool                 // drawn this frame
 	// the frame's pass state, restored by EndScopeView
 	clearColor            gputypes.Color
 	clearNext, clearDepth bool
@@ -22,12 +25,16 @@ var scope struct {
 
 // BeginScopeView redirects the world draws (Renderer.RenderView,
 // ModelRenderer.Draw, ...) to the scope view, cleared, at the world's
-// resolution, and reports whether it did: not outside a frame or in
-// shader-pack frames.
-func BeginScopeView() bool {
-	if dev.enc == nil || dev.pk != nil {
+// resolution, rasterising only inside clip (world pixels, e.g. a lens's
+// ModelRenderer.HandBounds: the view shows only there), and reports
+// whether it did: not outside a frame, in shader-pack frames or for a
+// clip off the screen.
+func BeginScopeView(clip image.Rectangle) bool {
+	clip = clip.Intersect(image.Rect(0, 0, dev.ww, dev.wh))
+	if dev.enc == nil || dev.pk != nil || clip.Empty() {
 		return false
 	}
+	scope.clip = gputypes.ScissorRect{X: uint32(clip.Min.X), Y: uint32(clip.Min.Y), Width: uint32(clip.Dx()), Height: uint32(clip.Dy())}
 	endPass()
 	w, h := dev.ww, dev.wh
 	if scope.w != w || scope.h != h {

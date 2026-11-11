@@ -1,6 +1,7 @@
 package app
 
 import (
+	"image"
 	"math"
 
 	"github.com/memmaker/voxellib/voxel/collide"
@@ -137,14 +138,16 @@ func (a *App) drawEntities(alpha float64) {
 	a.Models.Draw(&a.Cam, es.insts)
 }
 
-// drawScopeView renders the world and entities again with ScopeFOV into
-// the scope view (render.BeginScopeView), when set.
-func (a *App) drawScopeView() {
-	if a.ScopeFOV <= 0 || !render.BeginScopeView() {
+// DrawScopeView renders the world and entities again with fov (vertical,
+// radians) into the scope view (render.BeginScopeView) inside clip, for a
+// hand-pass HandStencil.ScopeView draw this frame. Call it from
+// Hooks.Draw, before that hand draw.
+func (a *App) DrawScopeView(fov float64, clip image.Rectangle) {
+	if !render.BeginScopeView(clip) {
 		return
 	}
 	cam := a.Cam
-	cam.FOV = a.ScopeFOV
+	cam.FOV = fov
 	a.Eng.Renderer.RenderView(&cam)
 	a.Models.Draw(&cam, a.Entities.insts)
 	render.EndScopeView()
