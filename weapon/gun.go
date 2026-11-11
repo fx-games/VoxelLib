@@ -141,6 +141,8 @@ type Gun struct {
 		// hit's default (TACZ KnockBackModifier).
 		Knockback float32   `json:"knockback"`
 		Falloff   []Falloff `json:"falloff"`
+		// Explosion, when set, makes the round explode (ExplosionData).
+		Explosion *Explosion `json:"explosion,omitempty"`
 	} `json:"bullet"`
 	Reload struct {
 		Kind ReloadKind `json:"kind"`
@@ -446,4 +448,15 @@ type TubeTiming struct {
 type TubeUnload struct {
 	Time   float32 `json:"time"`
 	Amount int     `json:"amount"`
+}
+
+// Explosion is TACZ's ExplosionData: the blast of an explosive round
+// Delay seconds after firing, or where it hits first.
+type Explosion struct {
+	Damage    float32 `json:"damage"` // power
+	Radius    float32 `json:"radius"`
+	Knockback bool    `json:"knockback"`
+	// DestroyBlock is read but not applied: blocks have no blast resistance.
+	DestroyBlock bool    `json:"destroy_block"`
+	Delay        float32 `json:"delay"` // seconds
 }

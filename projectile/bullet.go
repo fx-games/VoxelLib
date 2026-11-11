@@ -34,6 +34,8 @@ type Bullet struct {
 	Gun *weapon.Gun
 	// DamageScale is applyShotgunDamageSpread: 1/pellets for a shotgun round.
 	DamageScale float32
+	// fuse is explosionDelayCount: ticks until an explosive round blows up.
+	fuse int
 }
 
 const (
@@ -60,6 +62,9 @@ func NewBullet(at, dir [3]float64, g *weapon.Gun, inaccuracy float64, tracer boo
 		Life: max(int(g.Bullet.Life*TicksPerSecond), 1), Pierce: max(g.Bullet.Pierce, 1)}
 	if g.Bullet.Pellets > 1 {
 		b.DamageScale = 1 / float32(g.Bullet.Pellets)
+	}
+	if e := g.Bullet.Explosion; e != nil {
+		b.fuse = max(int(e.Delay*TicksPerSecond), 1)
 	}
 	speed := max(float64(g.Bullet.Speed)/TicksPerSecond, 0)
 	n := norm(dir)
@@ -196,6 +201,9 @@ type BulletCollider struct {
 	// block that stopped the bullet.
 	Hit   func(b *Bullet, h BulletHit)
 	Block func(b *Bullet, h physics.Hit)
+	// Explode is called where an explosive round blows up: its fuse ran
+	// out, or after the first target or block it hit.
+	Explode func(b *Bullet, at [3]float64)
 }
 
 // Tick runs one tick of b in w (EntityKineticBullet.tick): with c, the
@@ -207,6 +215,12 @@ func (b *Bullet) Tick(w BulletWorld, c *BulletCollider) {
 	}
 	b.Age++
 	if c != nil {
+		if b.Gun.Bullet.Explosion != nil {
+			if b.fuse--; b.fuse <= 0 { // explosionDelayCount
+				b.explode(c, b.Pos)
+				return
+			}
+		}
 		if b.collide(c, w); b.Gone {
 			return
 		}
@@ -283,6 +297,10 @@ func (b *Bullet) collide(c *BulletCollider, w BulletWorld) {
 		if c.Hit != nil {
 			c.Hit(b, h)
 		}
+		if b.Gun.Bullet.Explosion != nil { // onHitEntity: explode at the hit, stop
+			b.explode(c, h.Pos)
+			return
+		}
 		if b.Pierce--; b.Pierce < 1 {
 			b.Gone = true
 			return
@@ -292,8 +310,18 @@ func (b *Bullet) collide(c *BulletCollider, w BulletWorld) {
 		if c.Block != nil {
 			c.Block(b, block)
 		}
+		if b.Gun.Bullet.Explosion != nil { // onHitBlock
+			b.explode(c, [3]float64{start[0] + seg[0], start[1] + seg[1], start[2] + seg[2]})
+		}
 		b.Gone = true
 	}
+}
+
+func (b *Bullet) explode(c *BulletCollider, at [3]float64) {
+	if c.Explode != nil {
+		c.Explode(b, at)
+	}
+	b.Gone = true
 }
 
 // Damage is getDamage at a hit point: the gun's falloff at the distance

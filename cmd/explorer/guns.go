@@ -748,6 +748,18 @@ func (g *game) tickBullets() {
 			g.hitMark(h.Head, g.hitCreature(c, b.Damage(h.Pos, h.Head), away, float64(b.Gun.Bullet.Knockback)))
 		},
 	}
+	inSight := func(a, b [3]float64) bool { return projectile.InSight(w, col.Boxes, a, b) }
+	col.Explode = func(b *projectile.Bullet, at [3]float64) {
+		for i, c := range who {
+			dmg, push, ok := projectile.Blast(b.Gun.Bullet.Explosion, at, targets[i].Box, inSight)
+			if !ok || c.dying != 0 {
+				continue
+			}
+			if !g.hitCreature(c, dmg, [3]float64{c.mob.X - at[0], 0, c.mob.Z - at[2]}, 0) && !c.mob.Static {
+				c.mob.VX, c.mob.VY, c.mob.VZ = c.mob.VX+push[0], c.mob.VY+push[1], c.mob.VZ+push[2]
+			}
+		}
+	}
 	bw := bulletWorld{w, g.Terrain}
 	live := g.bullets[:0]
 	for _, b := range g.bullets {

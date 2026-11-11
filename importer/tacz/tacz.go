@@ -607,7 +607,15 @@ type taczData struct {
 		// Knockback is BulletData's knockback (default 0: TACZ bullets
 		// replace the vanilla push with it).
 		Knockback float32 `json:"knockback"`
-		Extra     struct {
+		Explosion *struct {
+			Explode      bool    `json:"explode"`
+			Damage       float32 `json:"damage"`
+			Radius       float32 `json:"radius"`
+			Knockback    bool    `json:"knockback"`
+			DestroyBlock bool    `json:"destroy_block"`
+			Delay        float32 `json:"delay"`
+		} `json:"explosion"`
+		Extra struct {
 			Headshot float32 `json:"head_shot_multiplier"`
 			Adjust   []struct {
 				Distance json.RawMessage `json:"distance"` // a number or "infinite"
@@ -703,6 +711,9 @@ func (d *taczData) spec(id, name, class string) (weapon.Gun, error) {
 	b.Damage, b.Pellets, b.Speed, b.Gravity, b.Pierce = d.Bullet.Damage, max(d.Bullet.Amount, 1), d.Bullet.Speed, d.Bullet.Gravity, d.Bullet.Pierce
 	b.Friction, b.Life, b.TracerInterval = d.Bullet.Friction, d.Bullet.Life, d.Bullet.TracerInterval
 	b.Headshot, b.Knockback = d.Bullet.Extra.Headshot, d.Bullet.Knockback
+	if e := d.Bullet.Explosion; e != nil && e.Explode {
+		b.Explosion = &weapon.Explosion{Damage: e.Damage, Radius: e.Radius, Knockback: e.Knockback, DestroyBlock: e.DestroyBlock, Delay: e.Delay}
+	}
 	for _, a := range d.Bullet.Extra.Adjust {
 		dist := float32(math.MaxFloat32) // DistanceDamagePairSerializer: "infinite"
 		if string(a.Distance) != `"infinite"` {

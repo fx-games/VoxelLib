@@ -52,6 +52,9 @@ func TestLoadPack(t *testing.T) {
 		if g.ID == "ak47" && (g.AdsPath == nil || g.AdsPath.Z.Start != 0.2 || g.AdsFovModel == nil || g.AdsFovWorld == nil) {
 			t.Errorf("ak47 ads %+v %+v %+v", g.AdsPath, g.AdsFovModel, g.AdsFovWorld)
 		}
+		if e := g.Bullet.Explosion; g.ID == "rpg7" && (e == nil || e.Damage != 120 || e.Radius != 3 || e.Delay != 30) || g.ID == "ak47" && e != nil {
+			t.Errorf("%s explosion %+v", g.ID, e)
+		}
 		if g.Reload.Kind == weapon.Tube && g.Reload.Tube == nil {
 			t.Errorf("%s: tube reload without script_param timings", g.ID)
 		}

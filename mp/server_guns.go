@@ -9,6 +9,7 @@ import (
 	"github.com/memmaker/voxellib/projectile"
 	"github.com/memmaker/voxellib/voxel"
 	"github.com/memmaker/voxellib/voxel/collide"
+	"github.com/memmaker/voxellib/voxel/physics"
 	"github.com/memmaker/voxellib/weapon"
 )
 
@@ -152,7 +153,9 @@ func (s *Server) tickBullets(tick uint32) {
 				}
 				s.damage(Hit{Attacker: p.slot, Victim: v.slot, Damage: max(1, int(math.Round(dmg))), Head: h.Head, Gun: true},
 					v.ch.X-p.ch.X, v.ch.Z-p.ch.Z, knock)
-			}})
+			},
+			Explode: func(b *projectile.Bullet, at [3]float64) { s.explode(p, b.Gun.Bullet.Explosion, at, t.ts, t.who, boxes) },
+		})
 		if sb.b.Gone {
 			s.broadcast(bulletGone(sb.id))
 			continue
@@ -206,5 +209,31 @@ func (s *Server) melee(p *sPlayer, gun string, l Look) {
 		}
 		zm.VX, zm.VY, zm.VZ = actors.KnockbackMotion(zm.VX, zm.VY, zm.VZ, zm.OnGround, float64(m.Knockback), -d[0], -d[2])
 		s.hurtZombie(p, z, Hit{Melee: true}, float64(m.Damage), zm.X-p.ch.X, zm.Z-p.ch.Z, actors.HurtKnockback)
+	}
+}
+
+// explode is ProjectileExplosion on p's enemies and the zombies, as p saw
+// them: each takes the blast's damage and push.
+//
+// ponytail: the shooter and allies are spared (TACZ hurts everyone in
+// reach); add them with a self-damage Hit if friendly fire matters.
+func (s *Server) explode(p *sPlayer, e *weapon.Explosion, at [3]float64, ts []projectile.BulletTarget, who []hitTarget, boxes physics.BoxFunc) {
+	inSight := func(a, b [3]float64) bool { return projectile.InSight(s.world, boxes, a, b) }
+	for i, t := range ts {
+		dmg, push, ok := projectile.Blast(e, at, t.Box, inSight)
+		if !ok {
+			continue
+		}
+		if z := who[i].zombie; z != nil {
+			s.hurtZombie(p, z, Hit{Gun: true}, float64(dmg), z.m.X-at[0], z.m.Z-at[2], 0)
+			z.m.VX, z.m.VY, z.m.VZ = z.m.VX+push[0], z.m.VY+push[1], z.m.VZ+push[2]
+			continue
+		}
+		v := who[i].player
+		if v.dead > 0 {
+			continue
+		}
+		s.damage(Hit{Attacker: p.slot, Victim: v.slot, Damage: max(1, int(math.Round(float64(dmg)))), Gun: true}, v.ch.X-at[0], v.ch.Z-at[2], 0)
+		v.ch.VX, v.ch.VY, v.ch.VZ = v.ch.VX+push[0], v.ch.VY+push[1], v.ch.VZ+push[2]
 	}
 }
