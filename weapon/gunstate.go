@@ -31,11 +31,13 @@ const (
 	ClipReloadEmpty    = "reload_empty"
 	ClipReloadTactical = "reload_tactical"
 	ClipReloadIntro    = "reload_intro"
-	ClipReloadLoop     = "reload_loop"
-	ClipReloadEnd      = "reload_end"
-	ClipMeleePush      = "melee_push"
-	ClipMeleeStock     = "melee_stock"
-	ClipMeleeBayonet   = "melee_bayonet_" // + 1..meleeBayonetClips in turn
+	// ClipReloadIntroEmpty starts a tube reload with no round chambered.
+	ClipReloadIntroEmpty = "reload_intro_empty"
+	ClipReloadLoop       = "reload_loop"
+	ClipReloadEnd        = "reload_end"
+	ClipMeleePush        = "melee_push"
+	ClipMeleeStock       = "melee_stock"
+	ClipMeleeBayonet     = "melee_bayonet_" // + 1..meleeBayonetClips in turn
 )
 
 // meleeBayonetClips is how many bayonet clips the state machine cycles through.
@@ -80,9 +82,9 @@ type GunState struct {
 
 	cooldown  float32 // seconds until the next shot may fire
 	burstLeft int
-	fed       bool    // reload: magazine in / tube intro over
-	empty     bool    // the reload started on an empty gun
-	ending    bool    // tube reload: reload_end playing
+	fed       bool // reload: magazine in
+	empty     bool // the reload started on an empty gun
+	tube      tubeReload
 	sinceShot float32 // seconds since the last shot
 	interval  float32 // the last shot's interval (0: none fired yet)
 	meleeHit  bool    // the melee's hit has landed
@@ -187,6 +189,11 @@ func (s *GunState) Tick(dt float32, in GunInput, stock *int) []GunEvent {
 			s.ready(&ev)
 		}
 	case Reloading:
+		// LocalPlayerMixin: a shot cancels a reload (interrupt_reload);
+		// the shot itself waits for the reload's end
+		if tryShoot && g.Reload.Kind == Tube {
+			s.interruptTube(&ev)
+		}
 		s.tickReload(&ev, stock)
 	case Meleeing:
 		if !s.meleeHit && s.T >= g.Melee.Prep {
@@ -345,7 +352,10 @@ func (s *GunState) SpreadFactor() float32 {
 // capacity is how many rounds a full reload holds: a closed bolt keeps one
 // chambered on top of a full magazine when reloaded before running dry.
 func (s *GunState) capacity() int {
-	if s.Gun.Bolt == ClosedBolt && s.Gun.Reload.Kind == Magazine && (s.Phase == Reloading && !s.empty || s.Phase != Reloading && s.Ammo > 0) {
+	// a tube gun's round in the barrel is besides the tube's; a revolver has none
+	tube := s.Gun.Reload.Kind == Tube && (s.Gun.Reload.Tube == nil || s.Gun.Reload.Tube.Unload == nil)
+	chambers := s.Gun.Bolt == ClosedBolt && s.Gun.Reload.Kind == Magazine || tube
+	if chambers && (s.Phase == Reloading && !s.empty || s.Phase != Reloading && s.Ammo > 0) {
 		return s.Gun.Mag + 1
 	}
 	return s.Gun.Mag
@@ -357,13 +367,13 @@ func (s *GunState) ready(ev *[]GunEvent) {
 }
 
 func (s *GunState) startReload(ev *[]GunEvent) {
-	s.Phase, s.T, s.fed, s.empty, s.ending, s.burstLeft = Reloading, 0, false, s.Ammo == 0, false, 0
+	s.Phase, s.T, s.fed, s.empty, s.burstLeft = Reloading, 0, false, s.Ammo == 0, 0
 	clip, sound := ClipReloadTactical, SoundReloadTactical
 	if s.empty {
 		clip, sound = ClipReloadEmpty, SoundReloadEmpty
 	}
 	if s.Gun.Reload.Kind == Tube {
-		clip = ClipReloadIntro
+		clip = s.startTube()
 	}
 	*ev = append(*ev, GunEvent{Clip: clip, Sound: sound})
 }
@@ -386,26 +396,7 @@ func (s *GunState) tickReload(ev *[]GunEvent, stock *int) {
 		}
 		return
 	}
-	switch intro, loop := s.ClipLen(ClipReloadIntro), s.ClipLen(ClipReloadLoop); {
-	case s.ending:
-		if s.T >= s.ClipLen(ClipReloadEnd) {
-			s.ready(ev)
-		}
-	case !s.fed:
-		if s.T >= intro {
-			s.fed, s.T = true, s.T-intro
-			*ev = append(*ev, GunEvent{Clip: ClipReloadLoop})
-		}
-	case s.T >= loop:
-		s.T -= loop
-		s.take(1, stock)
-		if s.Ammo >= g.Mag || *stock == 0 {
-			s.ending, s.T = true, 0
-			*ev = append(*ev, GunEvent{Clip: ClipReloadEnd})
-		} else {
-			*ev = append(*ev, GunEvent{Clip: ClipReloadLoop})
-		}
-	}
+	s.tickTube(ev, stock)
 }
 
 // take moves up to n rounds from stock into the gun.

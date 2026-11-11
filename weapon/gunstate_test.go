@@ -46,17 +46,36 @@ func TestGunCycle(t *testing.T) {
 		t.Fatalf("semi: %d shots", n)
 	}
 
-	// Tube: one round per reload_loop, then reload_end.
+	// Tube (m870_gun_logic, the m870's timings): an empty gun chambers a
+	// round, then fills the tube: mag + 1.
 	sg := &Gun{Mag: 5, RPM: 60, Modes: []FireMode{Semi}, Bolt: ManualAction}
 	sg.Reload.Kind = Tube
+	sg.Reload.Tube = &TubeTiming{IntroEmpty: 2.13, Intro: 0.37, Loop: 0.67, Ending: 0.17, IntroEmptyFeed: 1.35, LoopFeed: 0.25}
 	s = &GunState{Gun: sg, ClipLen: lens, Phase: Ready, Ammo: 1}
 	stock = 10
 	if n := run(s, 0.1, GunInput{Trigger: true}, &stock); n != 1 || s.Phase != Ready && s.Ammo != 0 {
 		t.Fatalf("pump shot: %d, phase %d", n, s.Phase)
 	}
-	run(s, 0.5+5*0.5+0.5+0.2, GunInput{Reload: true}, &stock)
-	if s.Ammo != 5 || stock != 5 || s.Phase != Ready {
-		t.Fatalf("tube: ammo %d stock %d phase %d", s.Ammo, stock, s.Phase)
+	run(s, 0.1, GunInput{Reload: true}, &stock)
+	if run(s, 5.3, GunInput{}, &stock); s.Phase != Reloading || s.Ammo != 6 {
+		t.Fatalf("tube at 5.4 s: ammo %d phase %d", s.Ammo, s.Phase)
+	}
+	if run(s, 0.4, GunInput{}, &stock); s.Phase != Ready || stock != 4 {
+		t.Fatalf("tube done: ammo %d stock %d phase %d", s.Ammo, stock, s.Phase)
+	}
+	// tactical: the tube fills to 5 besides the chambered round; a shot
+	// interrupts it, ending runs, then the held trigger fires
+	s.Ammo = 3
+	run(s, 0.05, GunInput{Reload: true}, &stock)
+	run(s, 0.37+0.25+0.05, GunInput{}, &stock) // one round in
+	if s.Ammo != 4 {
+		t.Fatalf("tactical first round: %d", s.Ammo)
+	}
+	if n := run(s, 0.1, GunInput{Trigger: true}, &stock); n != 0 || s.Phase != Reloading {
+		t.Fatalf("interrupted: %d shots, phase %d", n, s.Phase)
+	}
+	if n := run(s, 0.2, GunInput{Trigger: true}, &stock); n != 1 || s.Ammo != 3 {
+		t.Fatalf("after ending: %d shots, ammo %d", n, s.Ammo)
 	}
 
 	// Inventory-fed: shots come from the stock.
@@ -200,5 +219,22 @@ func TestBurst(t *testing.T) {
 	run(s, 0.05, GunInput{}, &stock)
 	if n := run(s, 1, GunInput{Trigger: true}, &stock); n != 6 {
 		t.Fatalf("continuous 1 s at 0.5 s min interval: %d shots", n)
+	}
+}
+
+// taurus943_gun_logic: the cylinder empties back into the stock, then
+// refills a round per loop.
+func TestRevolverReload(t *testing.T) {
+	g := &Gun{Mag: 8, RPM: 300, Modes: []FireMode{Semi}, Bolt: OpenBolt}
+	g.Reload.Kind = Tube
+	g.Reload.Tube = &TubeTiming{Intro: 1.45, Loop: 0.45, LoopFeed: 0.1, Ending: 0.75, Unload: &TubeUnload{Time: 0.8, Amount: 8}}
+	s := &GunState{Gun: g, ClipLen: func(string) float32 { return 0.5 }, Phase: Ready, Ammo: 3}
+	stock := 10
+	run(s, 0.05, GunInput{Reload: true}, &stock)
+	if run(s, 0.8, GunInput{}, &stock); s.Ammo != 0 || stock != 13 {
+		t.Fatalf("unloaded: ammo %d stock %d", s.Ammo, stock)
+	}
+	if run(s, 1.45+8*0.45+0.75-0.8, GunInput{}, &stock); s.Ammo != 8 || stock != 5 || s.Phase != Ready {
+		t.Fatalf("refilled: ammo %d stock %d phase %d", s.Ammo, stock, s.Phase)
 	}
 }

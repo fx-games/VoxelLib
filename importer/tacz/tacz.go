@@ -371,6 +371,10 @@ func (p *Pack) applyAds(spec *weapon.Gun, own adsPreset, id string) error {
 	return nil
 }
 
+// revolverReloadScript is the gun script whose tube reload empties the
+// cylinder first.
+const revolverReloadScript = "tacz:taurus943_gun_logic"
+
 // defaultBurstMinInterval is BurstData.minInterval's default, seconds.
 const defaultBurstMinInterval = 1
 
@@ -571,7 +575,20 @@ type taczData struct {
 	Bolt      string                         `json:"bolt"`
 	Modes     []string                       `json:"fire_mode"`
 	Adjust    map[weapon.FireMode]modeAdjust `json:"fire_mode_adjust"`
-	Burst     struct {
+	// ScriptParam: the tube reload's timings (m870_gun_logic's script params).
+	ScriptParam struct {
+		IntroEmpty     *float32 `json:"intro_empty"`
+		Intro          *float32 `json:"intro"`
+		Loop           *float32 `json:"loop"`
+		Ending         *float32 `json:"ending"`
+		IntroEmptyFeed *float32 `json:"intro_empty_feed"`
+		LoopFeed       *float32 `json:"loop_feed"`
+		// taurus943_gun_logic's unloading
+		UnloadMagazine *bool    `json:"unload_magazine"`
+		UnloadAmount   *int     `json:"unload_amount"`
+		UnloadTime     *float32 `json:"unload_time"`
+	} `json:"script_param"`
+	Burst struct {
 		Count int     `json:"count"`
 		BPM   float32 `json:"bpm"`
 		// BurstData.minInterval defaults to 1 s
@@ -706,6 +723,19 @@ func (d *taczData) spec(id, name, class string) (weapon.Gun, error) {
 	g.Unload = r.Kind != weapon.Inventory && (d.Script == "" || d.AllowUnload)
 	r.FeedEmpty, r.FeedTactical = d.Reload.Feed.Empty, d.Reload.Feed.Tactical
 	r.DoneEmpty, r.DoneTactical = d.Reload.Cooldown.Empty, d.Reload.Cooldown.Tactical
+	switch sp := d.ScriptParam; {
+	case d.Script == revolverReloadScript && sp.Intro != nil && sp.Loop != nil && sp.Ending != nil && sp.LoopFeed != nil && sp.UnloadTime != nil:
+		u := &weapon.TubeUnload{Time: *sp.UnloadTime, Amount: weapon.UnloadAll} // getUnloadAmount
+		if sp.UnloadAmount != nil {
+			u.Amount = *sp.UnloadAmount
+		}
+		if sp.UnloadMagazine != nil && !*sp.UnloadMagazine {
+			u.Amount = 0
+		}
+		r.Tube = &weapon.TubeTiming{Intro: *sp.Intro, Loop: *sp.Loop, Ending: *sp.Ending, LoopFeed: *sp.LoopFeed, Unload: u}
+	case sp.IntroEmpty != nil && sp.Intro != nil && sp.Loop != nil && sp.Ending != nil && sp.IntroEmptyFeed != nil && sp.LoopFeed != nil:
+		r.Tube = &weapon.TubeTiming{IntroEmpty: *sp.IntroEmpty, Intro: *sp.Intro, Loop: *sp.Loop, Ending: *sp.Ending, IntroEmptyFeed: *sp.IntroEmptyFeed, LoopFeed: *sp.LoopFeed}
+	}
 	g.Draw, g.PutAway, g.Aim = d.Draw, d.PutAway, d.Aim
 	g.Weight, g.MoveSpeed = d.Weight, d.MoveSpeed
 	for _, k := range d.Recoil.Pitch {

@@ -149,6 +149,8 @@ type Gun struct {
 		FeedTactical float32 `json:"feed_tactical"`
 		DoneEmpty    float32 `json:"done_empty"`
 		DoneTactical float32 `json:"done_tactical"`
+		// Tube: the scripted tube reload's timings.
+		Tube *TubeTiming `json:"tube,omitempty"`
 	} `json:"reload"`
 	Draw    float32 `json:"draw"`
 	PutAway float32 `json:"put_away"`
@@ -420,4 +422,28 @@ func (h *ThirdPersonHold) UnmarshalText(t []byte) error {
 	v, err := enumParse(thirdPersonHoldNames, t)
 	*h = ThirdPersonHold(v)
 	return err
+}
+
+// TubeTiming is m870_gun_logic's tube reload (seconds from the reload's
+// start): an empty gun chambers a round at IntroEmptyFeed; then a round
+// goes into the tube LoopFeed into each Loop after the intro (IntroEmpty
+// or Intro); Ending runs after the last round or an interruption.
+type TubeTiming struct {
+	IntroEmpty     float32 `json:"intro_empty"`
+	Intro          float32 `json:"intro"`
+	Loop           float32 `json:"loop"`
+	Ending         float32 `json:"ending"`
+	IntroEmptyFeed float32 `json:"intro_empty_feed"`
+	LoopFeed       float32 `json:"loop_feed"`
+	// Unload, when set, is taurus943_gun_logic's revolver reload instead:
+	// the cylinder empties back into the stock at Unload.Time, then
+	// rounds go in LoopFeed into each Loop after Intro (no chambering).
+	Unload *TubeUnload `json:"unload,omitempty"`
+}
+
+// TubeUnload is a revolver reload's unloading: Amount rounds (-1: all)
+// at Time seconds.
+type TubeUnload struct {
+	Time   float32 `json:"time"`
+	Amount int     `json:"amount"`
 }
