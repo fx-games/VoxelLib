@@ -49,11 +49,12 @@ type shellFiles struct {
 type gunFiles struct {
 	base                         weapon.Gun // the spec without attachments
 	builtin                      map[Slot]builtinSlot
-	allow                        []Slot                     // allow_attachment_types
-	extMag                       []int                      // extended_mag_ammo_amount by level
-	exclusive                    map[string]json.RawMessage // exclusive_attachments: data by attachment ID
-	melee                        taczGunMelee               // the gun data's melee, before attachments
-	shell                        shellFiles                 // the display's own casing, if any
+	allow                        []Slot                         // allow_attachment_types
+	extMag                       []int                          // extended_mag_ammo_amount by level
+	exclusive                    map[string]json.RawMessage     // exclusive_attachments: data by attachment ID
+	melee                        taczGunMelee                   // the gun data's melee, before attachments
+	adjust                       map[weapon.FireMode]modeAdjust // fire_mode_adjust
+	shell                        shellFiles                     // the display's own casing, if any
 	texture, animation, defaults string
 }
 
@@ -363,7 +364,7 @@ func (p *Pack) loadGun(file string, lang map[string]string, sound func(string) s
 	if spec.Muzzle, err = muzzleFlash(disp.Muzzle); err != nil {
 		return fmt.Errorf("%s: muzzle_flash: %w", id, err)
 	}
-	files.base, files.allow, files.extMag, files.exclusive, files.melee = spec, data.Allow, data.ExtMag, data.Exclusive, data.Melee
+	files.base, files.allow, files.extMag, files.exclusive, files.melee, files.adjust = spec, data.Allow, data.ExtMag, data.Exclusive, data.Melee, data.Adjust
 	files.builtin = map[Slot]builtinSlot{}
 	for slot, raw := range data.Builtin {
 		if files.builtin[slot], err = parseBuiltin(raw); err != nil {
@@ -371,7 +372,7 @@ func (p *Pack) loadGun(file string, lang map[string]string, sound func(string) s
 		}
 	}
 	p.guns[id] = files
-	if spec, err = p.Gun(id, p.DefaultChoice(id)); err != nil {
+	if spec, err = p.Gun(id, p.DefaultChoice(id), spec.FireModes()[0]); err != nil {
 		return err
 	}
 	p.Guns = append(p.Guns, spec)
@@ -396,15 +397,16 @@ func orDefault(v *float32, def float32) float32 {
 
 // taczData is the part of a TACZ gun data file we convert.
 type taczData struct {
-	Builtin   map[Slot]json.RawMessage   `json:"builtin_attachments"`
-	Allow     []Slot                     `json:"allow_attachment_types"`
-	ExtMag    []int                      `json:"extended_mag_ammo_amount"`
-	Exclusive map[string]json.RawMessage `json:"exclusive_attachments"`
-	Ammo      string                     `json:"ammo"`
-	Mag       int                        `json:"ammo_amount"`
-	RPM       float32                    `json:"rpm"`
-	Bolt      string                     `json:"bolt"`
-	Modes     []string                   `json:"fire_mode"`
+	Builtin   map[Slot]json.RawMessage       `json:"builtin_attachments"`
+	Allow     []Slot                         `json:"allow_attachment_types"`
+	ExtMag    []int                          `json:"extended_mag_ammo_amount"`
+	Exclusive map[string]json.RawMessage     `json:"exclusive_attachments"`
+	Ammo      string                         `json:"ammo"`
+	Mag       int                            `json:"ammo_amount"`
+	RPM       float32                        `json:"rpm"`
+	Bolt      string                         `json:"bolt"`
+	Modes     []string                       `json:"fire_mode"`
+	Adjust    map[weapon.FireMode]modeAdjust `json:"fire_mode_adjust"`
 	Burst     struct {
 		Count int     `json:"count"`
 		BPM   float32 `json:"bpm"`

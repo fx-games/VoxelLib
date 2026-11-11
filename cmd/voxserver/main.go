@@ -224,7 +224,7 @@ func timeCommand(srv *mp.Server, arg string) {
 
 // loadGuns resolves the guns players may hold from the TACZ pack (nil when it is
 // missing: run from the repo root).
-func loadGuns() func(string, tacz.Choice) (weapon.Gun, error) {
+func loadGuns() func(string, tacz.Choice, weapon.FireMode) (weapon.Gun, error) {
 	p, err := tacz.LoadDefault()
 	if err != nil {
 		log.Printf("guns disabled: %v", err)

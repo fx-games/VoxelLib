@@ -38,7 +38,7 @@ func TestRefit(t *testing.T) {
 	c.Attach(SlotScope, scope)
 	c.Attach(SlotMuzzle, silencer)
 	c.Attach(SlotExtendedMag, mag)
-	g, err := p.Gun(gun, c)
+	g, err := p.Gun(gun, c, firstMode(p, gun))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -51,10 +51,10 @@ func TestRefit(t *testing.T) {
 	if p.AttachmentSound(scope, SoundInstall) == "" || p.AttachmentSound(scope, SoundUninstall) == "" {
 		t.Errorf("%s: no refit sounds", scope)
 	}
-	if b, err := p.Gun(gun, Choice{Attachments: map[Slot]string{SlotMuzzle: "tacz:bayonet_6h3"}}); err != nil || b.Melee == nil || b.Melee.Kind != weapon.MeleeBayonet {
+	if b, err := p.Gun(gun, Choice{Attachments: map[Slot]string{SlotMuzzle: "tacz:bayonet_6h3"}}, firstMode(p, gun)); err != nil || b.Melee == nil || b.Melee.Kind != weapon.MeleeBayonet {
 		t.Errorf("%s with a bayonet: melee %+v, %v", gun, b.Melee, err)
 	}
-	if _, err := p.Gun(gun, Choice{Attachments: map[Slot]string{SlotScope: silencer}}); err == nil {
+	if _, err := p.Gun(gun, Choice{Attachments: map[Slot]string{SlotScope: silencer}}, firstMode(p, gun)); err == nil {
 		t.Error("a muzzle in the scope slot was accepted")
 	}
 	for _, spec := range p.Guns {
@@ -64,7 +64,7 @@ func TestRefit(t *testing.T) {
 					c := p.DefaultChoice(spec.ID)
 					c.Adapt(s, ad)
 					c.Attach(s, id)
-					if _, err := p.Gun(spec.ID, c); err != nil {
+					if _, err := p.Gun(spec.ID, c, firstMode(p, spec.ID)); err != nil {
 						t.Error(err)
 					}
 				}
@@ -167,7 +167,7 @@ func TestModifiers(t *testing.T) {
 			return []value{{"pierce multiplier 0", float32(g.Bullet.Pierce), 0}}
 		}, 1, 1},
 	} {
-		g, err := p.Gun(tc.gun, Choice{Attachments: tc.atts})
+		g, err := p.Gun(tc.gun, Choice{Attachments: tc.atts}, firstMode(p, tc.gun))
 		if err != nil {
 			t.Error(err)
 			continue
@@ -202,7 +202,7 @@ func TestModifierForms(t *testing.T) {
 		t.Fatal(err)
 	}
 	g := weapon.Gun{Weight: 4, RPM: 300, MoveSpeed: weapon.MoveSpeed{Base: -0.1, Aim: 0.2}}
-	if err := applyMods(&g, []attMods{m}); err != nil {
+	if err := applyMods(&g, modeAdjust{}, []attMods{m}); err != nil {
 		t.Fatal(err)
 	}
 	// weight_modifier wins over weight; MoveSpeed.of sums and clamps at 0; the
@@ -215,18 +215,18 @@ func TestModifierForms(t *testing.T) {
 			t.Errorf("%s accepted", bad)
 		}
 	}
-	if err := applyMods(&weapon.Gun{}, []attMods{{pitch: modifier{addend: 1, multiplier: 1}, yaw: identity}}); err == nil {
+	if err := applyMods(&weapon.Gun{}, modeAdjust{}, []attMods{{pitch: modifier{addend: 1, multiplier: 1}, yaw: identity}}); err == nil {
 		t.Error("a recoil addend was accepted")
 	}
 	// no attachments: GunData.getShootInterval still clamps the cached rpm
 	fast := weapon.Gun{RPM: 1500}
-	if err := applyMods(&fast, nil); err != nil || fast.RPM != maxRPM {
+	if err := applyMods(&fast, modeAdjust{}, nil); err != nil || fast.RPM != maxRPM {
 		t.Errorf("rpm 1500 without attachments: %v %v, want %v", fast.RPM, err, maxRPM)
 	}
 	// EntityKineticBullet clamps the knockback at 0
 	kb := weapon.Gun{}
 	kb.Bullet.Knockback = 0.5
-	if err := applyMods(&kb, []attMods{{knockback: modifier{addend: -1, multiplier: 1}, pitch: identity, yaw: identity}}); err != nil || kb.Bullet.Knockback != 0 {
+	if err := applyMods(&kb, modeAdjust{}, []attMods{{knockback: modifier{addend: -1, multiplier: 1}, pitch: identity, yaw: identity}}); err != nil || kb.Bullet.Knockback != 0 {
 		t.Errorf("knockback 0.5-1: %v %v, want 0", kb.Bullet.Knockback, err)
 	}
 }
@@ -236,7 +236,7 @@ func TestModifierForms(t *testing.T) {
 // damage_adjust has the one pair (Integer.MAX_VALUE, damage).
 func TestDamageAt(t *testing.T) {
 	p := loadPack(t)
-	g, err := p.Gun("m1866", p.DefaultChoice("m1866"))
+	g, err := p.Gun("m1866", p.DefaultChoice("m1866"), firstMode(p, "m1866"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -271,11 +271,11 @@ func TestSlotAdapters(t *testing.T) {
 	if !slices.Contains(p.Allowed(gun, SlotScope, riser), sight) || slices.Contains(p.Allowed(gun, SlotScope, riser), "tacz:scope_acog_ta31") {
 		t.Errorf("%s on %s allows %v", gun, riser, p.Allowed(gun, SlotScope, riser))
 	}
-	if _, err := p.Gun(gun, Choice{Attachments: map[Slot]string{SlotScope: "tacz:scope_acog_ta31"}, Adapters: map[Slot]string{SlotScope: riser}}); err == nil {
+	if _, err := p.Gun(gun, Choice{Attachments: map[Slot]string{SlotScope: "tacz:scope_acog_ta31"}, Adapters: map[Slot]string{SlotScope: riser}}, firstMode(p, gun)); err == nil {
 		t.Error("a scope the riser does not take was accepted")
 	}
 	viewY := func(c Choice) (float32, int) {
-		g, err := p.Gun(gun, c)
+		g, err := p.Gun(gun, c, firstMode(p, gun))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -298,5 +298,54 @@ func TestSlotAdapters(t *testing.T) {
 	y1, n1 := viewY(risen)
 	if want := p.adapters[riser].lift / 16; !near(y1-y0, want) || n0 != 0 || n1 == 0 {
 		t.Errorf("riser lifts the view %v (want %v); adapter bones %d, %d", y1-y0, want, n0, n1)
+	}
+}
+
+// firstMode is the fire mode Pack.Guns resolves gun id in.
+func firstMode(p *Pack, id string) weapon.FireMode { b := p.guns[id].base; return b.FireModes()[0] }
+
+// TestFireModeAdjust: type_81's semi fire_mode_adjust (damage +2, rpm −330,
+// speed +20, head_shot_multiplier +0.25, aim_inaccuracy −0.05,
+// other_inaccuracy −0.5) is added to the bases before the attachments
+// (ammo_mod_fmj: damage ×0.9 of 11, speed ×1.1 of 345); auto has none.
+func TestFireModeAdjust(t *testing.T) {
+	type value struct {
+		name      string
+		got, want float32
+	}
+	p := loadPack(t)
+	const gun = "type_81"
+	auto, err := p.Gun(gun, Choice{}, weapon.Auto)
+	if err != nil {
+		t.Fatal(err)
+	}
+	semi, err := p.Gun(gun, Choice{}, weapon.Semi)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if auto.RPM != 650 || auto.Bullet.Falloff[0].Damage != 9 {
+		t.Errorf("auto rpm %v damage %v, want the gun's 650 9", auto.RPM, auto.Bullet.Falloff[0].Damage)
+	}
+	sb, ab := semi.Bullet, auto.Bullet
+	for _, v := range []value{
+		{"rpm", semi.RPM, 320}, {"damage", sb.Damage, ab.Damage + 2},
+		{"falloff 0", sb.Falloff[0].Damage, 11}, {"falloff 1", sb.Falloff[1].Damage, 9}, {"falloff 2", sb.Falloff[2].Damage, 6.5},
+		{"speed", sb.Speed, ab.Speed + 20}, {"headshot", sb.Headshot, ab.Headshot + 0.25},
+		{"aim", semi.Inaccuracy.Aim, auto.Inaccuracy.Aim - 0.05}, {"stand", semi.Inaccuracy.Stand, auto.Inaccuracy.Stand - 0.5},
+		{"move", semi.Inaccuracy.Move, auto.Inaccuracy.Move - 0.5}, {"sneak", semi.Inaccuracy.Sneak, auto.Inaccuracy.Sneak - 0.5},
+	} {
+		if !near(v.got, v.want) {
+			t.Errorf("semi %s %v, want %v", v.name, v.got, v.want)
+		}
+	}
+	fmj, err := p.Gun(gun, Choice{Attachments: map[Slot]string{SlotExtendedMag: "tacz:ammo_mod_fmj"}}, weapon.Semi)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d, s := fmj.Bullet.Falloff[0].Damage, fmj.Bullet.Speed; !near(d, 9.9) || !near(s, 379.5) {
+		t.Errorf("semi + ammo_mod_fmj damage %v speed %v, want 9.9 379.5", d, s)
+	}
+	if _, err := p.Gun(gun, Choice{}, weapon.Burst); err == nil {
+		t.Error("type_81 resolved in burst, which it lacks")
 	}
 }

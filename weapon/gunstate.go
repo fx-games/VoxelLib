@@ -117,10 +117,8 @@ func (s *GunState) PutAway() []GunEvent {
 
 // FireMode returns the selected fire mode.
 func (s *GunState) FireMode() FireMode {
-	if len(s.Gun.Modes) == 0 {
-		return Semi
-	}
-	return s.Gun.Modes[s.Mode%len(s.Gun.Modes)]
+	m := s.Gun.FireModes()
+	return m[s.Mode%len(m)]
 }
 
 // Tick advances dt seconds. stock is the player's rounds of the gun's ammo;

@@ -523,14 +523,19 @@ func (p *Pack) attachment(id string, exclusive json.RawMessage, installed bool) 
 // hand FOV and view bone, the installed extended magazine's capacity
 // (extended_mag_ammo_amount), the installed muzzle's silence, the melee
 // (gunMelee: the installed muzzle's, else stock's, else the gun's) and the
-// installed attachments' modifiers (applyMods). Pack.Guns holds each gun's
-// with its DefaultChoice.
-func (p *Pack) Gun(id string, c Choice) (weapon.Gun, error) {
+// installed attachments' modifiers (applyMods) after fire mode mode's
+// fire_mode_adjust (one of the gun's FireModes: TACZ refreshes the cache
+// with the item's fire mode). Pack.Guns holds each gun's with its
+// DefaultChoice and first fire mode.
+func (p *Pack) Gun(id string, c Choice, mode weapon.FireMode) (weapon.Gun, error) {
 	atts, err := p.shown(id, c)
 	if err != nil {
 		return weapon.Gun{}, err
 	}
 	f := p.guns[id]
+	if !slices.Contains(f.base.FireModes(), mode) {
+		return weapon.Gun{}, fmt.Errorf("%s: no fire mode %d", id, mode)
+	}
 	spec := f.base
 	spec.Sight = ironView
 	if sc, ok := atts[SlotScope]; ok { // IGun.getAimingZoom, CameraSetupEvent.applyGunModelFovModifying
@@ -557,7 +562,7 @@ func (p *Pack) Gun(id string, c Choice) (weapon.Gun, error) {
 			mods = append(mods, atts[s].mods)
 		}
 	}
-	if err := applyMods(&spec, mods); err != nil {
+	if err := applyMods(&spec, f.adjust[mode], mods); err != nil {
 		return weapon.Gun{}, fmt.Errorf("%s: %w", id, err)
 	}
 	return spec, nil

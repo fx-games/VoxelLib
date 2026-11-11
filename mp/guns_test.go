@@ -41,7 +41,7 @@ func TestShotEncoding(t *testing.T) {
 // hold the resolver rejects is ignored.
 func TestHoldChoice(t *testing.T) {
 	const id, silencer, riser = "test:rifle", "test:silencer", "test:riser"
-	resolve := func(gid string, c tacz.Choice) (weapon.Gun, error) {
+	resolve := func(gid string, c tacz.Choice, mode weapon.FireMode) (weapon.Gun, error) {
 		m := c.Attachments[tacz.SlotMuzzle]
 		if gid != id || (m != "" && m != silencer) || (c.Adapters[tacz.SlotMuzzle] != "" && c.Adapters[tacz.SlotMuzzle] != riser) {
 			return weapon.Gun{}, fmt.Errorf("not allowed: %v", c)
@@ -50,6 +50,9 @@ func TestHoldChoice(t *testing.T) {
 		g.Bullet.Damage, g.Bullet.Pellets = 3, 1
 		if m == silencer {
 			g.Bullet.Damage = 5
+		}
+		if mode == weapon.Auto { // a fire_mode_adjust
+			g.Bullet.Damage += 2
 		}
 		return g, nil
 	}
@@ -68,10 +71,11 @@ func TestHoldChoice(t *testing.T) {
 	held := tacz.Choice{}
 	held.Adapt(tacz.SlotMuzzle, riser)
 	held.Attach(tacz.SlotMuzzle, silencer)
-	a.c.SendHold(Hold{Gun: id, Choice: held})
+	a.c.SendHold(Hold{Gun: id, Choice: held, Mode: weapon.Auto})
 	run(t, 3*time.Second, nil, func(int) bool {
 		step()
-		return a.c.Ready() && b.c.Ready() && b.c.Info[a.c.Slot()].Held.Choice.Key() == held.Key()
+		h := b.c.Info[a.c.Slot()].Held
+		return a.c.Ready() && b.c.Ready() && h.Choice.Key() == held.Key() && h.Mode == weapon.Auto
 	})
 	a.c.SendHold(Hold{Gun: id, Choice: tacz.Choice{Attachments: map[tacz.Slot]string{tacz.SlotMuzzle: silencer}, Adapters: map[tacz.Slot]string{tacz.SlotMuzzle: "test:bogus"}}}) // rejected: stays silenced
 	s.call(func() { s.players[b.c.Slot()].protect = 0 })
@@ -82,8 +86,8 @@ func TestHoldChoice(t *testing.T) {
 		step()
 		return len(b.hits) >= 1
 	})
-	if h := b.hits[0]; h.Damage != 5 {
-		t.Fatalf("hit %+v, want the silenced spec's 5", h)
+	if h := b.hits[0]; h.Damage != 7 {
+		t.Fatalf("hit %+v, want the silenced auto spec's 7", h)
 	}
 	if c := b.c.Info[a.c.Slot()].Held.Choice; c.Key() != held.Key() {
 		t.Fatalf("rejected hold reached the others: %v", c)
@@ -97,7 +101,7 @@ func TestGunShot(t *testing.T) {
 	gun := weapon.Gun{ID: "test:shotgun"}
 	gun.Bullet.Damage, gun.Bullet.Pellets = 4, 2
 	s, err := StartServer(ServerConfig{Addr: "127.0.0.1:0", Name: "test", Seed: 7, Generator: "flat",
-		Reg: voxel.NewRegistry(), Logf: t.Logf, Gun: func(string, tacz.Choice) (weapon.Gun, error) { return gun, nil },
+		Reg: voxel.NewRegistry(), Logf: t.Logf, Gun: func(string, tacz.Choice, weapon.FireMode) (weapon.Gun, error) { return gun, nil },
 		Spawn: func(slot int, w *World) (float64, float64, float64) {
 			return 0.5, float64(w.Surface(0, 0)), 0.5 - float64(slot)*10 // slot 1 stands 10 blocks north
 		}})

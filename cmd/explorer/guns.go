@@ -210,9 +210,26 @@ func (g *game) takeGun(i int) {
 	g.gunSel = i
 	spec := &v.spec
 	g.gun = firearm.GunState{Gun: spec, Ammo: spec.Mag, ClipLen: clipLen(v)}
+	if err := g.resolveMode(); err != nil { // the view may hold another mode's spec
+		log.Printf("gun %s: %v", spec.ID, err)
+	}
 	g.sendHold()
 	g.sounds.preload(spec)
 	g.gunEvents(g.gun.Draw())
+}
+
+// resolveMode rebuilds the held gun's spec for its fire mode
+// (fire_mode_adjust) and attachments; the view and state stay.
+func (g *game) resolveMode() error {
+	id := g.gun.Gun.ID
+	spec, err := g.gunPack.Gun(id, g.gunChoice(id), g.gun.FireMode())
+	if err != nil {
+		return err
+	}
+	v := g.gunViews[id]
+	v.spec = spec
+	g.gun.Gun = &v.spec
+	return nil
 }
 
 // clipLen is GunState.ClipLen for a gun's view.
@@ -230,7 +247,7 @@ func (g *game) gunView(id string) (*gunView, error) {
 	if v := g.gunViews[id]; v != nil {
 		return v, nil
 	}
-	v, err := g.newGunView(id, g.gunChoice(id))
+	v, err := g.newGunView(id, g.gunChoice(id), g.gunSpec(id).FireModes()[0])
 	if err != nil {
 		return nil, err
 	}
@@ -238,9 +255,9 @@ func (g *game) gunView(id string) (*gunView, error) {
 	return v, nil
 }
 
-// newGunView builds gun id's view with attachments c.
-func (g *game) newGunView(id string, c tacz.Choice) (*gunView, error) {
-	spec, err := g.gunPack.Gun(id, c)
+// newGunView builds gun id's view with attachments c in fire mode mode.
+func (g *game) newGunView(id string, c tacz.Choice, mode firearm.FireMode) (*gunView, error) {
+	spec, err := g.gunPack.Gun(id, c, mode)
 	if err != nil {
 		return nil, err
 	}
@@ -342,8 +359,15 @@ func (g *game) tickGun() {
 	in.Pressed = in.Trigger && !g.triggerWas
 	g.triggerWas = in.Trigger
 	stock := g.stock[g.gun.Gun.Ammo]
+	mode := g.gun.FireMode()
 	ev := g.gun.Tick(1.0/app.TickRate, in, &stock)
 	g.stock[g.gun.Gun.Ammo] = stock
+	if g.gun.FireMode() != mode { // LivingEntityFireSelect: postChangeEvent
+		if err := g.resolveMode(); err != nil {
+			log.Printf("gun %s: %v", g.gun.Gun.ID, err)
+		}
+		g.sendHold()
+	}
 	g.gunEvents(ev)
 
 	v := g.gunViews[g.gun.Gun.ID]

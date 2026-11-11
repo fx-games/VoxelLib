@@ -120,15 +120,33 @@ const (
 	maxRPM = 1200
 )
 
+// invalidRPM is GunData.getRoundsPerMinute(fireMode)'s rpm when the fire
+// mode adjustment takes it to 0 or below.
+const invalidRPM = 300
+
+// modeAdjust is a gun's GunFireModeAdjustData for one fire mode: addends to
+// the bases the modifiers start from (initCache). The zero value is no
+// adjustment, as TACZ's absent entry. armor_ignore is not read: no armor.
+type modeAdjust struct {
+	Damage          float32 `json:"damage"`
+	RPM             int     `json:"rpm"`
+	Speed           float32 `json:"speed"`
+	Knockback       float32 `json:"knockback"`
+	Headshot        float32 `json:"head_shot_multiplier"`
+	AimInaccuracy   float32 `json:"aim_inaccuracy"`
+	OtherInaccuracy float32 `json:"other_inaccuracy"` // every stance but aim
+}
+
 // noAdjustRange is the effective range of a gun without damage_adjust
 // (EffectiveRangeModifier: Integer.MAX_VALUE).
 const noAdjustRange = math.MaxInt32
 
-// applyMods applies the installed attachments' modifiers (in slot order)
-// to g as the modifiers' eval and their readers do. It runs without
-// attachments too: TACZ always reads the cache (the RPM clamp of
-// GunData.getShootInterval, Math.round of rpm and pierce).
-func applyMods(g *weapon.Gun, atts []attMods) error {
+// applyMods applies the selected fire mode's adjustment adj, then the
+// installed attachments' modifiers (in slot order) to g as the modifiers'
+// initCache, eval and their readers do. It runs without attachments too:
+// TACZ always reads the cache (the RPM clamp of GunData.getShootInterval,
+// Math.round of rpm and pierce).
+func applyMods(g *weapon.Gun, adj modeAdjust, atts []attMods) error {
 	all := func(f func(*attMods) modifier) []modifier {
 		out := make([]modifier, len(atts))
 		for i := range atts {
@@ -140,11 +158,12 @@ func applyMods(g *weapon.Gun, atts []attMods) error {
 	g.Aim = ev(func(a *attMods) modifier { return a.ads }, g.Aim)
 	g.Weight = ev(func(a *attMods) modifier { return a.weight }, g.Weight)
 	// ModernKineticGunScriptAPI clamps the spread at 0
+	// (the base: GunData.getInaccuracy(type, addend), clamped at 0 too)
 	in := &g.Inaccuracy
-	in.Stand = max(0, ev(func(a *attMods) modifier { return a.stand }, in.Stand))
-	in.Move = max(0, ev(func(a *attMods) modifier { return a.move }, in.Move))
-	in.Sneak = max(0, ev(func(a *attMods) modifier { return a.sneak }, in.Sneak))
-	in.Aim = max(0, ev(func(a *attMods) modifier { return a.aim }, in.Aim))
+	in.Stand = max(0, ev(func(a *attMods) modifier { return a.stand }, max(0, in.Stand+adj.OtherInaccuracy)))
+	in.Move = max(0, ev(func(a *attMods) modifier { return a.move }, max(0, in.Move+adj.OtherInaccuracy)))
+	in.Sneak = max(0, ev(func(a *attMods) modifier { return a.sneak }, max(0, in.Sneak+adj.OtherInaccuracy)))
+	in.Aim = max(0, ev(func(a *attMods) modifier { return a.aim }, max(0, in.Aim+adj.AimInaccuracy)))
 	// CameraSetupEvent scales the recoil curves by the ParameterizedCache of the aim factor
 	for _, c := range []struct {
 		keys *[]weapon.RecoilKey
@@ -162,18 +181,22 @@ func applyMods(g *weapon.Gun, atts []attMods) error {
 		}
 		*c.keys = keys
 	}
-	g.RPM = float32(min(max(javaRound(eval(all(func(a *attMods) modifier { return a.rpm }), float64(g.RPM))), minRPM), maxRPM))
+	rpm := int(g.RPM) + adj.RPM // GunData.getRoundsPerMinute(fireMode)
+	if rpm <= 0 {
+		rpm = invalidRPM
+	}
+	g.RPM = float32(min(max(javaRound(eval(all(func(a *attMods) modifier { return a.rpm }), float64(rpm))), minRPM), maxRPM))
 	b := &g.Bullet
-	b.Speed = ev(func(a *attMods) modifier { return a.ammoSpeed }, b.Speed)
-	b.Headshot = ev(func(a *attMods) modifier { return a.headShot }, b.Headshot)
+	b.Speed = ev(func(a *attMods) modifier { return a.ammoSpeed }, b.Speed+adj.Speed)
+	b.Headshot = ev(func(a *attMods) modifier { return a.headShot }, b.Headshot+adj.Headshot)
 	// EntityKineticBullet clamps the knockback at 0
-	b.Knockback = max(0, ev(func(a *attMods) modifier { return a.knockback }, b.Knockback))
+	b.Knockback = max(0, ev(func(a *attMods) modifier { return a.knockback }, b.Knockback+adj.Knockback))
 	b.Pierce = javaRound(eval(all(func(a *attMods) modifier { return a.pierce }), float64(b.Pierce)))
 	damage := func(a *attMods) modifier { return a.damage }
-	b.Damage = ev(damage, b.Damage)
+	b.Damage = ev(damage, b.Damage+adj.Damage)
 	b.Falloff = slices.Clone(b.Falloff)
-	for i := range b.Falloff {
-		b.Falloff[i].Damage = ev(damage, b.Falloff[i].Damage)
+	for i := range b.Falloff { // DamageModifier.initCache: each pair's damage + the adjustment
+		b.Falloff[i].Damage = ev(damage, b.Falloff[i].Damage+adj.Damage)
 	}
 	// EffectiveRangeModifier: the first damage_adjust distance (the bullet
 	// compares each pair's distance with it); without damage_adjust, the one

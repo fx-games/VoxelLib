@@ -3,6 +3,7 @@ package mp
 import (
 	"encoding/binary"
 	"errors"
+	"github.com/memmaker/voxellib/weapon"
 	"math"
 
 	"github.com/memmaker/voxellib/character"
@@ -12,7 +13,7 @@ import (
 // Protocol is the netcode protocol id: "VLMP" plus a version byte. Bump the
 // version on any wire change; older peers are refused and stay invisible to
 // discovery.
-const Protocol = 0x564C4D00 | 8
+const Protocol = 0x564C4D00 | 9
 
 // DefaultPort is the server's UDP port.
 const DefaultPort = 28960
@@ -472,14 +473,15 @@ func decodePlayerInfo(r *rbuf) PlayerInfo {
 	return p
 }
 
-// Hold is the gun in a player's hand with its attachments.
+// Hold is the gun in a player's hand with its attachments and fire mode.
 type Hold struct {
-	Gun    string      // a weapon.Gun ID, "" for none
-	Choice tacz.Choice // the installed attachments (tacz.Pack.Gun)
+	Gun    string          // a weapon.Gun ID, "" for none
+	Choice tacz.Choice     // the installed attachments (tacz.Pack.Gun)
+	Mode   weapon.FireMode // the selected fire mode (tacz.Pack.Gun: fire_mode_adjust)
 }
 
-// encode writes the gun and its filled slots (adapter, attachment) in
-// tacz.Slots order.
+// encode writes the gun, its fire mode and its filled slots (adapter,
+// attachment) in tacz.Slots order.
 func (h Hold) encode(b *wbuf) {
 	var set []tacz.Slot
 	for _, s := range tacz.Slots {
@@ -488,6 +490,7 @@ func (h Hold) encode(b *wbuf) {
 		}
 	}
 	b.str(h.Gun)
+	b.u8(uint8(h.Mode))
 	b.u8(uint8(len(set)))
 	for _, s := range set {
 		b.str(string(s))
@@ -497,7 +500,7 @@ func (h Hold) encode(b *wbuf) {
 }
 
 func decodeHold(r *rbuf) Hold {
-	h := Hold{Gun: r.str()}
+	h := Hold{Gun: r.str(), Mode: weapon.FireMode(r.u8())}
 	for range int(r.u8()) {
 		s := tacz.Slot(r.str())
 		if ad := r.str(); ad != "" {

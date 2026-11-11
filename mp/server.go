@@ -62,7 +62,7 @@ type ServerConfig struct {
 	Spawn func(slot int, w *World) (x, y, z float64)
 	// Gun resolves a held gun with its attachments (tacz.Pack.Gun); a
 	// hold it rejects is logged and ignored. Nil: players hold no guns.
-	Gun  func(id string, c tacz.Choice) (weapon.Gun, error)
+	Gun  func(id string, c tacz.Choice, mode weapon.FireMode) (weapon.Gun, error)
 	Logf func(format string, args ...any)
 }
 
@@ -516,9 +516,9 @@ func (s *Server) reliable(p *sPlayer, msg []byte) {
 				s.cfg.Logf("mp: %s holds gun %q, but this server has no guns", p.name, h.Gun)
 				return
 			}
-			g, err := s.cfg.Gun(h.Gun, h.Choice)
+			g, err := s.cfg.Gun(h.Gun, h.Choice, h.Mode)
 			if err != nil {
-				s.cfg.Logf("mp: %s holds invalid gun %q %v: %v", p.name, h.Gun, h.Choice, err)
+				s.cfg.Logf("mp: %s holds invalid gun %q %v %v: %v", p.name, h.Gun, h.Choice, h.Mode, err)
 				return
 			}
 			spec = &g

@@ -53,6 +53,15 @@ func enumParse(names []string, b []byte) (uint8, error) {
 	return 0, fmt.Errorf("weapon: unknown value %q (want one of %v)", b, names)
 }
 
+// FireModes are the modes the gun's selector cycles through: Modes, or
+// semi when it lists none.
+func (g *Gun) FireModes() []FireMode {
+	if len(g.Modes) == 0 {
+		return []FireMode{Semi}
+	}
+	return g.Modes
+}
+
 func (m FireMode) MarshalText() ([]byte, error) { return enumText(fireModeNames, uint8(m)) }
 func (m *FireMode) UnmarshalText(b []byte) error {
 	v, err := enumParse(fireModeNames, b)

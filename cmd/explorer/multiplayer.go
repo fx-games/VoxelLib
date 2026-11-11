@@ -153,7 +153,7 @@ func (g *game) hostGame(name string, seed int64, gen string, mode mp.Mode) error
 	if seed == 0 {
 		seed = time.Now().UnixNano() & 0xFFFFFFF
 	}
-	var gun func(string, tacz.Choice) (firearm.Gun, error)
+	var gun func(string, tacz.Choice, firearm.FireMode) (firearm.Gun, error)
 	if g.gunPack != nil {
 		gun = g.gunPack.Gun
 	}
@@ -484,7 +484,7 @@ func (g *game) sendHold() {
 	}
 	var h mp.Hold
 	if g.gunOn() {
-		h = mp.Hold{Gun: g.gun.Gun.ID, Choice: g.gunChoice(g.gun.Gun.ID)}
+		h = mp.Hold{Gun: g.gun.Gun.ID, Choice: g.gunChoice(g.gun.Gun.ID), Mode: g.gun.FireMode()}
 	}
 	g.net.cl.SendHold(h)
 }
@@ -499,7 +499,7 @@ func (g *game) remoteGun(h mp.Hold) *gunView {
 	if v, ok := g.net.guns[key]; ok {
 		return v
 	}
-	v, err := g.newGunView(h.Gun, h.Choice)
+	v, err := g.newGunView(h.Gun, h.Choice, h.Mode)
 	if err != nil {
 		log.Printf("gun %s %v: %v", h.Gun, h.Choice, err)
 	}

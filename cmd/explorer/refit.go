@@ -60,7 +60,7 @@ func (g *game) refitAdapter(slot tacz.Slot, ad string) error {
 func (g *game) applyChoice(slot tacz.Slot, c tacz.Choice) error {
 	id := g.gun.Gun.ID
 	old, att := g.gunChoice(id).Attachments[slot], c.Attachments[slot]
-	if _, err := g.gunPack.Gun(id, c); err != nil {
+	if _, err := g.gunPack.Gun(id, c, g.gun.FireMode()); err != nil {
 		return err
 	}
 	g.choices[id] = c
@@ -73,6 +73,9 @@ func (g *game) applyChoice(slot tacz.Slot, c tacz.Choice) error {
 	st.Gun, st.ClipLen = &v.spec, clipLen(v)
 	st.Ammo = min(st.Ammo, v.spec.Mag)
 	g.gun = st
+	if err := g.resolveMode(); err != nil { // the view is built in the first mode
+		return err
+	}
 	g.sounds.preload(&v.spec)
 	g.sendHold()
 	switch {
