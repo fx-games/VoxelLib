@@ -20,6 +20,7 @@ import (
 	"strings"
 
 	"github.com/go-gl/mathgl/mgl32"
+	"github.com/memmaker/voxellib/actors"
 	"github.com/memmaker/voxellib/importer/bbmodel"
 	"github.com/memmaker/voxellib/mobs"
 	"github.com/memmaker/voxellib/model"
@@ -286,12 +287,7 @@ func (g *game) hurtPlayer(dmg int, fromX, fromZ float64) {
 	p := g.Player
 	g.health -= dmg
 	g.hurt = hurtTicks
-	dx, dz := p.X-fromX, p.Z-fromZ
-	if l := math.Hypot(dx, dz); l > 1e-6 {
-		p.VX += dx / l * 0.4
-		p.VZ += dz / l * 0.4
-	}
-	p.VY = math.Max(p.VY, 0.36)
+	p.VX, p.VY, p.VZ = actors.KnockbackMotion(p.VX, p.VY, p.VZ, p.OnGround, actors.HurtKnockback, fromX-p.X, fromZ-p.Z)
 	if g.health <= 0 {
 		g.respawn()
 	}

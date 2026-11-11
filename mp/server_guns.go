@@ -4,6 +4,7 @@ import (
 	"math"
 	"sync/atomic"
 
+	"github.com/memmaker/voxellib/actors"
 	"github.com/memmaker/voxellib/character"
 	"github.com/memmaker/voxellib/projectile"
 	"github.com/memmaker/voxellib/voxel"
@@ -76,7 +77,10 @@ func (s *Server) melee(p *sPlayer, gun string, l Look) {
 		if !reach.Intersects(r.Box()) || !m.Reaches(eye, d, te) || !projectile.InSight(s.world, boxes, eye, te) {
 			continue
 		}
+		// doPerLivingHurt: knockback(melee knockback) along the look, then
+		// hurt's own vanilla knockback away from the attacker.
+		push(r.p, float64(m.Knockback), d[0], d[2])
 		s.damage(Hit{Attacker: p.slot, Victim: r.p.slot, Damage: int(math.Round(float64(m.Damage))), Melee: true},
-			d[0], d[2], float64(m.Knockback))
+			r.p.ch.X-p.ch.X, r.p.ch.Z-p.ch.Z, actors.HurtKnockback)
 	}
 }

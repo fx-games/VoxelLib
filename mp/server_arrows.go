@@ -5,6 +5,7 @@ import (
 	"math"
 
 	"github.com/go-gl/mathgl/mgl32"
+	"github.com/memmaker/voxellib/actors"
 	"github.com/memmaker/voxellib/character"
 	"github.com/memmaker/voxellib/model"
 	"github.com/memmaker/voxellib/projectile"
@@ -177,23 +178,17 @@ func (s *Server) hit(shooter, victim *sPlayer, a *projectile.Arrow) {
 	if h.Head {
 		h.Damage = HeadDamage
 	}
-	s.damage(h, a.VX, a.VZ, hitKnockback)
+	s.damage(h, a.VX, a.VZ, actors.HurtKnockback)
 }
 
 // damage deals a hit (arrow or bullet) to a live, unprotected victim and
 // knocks them back along dx,dz, like an arrow's knockback in the reference.
-// hitKnockback is the push (blocks/tick) of an arrow hit (a bullet pushes by its gun's Bullet.Knockback).
-const hitKnockback = 0.4
 
 // damage applies a hit, pushing the victim knock blocks/tick along (dx, dz).
 func (s *Server) damage(h Hit, dx, dz, knock float64) {
 	shooter, victim := s.players[h.Attacker], s.players[h.Victim]
 	victim.health -= h.Damage
-	if l := math.Hypot(dx, dz); l > 0 {
-		victim.ch.VX += dx / l * knock
-		victim.ch.VZ += dz / l * knock
-		victim.ch.VY = math.Max(victim.ch.VY, 0.3)
-	}
+	push(victim, knock, dx, dz)
 	if victim.health <= 0 {
 		h.Killed = true
 		how := "shot"
@@ -207,6 +202,12 @@ func (s *Server) damage(h Hit, dx, dz, knock float64) {
 		s.kill(victim, shooter, how, fmt.Sprintf(" (%.0f m)", dist))
 	}
 	s.broadcast(h.encode())
+}
+
+// push is LivingEntity.knockback on a player: power along (dx, dz).
+func push(p *sPlayer, power, dx, dz float64) {
+	c := p.ch
+	c.VX, c.VY, c.VZ = actors.KnockbackMotion(c.VX, c.VY, c.VZ, c.OnGround, power, -dx, -dz)
 }
 
 func sq(v float64) float64 { return v * v }

@@ -15,6 +15,7 @@ import (
 
 	"github.com/go-gl/mathgl/mgl32"
 	"github.com/go-gl/mathgl/mgl64"
+	"github.com/memmaker/voxellib/actors"
 	"github.com/memmaker/voxellib/importer/bbmodel"
 	"github.com/memmaker/voxellib/mobs"
 	"github.com/memmaker/voxellib/model"
@@ -32,8 +33,6 @@ const crossbowGroup = "repeater_crossbow_arrow"
 const (
 	reloadTicks = 8 // a repeater: about 2.5 shots a second
 	recoilTicks = 4
-	// knockback is the push (blocks/tick) a creature gets from a hit.
-	knockback = 0.4
 )
 
 type crossbowState struct {
@@ -85,10 +84,7 @@ func (g *game) setupCrossbow(p *bbmodel.Pack) {
 		}
 		g.provoke(c)
 		if m := c.mob; !m.Static {
-			l := math.Hypot(a.PrevX-a.X, a.PrevZ-a.Z) + 1e-9
-			m.VX += (a.X - a.PrevX) / l * knockback
-			m.VZ += (a.Z - a.PrevZ) / l * knockback
-			m.VY = 0.3
+			m.VX, m.VY, m.VZ = actors.KnockbackMotion(m.VX, m.VY, m.VZ, m.OnGround, actors.HurtKnockback, a.PrevX-a.X, a.PrevZ-a.Z)
 		}
 	}
 }

@@ -17,6 +17,7 @@ import (
 	"sync"
 
 	"github.com/go-gl/mathgl/mgl32"
+	"github.com/memmaker/voxellib/actors"
 	"github.com/memmaker/voxellib/app"
 	"github.com/memmaker/voxellib/audio"
 	"github.com/memmaker/voxellib/character"
@@ -676,12 +677,16 @@ func (g *game) hitCreature(c *creature, dmg float32, dir [3]float64, knock float
 		return true
 	}
 	g.provoke(c)
-	if m := c.mob; !m.Static {
-		l := math.Hypot(dir[0], dir[2]) + 1e-9
-		m.VX += dir[0] / l * knock
-		m.VZ += dir[2] / l * knock
-	}
+	pushCreature(c, knock, -dir[0], -dir[2])
 	return false
+}
+
+// pushCreature is LivingEntity.knockback on a creature: power against
+// xd, zd (pointing from the creature to the source).
+func pushCreature(c *creature, power, xd, zd float64) {
+	if m := c.mob; !m.Static {
+		m.VX, m.VY, m.VZ = actors.KnockbackMotion(m.VX, m.VY, m.VZ, m.OnGround, power, xd, zd)
+	}
 }
 
 // mobEyeFraction is where a creature's eye sits up its box (Minecraft's
@@ -715,7 +720,10 @@ func (g *game) melee() {
 		if !m.Reaches([3]float64{ex, ey, ez}, d, eye) || !projectile.InSight(w, boxes, [3]float64{ex, ey, ez}, eye) {
 			continue
 		}
-		g.hitCreature(c, m.Damage, d, float64(m.Knockback))
+		// doPerLivingHurt: knockback(melee knockback) against the look,
+		// then hurt's own vanilla knockback away from the attacker.
+		pushCreature(c, float64(m.Knockback), -d[0], -d[2])
+		g.hitCreature(c, m.Damage, [3]float64{c.mob.X - ex, 0, c.mob.Z - ez}, actors.HurtKnockback)
 	}
 }
 
