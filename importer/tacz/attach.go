@@ -6,6 +6,7 @@ import (
 	"image"
 	"io/fs"
 	"maps"
+	"math"
 	"path"
 	"regexp"
 	"slices"
@@ -125,6 +126,9 @@ type builtinSlot struct {
 	display   string // display_attachment: shown while none is installed
 }
 
+// pixelsPerBlock turns Blockbench pixels into blocks.
+const pixelsPerBlock = 16
+
 // attachment is a resolved attachment display, with its data's effects
 // when installed.
 type attachment struct {
@@ -141,7 +145,9 @@ type attachment struct {
 	// magLevel: extended magazines (shown also on a display-only one, as DisplayGunModelInstance)
 	magLevel int
 	silence  *weapon.Silence // installed only
-	melee    *taczMelee      // installed only: the attachment's melee (bayonets, stocks); nil: none
+	// flashOffset: the display's muzzle_flash_offset (Blockbench pixels, 0 when negative or not finite)
+	flashOffset float32
+	melee       *taczMelee // installed only: the attachment's melee (bayonets, stocks); nil: none
 	// scope, sight: the display's lens kinds (BedrockAttachmentModel isScope/isSight).
 	scope, sight bool
 	mods         attMods      // installed only
@@ -453,6 +459,7 @@ func (p *Pack) attachment(id string, exclusive json.RawMessage, installed bool) 
 		Scope, Sight   bool
 		Fov            *float32  `json:"fov"`
 		ViewsFov       []float32 `json:"views_fov"`
+		FlashOffset    float32   `json:"muzzle_flash_offset"`
 	}
 	if err := readJSON(p.FS, asset("display/attachments", index.display)+".json", &disp); err != nil {
 		return attachment{}, err
@@ -484,6 +491,9 @@ func (p *Pack) attachment(id string, exclusive json.RawMessage, installed bool) 
 	a := attachment{id: id, adapter: disp.Adapter, showMount: disp.ShowMount == nil || *disp.ShowMount,
 		showMuzzle: disp.ShowMuzzle, idleAdjust: disp.IdleAdjust, magLevel: min(max(data.MagLevel, 0), maxMagLevel),
 		scope: disp.Scope, sight: disp.Sight}
+	if f := float64(disp.FlashOffset); f > 0 && !math.IsInf(f, 0) { // AttachmentDisplay's validation
+		a.flashOffset = disp.FlashOffset
+	}
 	if installed {
 		a.melee = data.Melee
 		var err error
@@ -544,7 +554,7 @@ func (p *Pack) Gun(id string, c Choice, mode weapon.FireMode) (weapon.Gun, error
 			if spec.Sight, err = p.scopeView(sc); err != nil {
 				return weapon.Gun{}, fmt.Errorf("%s: %w", id, err)
 			}
-			spec.IdleRaise = sc.idleAdjust / 16
+			spec.IdleRaise = sc.idleAdjust / pixelsPerBlock
 		}
 	}
 	if c.Attachments[SlotExtendedMag] != "" { // AttachmentDataUtils.getAmmoCountWithAttachment
@@ -554,6 +564,7 @@ func (p *Pack) Gun(id string, c Choice, mode weapon.FireMode) (weapon.Gun, error
 	}
 	if c.Attachments[SlotMuzzle] != "" {
 		spec.Silence = atts[SlotMuzzle].silence
+		spec.FlashOffset = atts[SlotMuzzle].flashOffset / pixelsPerBlock
 	}
 	spec.Melee = gunMelee(f.melee, atts)
 	var mods []attMods // AttachmentDataUtils.getAllAttachmentData: the installed ones, by slot

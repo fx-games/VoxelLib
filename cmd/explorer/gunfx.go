@@ -128,6 +128,8 @@ func (g *game) fxFrame() {
 	if g.gunOn() {
 		v := g.gunViews[g.gun.Gun.ID]
 		if local, world, ok := g.muzzleFrames(v); ok && len(f.emitters) > 0 {
+			out := mgl32.Translate3D(0, 0, -g.gun.Gun.FlashOffset) // along the muzzle (TACZ's -Z)
+			local, world = local.Mul4(out), world.Mul4(out)
 			f.emitters = tickEmitters(f.emitters, dt, frameOf(local), frameOf(world), &f.world, &f.sprites)
 		}
 	}

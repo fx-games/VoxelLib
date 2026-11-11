@@ -200,6 +200,10 @@ type Gun struct {
 	Unload bool `json:"unload,omitempty"`
 	// Silence is the installed muzzle attachment's; nil: none silences the gun.
 	Silence *Silence `json:"silence,omitempty"`
+	// FlashOffset moves the first-person muzzle flash and smoke this many
+	// blocks out along the muzzle: the installed muzzle attachment's
+	// muzzle_flash_offset (MuzzleParticleManager's offsetBb / 16).
+	FlashOffset float32 `json:"flash_offset,omitempty"`
 	// Weight (kg, with the installed attachments') and MoveSpeed slow the
 	// holder (SpeedFactor).
 	Weight    float32   `json:"weight,omitempty"`

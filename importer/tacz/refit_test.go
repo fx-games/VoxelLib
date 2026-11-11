@@ -42,8 +42,8 @@ func TestRefit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if g.Sight != graftName(SlotScope, "scope_view") || g.Zoom <= 1 || g.Mag != 37 || g.Silence == nil || !g.Silence.UseSilenceSound || g.Silence.DistanceAddend >= 0 {
-		t.Errorf("refitted %s: sight %q zoom %v mag %d silence %+v", gun, g.Sight, g.Zoom, g.Mag, g.Silence)
+	if g.Sight != graftName(SlotScope, "scope_view") || g.Zoom <= 1 || g.Mag != 37 || g.Silence == nil || !g.Silence.UseSilenceSound || g.Silence.DistanceAddend >= 0 || g.FlashOffset <= 0 {
+		t.Errorf("refitted %s: sight %q zoom %v mag %d silence %+v flash %v", gun, g.Sight, g.Zoom, g.Mag, g.Silence, g.FlashOffset)
 	}
 	if m, lens, err := p.Model(gun, c); err != nil || lens == nil || m.Bone(g.Sight) < 0 {
 		t.Errorf("refitted %s model: lens %v, %v", gun, lens, err)
