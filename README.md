@@ -58,7 +58,7 @@ Debugging models: `-lineup -species NAME -anim CLIP` stands one creature per mat
 in front of you, playing CLIP (`bind` shows the rest pose).
 
 The GUI (font, HUD, hotbar, inventory, menus) comes from the Minecraft 1.7.10 client jar, as in
-VoxelRogue: `-jar PATH` (default: PrismLauncher's `minecraft-1.7.10-client.jar`). Without it the
+VoxelRogue: `-jar PATH` (default: `minecraft-1.7.10.jar` in the working directory). Without it the
 explorer refuses to start.
 
 **Zombie defense** (the default, single player and LAN). Single player is a private server in the
