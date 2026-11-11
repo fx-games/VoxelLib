@@ -97,7 +97,39 @@ func widgets() image.Image {
 			}
 		}
 	}
+	hotbar(img)
 	return img
+}
+
+// The hotbar's sprites in widgets.png (ui.HUD.drawHotbar): the bar of
+// nine 20-pixel slots at 0,0 and the held slot's frame at 0,22.
+const (
+	hotbarW, hotbarH = 182, 22
+	hotbarSlot       = 20
+	selectY, selectS = 22, 24
+)
+
+// hotbar draws the bar (a grey frame and slot dividers over translucent
+// dark slots) and the held slot's white frame.
+func hotbar(img *image.NRGBA) {
+	frame, slot := color.NRGBA{90, 90, 90, 255}, color.NRGBA{0, 0, 0, 110}
+	for y := 0; y < hotbarH; y++ {
+		for x := 0; x < hotbarW; x++ {
+			c := slot
+			if y == 0 || y == hotbarH-1 || (x-1)%hotbarSlot == 0 || x == hotbarW-1 {
+				c = frame
+			}
+			img.SetNRGBA(x, y, c)
+		}
+	}
+	white := color.NRGBA{255, 255, 255, 255}
+	for y := 0; y < selectS; y++ {
+		for x := 0; x < selectS; x++ {
+			if x < 2 || y < 2 || x >= selectS-2 || y >= selectS-2 {
+				img.SetNRGBA(x, selectY+y, white)
+			}
+		}
+	}
 }
 
 // background is options_background.png: a dark flagstone tile.

@@ -22,6 +22,7 @@ const (
 	hudStock         = 0xAAAAAA
 	hudEmptyTint     = 0xFFFF4D4D // setShaderColor(1, 0.3, 0.3, 1)
 	hudWhite         = 0xFFFFFFFF
+	hudMaxCount      = 9999 // the most the counters show
 	// HeatBarOverlay: the bar's fills (white → yellow → red), the locked
 	// blink (red/yellow every heatBlink ticks).
 	heatWhite  = 0x9FFFFFFF
@@ -45,11 +46,11 @@ func (g *game) drawGunHUD(ctx *ui.Context) {
 	w, h := ctx.W, ctx.H
 	c, f := ctx.Canvas, ctx.Font
 	inventory := spec.Reload.Kind == firearm.Inventory
-	ammo, stock := s.Ammo, g.stock[spec.Ammo]
+	ammo, stock := s.Ammo, g.ammoStock(spec.Ammo)
 	if inventory {
 		ammo = stock
 	}
-	ammo = min(ammo, 9999)
+	ammo, stock = min(ammo, hudMaxCount), min(stock, hudMaxCount)
 	color := uint32(hudAmmo)
 	switch {
 	case float64(ammo) < float64(spec.Mag)*0.25 && ammo < 10 || s.Overheated:

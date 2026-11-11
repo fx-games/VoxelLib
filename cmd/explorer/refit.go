@@ -27,18 +27,10 @@ const (
 	refitButtonW = 260
 )
 
-// gunChoice is the attachments installed on a gun (its default until refitted).
-func (g *game) gunChoice(id string) tacz.Choice {
-	if c, ok := g.choices[id]; ok {
-		return c
-	}
-	return g.gunPack.DefaultChoice(id)
-}
-
 // refit installs attachment att ("": none) in a slot of the held gun and
 // rebuilds its view, keeping the gun's state.
 func (g *game) refit(slot tacz.Slot, att string) error {
-	c := g.gunChoice(g.gun.Gun.ID).Clone()
+	c := g.stackChoice(g.gunStack).Clone()
 	c.Attach(slot, att)
 	return g.applyChoice(slot, c)
 }
@@ -47,7 +39,7 @@ func (g *game) refit(slot tacz.Slot, att string) error {
 // gun; an installed attachment the adapter doesn't take comes off.
 func (g *game) refitAdapter(slot tacz.Slot, ad string) error {
 	id := g.gun.Gun.ID
-	c := g.gunChoice(id).Clone()
+	c := g.stackChoice(g.gunStack).Clone()
 	c.Adapt(slot, ad)
 	if !slices.Contains(g.gunPack.Allowed(id, slot, ad), c.Attachments[slot]) {
 		c.Attach(slot, "")
@@ -58,14 +50,14 @@ func (g *game) refitAdapter(slot tacz.Slot, ad string) error {
 // applyChoice refits the held gun with c, which changed slot, and plays the
 // slot's install or uninstall sound.
 func (g *game) applyChoice(slot tacz.Slot, c tacz.Choice) error {
-	id := g.gun.Gun.ID
-	old, att := g.gunChoice(id).Attachments[slot], c.Attachments[slot]
+	id, was := g.gun.Gun.ID, g.stackChoice(g.gunStack)
+	old, att := was.Attachments[slot], c.Attachments[slot]
 	if _, err := g.gunPack.Gun(id, c, g.gun.FireMode()); err != nil {
 		return err
 	}
-	g.choices[id] = c
-	g.dropGunView(id)
-	v, err := g.gunView(id)
+	g.dropGunView(viewKey(id, was))
+	setGunChoice(g.gunStack, c)
+	v, err := g.gunView(g.gunStack)
 	if err != nil {
 		return err
 	}
@@ -122,7 +114,7 @@ func (s *refitScreen) Init(ctx *ui.Context) {
 	s.Widgets = nil
 	g := s.g
 	id := g.gun.Gun.ID
-	c := g.gunChoice(id)
+	c := g.stackChoice(g.gunStack)
 	x := ctx.W/2 - refitButtonW/2
 	row := 0
 	// button cycles cur through options: the next after it; after the last, none.

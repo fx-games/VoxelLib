@@ -35,6 +35,8 @@ const (
 	ActStats      = "stats"
 	// ActHotbar+"1".."9" select hotbar slots.
 	ActHotbar = "hotbar."
+	// ActInventory opens the inventory screen (Hooks.InventoryScreen).
+	ActInventory = "inventory"
 )
 
 // DefaultBindings are the reference's default controls (plus F2/F3 for the
@@ -44,7 +46,7 @@ func DefaultBindings() map[string][]Button {
 		ActForward: {Key(glfw.KeyW)}, ActBack: {Key(glfw.KeyS)}, ActLeft: {Key(glfw.KeyA)}, ActRight: {Key(glfw.KeyD)},
 		ActJump: {Key(glfw.KeySpace)}, ActSneak: {Key(glfw.KeyLeftShift)}, ActSprint: {Key(glfw.KeyLeftControl)},
 		ActAttack: {Mouse(glfw.MouseButtonLeft)}, ActUse: {Mouse(glfw.MouseButtonRight)},
-		ActPause: {Key(glfw.KeyEscape)}, ActScreenshot: {Key(glfw.KeyF2)}, ActStats: {Key(glfw.KeyF3)},
+		ActPause: {Key(glfw.KeyEscape)}, ActInventory: {Key(glfw.KeyE)}, ActScreenshot: {Key(glfw.KeyF2)}, ActStats: {Key(glfw.KeyF3)},
 	}
 	for i := 0; i < 9; i++ {
 		b[ActHotbar+string(rune('1'+i))] = []Button{Key(glfw.Key1 + glfw.Key(i))}
@@ -183,13 +185,14 @@ func (in *Input) toScreen(ev Event) bool {
 	if s == nil {
 		return false
 	}
-	if !s.HandleInput(ev) && ev.Action == glfw.Press && in.bound(ActPause, ev) {
+	if !s.HandleInput(ev) && ev.Action == glfw.Press && in.Bound(ActPause, ev) {
 		in.a.CloseScreen()
 	}
 	return true
 }
 
-func (in *Input) bound(action string, ev Event) bool {
+// Bound reports whether ev's key or mouse button is bound to action.
+func (in *Input) Bound(action string, ev Event) bool {
 	b := Key(ev.Key)
 	if ev.Type == ButtonEvent {
 		b = Mouse(ev.Button)
@@ -254,10 +257,14 @@ func (in *Input) dispatch(name string, pressed bool) {
 		a.shotReq = true
 	case ActStats:
 		a.ShowDebug = !a.ShowDebug
+	case ActInventory:
+		if a.Hooks.InventoryScreen != nil {
+			a.OpenScreen(a.Hooks.InventoryScreen())
+		}
 	default:
 		if len(name) == len(ActHotbar)+1 && name[:len(ActHotbar)] == ActHotbar {
-			if i := int(name[len(ActHotbar)] - '1'); i >= 0 && i < a.Player.HotbarSize {
-				a.Player.Selected = i
+			if i := int(name[len(ActHotbar)] - '1'); i >= 0 && i < HotbarSlots {
+				a.Player.Inv.Hold(i)
 			}
 		}
 	}
@@ -302,13 +309,11 @@ func (in *Input) install() {
 		if in.toScreen(Event{Type: ScrollEvent, X: dx, Y: dy}) || !a.Captured {
 			return
 		}
-		p := a.Player
-		if n := p.HotbarSize; n > 0 {
-			if dy < 0 {
-				p.Selected = (p.Selected + 1) % n
-			} else if dy > 0 {
-				p.Selected = (p.Selected + n - 1) % n
-			}
+		inv := a.Player.Inv
+		if dy < 0 {
+			inv.Hold((inv.Held + 1) % HotbarSlots)
+		} else if dy > 0 {
+			inv.Hold((inv.Held + HotbarSlots - 1) % HotbarSlots)
 		}
 	})
 	in.lastX, in.lastY = w.GetCursorPos()

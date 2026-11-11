@@ -30,6 +30,10 @@ func (g *game) tickPlayerHealth() {
 	}
 }
 
+// heartsLift puts the hearts fbH/heartsLift above the bottom: over the
+// ui HUD's hotbar (22 GUI pixels, the GUI scale about fbH/240).
+const heartsLift = 7
+
 // drawHUD draws the health hearts and the hurt flash.
 func (g *game) drawHUD(fbW, fbH int) {
 	if g.hud == nil {
@@ -53,7 +57,7 @@ func (g *game) drawHUD(fbW, fbH int) {
 	}
 	w, h := g.hud.Size()
 	s := max(2, fbH/360)
-	g.hud.Draw((fbW-w*s)/2, fbH-h*s-fbH/12, s, fbW, fbH)
+	g.hud.Draw((fbW-w*s)/2, fbH-h*s-fbH/heartsLift, s, fbW, fbH)
 }
 
 // heartsImage draws ten reference-style hearts for health half-hearts.

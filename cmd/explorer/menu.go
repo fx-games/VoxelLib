@@ -35,7 +35,8 @@ func (g *game) setupUI() {
 		log.Printf("ui disabled: %v", err)
 		return
 	}
-	u.HUD.State.Hidden = true // the explorer draws its own HUD; this one shows chat
+	// The explorer draws its own hearts; this HUD shows the hotbar and chat.
+	u.HUD.State.Creative = true
 	g.ui = u
 	u.Top = func(ctx *ui.Context) {
 		g.drawMatch(ctx)

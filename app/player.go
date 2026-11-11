@@ -8,6 +8,7 @@ import (
 
 	"github.com/go-gl/mathgl/mgl32"
 	"github.com/memmaker/voxellib/character"
+	"github.com/memmaker/voxellib/inventory"
 	"github.com/memmaker/voxellib/resloc"
 	"github.com/memmaker/voxellib/voxel"
 	"github.com/memmaker/voxellib/voxel/collide"
@@ -82,16 +83,20 @@ var (
 )
 
 // Player is the first-person player: the character controller plus
-// reach, block breaking and placing, the hotbar slot and the hand's swing
-// and bob. Its look direction is App.Cam's Yaw and Pitch.
+// reach, block breaking and placing, the inventory with its held hotbar
+// slot and the hand's swing and bob. Its look direction is App.Cam's Yaw and Pitch.
 type Player struct {
 	*character.Character
 	a *App
 
-	Reach      float64 // blocks (default 5)
-	CanFly     bool    // double jump toggles flight (default true)
-	Selected   int     // hotbar slot
-	HotbarSize int     // default 9
+	Reach  float64 // blocks (default 5)
+	CanFly bool    // double jump toggles flight (default true)
+	// Inv is the player's inventory; its Held hotbar slot follows the
+	// hotbar keys and the mouse wheel, and the inventory action opens it
+	// (Hooks.InventoryScreen). Hooks.Held hears when the held stack changes.
+	Inv *inventory.Player
+	// held is the held stack Hooks.Held last heard of.
+	held *inventory.Stack
 	// EntityReach is how far entities are picked (0: Reach); EntityBorder
 	// grows their boxes for the pick (Entity.getCollisionBorderSize).
 	EntityReach, EntityBorder float64
@@ -133,7 +138,7 @@ const SwingTicks = 6
 
 func (a *App) newPlayer() *Player {
 	x, y, z, fg, known := a.spawn()
-	p := &Player{Character: character.New(x, y, z), a: a, Reach: 5, CanFly: true, HotbarSize: 9,
+	p := &Player{Character: character.New(x, y, z), a: a, Reach: 5, CanFly: true, Inv: inventory.NewPlayer(inventory.PlayerSpec{}),
 		SpawnX: x, SpawnY: y, SpawnZ: z, Frozen: true, findGround: fg, spawnKnown: known}
 	return p
 }
@@ -156,7 +161,7 @@ func (p *Player) click(act Action) { p.clicks[act] = true }
 func Headless() *App {
 	a := &App{}
 	a.Input = newInput(a)
-	a.Player = &Player{Character: character.New(0, 0, 0), a: a}
+	a.Player = &Player{Character: character.New(0, 0, 0), a: a, Inv: inventory.NewPlayer(inventory.PlayerSpec{})}
 	return a
 }
 
@@ -601,4 +606,17 @@ func (p *Player) BreakStage() int {
 		return -1
 	}
 	return int(p.damage*10) - 1
+}
+
+// HotbarSlots is the hotbar's size: the inventory's first row.
+const HotbarSlots = 9
+
+// tickHeld tells Hooks.Held when the held stack changed.
+func (p *Player) tickHeld() {
+	if s := p.Inv.Current(); s != p.held {
+		p.held = s
+		if h := p.a.Hooks.Held; h != nil {
+			h(s)
+		}
+	}
 }

@@ -1,7 +1,7 @@
 package main
 
 // Guns: the TACZ default gun pack (importer/tacz, assets/tacz) in first
-// person. V cycles through the guns and back to an empty hand, left click
+// person. The held hotbar slot decides the gun in hand (inventory.go), left click
 // fires, right click aims down the iron sights, R reloads, H inspects, B
 // switches the fire mode. firearm.GunState runs each gun's cycle; its clips
 // play on the gun's own model, which holds the camera locators idle_view and
@@ -10,6 +10,7 @@ package main
 
 import (
 	"bytes"
+	"fmt"
 	"io/fs"
 	"log"
 	"math"
@@ -24,6 +25,7 @@ import (
 	"github.com/memmaker/voxellib/character"
 	"github.com/memmaker/voxellib/importer/cuboid"
 	"github.com/memmaker/voxellib/importer/tacz"
+	"github.com/memmaker/voxellib/inventory"
 	"github.com/memmaker/voxellib/model"
 	"github.com/memmaker/voxellib/mp"
 	"github.com/memmaker/voxellib/projectile"
@@ -34,13 +36,8 @@ import (
 	firearm "github.com/memmaker/voxellib/weapon"
 )
 
-const (
-	// creatureHealth is the hit points of every creature (a vanilla zombie's).
-	creatureHealth = 20
-	// sandboxRounds is the stock of each ammo type the sandbox starts with
-	// (zombie defense starts with none).
-	sandboxRounds = 300
-)
+// creatureHealth is the hit points of every creature (a vanilla zombie's).
+const creatureHealth = 20
 
 // Bones a gun shows only while it holds rounds (TACZ's GunModelConstant).
 var ammoBones = []string{"bullet_in_mag", "bullet_in_barrel", "bullet_chain"}
@@ -50,22 +47,21 @@ var ammoBones = []string{"bullet_in_mag", "bullet_in_barrel", "bullet_chain"}
 const additionalMag = "additional_magazine"
 
 type gunsState struct {
-	gunPack   *tacz.Pack
-	gunSel    int // index into gunPack.Guns; -1 = no gun in hand
+	gunPack *tacz.Pack
+	// itemReg is the pack's guns and ammunition as items (inventory.go);
+	// gunStack is the gun stack in hand (nil: none), whose state gun runs.
+	itemReg   *inventory.Registry
+	icons     map[*inventory.Item]*ui.Sprite
+	gunStack  *inventory.Stack
 	gun       firearm.GunState
 	arms      gunArms
 	fx        gunFX
 	tracerFX  gunTracers // tracer bullets drawn (guntracers.go)
 	shells    gunShells
-	hudTex    map[string]ui.Texture       // HUD sprites by pack/hud path
-	heatScale float32                     // HeatBarOverlay's eased scale
-	lensDisc  int                         // the scopes' view disc model (-1: not uploaded)
-	gunViews  map[string]*gunView         // by gun ID, loaded on first use
-	choices   map[string]tacz.Choice      // refitted guns' attachments by gun ID (refit.go)
-	modes     map[string]firearm.FireMode // guns' last fire modes by gun ID (TACZ keeps it on the item)
-	stock     map[string]int              // ammo ID → rounds carried
-	loaded    map[string]int              // rounds in each put-away gun's magazine by gun ID (TACZ keeps them on the item)
-	arsenal   arsenal                     // the guns the player has
+	hudTex    map[string]ui.Texture // HUD sprites by pack/hud path
+	heatScale float32               // HeatBarOverlay's eased scale
+	lensDisc  int                   // the scopes' view disc model (-1: not uploaded)
+	gunViews  map[string]*gunView   // by viewKey, loaded on first use
 	// aim is the aiming progress 0..1 (LocalPlayerAim: 1/aim_time per
 	// second), aimPrev the last tick's.
 	aim, aimPrev firearm.AimProgress
@@ -82,9 +78,10 @@ type gunsState struct {
 	recoilTicks      int
 	recoilP, recoilY float32
 	sounds           gunSounds
-	// switching: the gun in hand is being put away, then gun nextSel comes out.
+	// switching: the gun in hand is being put away, then nextStack's gun
+	// (nil: none) comes out.
 	switching bool
-	nextSel   int
+	nextStack *inventory.Stack
 	// actionVoice plays the last action sound (actionName), as
 	// SoundPlayManager's tmpSoundInstance.
 	actionVoice *audio.Voice
@@ -131,65 +128,25 @@ type gunArms struct {
 	draw  [2][]mgl32.Mat4
 }
 
-// setupGuns loads the gun pack; the sandbox gets every gun and a stock of
-// every ammo type, zombie defense nothing (the pickups give them).
+// setupGuns loads the gun pack and the inventory (setupItems); the
+// sandbox gets every gun that fits and reloads freely, zombie defense
+// nothing (the pickups give them).
 func (g *game) setupGuns(sandbox bool) {
-	g.gunSel, g.heatScale, g.lensDisc = -1, 0.25, -1 // heatScale: HeatBarOverlay.heatScale
+	g.heatScale, g.lensDisc = 0.25, -1 // heatScale: HeatBarOverlay.heatScale
 	p, err := tacz.LoadDefault()
 	if err != nil {
 		log.Printf("guns disabled: %v", err)
-		return
+	} else {
+		g.gunPack, g.gunViews = p, map[string]*gunView{}
+		g.gunRand = rand.New(rand.NewSource(1))
+		g.sounds.files = p.FS
+		log.Printf("guns: %d guns, %d ammo types", len(p.Guns), len(p.Ammo))
 	}
-	g.gunPack, g.gunViews, g.stock, g.loaded, g.choices, g.modes = p, map[string]*gunView{}, map[string]int{}, map[string]int{}, map[string]tacz.Choice{}, map[string]firearm.FireMode{}
-	g.gunRand = rand.New(rand.NewSource(1))
-	if sandbox {
-		for _, a := range p.Ammo {
-			g.stock[a.ID] = sandboxRounds
-		}
-		for _, gun := range p.Guns {
-			g.arsenal.add(gun.ID, true)
-		}
-	}
-	g.sounds.files = p.FS
-	log.Printf("guns: %d guns, %d ammo types", len(p.Guns), len(p.Ammo))
+	g.setupItems(sandbox)
 }
 
 // gunOn reports whether a gun is in hand.
-func (g *game) gunOn() bool { return g.gunPack != nil && g.gunSel >= 0 }
-
-// nextGun (V) takes out the arsenal's next gun, or puts the last one away.
-func (g *game) nextGun() {
-	if g.gunPack == nil {
-		return
-	}
-	from := g.gunSel
-	if g.switching {
-		from = g.nextSel // pressed again while putting away
-	}
-	cur := ""
-	if from >= 0 && from < len(g.gunPack.Guns) {
-		cur = g.gunPack.Guns[from].ID
-	}
-	if id := g.arsenal.next(cur); id != "" {
-		g.selectGunID(id)
-	} else {
-		g.selectGun(-1)
-	}
-}
-
-// selectGunID takes out the gun with this ID.
-func (g *game) selectGunID(id string) {
-	if g.gunPack == nil {
-		return
-	}
-	for i, spec := range g.gunPack.Guns {
-		if spec.ID == id {
-			g.selectGun(i)
-			return
-		}
-	}
-	log.Printf("no gun %q", id)
-}
+func (g *game) gunOn() bool { return g.gunStack != nil }
 
 // gunSpec is the pack's gun with this ID (nil: none).
 func (g *game) gunSpec(id string) *firearm.Gun {
@@ -204,53 +161,45 @@ func (g *game) gunSpec(id string) *firearm.Gun {
 	return nil
 }
 
-// selectGun takes out gun i of the pack (out of range: no gun).
-// selectGun switches to gun i (-1 or out of range: none). A gun in hand
-// is put away first (LocalPlayerDraw: put_away, then the draw); tickGun
-// takes out the next one once it is holstered.
-func (g *game) selectGun(i int) {
+// selectGun switches to gun stack s (nil: none). A gun in hand is put
+// away first (LocalPlayerDraw: put_away, then the draw); tickGun takes out
+// the next one once it is holstered.
+func (g *game) selectGun(s *inventory.Stack) {
 	// The draw resets the gun's synced state (ShooterDataHolder.initialData),
 	// here and on the server (msgHold with another gun).
 	g.aim, g.aimPrev, g.gunSent, g.tracers = 0, 0, 0, projectile.Shooter{}
-	g.sendNextHold(i)
+	g.sendNextHold(s)
 	if g.gunOn() && g.gun.Phase != firearm.Holstered {
-		g.nextSel, g.switching = i, true
+		g.nextStack, g.switching = s, true
 		if g.gun.Phase != firearm.PuttingAway {
 			g.gunEvents(g.gun.PutAway())
 		}
 		return
 	}
-	g.takeGun(i)
+	g.takeGun(s)
 }
 
-// takeGun takes out gun i at once (-1 or out of range: none).
-func (g *game) takeGun(i int) {
-	g.switching = false
-	if g.gunOn() {
-		g.loaded[g.gun.Gun.ID] = g.gun.Ammo
-	}
-	if g.gunPack == nil || i < 0 || i >= len(g.gunPack.Guns) {
-		g.gunSel = -1
+// takeGun takes out gun stack s at once (nil: none).
+func (g *game) takeGun(s *inventory.Stack) {
+	g.switching, g.nextStack, g.gunStack = false, nil, nil
+	if s == nil {
 		g.sendHold()
 		return
 	}
-	v, err := g.gunView(g.gunPack.Guns[i].ID)
+	v, err := g.gunView(s)
 	if err != nil {
-		log.Printf("gun %s: %v", g.gunPack.Guns[i].ID, err)
-		g.gunSel = -1
+		log.Printf("gun %s: %v", s.Item.Key, err)
 		g.sendHold()
 		return
 	}
-	g.gunSel = i
+	g.gunStack = s
 	spec := &v.spec
-	ammo, ok := g.loaded[spec.ID]
+	ammo, ok := gunAmmo(s)
 	if !ok {
 		ammo = spec.Mag // a new gun comes loaded
 	}
 	g.gun = firearm.GunState{Gun: spec, Ammo: ammo, ClipLen: clipLen(v)}
-	if m, ok := g.modes[spec.ID]; ok && !g.gun.SetFireMode(m) {
-		log.Printf("gun %s: kept fire mode %v not among %v", spec.ID, m, spec.FireModes())
-	}
+	g.gun.SetFireMode(g.stackMode(s))
 	if err := g.resolveMode(); err != nil { // the view may hold another mode's spec
 		log.Printf("gun %s: %v", spec.ID, err)
 	}
@@ -259,15 +208,40 @@ func (g *game) takeGun(i int) {
 	g.gunEvents(g.gun.Draw())
 }
 
+// tickGunState ticks the held gun's cycle: reloads take rounds from the
+// ammunition stacks (any in the sandbox), unloading gives them back, and
+// the rounds in the gun are kept on its stack.
+func (g *game) tickGunState(in firearm.GunInput) []firearm.GunEvent {
+	id := g.gun.Gun.Ammo
+	had := g.ammoStock(id)
+	stock := had
+	ev := g.gun.Tick(1.0/app.TickRate, in, &stock)
+	setGunAmmo(g.gunStack, g.gun.Ammo)
+	switch {
+	case g.inv().Creative:
+	case stock < had:
+		g.takeAmmo(id, had-stock)
+	case stock > had:
+		if left := g.giveAmmo(id, stock-had); left > 0 {
+			g.note(fmt.Sprintf("§cInventory full: %d rounds of %s lost", left, g.ammoName(id)))
+		}
+	}
+	return ev
+}
+
+// heldView is the view of the gun in hand.
+func (g *game) heldView() *gunView {
+	return g.gunViews[viewKey(g.gun.Gun.ID, g.stackChoice(g.gunStack))]
+}
+
 // resolveMode rebuilds the held gun's spec for its fire mode
 // (fire_mode_adjust) and attachments; the view and state stay.
 func (g *game) resolveMode() error {
-	id := g.gun.Gun.ID
-	spec, err := g.gunPack.Gun(id, g.gunChoice(id), g.gun.FireMode())
+	spec, err := g.gunPack.Gun(g.gun.Gun.ID, g.stackChoice(g.gunStack), g.gun.FireMode())
 	if err != nil {
 		return err
 	}
-	v := g.gunViews[id]
+	v := g.heldView()
 	v.spec = spec
 	g.gun.Gun = &v.spec
 	return nil
@@ -283,16 +257,20 @@ func clipLen(v *gunView) func(string) float32 {
 	}
 }
 
-// gunView is gun id's view with its attachments (gunChoice), built on first use.
-func (g *game) gunView(id string) (*gunView, error) {
-	if v := g.gunViews[id]; v != nil {
+// viewKey keys gunViews: a gun with its attachments.
+func viewKey(id string, c tacz.Choice) string { return id + "|" + c.Key() }
+
+// gunView is gun stack s's view with its attachments, built on first use.
+func (g *game) gunView(s *inventory.Stack) (*gunView, error) {
+	id, c := s.Item.Key, g.stackChoice(s)
+	if v := g.gunViews[viewKey(id, c)]; v != nil {
 		return v, nil
 	}
-	v, err := g.newGunView(id, g.gunChoice(id), g.gunSpec(id).FireModes()[0])
+	v, err := g.newGunView(id, c, g.gunSpec(id).FireModes()[0])
 	if err != nil {
 		return nil, err
 	}
-	g.gunViews[id] = v
+	g.gunViews[viewKey(id, c)] = v
 	return v, nil
 }
 
@@ -342,11 +320,11 @@ func (g *game) newGunView(id string, c tacz.Choice, mode firearm.FireMode) (*gun
 	return v, nil
 }
 
-// dropGunView frees gun id's view.
-func (g *game) dropGunView(id string) {
-	if v := g.gunViews[id]; v != nil {
+// dropGunView frees the view with this viewKey.
+func (g *game) dropGunView(key string) {
+	if v := g.gunViews[key]; v != nil {
 		g.freeGunView(v)
-		delete(g.gunViews, id)
+		delete(g.gunViews, key)
 	}
 }
 
@@ -386,7 +364,7 @@ func (g *game) tickGun() {
 		return
 	}
 	if g.gun.Phase == firearm.Holstered && g.switching {
-		g.takeGun(g.nextSel)
+		g.takeGun(g.nextStack)
 		if !g.gunOn() {
 			g.syncGun(false)
 			return
@@ -412,7 +390,7 @@ func (g *game) tickGun() {
 	// spec resolved (postChangeEvent), so a shot this tick uses the new mode.
 	if g.keyPressed("firemode") {
 		if ev := g.gun.NextMode(); ev != nil {
-			g.modes[g.gun.Gun.ID] = g.gun.FireMode()
+			setGunMode(g.gunStack, g.gun.FireMode())
 			if err := g.resolveMode(); err != nil {
 				log.Printf("gun %s: %v", g.gun.Gun.ID, err)
 			}
@@ -420,12 +398,9 @@ func (g *game) tickGun() {
 			g.gunEvents(ev)
 		}
 	}
-	stock := g.stock[g.gun.Gun.Ammo]
-	ev := g.gun.Tick(1.0/app.TickRate, in, &stock)
-	g.stock[g.gun.Gun.Ammo] = stock
-	g.gunEvents(ev)
+	g.gunEvents(g.tickGunState(in))
 
-	v := g.gunViews[g.gun.Gun.ID]
+	v := g.heldView()
 	g.stateTracks(v)
 	g.tickGunTracks(v, 1.0/app.TickRate)
 	g.tickMovement(v)
@@ -449,7 +424,7 @@ func (g *game) keyPressed(name string) bool {
 }
 
 func (g *game) gunEvents(ev []firearm.GunEvent) {
-	v := g.gunViews[g.gun.Gun.ID]
+	v := g.heldView()
 	for _, e := range ev {
 		if e.Clip != "" {
 			g.playGunClip(v, e.Clip)
@@ -699,7 +674,7 @@ func (g *game) shoot() {
 		g.bullets = append(g.bullets, projectile.Fire(at, look.Dir(), spec, inacc, &g.tracers, g.gunRand)...)
 	}
 	g.startMuzzle(spec, nil)
-	g.ejectShells(spec, g.gunViews[spec.ID])
+	g.ejectShells(spec, g.heldView())
 	g.gunRecoil = spec.NewRecoil(g.gunRand, firearm.AimRecoil(aim, spec.Zoom))
 	g.recoilTicks, g.recoilP, g.recoilY = 0, 0, 0
 }
@@ -852,7 +827,7 @@ func (g *game) melee() {
 // poseGun poses the held gun's tracks between ticks (render hook, before
 // the world: the camera bone turns the world view).
 func (g *game) poseGun(alpha float64) {
-	v := g.gunViews[g.gun.Gun.ID]
+	v := g.heldView()
 	// Pose between ticks: every track alpha of a tick further on.
 	da := float32(alpha) / app.TickRate
 	ahead := func(c *model.Clip, t float32) float32 {
@@ -879,7 +854,7 @@ func (g *game) poseGun(alpha float64) {
 // drawGunHand draws the held gun as poseGun posed it, the camera moving
 // from idle_view toward iron_view while aiming.
 func (g *game) drawGunHand(alpha float64) {
-	v := g.gunViews[g.gun.Gun.ID]
+	v := g.heldView()
 	zero := mgl32.Mat4{}
 	if gunEmpty(&g.gun) {
 		for _, b := range v.ammo {

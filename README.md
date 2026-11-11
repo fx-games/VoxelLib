@@ -60,14 +60,18 @@ in front of you, playing CLIP (`bind` shows the rest pose).
 **Zombie defense** (the default, single player and LAN). Single player is a private server in the
 game, so both play by the same rules (`mp/zdefense.go`): every 15 s a zombie spawns 20-200 blocks
 from a player, and a gun and an ammunition pickup 8-40 blocks away, all out of every player's view.
-Players start bare-handed; walking over a pickup takes it (a gun is drawn if the hands are empty),
+Players start bare-handed; walking over a pickup puts it in the inventory (a gun landing in the
+hotbar is drawn if the hands are empty),
 and the top line counts the zombies and points at the nearest gun (ammo once you have one).
 Zombies chase the nearest player; each kill drops a magazine of the killer's gun. Dying loses
 your guns and ammo. Guns are the TACZ default pack (`assets/tacz`, details in
-[docs/tacz.md](docs/tacz.md)). V takes the next gun you own, LMB fires, RMB aims, R reloads,
+[docs/tacz.md](docs/tacz.md)). Guns and ammunition are inventory items (a gun keeps its rounds,
+fire mode and attachments on its stack, as TACZ's item NBT); 1–9 or the wheel picks the hotbar
+slot and so the gun in hand, E opens the inventory. LMB fires, RMB aims, R reloads,
 H inspects, B switches the fire mode, Z melees, X unloads, J opens the refit screen (click a slot
 to cycle its attachments). `-sandbox` (implied by `-world`, `-map`, `-bench`, `-autofly`) explores
-instead: animals and every gun, no zombies.
+instead: animals and guns (as many as fit the inventory, past the hotbar: drag them in with E),
+free reloads, no zombies.
 Scopes magnify only inside the lens (a second, lens-clipped world render); `-full-zoom` magnifies the
 whole screen instead, as TACZ does, for slower machines. `-gun ID` starts with a gun in hand.
 
@@ -103,7 +107,7 @@ stdin: `status` (the ranking with health and ping), `say TEXT`, `kick SLOT|NAME`
 
 **Controls**
 - WASD and the mouse move and look. Space jumps (and swims up). Shift sneaks or descends. Ctrl sprints, or dives while in water.
-- LMB breaks a block, RMB places one, and 1–9 or the scroll wheel picks the block.
+- LMB breaks a block (or opens a door), RMB places one with an empty hotbar slot, and 1–9 or the scroll wheel picks the slot (the block, or the gun). E opens the inventory.
 - Walk over an item to take it into your hand. Whatever you held drops where you stand.
 - Esc releases the mouse; press it again to quit.
 

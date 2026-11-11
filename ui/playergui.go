@@ -186,20 +186,26 @@ func (g *PlayerGUI) Draw(fbW, fbH, ww, wh int, partial float32) {
 		ww, wh = fbW, fbH
 	}
 	g.Ctx.Resize(ww, wh)
-	st := &g.HUD.State
-	for i := range st.Hotbar {
-		st.Hotbar[i] = withGlint(g.Item(g.Player.Main[i]), g.Player.Main[i])
-	}
-	st.Selected = g.Player.Held
-	st.OffHand = ItemStack{}
-	if g.Player.OffSlot() >= 0 {
-		st.OffHand = withGlint(g.Item(g.Player.Off), g.Player.Off)
-	}
+	g.HUD.ShowPlayer(g.Player, g.Item)
 	g.HUD.Draw(g.Ctx, partial)
 	g.Ctx.Screens.Draw(g.In.X, g.In.Y, partial)
 	if f, ok := g.Ctx.Canvas.(interface {
 		Flush(fbW, fbH int, px float32)
 	}); ok {
 		f.Flush(fbW, fbH, float32(g.Ctx.Scale)*float32(fbW)/float32(ww))
+	}
+}
+
+// ShowPlayer fills the hotbar, the held slot and the off hand from p, each
+// stack shown as item makes it (call it every frame before Draw).
+func (h *HUD) ShowPlayer(p *inventory.Player, item func(*inventory.Stack) ItemStack) {
+	st := &h.State
+	for i := range st.Hotbar {
+		st.Hotbar[i] = withGlint(item(p.Main[i]), p.Main[i])
+	}
+	st.Selected = p.Held
+	st.OffHand = ItemStack{}
+	if p.OffSlot() >= 0 {
+		st.OffHand = withGlint(item(p.Off), p.Off)
 	}
 }

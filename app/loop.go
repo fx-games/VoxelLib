@@ -48,6 +48,7 @@ func (a *App) tick() {
 	a.Tick++
 	a.expireCracks()
 	a.Player.tick()
+	a.Player.tickHeld()
 	a.Entities.tick()
 	if a.Hooks.Tick != nil {
 		a.Hooks.Tick()

@@ -7,13 +7,20 @@
 //	a.HUD = u                       // the overlay, every frame
 //	a.Hooks.PauseScreen = func() app.Screen { return u.Screen(ui.NewPauseMenu(...)) }
 //	u.Open(&ui.DialogScreen{...})   // from game code
+//	u.Item = func(s *inventory.Stack) ui.ItemStack { ... } // the game's item icons
+//
+// The HUD shows the player's hotbar (app.Player.Inv) and the inventory
+// action (E) opens the inventory screen.
 package uiapp
 
 import (
 	"io/fs"
+	"log"
 
 	"github.com/memmaker/voxellib/app"
 	"github.com/memmaker/voxellib/i18n"
+	"github.com/memmaker/voxellib/inventory"
+	"github.com/memmaker/voxellib/platform/glfw"
 	"github.com/memmaker/voxellib/ui"
 	"github.com/memmaker/voxellib/ui/guicanvas"
 )
@@ -28,6 +35,10 @@ type UI struct {
 	// Top draws over everything, open screens included (the reference's
 	// achievement window, drawn last in the game loop).
 	Top func(ctx *ui.Context)
+	// Item is how a slot shows a stack (nil: every slot empty).
+	Item func(*inventory.Stack) ui.ItemStack
+
+	invBox *inventory.Container // the open inventory screen's (nil: none)
 
 	canvas   *guicanvas.Canvas
 	in       ui.GLFWInput
@@ -53,7 +64,9 @@ func New(a *app.App, assets fs.FS, lang *i18n.Catalog) (*UI, error) {
 		ctx.Clipboard = a.Win.GetClipboardString // the native clipboard (GLFW)
 		ctx.SetClipboard = a.Win.SetClipboardString
 	}
+	a.Hooks.InventoryScreen = u.inventoryScreen
 	ctx.Screens.OnEmpty = func() {
+		u.closeInventory()
 		if u.open {
 			u.open = false
 			a.CloseScreen()
@@ -81,6 +94,36 @@ func (u *UI) Screen(s ui.Screen) app.Screen {
 
 func (u *UI) adapter() app.Screen { return (*screen)(u) }
 
+func (u *UI) item(s *inventory.Stack) ui.ItemStack {
+	if u.Item == nil {
+		return ui.ItemStack{}
+	}
+	return u.Item(s)
+}
+
+// inventoryScreen is the player's inventory (Hooks.InventoryScreen): its
+// slots, without crafting and armour. With no world to drop into, what
+// the cursor carries goes back in on closing.
+func (u *UI) inventoryScreen() app.Screen {
+	inv := u.App.Player.Inv
+	c, _ := inventory.NewPlayerContainer(inv, nil)
+	c.Drop = func(s *inventory.Stack) {
+		if inv.Add(s); s.Count > 0 {
+			log.Printf("uiapp: inventory full, %d %s lost", s.Count, s.Item.Key)
+		}
+	}
+	u.invBox = c
+	lay := ui.InventoryLayout(ui.InventoryOptions{NoEquip: true, NoPreview: true, NoCrafting: true})
+	return u.Screen(&ui.ContainerScreen{Layout: lay, Model: ui.NewContainerView(c, u.item, nil)})
+}
+
+func (u *UI) closeInventory() {
+	if c := u.invBox; c != nil {
+		u.invBox = nil
+		c.Close()
+	}
+}
+
 // Draw implements app.HUD.
 func (u *UI) Draw(fbW, fbH int) {
 	if u.HUD == nil {
@@ -100,6 +143,9 @@ func (u *UI) Draw(fbW, fbH int) {
 		partial = 0
 	}
 	u.HUD.State.Crosshair = false // the app draws its own crosshair
+	if p := u.App.Player; p != nil {
+		u.HUD.ShowPlayer(p.Inv, u.item)
+	}
 	u.HUD.Draw(u.Ctx, partial)
 	if u.Top != nil && u.Ctx.Screens.Len() == 0 {
 		u.Top(u.Ctx)
@@ -157,6 +203,10 @@ func (s *screen) HandleInput(ev app.Event) bool {
 	sc := u.px // the events are in framebuffer pixels
 	if sc <= 0 {
 		sc = float64(max(u.Ctx.Scale, 1))
+	}
+	if u.invBox != nil && ev.Type == app.KeyEvent && ev.Action == glfw.Press && u.App.Input.Bound(app.ActInventory, ev) {
+		u.Ctx.Screens.CloseAll() // the inventory key closes it too
+		return true
 	}
 	var e ui.Event
 	switch ev.Type {

@@ -200,7 +200,7 @@ func (g *game) cameraAnim(v *gunView) mgl32.Mat4 {
 // formulas) are added to the camera's yaw, pitch and roll, so yaw turns
 // about the world's up axis.
 func (g *game) cameraView() {
-	q := cameraDelta(g.gunViews[g.gun.Gun.ID])
+	q := cameraDelta(g.heldView())
 	x, y, z, w := float64(q.V[0]), float64(q.V[1]), float64(q.V[2]), float64(q.W)
 	yaw := math.Asin(max(-1, min(1, 2*(w*y-x*z))))
 	pitch := math.Atan2(2*(w*x+y*z), 1-2*(x*x+y*y))

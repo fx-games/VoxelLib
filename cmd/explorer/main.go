@@ -19,7 +19,8 @@
 //	items.go   item sprites: the pickups
 //	creatures.go  the animals (app entities): behaviour and deaths
 //	import.go  Roblox-style animal packs
-//	zombies.go zombie defense's client side: zombies, pickups, the arsenal
+//	zombies.go zombie defense's client side: zombies, pickups
+//	inventory.go the player's guns and ammunition as inventory items
 //	guns*.go, refit.go  TACZ guns
 //	combat.go, torches.go, signs.go, help.go: demo features
 package main
@@ -43,6 +44,7 @@ import (
 
 	"github.com/memmaker/voxellib/app"
 	"github.com/memmaker/voxellib/importer/tacz"
+	"github.com/memmaker/voxellib/inventory"
 	"github.com/memmaker/voxellib/mp"
 	"github.com/memmaker/voxellib/resloc"
 	"github.com/memmaker/voxellib/ui/uiapp"
@@ -266,7 +268,8 @@ func main() {
 		DrawHand:      g.drawHand,
 		BlockInteract: g.blockInteract,
 		BreakStrength: g.breakStrength,
-		HeldBlock:     func() voxel.StateID { return g.hotbar[min(a.Player.Selected, len(g.hotbar)-1)] },
+		HeldBlock:     g.heldBlock,
+		Held:          g.heldChanged,
 		Status:        g.status,
 		Ride:          g.ride,
 		BlockBroken:   g.blockBroken,
@@ -360,7 +363,6 @@ func defaultName() string {
 func (g *game) start() {
 	o := &g.opt
 	g.Player.Flying = o.fly
-	g.Player.HotbarSize = len(g.hotbar)
 	if g.net != nil {
 		o = &options{signFont: o.signFont, pets: o.pets, numMobs: o.numMobs, gun: o.gun, attach: o.attach, press: o.press, autoplay: o.autoplay} // the server's time of day
 	}
@@ -384,9 +386,11 @@ func (g *game) start() {
 	g.setupGuns(g.net == nil)
 	g.setupArms()
 	g.setupZombies()
-	if o.gun != "" {
-		g.arsenal.add(o.gun, true)
-		g.selectGunID(o.gun)
+	if it := g.itemReg.Get(o.gun); o.gun != "" && it == nil {
+		log.Printf("-gun: no gun %q in this pack", o.gun)
+	} else if it != nil {
+		g.inv().Set(g.inv().Held, inventory.New(it, 1))
+		g.heldChanged(g.inv().Current()) // in hand at once, for -attach
 	}
 	if o.attach != "" && g.gunOn() {
 		for _, kv := range strings.Split(o.attach, ",") {
@@ -508,9 +512,23 @@ func (g *game) breakStrength(s voxel.StateID) float32 {
 	return float32(math.Inf(1))
 }
 
+// heldBlock is the block "use" places (Hooks.HeldBlock): the block
+// hotbar's, with an empty hand only.
+func (g *game) heldBlock() voxel.StateID {
+	if g.inv().Current() != nil {
+		return voxel.Air
+	}
+	return g.hotbar[min(g.inv().Held, len(g.hotbar)-1)]
+}
+
 func (g *game) status() string {
-	name := strings.TrimPrefix(g.Eng.World.Reg.Info(g.hotbar[min(g.Player.Selected, len(g.hotbar)-1)]).Name, resloc.Default+":")
-	s := fmt.Sprintf("[%d] %s", g.Player.Selected+1, name)
+	name := "nothing"
+	if s := g.inv().Current(); s != nil {
+		name = g.itemName(s.Item)
+	} else if b := g.heldBlock(); b != voxel.Air {
+		name = strings.TrimPrefix(g.Eng.World.Reg.Info(b).Name, resloc.Default+":")
+	}
+	s := fmt.Sprintf("[%d] %s", g.inv().Held+1, name)
 	if g.debugMsg != "" {
 		s += " | anim " + g.debugMsg
 	}

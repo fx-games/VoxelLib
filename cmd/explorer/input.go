@@ -11,15 +11,16 @@ import (
 //	Ctrl+F            cheat: every gun and some ammo (zombie defense)
 //	F / double Space  toggle flying      G  toggle no-clip (fly through blocks)
 //	N                 day/night          R  respawn at the spawn point
-//	E                 open/close door    F1 help screen
+//	F1                help screen        (doors: left or right click)
 //	K                 preview the nearest creature's animations one by one
 //	Tab (hold)        multiplayer ranking
-//	V                 next gun (guns.go; then R reloads, H inspects, B fire mode,
-//	                  Z melee, X unloads, J refits: refit.go, right click aims)
+//	(app: 1-9 / mouse wheel hotbar slot, the gun in hand; E inventory)
+//	with a gun:       R reloads, H inspects, B fire mode, Z melee, X unloads,
+//	                  J refits (refit.go), right click aims
 func (g *game) bindKeys() {
 	for name, k := range map[string]glfw.Key{"fly": glfw.KeyF, "noclip": glfw.KeyG, "daynight": glfw.KeyN,
-		"respawn": glfw.KeyR, "door": glfw.KeyE, "help": glfw.KeyF1, "anim": glfw.KeyK, "scores": glfw.KeyTab,
-		"gun": glfw.KeyV, "reload": glfw.KeyR, "inspect": glfw.KeyH, "firemode": glfw.KeyB,
+		"respawn": glfw.KeyR, "help": glfw.KeyF1, "anim": glfw.KeyK, "scores": glfw.KeyTab,
+		"reload": glfw.KeyR, "inspect": glfw.KeyH, "firemode": glfw.KeyB,
 		"melee": glfw.KeyZ, "unload": glfw.KeyX, "refit": glfw.KeyJ} {
 		g.Input.Bind(name, app.Key(k))
 	}
@@ -52,16 +53,10 @@ func (g *game) action(name string, pressed bool) bool {
 		}
 	}
 	switch name {
-	case "gun":
-		g.nextGun()
 	case "refit":
 		g.openRefit()
 	case "reload", "inspect", "firemode", "melee", "unload":
 		return false
-	case "door":
-		if h, ent, ok := g.Target(); ok && ent == nil {
-			g.toggleDoor(h.Block)
-		}
 	case "fly":
 		p.ToggleFly()
 	case "noclip":

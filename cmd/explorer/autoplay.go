@@ -33,7 +33,7 @@ func (g *game) tickAutoplay() {
 	switch {
 	case n.cl.Own().Dead:
 		plan = "dead"
-	case g.gunOn() && g.gun.Ammo == 0 && g.stock[g.gun.Gun.Ammo] > 0:
+	case g.gunOn() && g.gun.Ammo == 0 && g.ammoCount(g.gun.Gun.Ammo) > 0:
 		plan, reload = "reload "+g.gun.Gun.ID, true
 	default:
 		if z, ok := g.nearestZombie(); ok && g.gunOn() && g.gun.Ammo > 0 {

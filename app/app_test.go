@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/memmaker/voxellib/character"
+	"github.com/memmaker/voxellib/inventory"
 	"github.com/memmaker/voxellib/voxel/collide"
 )
 
@@ -65,13 +66,22 @@ func TestSaveRoundTrip(t *testing.T) {
 }
 
 func TestHotbarAction(t *testing.T) {
-	a := &App{}
-	a.Input = newInput(a)
-	a.Player = &Player{Character: character.New(0, 0, 0), a: a, HotbarSize: 3}
+	a := Headless()
+	inv := a.Player.Inv
+	gun := inventory.New(&inventory.Item{Key: "test:gun", MaxStack: 1}, 1)
+	inv.Set(2, gun)
+	var heard []*inventory.Stack
+	a.Hooks.Held = func(s *inventory.Stack) { heard = append(heard, s) }
 	a.Input.dispatch(ActHotbar+"3", true)
-	a.Input.dispatch(ActHotbar+"9", true) // beyond the hotbar: ignored
-	if a.Player.Selected != 2 {
-		t.Fatalf("selected %d, want 2", a.Player.Selected)
+	if inv.Held != 2 {
+		t.Fatalf("held %d, want 2", inv.Held)
+	}
+	a.Player.tickHeld()
+	a.Player.tickHeld() // no change: not heard again
+	a.Input.dispatch(ActHotbar+"1", true)
+	a.Player.tickHeld()
+	if len(heard) != 2 || heard[0] != gun || heard[1] != nil {
+		t.Fatalf("heard %v, want the gun, then an empty hand", heard)
 	}
 	a.Hooks.Action = func(name string, pressed bool) bool { return name == ActAttack }
 	a.Input.dispatch(ActAttack, true)

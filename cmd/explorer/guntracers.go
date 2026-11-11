@@ -149,7 +149,7 @@ func (g *game) muzzleOffset() [3]float64 {
 	if !g.gunOn() {
 		return [3]float64{}
 	}
-	_, world, ok := g.muzzleFrames(g.gunViews[g.gun.Gun.ID])
+	_, world, ok := g.muzzleFrames(g.heldView())
 	if !ok {
 		return [3]float64{}
 	}

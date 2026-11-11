@@ -4,8 +4,8 @@ package main
 // server's: mp/zdefense.go, mp/server_zombies.go; single player is a
 // private server). Here: the zombie model (the vanilla biped in the pack's
 // zombie skin, posed as ZombieModel), the zombies drawn from the snapshots
-// with the players' hurt flash and death fall, the pickup sprites, what a
-// pickup gives, and the HUD line pointing at the nearest pickup.
+// with the players' hurt flash and death fall, and the HUD line pointing
+// at the nearest pickup (what a pickup gives: inventory.go).
 
 import (
 	"fmt"
@@ -13,7 +13,6 @@ import (
 	"log"
 	"math"
 	"os"
-	"slices"
 
 	"github.com/go-gl/mathgl/mgl32"
 	"github.com/memmaker/voxellib/actors"
@@ -41,31 +40,13 @@ type remoteZombie struct {
 	seen        bool // in this frame's snapshot
 }
 
-// setupZombies builds the zombie model and registers the pickups' sprites:
-// each gun's and ammunition's slot icon under mp.Pickup.Sprite.
+// setupZombies builds the zombie model (the pickups' sprites are the
+// items', setupItems).
 func (g *game) setupZombies() {
 	g.zombieModel = -1
 	if err := g.loadZombie(); err != nil {
 		log.Printf("zombies not drawn: %v", err)
 	}
-	if g.gunPack == nil {
-		return
-	}
-	for _, gun := range g.gunPack.Guns {
-		g.addIcon(mp.Pickup{Kind: mp.PickupGun, ID: gun.ID}, gun.Icon)
-	}
-	for _, a := range g.gunPack.Ammo {
-		g.addIcon(mp.Pickup{Kind: mp.PickupAmmo, ID: a.ID}, a.Icon)
-	}
-}
-
-func (g *game) addIcon(p mp.Pickup, file string) {
-	img, err := g.gunPack.Icon(file)
-	if err != nil {
-		log.Printf("pickup %s: %v", p.Sprite(), err)
-		return
-	}
-	g.addItem(p.Sprite(), img)
 }
 
 func (g *game) loadZombie() error {
@@ -151,54 +132,6 @@ func (g *game) zombieHurt(id uint32) {
 	n.mu.Unlock()
 }
 
-// arsenal is the guns the player has picked up, in pickup order (V cycles
-// through them, then the bare hand).
-type arsenal struct{ owned []string }
-
-// add adds a gun; it reports whether to draw it: the hand is empty.
-func (a *arsenal) add(id string, holding bool) (draw bool) {
-	if !slices.Contains(a.owned, id) {
-		a.owned = append(a.owned, id)
-	}
-	return !holding
-}
-
-// next is the gun after cur ("": none) in the arsenal, "" past the last.
-func (a *arsenal) next(cur string) string {
-	i := slices.Index(a.owned, cur) // -1 for none: the first
-	if i+1 < len(a.owned) {
-		return a.owned[i+1]
-	}
-	return ""
-}
-
-// gunDry reports whether the gun in hand is empty with no rounds to load:
-// a picked-up gun is drawn over it, as into empty hands.
-func (g *game) gunDry() bool {
-	return gunEmpty(&g.gun) && g.stock[g.gun.Gun.Ammo] == 0
-}
-
-// takePickup gives the player what they picked up (mp.Client.OnPickup).
-func (g *game) takePickup(p mp.Pickup) {
-	switch p.Kind {
-	case mp.PickupGun:
-		spec := g.gunSpec(p.ID)
-		if spec == nil {
-			log.Printf("pickup: no gun %q in this pack", p.ID)
-			return
-		}
-		if g.arsenal.add(p.ID, g.switching || g.gunOn() && !g.gunDry()) {
-			g.selectGunID(p.ID)
-		}
-		g.note("§aPicked up " + spec.Name)
-	case mp.PickupAmmo:
-		g.stock[p.ID] += p.Rounds
-		g.note(fmt.Sprintf("§aPicked up %d rounds of %s", p.Rounds, g.ammoName(p.ID)))
-	default:
-		log.Printf("pickup: unknown kind %d", p.Kind)
-	}
-}
-
 func (g *game) ammoName(id string) string {
 	for _, a := range g.gunPack.Ammo {
 		if a.ID == id && a.Name != "" {
@@ -206,15 +139,6 @@ func (g *game) ammoName(id string) string {
 		}
 	}
 	return id
-}
-
-// loseArsenal empties the hands and the pockets (a death in zombie
-// defense: back to bare hands).
-func (g *game) loseArsenal() {
-	g.takeGun(-1)
-	g.arsenal = arsenal{}
-	clear(g.stock)
-	clear(g.loaded)
 }
 
 // note shows a line in the kill feed.
@@ -243,8 +167,11 @@ func compass(yaw, dx, dz float64) string {
 // owned guns takes, else the nearest gun.
 func (g *game) wantedPickup() (mp.PickupView, bool) {
 	takes := map[string]bool{}
-	for _, id := range g.arsenal.owned {
-		if spec := g.gunSpec(id); spec != nil {
+	for _, st := range g.inv().Main {
+		if st == nil {
+			continue
+		}
+		if spec := g.gunSpec(st.Item.Key); spec != nil {
 			takes[spec.Ammo] = true
 		}
 	}

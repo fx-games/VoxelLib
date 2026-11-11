@@ -28,6 +28,7 @@ import (
 
 	"github.com/memmaker/voxellib/audio"
 	"github.com/memmaker/voxellib/character"
+	"github.com/memmaker/voxellib/inventory"
 	"github.com/memmaker/voxellib/platform/glfw"
 	"github.com/memmaker/voxellib/voxel"
 	"github.com/memmaker/voxellib/voxel/collide"
@@ -163,6 +164,12 @@ type Hooks struct {
 	// "block.hit" while breaking, "block.step" on walking, "swim" before
 	// a step in water) with the block and where; play them with App.Mixer.
 	Sound func(event string, state voxel.StateID, x, y, z float64)
+	// InventoryScreen, when set, is opened by the inventory action (E):
+	// Player.Inv's screen (package ui/uiapp sets it).
+	InventoryScreen func() Screen
+	// Held runs in the tick after the held stack changed: another hotbar
+	// slot, or the slot's stack replaced (nil: an empty hand).
+	Held func(s *inventory.Stack)
 	// PauseScreen, when set, is opened by the pause action (Esc). Without
 	// it Esc releases the mouse, and a second Esc quits.
 	PauseScreen func() Screen

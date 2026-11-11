@@ -27,6 +27,7 @@ import (
 	"github.com/memmaker/voxellib/actors"
 	"github.com/memmaker/voxellib/audio"
 	"github.com/memmaker/voxellib/character"
+	"github.com/memmaker/voxellib/inventory"
 	"github.com/memmaker/voxellib/mp"
 	"github.com/memmaker/voxellib/netcode"
 	"github.com/memmaker/voxellib/voxel"
@@ -393,7 +394,7 @@ func (g *game) tickNet() {
 	g.health = own.Health
 	g.Player.Dead = own.Dead
 	if own.Dead && !n.dead {
-		g.loseArsenal() // back to bare hands
+		g.loseInventory() // back to bare hands
 		n.mu.Lock()
 		if r := n.cl.Round(); r.Mode == mp.BattleRoyale && r.Phase == mp.PhasePlaying {
 			n.lines = append(n.lines, "§cYou are out - watching until the next round")
@@ -562,26 +563,21 @@ func (g *game) sendHold() {
 	}
 	var h mp.Hold
 	if g.gunOn() {
-		h = mp.Hold{Gun: g.gun.Gun.ID, Choice: g.gunChoice(g.gun.Gun.ID), Mode: g.gun.FireMode()}
+		h = mp.Hold{Gun: g.gun.Gun.ID, Choice: g.stackChoice(g.gunStack), Mode: g.gun.FireMode()}
 	}
 	g.net.cl.SendHold(h)
 }
 
-// sendNextHold tells the server gun i (-1 or out of range: none) is in
+// sendNextHold tells the server gun stack s (nil: none) is in
 // hand as the switch to it starts: in TACZ the item changes at once and
 // others see it (ClientMessagePlayerDrawGun); put_away plays in first person only.
-func (g *game) sendNextHold(i int) {
+func (g *game) sendNextHold(s *inventory.Stack) {
 	if g.net == nil {
 		return
 	}
 	var h mp.Hold
-	if g.gunPack != nil && i >= 0 && i < len(g.gunPack.Guns) {
-		spec := &g.gunPack.Guns[i]
-		mode, ok := g.modes[spec.ID]
-		if !ok || !slices.Contains(spec.FireModes(), mode) {
-			mode = spec.FireModes()[0]
-		}
-		h = mp.Hold{Gun: spec.ID, Choice: g.gunChoice(spec.ID), Mode: mode}
+	if s != nil {
+		h = mp.Hold{Gun: s.Item.Key, Choice: g.stackChoice(s), Mode: g.stackMode(s)}
 	}
 	g.net.cl.SendHold(h)
 }
