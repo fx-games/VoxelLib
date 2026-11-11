@@ -112,6 +112,7 @@ stdin: `status` (the ranking with health and ping), `say TEXT`, `kick SLOT|NAME`
 |---|---|
 | F1 | help screen with all controls |
 | F or double Space | toggle flying |
+| Ctrl+F | cheat: every gun and some ammo (zombie defense) |
 | G | toggle no-clip |
 | N | day/night (single player) |
 | R | respawn |

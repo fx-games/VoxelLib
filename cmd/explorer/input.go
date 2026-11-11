@@ -8,6 +8,7 @@ import (
 // The explorer's keys on top of app.DefaultBindings (also listed in
 // README.md and help.go's helpLines):
 //
+//	Ctrl+F            cheat: every gun and some ammo (zombie defense)
 //	F / double Space  toggle flying      G  toggle no-clip (fly through blocks)
 //	N                 day/night          R  respawn at the spawn point
 //	E                 open/close door    F1 help screen
@@ -32,6 +33,10 @@ func (g *game) action(name string, pressed bool) bool {
 	}
 	if !pressed {
 		return false
+	}
+	if name == "fly" && g.Input.Down(app.ActSprint) && g.net != nil { // Ctrl+F: the gun cheat
+		g.net.cl.SendCheatGuns()
+		return true
 	}
 	p := g.Player
 	if g.net != nil {

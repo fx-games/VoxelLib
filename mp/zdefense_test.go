@@ -131,3 +131,23 @@ func TestDefense(t *testing.T) {
 		t.Fatalf("a killed zombie dropped %d pickups", drops)
 	}
 }
+
+func TestGunCheat(t *testing.T) {
+	loot := Loot{Guns: []string{"test:gun"}, Ammo: []string{"test:9mm"}, Rounds: map[string]int{"test:9mm": 30}}
+	srv, err := StartServer(ServerConfig{Addr: "127.0.0.1:0", Name: "zd", Seed: 7, Generator: "flat",
+		Reg: voxel.NewRegistry(), Mode: ZombieDefense, Loot: loot, Logf: t.Logf})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(srv.Close)
+	a := newBot(t, srv.Addr().String(), "A", netcode.Config{})
+	var got []Pickup
+	a.c.OnPickup = func(p Pickup) { got = append(got, p) }
+	run(t, 3*time.Second, nil, func(int) bool { a.step(0, 0); return a.c.Ready() })
+	a.c.SendCheatGuns()
+	run(t, 3*time.Second, nil, func(int) bool { a.step(0, 0); return len(got) >= 2 })
+	want := []Pickup{{Kind: PickupGun, ID: "test:gun"}, {Kind: PickupAmmo, ID: "test:9mm", Rounds: 30 * cheatMagazines}}
+	if len(got) != 2 || got[0] != want[0] || got[1] != want[1] {
+		t.Fatalf("cheat gave %+v, want %+v", got, want)
+	}
+}

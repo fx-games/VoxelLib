@@ -150,6 +150,10 @@ func (c *Client) SendHold(h Hold) {
 // SendGun tells the server the held gun's state; send it when that changes.
 func (c *Client) SendGun(f GunFlags) { c.net.SendReliable([]byte{msgGun, uint8(f)}) }
 
+// SendCheatGuns asks for every gun and cheatMagazines of each ammunition
+// (zombie defense only).
+func (c *Client) SendCheatGuns() { c.net.SendReliable([]byte{msgCheatGuns}) }
+
 // SendMelee lands the held gun's melee hit along look; the server deals the damage.
 func (c *Client) SendMelee(gun string, look Look) {
 	b := wbuf{msgMelee}

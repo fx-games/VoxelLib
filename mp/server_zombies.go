@@ -274,6 +274,33 @@ func (s *Server) tickPickups(live []*sPlayer) {
 	d.pickups = keep
 }
 
+// cheatMagazines is how many magazines of each ammunition the gun cheat gives.
+const cheatMagazines = 3
+
+// giveAllGuns is the gun cheat: every gun and cheatMagazines of each
+// ammunition, given like pickups.
+func (s *Server) giveAllGuns(p *sPlayer) {
+	if s.cfg.Mode != ZombieDefense {
+		return
+	}
+	l := s.def.loot
+	var pks []Pickup
+	for _, id := range l.Guns {
+		pks = append(pks, Pickup{Kind: PickupGun, ID: id})
+	}
+	for _, id := range l.Ammo {
+		m := l.Magazine(id)
+		m.Rounds *= cheatMagazines
+		pks = append(pks, m)
+	}
+	for _, pk := range pks {
+		b := wbuf{msgPickup}
+		pk.encode(&b)
+		s.net.SendReliable(p.slot, b)
+	}
+	s.cfg.Logf("mp: zd: %s used the gun cheat", p.name)
+}
+
 func describe(p Pickup) string {
 	if p.Kind == PickupGun {
 		return "gun " + p.ID

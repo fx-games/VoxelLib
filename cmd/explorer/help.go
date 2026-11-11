@@ -33,6 +33,7 @@ var helpLines = [][2]string{
 	{"", ""},
 	{"DEBUG", ""},
 	{"F / Space x2", "toggle flying"},
+	{"Ctrl+F", "cheat: every gun and some ammo"},
 	{"G", "toggle no-clip"},
 	{"N", "day / night"},
 	{"R", "respawn"},

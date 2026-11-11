@@ -349,6 +349,7 @@ const (
 	msgMelee     = 6 // gun ID, yaw, pitch f32: the held gun's melee hit lands
 	msgGun       = 7 // GunFlags u8: the held gun's state changed (aim, reload, empty)
 	msgView      = 8 // fov, aspect f32: the player's unzoomed projection (zombie defense spawns out of sight)
+	msgCheatGuns = 9 // (empty): give the player every gun and some ammo (zombie defense cheat)
 	// server → client
 	msgPlayer     = 10 // slot u8, joined u8, name, skin png: a player joined, changed skin or left
 	msgBlock      = 11 // x, y, z i32, state name: a block changed

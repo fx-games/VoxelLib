@@ -569,6 +569,8 @@ func (s *Server) reliable(p *sPlayer, msg []byte) {
 			return
 		}
 		p.view.FOV, p.view.Aspect = v.FOV, v.Aspect
+	case msgCheatGuns:
+		s.giveAllGuns(p)
 	case msgMelee:
 		gun, l := r.str(), Look{Yaw: r.f32(), Pitch: r.f32()}
 		if r.err == nil {
