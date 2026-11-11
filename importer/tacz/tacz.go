@@ -366,6 +366,28 @@ type taczData struct {
 		}
 	}
 	Inaccuracy struct{ Stand, Move, Sneak, Aim float32 }
+	Heat       *taczHeat
+}
+
+// taczHeat is a gun's "heat" block, GunHeatData's defaults where absent.
+type taczHeat struct {
+	Max      float32 `json:"max"`
+	PerShot  float32 `json:"per_shot"`
+	Cooling  float32 `json:"cooling_multiplier"`
+	Delay    float32 `json:"cooling_delay"`  // ms
+	Lock     float32 `json:"over_heat_time"` // ms
+	MinInacc float32 `json:"min_inaccuracy"`
+	MaxInacc float32 `json:"max_inaccuracy"`
+	MinRPM   float32 `json:"min_rpm_mod"`
+	MaxRPM   float32 `json:"max_rpm_mod"`
+}
+
+func (h *taczHeat) UnmarshalJSON(b []byte) error {
+	type plain taczHeat
+	p := plain{Max: 100, PerShot: 3, Cooling: 1, Delay: 1000, Lock: 3000, MinInacc: 1, MaxInacc: 1, MinRPM: 1, MaxRPM: 1}
+	err := json.Unmarshal(b, &p)
+	*h = taczHeat(p)
+	return err
 }
 
 func (d *taczData) spec(id, name, class string) (weapon.Gun, error) {
@@ -410,6 +432,10 @@ func (d *taczData) spec(id, name, class string) (weapon.Gun, error) {
 	}
 	in := d.Inaccuracy
 	g.Inaccuracy.Stand, g.Inaccuracy.Move, g.Inaccuracy.Sneak, g.Inaccuracy.Aim = in.Stand, in.Move, in.Sneak, in.Aim
+	if h := d.Heat; h != nil {
+		g.Heat = &weapon.Heat{Max: h.Max, PerShot: h.PerShot, Cooling: h.Cooling, Delay: h.Delay / 1000, Lock: h.Lock / 1000,
+			RPM: [2]float32{h.MinRPM, h.MaxRPM}, Inaccuracy: [2]float32{h.MinInacc, h.MaxInacc}}
+	}
 	return g, nil
 }
 

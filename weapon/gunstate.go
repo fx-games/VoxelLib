@@ -55,12 +55,17 @@ type GunState struct {
 	Mode    int // index into Gun.Modes
 	Phase   GunPhase
 	T       float32 // seconds into the phase
+	// Heat is the gun's heat (Gun.Heat), Overheated its lock.
+	Heat       float32
+	Overheated bool
 
 	cooldown  float32 // seconds until the next shot may fire
 	burstLeft int
-	fed       bool // reload: magazine in / tube intro over
-	empty     bool // the reload started on an empty gun
-	ending    bool // tube reload: reload_end playing
+	fed       bool    // reload: magazine in / tube intro over
+	empty     bool    // the reload started on an empty gun
+	ending    bool    // tube reload: reload_end playing
+	heatShot  float32 // Heat at the last shot (or lock)
+	sinceShot float32 // seconds since then
 }
 
 // Draw starts taking the gun out.
@@ -93,6 +98,7 @@ func (s *GunState) Tick(dt float32, in GunInput, stock *int) []GunEvent {
 		s.cooldown -= dt // may go below 0: the credit lets fast guns fire twice in a tick
 	}
 	defer func() { s.cooldown = max(s.cooldown, 0) }() // no credit kept past a tick without fire
+	s.cool(dt)
 	switch s.Phase {
 	case Drawing:
 		if s.T >= g.Draw {
@@ -144,6 +150,10 @@ func (s *GunState) Tick(dt float32, in GunInput, stock *int) []GunEvent {
 		rounds = stock
 	}
 	for s.cooldown <= 0 && (s.FireMode() == Auto && in.Trigger || s.burstLeft > 0) {
+		if s.Overheated {
+			s.burstLeft = 0
+			break
+		}
 		if *rounds == 0 {
 			s.burstLeft = 0
 			if in.Pressed {
@@ -153,7 +163,8 @@ func (s *GunState) Tick(dt float32, in GunInput, stock *int) []GunEvent {
 		}
 		*rounds--
 		ev = append(ev, GunEvent{Clip: ClipShoot, Shot: true})
-		interval := 60 / g.RPM
+		interval := 60 / (g.RPM * s.heatFactor(func(h *Heat) [2]float32 { return h.RPM }))
+		s.heat()
 		if s.burstLeft > 0 {
 			s.burstLeft--
 			if s.FireMode() == Burst && s.burstLeft > 0 && g.Burst.BPM > 0 {
@@ -168,6 +179,50 @@ func (s *GunState) Tick(dt float32, in GunInput, stock *int) []GunEvent {
 		}
 	}
 	return ev
+}
+
+// heat adds a shot's heat (sp_heat.lua handle_shoot_heat).
+func (s *GunState) heat() {
+	h := s.Gun.Heat
+	if h == nil {
+		return
+	}
+	s.Heat = min(s.Heat+h.PerShot, h.Max)
+	s.heatShot, s.sinceShot = s.Heat, 0
+	s.Overheated = s.Overheated || s.Heat >= h.Max
+}
+
+// cool lets the heat fall (sp_heat.lua tick_heat).
+func (s *GunState) cool(dt float32) {
+	h := s.Gun.Heat
+	if h == nil {
+		return
+	}
+	s.sinceShot += dt
+	wait := h.Delay
+	if s.Overheated {
+		wait = h.Lock
+	}
+	// ponytail: t counts from the end of the wait; TACZ's calcHeatReduction is not in the source we have.
+	if t := s.sinceShot - wait; t > 0 {
+		s.Heat = max(s.heatShot-h.Cooling*t*t, 0)
+		s.Overheated = s.Overheated && s.Heat > 0
+	}
+}
+
+// heatFactor lerps the factor pick chooses by the heat fraction (1 without heat).
+func (s *GunState) heatFactor(pick func(*Heat) [2]float32) float32 {
+	h := s.Gun.Heat
+	if h == nil || h.Max <= 0 {
+		return 1
+	}
+	f := pick(h)
+	return f[0] + (f[1]-f[0])*s.Heat/h.Max
+}
+
+// SpreadFactor scales Gun.Spread for the heat.
+func (s *GunState) SpreadFactor() float32 {
+	return s.heatFactor(func(h *Heat) [2]float32 { return h.Inaccuracy })
 }
 
 // capacity is how many rounds a full reload holds: a closed bolt keeps one

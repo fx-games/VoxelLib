@@ -57,18 +57,19 @@ var ammoBones = []string{"bullet_in_mag", "bullet_in_barrel", "bullet_chain"}
 const additionalMag = "additional_magazine"
 
 type gunsState struct {
-	gunPack  *tacz.Pack
-	gunSel   int // index into gunPack.Guns; -1 = no gun in hand
-	gun      firearm.GunState
-	arms     gunArms
-	fx       gunFX
-	shells   gunShells
-	hudTex   map[string]ui.Texture // HUD sprites by pack/hud path
-	gunViews map[string]*gunView   // by gun ID, loaded on first use
-	stock    map[string]int        // ammo ID → rounds carried
-	aim      int                   // ticks of aiming, 0..aimTicks
-	aimPrev  int
-	gunRand  *rand.Rand
+	gunPack   *tacz.Pack
+	gunSel    int // index into gunPack.Guns; -1 = no gun in hand
+	gun       firearm.GunState
+	arms      gunArms
+	fx        gunFX
+	shells    gunShells
+	hudTex    map[string]ui.Texture // HUD sprites by pack/hud path
+	heatScale float32               // HeatBarOverlay's eased scale
+	gunViews  map[string]*gunView   // by gun ID, loaded on first use
+	stock     map[string]int        // ammo ID → rounds carried
+	aim       int                   // ticks of aiming, 0..aimTicks
+	aimPrev   int
+	gunRand   *rand.Rand
 	// gunRecoil is the last shot's camera curve, recoilTicks ticks old;
 	// recoilP/recoilY are its values already applied to the camera.
 	gunRecoil        firearm.Recoil
@@ -112,7 +113,7 @@ type gunArms struct {
 
 // setupGuns loads the gun pack and gives the player a stock of every ammo type.
 func (g *game) setupGuns() {
-	g.gunSel = -1
+	g.gunSel, g.heatScale = -1, 0.25 // HeatBarOverlay.heatScale
 	p, err := tacz.Load(os.DirFS(gunPackDir), os.DirFS(gunDefaultsDir))
 	if err != nil {
 		log.Printf("guns disabled: %v", err)
@@ -224,7 +225,6 @@ func cameraAt(world []mgl32.Mat4, b int) mgl32.Mat4 {
 	}
 	return world[b].Inv()
 }
-
 
 // tickGun runs the held gun's cycle for one tick.
 func (g *game) tickGun() {
@@ -345,7 +345,7 @@ func (g *game) shoot() {
 	aim := g.aimFrac(1)
 	p := g.Player
 	moving := math.Hypot(p.VX, p.VZ) > 0.01
-	spread := float64(spec.Spread(aim >= 1, moving, g.Input.Down(app.ActSneak)))
+	spread := float64(spec.Spread(aim >= 1, moving, g.Input.Down(app.ActSneak)) * g.gun.SpreadFactor())
 	ex, ey, ez := p.Eye()
 	targets := g.creatureTargets()
 	w := g.Eng.World

@@ -63,3 +63,33 @@ func TestGunCycle(t *testing.T) {
 		t.Fatalf("inventory: %d shots, stock %d", n, stock)
 	}
 }
+
+func TestHeat(t *testing.T) {
+	g := &Gun{RPM: 600, Modes: []FireMode{Auto},
+		Heat: &Heat{Max: 10, PerShot: 2, Cooling: 10, Delay: 0.5, Lock: 1, RPM: [2]float32{1, 2}, Inaccuracy: [2]float32{1, 1.5}}}
+	s := &GunState{Gun: g, Ammo: 100, Phase: Ready}
+	stock := 0
+	shots := 0
+	for i := 0; i < 100 && !s.Overheated; i++ {
+		for _, e := range s.Tick(0.05, GunInput{Trigger: true}, &stock) {
+			if e.Shot {
+				shots++
+			}
+		}
+	}
+	if !s.Overheated || shots != 5 || s.SpreadFactor() != 1.5 {
+		t.Fatalf("overheated %v after %d shots, spread ×%v", s.Overheated, shots, s.SpreadFactor())
+	}
+	for range 30 { // 1.5 s: locked for 1 s, then 10 - 10·0.5² = 7.5
+		s.Tick(0.05, GunInput{}, &stock)
+	}
+	if !s.Overheated || s.Heat > 7.6 || s.Heat < 7.4 {
+		t.Fatalf("heat %v locked %v", s.Heat, s.Overheated)
+	}
+	for range 20 {
+		s.Tick(0.05, GunInput{}, &stock)
+	}
+	if s.Overheated || s.Heat != 0 {
+		t.Fatalf("heat %v locked %v after cooling", s.Heat, s.Overheated)
+	}
+}

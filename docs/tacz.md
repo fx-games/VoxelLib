@@ -31,4 +31,5 @@ is the gun cycle (draw, idle, shoot, bolt, reload magazine/tube/inventory, inspe
 - [x] attachments: builtin_attachments shown as TACZ shows them (adapters, <type>_pos grafts via model.Graft, bone visibility), scope aiming (scope_view_N, zoom, idle_scope_height_adjust)
 - [x] scope lens parts split out of the gun (tacz.Lens: ring, body, oculars, divisions on the gun skeleton); ring + body drawn plainly
 - [ ] scope stencil passes (renderScope/renderSight) — renderer agent adding a hand-pass stencil
-- [ ] minigun heat, TACZ movement/camera tracks, missing sounds, guns in multiplayer, README/ARCHITECTURE
+- [x] heat (GunHeatData + sp_heat.lua: lock, cooling·t², rpm/inaccuracy factors; HeatBarOverlay)
+- [ ] TACZ movement/camera tracks, missing sounds, guns in multiplayer, README/ARCHITECTURE
