@@ -35,17 +35,21 @@ const (
 )
 
 // startMuzzle starts a shot's emitters (none when the flash is scaled to 0,
-// as TACZ): at the held gun's muzzle, or for another player's shot (at not
-// nil) fixed at that world frame.
+// as TACZ; smoke only with a silencer, Gun.FlashHidden): at the held gun's
+// muzzle, or for another player's shot (at not nil) fixed at that world frame.
 func (g *game) startMuzzle(spec *firearm.Gun, at *particles.Frame) {
 	m := spec.Muzzle
 	if m == nil || m.Scale <= 0 {
 		return
 	}
+	flash := m.Flash
+	if spec.FlashHidden() {
+		flash = ""
+	}
 	for _, l := range []struct {
 		file string
 		vars map[string]float64
-	}{{m.Flash, m.FlashVars()}, {m.Smoke, m.SmokeVars()}} {
+	}{{flash, m.FlashVars()}, {m.Smoke, m.SmokeVars()}} {
 		if l.file == "" {
 			continue
 		}

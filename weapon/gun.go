@@ -288,6 +288,11 @@ func (g *Gun) ShotSound3P() GunSound {
 	return SoundShoot3P
 }
 
+// FlashHidden reports that a shot shows no muzzle flash, smoke only: a
+// silencer with use_silence_sound and no flash_hider (MuzzleParticleManager.resolveShot
+// sets flashScale 0; flash_hider is not read, see tacz.UnsupportedData).
+func (g *Gun) FlashHidden() bool { return g.Silence != nil && g.Silence.UseSilenceSound }
+
 // GunSound names a display sound (TACZ SoundManager's keys).
 type GunSound string
 

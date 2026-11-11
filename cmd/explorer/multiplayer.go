@@ -443,6 +443,10 @@ func (g *game) netPose(alpha float64) {
 			m := n.gunAt[v.Slot]
 			t := m.Col(3)
 			m.SetCol(3, mgl32.Vec4{0, 0, 0, 1})
+			skin := gv.rest
+			if v.Empty {
+				skin = gv.restEmpty
+			}
 			parts := []int{gv.handle}
 			if l := gv.lens; l != nil {
 				// BedrockAttachmentModel out of first person: the scope
@@ -452,7 +456,7 @@ func (g *game) netPose(alpha float64) {
 			for _, h := range parts {
 				if h >= 0 {
 					n.mats = append(n.mats, m)
-					n.bows = append(n.bows, render.ModelInstance{Model: h, X: float64(t[0]), Y: float64(t[1]), Z: float64(t[2]), Skin: gv.rest, Sky: sky, Block: blk})
+					n.bows = append(n.bows, render.ModelInstance{Model: h, X: float64(t[0]), Y: float64(t[1]), Z: float64(t[2]), Skin: skin, Sky: sky, Block: blk})
 				}
 			}
 		} else if g.bowModel >= 0 {

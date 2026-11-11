@@ -65,7 +65,7 @@ type gunsState struct {
 	// aim is the aiming progress 0..1 (LocalPlayerAim: 1/aim_time per
 	// second), aimPrev the last tick's.
 	aim, aimPrev firearm.AimProgress
-	aimSent      bool // the aim state the server has (mp.Client.SendAim)
+	gunSent      mp.GunFlags // the held gun's state the server has (mp.Client.SendGun)
 	fov          gunFOVState
 	gunRand      *rand.Rand
 	// gunRecoil is the last shot's camera curve, recoilTicks ticks old;
@@ -107,6 +107,7 @@ type gunView struct {
 	times      []float32    // layer times saved while posing between ticks
 	lens       *lensView    // nil: no scope
 	rest       []mgl32.Mat4 // static_idle at its start: the gun in other players' hands
+	restEmpty  []mgl32.Mat4 // rest with the ammo bones hidden: an empty gun (mp.PlayerView.Empty)
 	thirdHand  mgl32.Mat4   // inverse of thirdperson_hand's frame in rest (identity without it)
 	overheated bool         // the over_heat clip has run for the current lock
 	move       movement     // the movement track's state
@@ -222,6 +223,9 @@ func (g *game) takeGun(i int) {
 		log.Printf("gun %s: %v", spec.ID, err)
 	}
 	g.sendHold()
+	// A draw resets the gun's synced state (ShooterDataHolder.initialData),
+	// here and on the server (msgHold with another gun).
+	g.aim, g.aimPrev, g.gunSent = 0, 0, 0
 	g.sounds.preload(spec)
 	g.gunEvents(g.gun.Draw())
 }
@@ -299,6 +303,10 @@ func (g *game) newGunView(id string, c tacz.Choice, mode firearm.FireMode) (*gun
 	for _, n := range ammoBones {
 		v.ammo = append(v.ammo, m.Descendants(m.Bone(n))...)
 	}
+	v.restEmpty = append([]mgl32.Mat4(nil), v.rest...)
+	for _, b := range v.ammo {
+		v.restEmpty[b] = mgl32.Mat4{}
+	}
 	v.addMagBone = m.Bone(additionalMag)
 	v.addMag = m.Descendants(v.addMagBone)
 	v.hands = [2]int{m.Bone("lefthand_pos"), m.Bone("righthand_pos")}
@@ -342,13 +350,13 @@ func cameraAt(world []mgl32.Mat4, b int) mgl32.Mat4 {
 func (g *game) tickGun() {
 	g.Player.MoveSpeed = character.Speed{} // default unless a gun is held
 	if !g.gunOn() {
-		g.setAim(false)
+		g.syncGun(false)
 		return
 	}
 	if g.gun.Phase == firearm.Holstered && g.switching {
 		g.takeGun(g.nextSel)
 		if !g.gunOn() {
-			g.setAim(false)
+			g.syncGun(false)
 			return
 		}
 	}
@@ -356,7 +364,7 @@ func (g *game) tickGun() {
 	g.recoilTicks++
 	aiming := g.Input.Down(app.ActUse) && !g.ScreenOpen() && g.gun.Phase == firearm.Ready
 	g.aim = g.aim.Tick(aiming, g.gun.Gun.Aim, time.Second/app.TickRate)
-	g.setAim(aiming)
+	g.syncGun(aiming)
 	// LivingEntitySpeedModifier: the gun's weight and movement_speed.
 	g.Player.MoveSpeed = character.SpeedOf(character.PlayerMoveSpeed * float64(g.gun.Gun.SpeedFactor(aiming, g.gun.Phase == firearm.Reloading)))
 	in := firearm.GunInput{
@@ -583,16 +591,41 @@ func (g *game) aimFrac(alpha float64) float32 {
 	return float32(g.aimPrev + (g.aim-g.aimPrev)*firearm.AimProgress(alpha))
 }
 
-// setAim tells the server the aim state when it changes; no gun in hand
-// drops the local progress too (LocalPlayerAim.tickAimingProgress).
-func (g *game) setAim(aiming bool) {
+// syncGun tells the server the held gun's state when it changes (the
+// server's movement and aim progress use it, others see the empty gun); no
+// gun in hand drops the local progress too (LocalPlayerAim.tickAimingProgress).
+func (g *game) syncGun(aiming bool) {
+	var f mp.GunFlags
 	if !g.gunOn() {
 		g.aim, g.aimPrev = 0, 0
+	} else {
+		f = gunFlags(&g.gun, aiming)
 	}
-	if g.net != nil && aiming != g.aimSent {
-		g.net.cl.SendAim(aiming)
+	if g.net != nil && f != g.gunSent {
+		g.net.cl.SendGun(f)
+		g.gunSent = f
 	}
-	g.aimSent = aiming && g.net != nil
+}
+
+// gunFlags is a gun state's mp.GunFlags.
+func gunFlags(s *firearm.GunState, aiming bool) mp.GunFlags {
+	var f mp.GunFlags
+	if aiming {
+		f |= mp.GunAiming
+	}
+	if s.Phase == firearm.Reloading {
+		f |= mp.GunReloading
+	}
+	if gunEmpty(s) {
+		f |= mp.GunEmpty
+	}
+	return f
+}
+
+// gunEmpty: the gun has no round, so its ammo bones are hidden
+// (BedrockGunModel's ammoHiddenRender; an inventory-fed gun shows them).
+func gunEmpty(s *firearm.GunState) bool {
+	return s.Ammo == 0 && s.Gun.Reload.Kind != firearm.Inventory
 }
 
 // shotAim is the aiming progress a shot's inaccuracy uses: the server's
@@ -793,7 +826,7 @@ func (g *game) poseGun(alpha float64) {
 func (g *game) drawGunHand(alpha float64) {
 	v := g.gunViews[g.gun.Gun.ID]
 	zero := mgl32.Mat4{}
-	if g.gun.Ammo == 0 && g.gun.Gun.Reload.Kind != firearm.Inventory {
+	if gunEmpty(&g.gun) {
 		for _, b := range v.ammo {
 			v.skin[b] = zero
 		}

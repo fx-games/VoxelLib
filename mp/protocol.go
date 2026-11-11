@@ -13,7 +13,7 @@ import (
 // Protocol is the netcode protocol id: "VLMP" plus a version byte. Bump the
 // version on any wire change; older peers are refused and stay invisible to
 // discovery.
-const Protocol = 0x564C4D00 | 10
+const Protocol = 0x564C4D00 | 11
 
 // DefaultPort is the server's UDP port.
 const DefaultPort = 28960
@@ -288,7 +288,19 @@ type PlayerView struct {
 	Health     int
 	Shots      uint16             // counts shots fired: a change means one went off
 	Aim        weapon.AimProgress // aiming progress (AIMING_PROGRESS_KEY)
+	Empty      bool               // the held gun has no round (TACZ: the item's ammo count)
 }
+
+// GunFlags is the held gun's state the client reports when it changes,
+// as TACZ syncs it: IS_AIMING_KEY (ClientMessagePlayerAim), RELOAD_STATE_KEY,
+// and the gun item's ammo count.
+type GunFlags uint8
+
+const (
+	GunAiming    GunFlags = 1 << iota // aims the held gun
+	GunReloading                      // reloads: LivingEntitySpeedModifier's reload multiplier
+	GunEmpty                          // no round: bullet_in_mag/bullet_in_barrel/bullet_chain hidden
+)
 
 func (p PlayerView) encode() []byte {
 	var b wbuf
@@ -299,7 +311,7 @@ func (p PlayerView) encode() []byte {
 	b.f32(p.Z)
 	b.u16(angle16(p.Yaw))
 	b.u16(angle16(p.Pitch))
-	b.u8(flag(p.Sneak, 1) | flag(p.Dead, 2) | flag(p.Protected, 4))
+	b.u8(flag(p.Sneak, 1) | flag(p.Dead, 2) | flag(p.Protected, 4) | flag(p.Empty, 8))
 	b.u8(uint8(p.Health))
 	b.u16(p.Shots)
 	b.f32(float64(p.Aim))
@@ -313,7 +325,7 @@ func decodePlayerView(p []byte) (PlayerView, bool) {
 	}
 	v := PlayerView{Slot: int(r.u8()), X: r.f32(), Y: r.f32(), Z: r.f32(), Yaw: unangle16(r.u16()), Pitch: unangle16(r.u16())}
 	f := r.u8()
-	v.Sneak, v.Dead, v.Protected = f&1 != 0, f&2 != 0, f&4 != 0
+	v.Sneak, v.Dead, v.Protected, v.Empty = f&1 != 0, f&2 != 0, f&4 != 0, f&8 != 0
 	v.Health, v.Shots = int(r.u8()), r.u16()
 	v.Aim = weapon.AimProgress(r.f32())
 	return v, r.err == nil
@@ -379,7 +391,7 @@ const (
 	msgHold      = 4 // Hold: the gun in the player's hand
 	msgShoot     = 5 // Shot: a round of the held gun
 	msgMelee     = 6 // gun ID, yaw, pitch f32: the held gun's melee hit lands
-	msgAim       = 7 // u8 on/off: the player aims the held gun (TACZ ClientMessagePlayerAim)
+	msgGun       = 7 // GunFlags u8: the held gun's state changed (aim, reload, empty)
 	// server → client
 	msgPlayer = 10 // slot u8, joined u8, name, skin png: a player joined, changed skin or left
 	msgBlock  = 11 // x, y, z i32, state name: a block changed

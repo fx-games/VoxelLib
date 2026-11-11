@@ -132,9 +132,8 @@ func (c *Client) SendHold(h Hold) {
 	c.net.SendReliable(b)
 }
 
-// SendAim tells the server whether the player aims the held gun; send it
-// when that changes (LocalPlayerAim.aim).
-func (c *Client) SendAim(on bool) { c.net.SendReliable([]byte{msgAim, flag(on, 1)}) }
+// SendGun tells the server the held gun's state; send it when that changes.
+func (c *Client) SendGun(f GunFlags) { c.net.SendReliable([]byte{msgGun, uint8(f)}) }
 
 // SendMelee lands the held gun's melee hit along look; the server deals the damage.
 func (c *Client) SendMelee(gun string, look Look) {

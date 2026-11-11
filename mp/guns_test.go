@@ -180,7 +180,7 @@ func TestAimSync(t *testing.T) {
 		return -1
 	}
 	a.c.SendHold(Hold{Gun: gun.ID})
-	a.c.SendAim(true)
+	a.c.SendGun(GunAiming)
 	run(t, 3*time.Second, nil, func(int) bool {
 		a.step(0, 0, false)
 		b.step(0, 0, false)
@@ -191,7 +191,7 @@ func TestAimSync(t *testing.T) {
 	if !anim.Gun || anim.Hold != weapon.HoldMinigun || anim.Aim != weapon.Aimed {
 		t.Fatalf("server pose %+v", anim)
 	}
-	a.c.SendAim(false)
+	a.c.SendGun(0)
 	run(t, 3*time.Second, nil, func(int) bool {
 		a.step(0, 0, false)
 		b.step(0, 0, false)
