@@ -1,7 +1,5 @@
 package weapon
 
-import "math/rand"
-
 // GunPhase is what a held gun is doing.
 type GunPhase uint8
 
@@ -267,20 +265,3 @@ func (g *Gun) Spread(aiming, moving, sneaking bool) float32 {
 	}
 	return g.Inaccuracy.Stand
 }
-
-// Kick is a shot's camera kick (degrees up, degrees right): the recoil
-// curves' peaks, each a random value in its key's range.
-func (g *Gun) Kick(r *rand.Rand) (pitch, yaw float32) {
-	peak := func(keys []RecoilKey) float32 {
-		var best RecoilKey
-		for _, k := range keys {
-			if max(abs(k.Min), abs(k.Max)) > max(abs(best.Min), abs(best.Max)) {
-				best = k
-			}
-		}
-		return best.Min + (best.Max-best.Min)*r.Float32()
-	}
-	return peak(g.Recoil.Pitch), peak(g.Recoil.Yaw)
-}
-
-func abs(f float32) float32 { return max(f, -f) }

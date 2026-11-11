@@ -17,10 +17,11 @@ is the gun cycle (draw, idle, shoot, bolt, reload magazine/tube/inventory, inspe
 ## Checklist
 - [x] assets/tacz: pack copied verbatim
 - [x] importer/tacz: loader (JSON with comments), lazy models, sound cues per clip
-- [x] weapon: Gun spec + GunState cycle, DamageAt, Spread, Kick (tests)
-- [ ] explorer: guns as hotbar items (slot icons), first-person model with clips, arms at lefthand_pos/righthand_pos
-- [ ] explorer: hitscan pellets with spread vs creatures (headshot multiplier, falloff), recoil kick, ADS zoom
-- [ ] audio: play pack sounds (cues per clip, shoot, dry) — audio.Sounds needs the pack's tacz_sounds layout
-- [ ] runtime bone visibility: bullet_in_mag/bullet_in_barrel/bullet_chain with ammo, additional_magazine while keyed
+- [x] weapon: Gun spec + GunState cycle, DamageAt, Spread, Recoil (TACZ spline-delta camera recoil; tests)
+- [x] explorer: first-person model with clips, keys V (next gun), R, H, B; -gun, -press
+- [ ] explorer: hotbar slot icons, HUD ammo count, arms at lefthand_pos/righthand_pos
+- [x] explorer: hitscan pellets with spread vs creatures (headshot multiplier, falloff), recoil kick, ADS zoom
+- [x] audio: pack sounds (cues per clip, shoot, dry); 172 cues name sounds missing from the pack
+- [x] runtime bone visibility: bullet_in_mag/bullet_in_barrel/bullet_chain with ammo, additional_magazine while keyed
 - [ ] explorer: zombies (hostile, waves), ammo loot
 - [ ] later: muzzle flash, shells, attachments (builtin stocks on AK etc. are currently stripped), minigun heat

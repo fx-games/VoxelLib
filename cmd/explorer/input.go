@@ -14,9 +14,12 @@ import (
 //	F1                help screen        C  crossbow
 //	K                 preview the nearest creature's animations one by one
 //	Tab (hold)        multiplayer ranking
+//	V                 next gun (guns.go; then R reloads, H inspects, B fire mode,
+//	                  right click aims)
 func (g *game) bindKeys() {
 	for name, k := range map[string]glfw.Key{"fly": glfw.KeyF, "noclip": glfw.KeyG, "daynight": glfw.KeyN,
-		"respawn": glfw.KeyR, "drop": glfw.KeyQ, "door": glfw.KeyE, "help": glfw.KeyF1, "anim": glfw.KeyK, "crossbow": glfw.KeyC, "scores": glfw.KeyTab} {
+		"respawn": glfw.KeyR, "drop": glfw.KeyQ, "door": glfw.KeyE, "help": glfw.KeyF1, "anim": glfw.KeyK, "crossbow": glfw.KeyC, "scores": glfw.KeyTab,
+		"gun": glfw.KeyV, "reload": glfw.KeyR, "inspect": glfw.KeyH, "firemode": glfw.KeyB} {
 		g.Input.Bind(name, app.Key(k))
 	}
 }
@@ -40,7 +43,17 @@ func (g *game) action(name string, pressed bool) bool {
 			return true // not in multiplayer (the time is the server's)
 		}
 	}
+	if g.gunOn() {
+		switch name {
+		case app.ActAttack, app.ActUse, "respawn", "reload", "inspect", "firemode":
+			return true // read by tickGun; R reloads instead of respawning
+		}
+	}
 	switch name {
+	case "gun":
+		g.nextGun()
+	case "reload", "inspect", "firemode":
+		return false
 	case app.ActAttack:
 		if !g.crossbowOn() {
 			return false
@@ -73,6 +86,9 @@ func (g *game) action(name string, pressed bool) bool {
 		g.cycleAnimation()
 	case "crossbow":
 		g.toggleCrossbow()
+		if g.crossbowOn() {
+			g.gunSel = -1
+		}
 	default:
 		return false
 	}

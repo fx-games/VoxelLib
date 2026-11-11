@@ -59,9 +59,9 @@ var hotbarNames = []string{
 }
 
 type options struct {
-	itemDir, signFont, pets, modelPack, species, anim, hold string
-	numItems, numMobs                                       int
-	night, fly, lineup, help                                bool
+	itemDir, signFont, pets, modelPack, species, anim, hold, gun, press string
+	numItems, numMobs                                                   int
+	night, fly, lineup, help, aim                                       bool
 }
 
 func main() {
@@ -94,6 +94,8 @@ func main() {
 	flag.BoolVar(&o.night, "night", false, "start at night")
 	flag.BoolVar(&o.fly, "fly", false, "start flying")
 	flag.StringVar(&o.hold, "hold", "sword_01", "item held at start")
+	flag.StringVar(&o.press, "press", "", "debug: actions held down from the start, comma separated (e.g. use,attack: aim and fire)")
+	flag.StringVar(&o.gun, "gun", "", "gun (a TACZ gun ID, e.g. ak47) in hand at start")
 	flag.StringVar(&cfg.Debug.Edits, "edits", "", "debug: 'dx,dy,dz,block;...' edits relative to the player, applied once terrain is ready")
 	flag.DurationVar(&cfg.Debug.AutoTurn, "autoturn", 0, "debug: stand and turn round from this long into the game on, firing after 5 and 15 s (benchmark under real conditions)")
 	flag.Float64Var(&cfg.Debug.AutoFly, "autofly", 0, "debug: fly forward automatically at this many blocks/s (streaming stress test)")
@@ -126,6 +128,8 @@ func main() {
 		defer pprof.StopCPUProfile()
 	}
 	cfg.Title = "voxellib explorer (F1 help)"
+	// gun sounds; scripted runs (screenshots, benchmarks) stay silent
+	cfg.Audio = cfg.Debug.Shot == "" && cfg.Debug.Bench == 0 && cfg.Debug.AutoTurn == 0 && cfg.Debug.AutoFly == 0
 	if *startPos != "" {
 		var p [3]float64
 		fmt.Sscanf(*startPos, "%f,%f,%f", &p[0], &p[1], &p[2])
@@ -252,6 +256,7 @@ type game struct {
 	itemsState
 	creaturesState
 	crossbowState
+	gunsState
 	combatState
 	help     *render.Overlay // F1 help screen
 	showHelp bool
@@ -316,6 +321,16 @@ func (g *game) start() {
 		lineup: o.lineup, lineupAnim: o.anim}
 	g.crossbowState = crossbowState{bowModel: -1, arrowModel: -1} // set by setupCrossbow
 	g.combatState = combatState{swordModel: -1}                   // set by setupCombat
+	g.gunsState = gunsState{sounds: gunSounds{mixer: g.Mixer}}
+	g.setupGuns()
+	if o.gun != "" {
+		g.selectGunID(o.gun)
+	}
+	for _, a := range strings.Split(o.press, ",") {
+		if a != "" {
+			g.Input.Hold(a, true)
+		}
+	}
 	g.torches = torchFX{}
 	if o.itemDir != "" {
 		if err := g.loadItems(o.itemDir); err != nil {
@@ -379,6 +394,7 @@ func (g *game) tick() {
 	if g.crossbowOn() && g.Input.Down(app.ActAttack) {
 		g.fire() // held down: repeat at the reload rate
 	}
+	g.tickGun()
 	g.tickItems()
 	g.tickCreatures()
 	g.tickArrows()
@@ -387,6 +403,7 @@ func (g *game) tick() {
 }
 
 func (g *game) render(alpha float64, _ *render.Options) {
+	g.gunFOV(alpha)
 	g.animStep()
 	if g.net != nil {
 		g.netFrame()

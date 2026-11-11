@@ -72,6 +72,7 @@ const (
 	KeyF8                   = glfw.KeyF8
 	KeyF9                   = glfw.KeyF9
 	KeyG                    = glfw.KeyG
+	KeyH                    = glfw.KeyH
 	KeyGraveAccent          = glfw.KeyGraveAccent
 	KeyHome                 = glfw.KeyHome
 	KeyI                    = glfw.KeyI

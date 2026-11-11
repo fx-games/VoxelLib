@@ -128,7 +128,16 @@ func (g *game) tickArrows() {
 	if len(g.arrows.Arrows) == 0 {
 		return
 	}
-	targets := make([]projectile.Target, 0, len(g.creatures))
+	targets := g.creatureTargets()
+	if g.playerTgt != nil && !g.Player.NoClip {
+		targets = append(targets, g.playerTgt)
+	}
+	g.arrows.Tick(g.Terrain, targets)
+}
+
+// creatureTargets lists the living creatures as projectile targets.
+func (g *game) creatureTargets() []projectile.Target {
+	targets := make([]projectile.Target, 0, len(g.creatures)+1)
 	for _, c := range g.creatures {
 		if c.sp.shape == nil {
 			c.sp.shape = newShape(c.sp.model)
@@ -137,10 +146,7 @@ func (g *game) tickArrows() {
 			targets = append(targets, c)
 		}
 	}
-	if g.playerTgt != nil && !g.Player.NoClip {
-		targets = append(targets, g.playerTgt)
-	}
-	g.arrows.Tick(g.Terrain, targets)
+	return targets
 }
 
 // Head shots: an arrow that strikes a creature's head kills it. Hits are

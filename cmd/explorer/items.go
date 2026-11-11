@@ -162,6 +162,9 @@ func (g *game) light(x, y, z float64) (uint8, uint8) {
 
 // drawItems draws drops in the world and the held item in first person.
 func (g *game) drawItems(alpha float64) {
+	if g.gunOn() {
+		defer g.drawGunHand(alpha) // the hand comes last
+	}
 	if g.itemRend == nil {
 		return
 	}
@@ -172,9 +175,11 @@ func (g *game) drawItems(alpha float64) {
 		g.instBuf = append(g.instBuf, render.ItemInstance{Item: d.Item, X: x, Y: y, Z: z, Yaw: spin, Scale: 0.5, Sky: sky, Block: blk})
 	}
 	g.itemRend.DrawWorld(&g.Cam, g.instBuf)
-	if g.crossbowOn() {
+	switch {
+	case g.gunOn():
+	case g.crossbowOn():
 		g.drawCrossbowHand(alpha)
-	} else if g.held != "" {
+	case g.held != "":
 		sky, blk := g.Light(g.Cam.X, g.Cam.Y, g.Cam.Z)
 		g.itemRend.DrawHand(g.held, float32(g.Cam.Aspect), g.Player.HandPose(alpha), sky, blk)
 	}

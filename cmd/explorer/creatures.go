@@ -38,6 +38,8 @@ type creature struct {
 	// attacks counts attacks (picks the next clip); attackClip is playing.
 	attacks    int
 	attackClip string
+	// damage is the bullet damage taken (guns.go: dead at creatureHealth).
+	damage float32
 	// dying counts ticks since a fatal hit (0 = alive); see crossbow.go.
 	dying int
 	// drawn is the pose last drawn (skin is its animation), for exact
