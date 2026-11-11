@@ -80,10 +80,10 @@ type Config struct {
 	Textures      render.TextureSource
 	RenderOptions render.Options
 	// Workers is the size of each background pool (mesh, generation).
-	// Default (NumCPU-3)/2: with the light and save workers that leaves a
-	// core (and a Go P) free for the render thread; oversubscribing shows up
-	// as frame hitches. Workers also run at a lower OS priority than the
-	// render thread (macOS, Windows), so a frame never waits for them.
+	// Default max(1, (NumCPU-3)/2). Workers run at a lower OS priority than
+	// the render thread (macOS, Windows), and New raises GOMAXPROCS so every
+	// worker has a Go P: the OS priority, not the Go scheduler, then decides
+	// who runs, so a frame never waits for them.
 	Workers      int
 	UploadBudget time.Duration // mesh upload time per frame, default DefaultUploadBudget
 }
@@ -92,6 +92,10 @@ type Config struct {
 // at most; the rest wait for the next frame, nearest the viewer first.
 // Player edits (SetBlock) are not counted: they show in the next frame.
 const DefaultUploadBudget = 4 * time.Millisecond
+
+// fixedWorkers are the background goroutines besides the two pools of
+// Workers: the light and save workers.
+const fixedWorkers = 2
 
 // dimSrc is one dimension of the world: where its chunks come from and
 // where its changes go.
@@ -198,6 +202,12 @@ func New(cfg Config) (*Engine, error) {
 	if cfg.UploadBudget == 0 {
 		cfg.UploadBudget = DefaultUploadBudget
 	}
+	// Enough Go Ps for every background worker plus a core's worth for the
+	// render thread: with fewer, the workers hold all Ps and the render
+	// goroutine queues for one (up to two 15.6 ms Windows timer ticks on
+	// a 2-core machine) after each GL call, whatever the OS thread
+	// priorities say. With spare Ps the OS schedules by those priorities.
+	runtime.GOMAXPROCS(max(runtime.GOMAXPROCS(0), runtime.NumCPU()+2*cfg.Workers+fixedWorkers))
 	renderThread()
 	w := voxel.NewWorld(cfg.Registry, cfg.MinY, cfg.Height)
 	w.NoSky.Store(cfg.Skyless[cfg.Dimension])
