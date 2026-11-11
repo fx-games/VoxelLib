@@ -187,6 +187,10 @@ func (g *game) gunSpec(id string) *firearm.Gun {
 // is put away first (LocalPlayerDraw: put_away, then the draw); tickGun
 // takes out the next one once it is holstered.
 func (g *game) selectGun(i int) {
+	// The draw resets the gun's synced state (ShooterDataHolder.initialData),
+	// here and on the server (msgHold with another gun).
+	g.aim, g.aimPrev, g.gunSent = 0, 0, 0
+	g.sendNextHold(i)
 	if g.gunOn() && g.gun.Phase != firearm.Holstered {
 		g.nextSel, g.switching = i, true
 		if g.gun.Phase != firearm.PuttingAway {
@@ -223,9 +227,6 @@ func (g *game) takeGun(i int) {
 		log.Printf("gun %s: %v", spec.ID, err)
 	}
 	g.sendHold()
-	// A draw resets the gun's synced state (ShooterDataHolder.initialData),
-	// here and on the server (msgHold with another gun).
-	g.aim, g.aimPrev, g.gunSent = 0, 0, 0
 	g.sounds.preload(spec)
 	g.gunEvents(g.gun.Draw())
 }
@@ -594,11 +595,13 @@ func (g *game) aimFrac(alpha float64) float32 {
 // syncGun tells the server the held gun's state when it changes (the
 // server's movement and aim progress use it, others see the empty gun); no
 // gun in hand drops the local progress too (LocalPlayerAim.tickAimingProgress).
+// While switching, the server already has the next gun (sendNextHold),
+// drawn full and not aimed: no flags.
 func (g *game) syncGun(aiming bool) {
 	var f mp.GunFlags
 	if !g.gunOn() {
 		g.aim, g.aimPrev = 0, 0
-	} else {
+	} else if !g.switching {
 		f = gunFlags(&g.gun, aiming)
 	}
 	if g.net != nil && f != g.gunSent {

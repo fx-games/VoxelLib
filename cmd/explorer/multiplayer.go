@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/go-gl/mathgl/mgl32"
+	"github.com/memmaker/voxellib/actors"
 	"github.com/memmaker/voxellib/app"
 	"github.com/memmaker/voxellib/audio"
 	"github.com/memmaker/voxellib/character"
@@ -138,6 +139,9 @@ type remoteAnim struct {
 	mp.Anim
 	x, z float64
 	seen bool
+	// hurt counts down the red hurt flash (ticks, from actors.MaxHurtTime on
+	// an mp.Hit); dying counts ticks since the death was seen (deathTime).
+	hurt, dying float64
 }
 
 // spWorld is the single-player configuration to return to.
@@ -289,6 +293,8 @@ func (g *game) netStart() {
 		switch {
 		case h.Victim == me:
 			g.hurt = hurtTicks
+		case h.Victim >= 0 && h.Victim < len(n.anims):
+			n.anims[h.Victim].hurt = actors.MaxHurtTime
 		case h.Attacker == me:
 			if h.Gun {
 				g.hitMark(h.Head, h.Killed)
@@ -408,14 +414,20 @@ func (g *game) netPose(alpha float64) {
 	}
 	n.gunPosed = [4]bool{}
 	for i, v := range views {
-		if v.Dead || n.bodyModel < 0 {
+		ra := &n.anims[v.Slot]
+		ra.hurt = max(0, ra.hurt-n.frameTicks)
+		if !v.Dead {
+			ra.dying = 0
+		} else if ra.dying += n.frameTicks; ra.dying >= deathTicks {
+			continue // removed after the death animation (LivingEntity.tickDeath)
+		}
+		if n.bodyModel < 0 {
 			continue
 		}
 		n.mu.Lock()
 		held := n.held[v.Slot]
 		n.mu.Unlock()
 		gv := g.remoteGun(held)
-		ra := &n.anims[v.Slot]
 		if !ra.seen {
 			ra.x, ra.z, ra.seen = v.X, v.Z, true
 		}
@@ -426,8 +438,14 @@ func (g *game) netPose(alpha float64) {
 			ra.Hold = gv.spec.ThirdPersonHold
 		}
 		n.skins[i] = n.body.Skin(ra.Anim, n.skins[i])
+		// The body falls over onto its left side while dying (setupRotations' Z turn).
+		tilt, tiltYaw := 0.0, v.Yaw-math.Pi/2
+		if v.Dead {
+			tilt = deathTiltAt(ra.dying)
+		}
+		root := creatureMatrix(v.X, v.Y, v.Z, v.Yaw, tilt, tiltYaw)
 		if gv != nil {
-			n.gunAt[v.Slot], n.gunPosed[v.Slot] = remoteGunMat(n.body, n.skins[i], v, gv), true
+			n.gunAt[v.Slot], n.gunPosed[v.Slot] = remoteGunMat(n.body, n.skins[i], root, gv), true
 		}
 		if v.Protected && time.Now().UnixMilli()/150%2 == 0 {
 			continue // blinks while spawn-protected (the walk cycle runs on)
@@ -437,8 +455,12 @@ func (g *game) netPose(alpha float64) {
 			tex = n.defTex
 		}
 		sky, blk := g.Light(v.X, v.Y+1, v.Z)
-		n.insts = append(n.insts, render.ModelInstance{Model: n.bodyModel, X: v.X, Y: v.Y, Z: v.Z, Yaw: v.Yaw,
-			Skin: n.skins[i], Texture: tex, Sky: sky, Block: blk})
+		in := render.ModelInstance{Model: n.bodyModel, X: v.X, Y: v.Y, Z: v.Z, Yaw: v.Yaw, Tilt: tilt, TiltYaw: tiltYaw,
+			Skin: n.skins[i], Texture: tex, Sky: sky, Block: blk}
+		if ra.hurt > 0 || v.Dead { // getOverlayCoords: hurtTime > 0 || deathTime > 0
+			in.Overlay = hurtOverlay
+		}
+		n.insts = append(n.insts, in)
 		if gv != nil {
 			m := n.gunAt[v.Slot]
 			t := m.Col(3)
@@ -463,8 +485,8 @@ func (g *game) netPose(alpha float64) {
 			// The crossbow at the right hand, aimed along the look, its
 			// cut-out on edge (rolled from the first-person hold, which
 			// lies flat) so it shows its profile from the side.
-			hand := mgl32.TransformCoordinate(n.body.Hand(n.skins[i]), mp.Matrix(0, 0, 0, v.Yaw))
-			m := mgl32.HomogRotate3DY(float32(-v.Yaw)).Mul4(mgl32.HomogRotate3DX(float32(v.Pitch))).
+			hand := mgl32.TransformCoordinate(n.body.Hand(n.skins[i]), creatureMatrix(0, 0, 0, v.Yaw, tilt, tiltYaw))
+			m := render.TiltMatrix(tilt, tiltYaw).Mul4(mgl32.HomogRotate3DY(float32(-v.Yaw))).Mul4(mgl32.HomogRotate3DX(float32(v.Pitch))).
 				Mul4(mgl32.HomogRotate3DZ(math.Pi / 2)).Mul4(bowHold).Mul4(mgl32.Scale3D(0.55, 0.55, 0.55))
 			n.mats = append(n.mats, m)
 			n.bows = append(n.bows, render.ModelInstance{Model: g.bowModel, X: v.X + float64(hand[0]),
@@ -516,6 +538,25 @@ func (g *game) sendHold() {
 	g.net.cl.SendHold(h)
 }
 
+// sendNextHold tells the server gun i (-1 or out of range: none) is in
+// hand as the switch to it starts: in TACZ the item changes at once and
+// others see it (ClientMessagePlayerDrawGun); put_away plays in first person only.
+func (g *game) sendNextHold(i int) {
+	if g.net == nil {
+		return
+	}
+	var h mp.Hold
+	if g.gunPack != nil && i >= 0 && i < len(g.gunPack.Guns) {
+		spec := &g.gunPack.Guns[i]
+		mode, ok := g.modes[spec.ID]
+		if !ok || !slices.Contains(spec.FireModes(), mode) {
+			mode = spec.FireModes()[0]
+		}
+		h = mp.Hold{Gun: spec.ID, Choice: g.gunChoice(spec.ID), Mode: mode}
+	}
+	g.net.cl.SendHold(h)
+}
+
 // remoteGun is another player's held gun with its attachments (nil: none,
 // or not in this pack), built once per gun and choice.
 func (g *game) remoteGun(h mp.Hold) *gunView {
@@ -540,9 +581,9 @@ func (g *game) remoteGun(h mp.Hold) *gunView {
 // GunItemTransforms for THIRD_PERSON_RIGHT_HAND, which puts the
 // thirdperson_hand node at (0.5, 0.5, 0.5) of the item, axes aligned, and
 // scales by the display's thirdperson scale.
-func remoteGunMat(body *mp.Body, skin []mgl32.Mat4, v mp.PlayerView, gv *gunView) mgl32.Mat4 {
+func remoteGunMat(body *mp.Body, skin []mgl32.Mat4, root mgl32.Mat4, gv *gunView) mgl32.Mat4 {
 	s := gv.spec.ThirdPersonScale
-	return mp.Matrix(v.X, v.Y, v.Z, v.Yaw).Mul4(body.RightArm(skin)).
+	return root.Mul4(body.RightArm(skin)).
 		Mul4(mgl32.Scale3D(pixelsPerBlock, pixelsPerBlock, pixelsPerBlock)).
 		Mul4(render.ThirdPersonHeld(false, respack.HeldDisplay{})).
 		Mul4(mgl32.Translate3D(0.5, 0.5, 0.5)).Mul4(mgl32.Scale3D(s, s, s)).Mul4(gv.thirdHand)

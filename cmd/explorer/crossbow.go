@@ -342,9 +342,24 @@ func (c *creature) deathTilt(alpha float64) float64 {
 	if c.dying == 0 {
 		return 0
 	}
-	t := math.Min(1, (float64(c.dying-1)+alpha)/deathTicks)
-	return math.Sqrt(t) * math.Pi / 2
+	return deathTiltAt(float64(c.dying) + alpha)
 }
+
+// deathTiltAt is how far a body has fallen over (radians) deathTime ticks
+// (with the partial tick) after dying: LivingEntityRenderer.setupRotations,
+// sqrt((deathTime − 1)/20 · 1.6) of 90°, capped at 90°.
+func deathTiltAt(deathTime float64) float64 {
+	f := math.Sqrt(math.Max(0, (deathTime-1)/deathTicks*deathTiltSpeed))
+	return math.Min(f, 1) * math.Pi / 2
+}
+
+// deathTiltSpeed is setupRotations' 1.6: the fall completes before deathTicks.
+const deathTiltSpeed = 1.6
+
+// hurtOverlay is the red over a hurt or dying living entity: OverlayTexture's
+// hurt texel (A 0xB2, red), which the entity shader mixes as
+// mix(red, colour, 0xB2/255).
+var hurtOverlay = [4]float32{1, 0, 0, 1 - 0xB2/255.0}
 
 // deathFade is how far a dead creature has dissolved (0 solid, 1 gone).
 func (c *creature) deathFade(alpha float64) float32 {
