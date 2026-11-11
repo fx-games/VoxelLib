@@ -528,6 +528,9 @@ func (g *game) drawGunHand(alpha float64) {
 			ins[i].Stencil = render.HandStencil{Test: true, Compare: render.StencilGreater, Ref: lensView127}
 		}
 	}
+	if g.fov.scope > 0 {
+		g.DrawScopeView(g.fov.scope, g.scopeClip(v, view))
+	}
 	g.Models.DrawHandInstance(float32(g.Cam.Aspect), view, ins...)
 	if g.fx.rend != nil {
 		g.fx.rend.DrawHand(float32(g.Cam.Aspect), view, sprites, sky, blk)

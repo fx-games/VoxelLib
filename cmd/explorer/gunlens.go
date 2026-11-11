@@ -152,9 +152,22 @@ func (g *game) lensInstances(v *gunView, view mgl32.Mat4, aim float32, sky, blk 
 	return ins
 }
 
+// scopeClip is the world pixels the magnified scope view can show in: the
+// bounds of the oculars lensViews draws it through.
+func (g *game) scopeClip(v *gunView, view mgl32.Mat4) image.Rectangle {
+	var r image.Rectangle
+	for _, o := range v.lens.oculars {
+		if v.lens.sight && !o.scope { // lensViews' selective
+			continue
+		}
+		r = r.Union(g.Models.HandBounds(o.handle, float32(g.Cam.Aspect), view.Mul4(v.skin[o.bone])))
+	}
+	return r
+}
+
 // lensViews is renderOcularAndDivision: each ocular (selective: only the
 // ocular_scope ones) inverts its mark inside the view disc, is masked black
-// outside it and shows the magnified scope view (App.ScopeFOV) and its
+// outside it and shows the magnified scope view (gunFOVState.scope) and its
 // reticle inside; the others show their reticle on the mark.
 func (g *game) lensViews(v *gunView, view mgl32.Mat4, aim float32, selective bool,
 	draw func(int, render.HandStencil, []mgl32.Mat4), part func(int, render.HandStencil),

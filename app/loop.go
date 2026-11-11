@@ -265,7 +265,6 @@ func (a *App) loop() {
 		}
 		a.drawDamage(alpha)
 		a.drawEntities(alpha)
-		a.drawScopeView()
 		if a.Hooks.Draw != nil {
 			a.Hooks.Draw(alpha)
 		}

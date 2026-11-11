@@ -5,7 +5,7 @@ package main
 // the gun's model_fov to its aiming one (applyGunModelFovModifying), both
 // by easeInExpo of the aim progress and smoothed by SecondOrderDynamics.
 // Unlike TACZ, the magnification applies only inside a scope's view disc
-// (App.ScopeFOV, gunlens.go): the screen keeps baseFOV, and sights and
+// (gunFOVState.scope, App.DrawScopeView, gunlens.go): the screen keeps baseFOV, and sights and
 // guns without a scope lens are not magnified (docs/tacz.md).
 
 import (
@@ -65,6 +65,7 @@ func (d *secondOrder) start(p dynamics, v float32) {
 type gunFOVState struct {
 	world, hand, aim secondOrder
 	acc              float32 // real seconds not yet stepped
+	scope            float64 // this frame's scope view FOV (radians); 0: none
 }
 
 // easeInExpo is TACZ's Easing.easeInExpo.
@@ -108,12 +109,12 @@ func (g *game) gunFOV(alpha float64) {
 		s.aim.step()
 	}
 	g.Cam.FOV = baseFOV * math.Pi / 180
-	g.ScopeFOV = 0
+	s.scope = 0
 	if g.opt.fullZoom {
 		g.Cam.FOV = float64(s.world.value()) * math.Pi / 180
 	} else if g.gunOn() {
 		if v := g.gunViews[g.gun.Gun.ID]; v != nil && v.lens != nil && v.lens.scope && s.aim.value() > 0 {
-			g.ScopeFOV = float64(s.world.value()) * math.Pi / 180 // lensViews' disc shows it
+			s.scope = float64(s.world.value()) * math.Pi / 180 // lensViews' disc shows it
 		}
 	}
 	g.Eng.Renderer.HandFOV = s.hand.value()

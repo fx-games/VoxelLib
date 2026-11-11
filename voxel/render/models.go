@@ -229,6 +229,37 @@ func (mr *ModelRenderer) Bounds(handle int) (lo, hi mgl32.Vec3) {
 	return mr.models[handle].lo, mr.models[handle].hi
 }
 
+// HandBounds is the world-pixel rectangle covering a model's bind-pose
+// bounds placed by view (as DrawHand's) under the hand projection, e.g. a
+// scope lens's BeginScopeView clip; empty when it is not in front of the
+// camera.
+func (mr *ModelRenderer) HandBounds(handle int, aspect float32, view mgl32.Mat4) image.Rectangle {
+	lo, hi := mr.Bounds(handle)
+	if lo[0] > hi[0] {
+		return image.Rectangle{}
+	}
+	mvp := mr.r.handProj(aspect).Mul4(view)
+	minX, minY, maxX, maxY := float32(math.Inf(1)), float32(math.Inf(1)), float32(math.Inf(-1)), float32(math.Inf(-1))
+	for c := 0; c < 8; c++ {
+		corner := lo
+		for k := 0; k < 3; k++ {
+			if c&(1<<k) != 0 {
+				corner[k] = hi[k]
+			}
+		}
+		p := mvp.Mul4x1(corner.Vec4(1))
+		if p[3] <= 0 {
+			return image.Rect(0, 0, dev.ww, dev.wh) // straddles the eye: everywhere
+		}
+		x, y := p[0]/p[3], p[1]/p[3]
+		minX, minY, maxX, maxY = min(minX, x), min(minY, y), max(maxX, x), max(maxY, y)
+	}
+	// NDC to pixels (y down), rounded outward.
+	w, h := float64(dev.ww), float64(dev.wh)
+	return image.Rect(int(math.Floor(float64(minX+1)/2*w)), int(math.Floor(float64(1-maxY)/2*h)),
+		int(math.Ceil(float64(maxX+1)/2*w)), int(math.Ceil(float64(1-minY)/2*h)))
+}
+
 // Remove frees a model's GPU buffers and textures; its handle may be
 // reissued by a later Add.
 func (mr *ModelRenderer) Remove(handle int) {
