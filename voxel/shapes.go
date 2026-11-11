@@ -769,10 +769,13 @@ func (w *World) Boxes(area collide.AABB, out []collide.AABB) []collide.AABB {
 
 // StateBoxes appends the collision boxes state id would have at x, y, z
 // among the blocks around it, whatever is there now (a block a piston
-// moves into the cell).
+// moves into the cell); a colliding full cube is its unit box.
 func (w *World) StateBoxes(id StateID, x, y, z int, out []collide.AABB) []collide.AABB {
-	var bp *[]Box
 	fx, fy, fz := float64(x), float64(y), float64(z)
+	if info := w.Reg.Info(id); info.Shape == ShapeCube && info.Collides {
+		return append(out, collide.AABB{MinX: fx, MinY: fy, MinZ: fz, MaxX: fx + 1, MaxY: fy + 1, MaxZ: fz + 1})
+	}
+	var bp *[]Box
 	all := collide.AABB{MinX: fx - 1, MinY: fy - 1, MinZ: fz - 1, MaxX: fx + 2, MaxY: fy + 3, MaxZ: fz + 2}
 	out = w.cellBoxes(w.Reg.Info(id), x, y, z, all, &bp, out)
 	if bp != nil {

@@ -8,6 +8,20 @@ import (
 
 func same(a, b Box) bool { return a.Min == b.Min && a.Max == b.Max }
 
+// TestStateBoxesCube: a full cube's ray box is its cell (bullets, sight and
+// melee stop at stone and grass), air has none.
+func TestStateBoxesCube(t *testing.T) {
+	r := NewRegistry()
+	w := NewWorld(r, 0, 16)
+	got := w.StateBoxes(r.State("stone", nil), 2, 3, -4, nil)
+	if want := (collide.AABB{MinX: 2, MinY: 3, MinZ: -4, MaxX: 3, MaxY: 4, MaxZ: -3}); len(got) != 1 || got[0] != want {
+		t.Fatalf("stone: %v, want %v", got, want)
+	}
+	if got := w.StateBoxes(Air, 0, 0, 0, nil); len(got) != 0 {
+		t.Fatalf("air: %v", got)
+	}
+}
+
 func TestShapeBoxes(t *testing.T) {
 	r := NewRegistry()
 	slab := r.Info(r.State("smooth_stone_slab", map[string]string{"type": "top"}))
