@@ -20,11 +20,14 @@ import (
 	"github.com/go-gl/mathgl/mgl32"
 	"github.com/memmaker/voxellib/app"
 	"github.com/memmaker/voxellib/audio"
+	"github.com/memmaker/voxellib/importer/cuboid"
 	"github.com/memmaker/voxellib/importer/tacz"
 	"github.com/memmaker/voxellib/model"
+	"github.com/memmaker/voxellib/mp"
 	"github.com/memmaker/voxellib/projectile"
 	"github.com/memmaker/voxellib/voxel"
 	"github.com/memmaker/voxellib/voxel/collide"
+	"github.com/memmaker/voxellib/voxel/render"
 	firearm "github.com/memmaker/voxellib/weapon"
 )
 
@@ -56,6 +59,7 @@ type gunsState struct {
 	gunPack  *tacz.Pack
 	gunSel   int // index into gunPack.Guns; -1 = no gun in hand
 	gun      firearm.GunState
+	arms     gunArms
 	gunViews map[string]*gunView // by gun ID, loaded on first use
 	stock    map[string]int      // ammo ID → rounds carried
 	aim      int                 // ticks of aiming, 0..aimTicks
@@ -84,7 +88,17 @@ type gunView struct {
 	ammo       []int      // bones of ammoBones (with descendants)
 	addMag     []int      // additional_magazine and descendants
 	addMagBone int
+	hands      [2]int // lefthand_pos, righthand_pos (-1: no arm)
 	skin       []mgl32.Mat4
+}
+
+// gunArms draws the player's arms at a gun's hand bones as TACZ does
+// (LeftHandRender/RightHandRender → PlayerRenderer.renderLeftHand/renderRightHand).
+type gunArms struct {
+	body  *mp.Body
+	model int // body geometry with the player's skin
+	skins [2][]mgl32.Mat4
+	draw  [2][]mgl32.Mat4
 }
 
 // setupGuns loads the gun pack and gives the player a stock of every ammo type.
@@ -175,6 +189,7 @@ func (g *game) gunView(spec *firearm.Gun) (*gunView, error) {
 	}
 	v.addMagBone = m.Bone(additionalMag)
 	v.addMag = subtree(m, v.addMagBone)
+	v.hands = [2]int{m.Bone("lefthand_pos"), m.Bone("righthand_pos")}
 	g.gunViews[spec.ID] = v
 	return v, nil
 }
@@ -379,7 +394,40 @@ func (g *game) drawGunHand(alpha float64) {
 	f := g.aimFrac(alpha)
 	view := lerpMat(v.idle, v.iron, f)
 	sky, blk := g.Light(g.Cam.X, g.Cam.Y, g.Cam.Z)
-	g.Models.DrawHandSkinned(v.handle, float32(g.Cam.Aspect), view, v.skin, sky, blk)
+	ins := []render.ModelInstance{{Model: v.handle, Skin: v.skin, Sky: sky, Block: blk}}
+	a := &g.arms
+	for i, b := range v.hands {
+		if b < 0 || a.model < 0 {
+			continue
+		}
+		// The hand bone's posed frame; the arm hangs in it as in the
+		// reference's ModelPart space (TACZ turns by 180° about Z there,
+		// which our X-mirrored, Y-up import of the geometry already is).
+		hand := v.skin[b].Mul4(v.m.Bones[b].InvBind.Inv())
+		a.draw[i] = a.draw[i][:0]
+		for _, s := range a.skins[i] {
+			a.draw[i] = append(a.draw[i], hand.Mul4(s))
+		}
+		ins = append(ins, render.ModelInstance{Model: a.model, Skin: a.draw[i], Sky: sky, Block: blk})
+	}
+	g.Models.DrawHandInstance(float32(g.Cam.Aspect), view, ins...)
+}
+
+// setupArms builds the first-person arms with the player's skin.
+func (g *game) setupArms() {
+	a := &g.arms
+	a.body = mp.NewBody()
+	a.model = -1
+	m, err := cuboid.Build(a.body.Geo, g.skins[g.skinIdx].img)
+	if err == nil {
+		a.model, err = g.Models.Add(m)
+	}
+	if err != nil {
+		log.Printf("guns: arms: %v", err)
+		return
+	}
+	a.skins[0] = a.body.FirstPersonArms(false, nil)
+	a.skins[1] = a.body.FirstPersonArms(true, nil)
 }
 
 // clipAnimates reports whether clip c has a channel on bone b.

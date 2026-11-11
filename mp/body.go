@@ -156,3 +156,29 @@ func (b *Body) Raycast(skin []mgl32.Mat4, pose *model.Pose, x, y, z, yaw float64
 	w := mgl32.TransformCoordinate(h.Pos, m)
 	return [3]float64{float64(w[0]), float64(w[1]), float64(w[2])}, h.Bone, true
 }
+
+// FirstPersonArms returns skinning matrices that draw only the right
+// (right true) or left arm and its sleeve as PlayerRenderer.renderHand does,
+// in the reference's model space (pixels/16 in blocks, Y down) rather than
+// the body's: setupAnim at age 0 leaves bobArms' ±0.1 roll, xRot is reset
+// to 0. A held-item renderer multiplies them by the hand frame (TACZ's
+// lefthand_pos/righthand_pos).
+func (b *Body) FirstPersonArms(right bool, dst []mgl32.Mat4) []mgl32.Mat4 {
+	p := b.pose
+	p.Reset(b.Geo)
+	arm, roll := partLeftArm, float32(-0.1)
+	if right {
+		arm, roll = partRightArm, 0.1
+	}
+	for i := range p.Parts {
+		p.Parts[i].Hidden = b.Geo.Parts[i].Parent < 0 && i != arm
+	}
+	p.Parts[arm].Rot = [3]float32{0, 0, roll}
+	dst = p.Skin(b.Model, b.Geo, dst)
+	// undo the entity placement: World's base is Ry(180)·S(-1,-1,1)·T(0,-Lift) = S(1,-1,-1)·T(0,-Lift)
+	unbase := mgl32.Translate3D(0, cuboid.Lift, 0).Mul4(mgl32.Scale3D(1, -1, -1))
+	for i := range dst {
+		dst[i] = unbase.Mul4(dst[i])
+	}
+	return dst
+}

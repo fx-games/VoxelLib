@@ -323,6 +323,7 @@ func (g *game) start() {
 	g.combatState = combatState{swordModel: -1}                   // set by setupCombat
 	g.gunsState = gunsState{sounds: gunSounds{mixer: g.Mixer}}
 	g.setupGuns()
+	g.setupArms()
 	if o.gun != "" {
 		g.selectGunID(o.gun)
 	}
