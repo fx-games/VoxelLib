@@ -22,6 +22,8 @@ package main
 import (
 	"flag"
 	"fmt"
+	"github.com/memmaker/voxellib/ui/basepack"
+	"github.com/memmaker/voxellib/ui/nametag"
 	"log"
 	"math"
 	"math/rand"
@@ -276,6 +278,7 @@ type game struct {
 	watching bool
 	hotbar   []voxel.StateID
 	signs    *signtext.Renderer
+	nameTags *nametag.Renderer // other players' names (multiplayer)
 	torches  torchFX
 
 	itemsState
@@ -382,6 +385,11 @@ func (g *game) start() {
 		if err := g.loadSignFont(o.signFont); err != nil {
 			log.Printf("sign text disabled: %v", err)
 		}
+	}
+	if nt, err := nametag.New(g.Models, basepack.FS); err != nil {
+		log.Printf("name tags disabled: %v", err)
+	} else {
+		g.nameTags = nt
 	}
 	if o.pets != "" {
 		g.importPets(o.pets)

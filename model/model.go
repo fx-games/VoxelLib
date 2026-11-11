@@ -260,3 +260,18 @@ func (m *Model) Descendants(b int) []int {
 	}
 	return out
 }
+
+// Quad is a one-bone model of img on the rectangle x0..x1, y0..y1 in the
+// z = 0 plane facing +Z (image top at y1), e.g. sign text or a name tag.
+func Quad(name string, img image.Image, x0, y0, x1, y1 float32) *Model {
+	m := &Model{Name: name, Textures: []image.Image{img}, Clips: map[string]*Clip{}, Tags: map[string]bool{},
+		Bones: []Bone{{Name: name, Parent: -1, R: mgl32.QuatIdent(), S: mgl32.Vec3{1, 1, 1}, InvBind: mgl32.Ident4()}}}
+	n := mgl32.Vec3{0, 0, 1}
+	m.Meshes = []Mesh{{Texture: 0, Indices: []uint32{0, 1, 2, 0, 2, 3}, Verts: []Vertex{
+		{Pos: mgl32.Vec3{x0, y0, 0}, Normal: n, UV: mgl32.Vec2{0, 1}, Weights: [4]float32{1}},
+		{Pos: mgl32.Vec3{x1, y0, 0}, Normal: n, UV: mgl32.Vec2{1, 1}, Weights: [4]float32{1}},
+		{Pos: mgl32.Vec3{x1, y1, 0}, Normal: n, UV: mgl32.Vec2{1, 0}, Weights: [4]float32{1}},
+		{Pos: mgl32.Vec3{x0, y1, 0}, Normal: n, UV: mgl32.Vec2{0, 0}, Weights: [4]float32{1}},
+	}}}
+	return m
+}

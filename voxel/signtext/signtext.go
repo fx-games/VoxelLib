@@ -136,20 +136,10 @@ func (s *Renderer) Image(lines [4]string) (img *image.NRGBA, ok bool) {
 	return img, ok
 }
 
-// quad is a unit quad (font pixels → blocks) facing +Z, centred on the
-// text box.
+// quad is the text box facing +Z, centred (font pixels → blocks).
 func quad(img image.Image) *model.Model {
 	w, h := float32(boxW*px)/2, float32(4*lineH*px)/2
-	m := &model.Model{Name: "sign", Textures: []image.Image{img}, Clips: map[string]*model.Clip{}, Tags: map[string]bool{},
-		Bones: []model.Bone{{Name: "sign", Parent: -1, R: mgl32.QuatIdent(), S: mgl32.Vec3{1, 1, 1}, InvBind: mgl32.Ident4()}}}
-	n := mgl32.Vec3{0, 0, 1}
-	m.Meshes = []model.Mesh{{Texture: 0, Indices: []uint32{0, 1, 2, 0, 2, 3}, Verts: []model.Vertex{
-		{Pos: mgl32.Vec3{-w, -h, 0}, Normal: n, UV: mgl32.Vec2{0, 1}, Weights: [4]float32{1}},
-		{Pos: mgl32.Vec3{w, -h, 0}, Normal: n, UV: mgl32.Vec2{1, 1}, Weights: [4]float32{1}},
-		{Pos: mgl32.Vec3{w, h, 0}, Normal: n, UV: mgl32.Vec2{1, 0}, Weights: [4]float32{1}},
-		{Pos: mgl32.Vec3{-w, h, 0}, Normal: n, UV: mgl32.Vec2{0, 0}, Weights: [4]float32{1}},
-	}}}
-	return m
+	return model.Quad("sign", img, -w, -h, w, h)
 }
 
 // Draw draws the text of w's signs within Distance of the camera, lit by

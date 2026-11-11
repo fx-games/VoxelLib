@@ -11,6 +11,7 @@ package main
 import (
 	"bytes"
 	"fmt"
+	"github.com/memmaker/voxellib/ui/nametag"
 	"image"
 	"image/color"
 	"image/png"
@@ -119,6 +120,7 @@ type netGame struct {
 	skinSet [4]bool
 	lines   []string            // kill feed lines to show
 	held    [4]mp.Hold          // by slot: the gun in hand (PlayerInfo.Held)
+	names   [4]string           // by slot: the player's name (PlayerInfo.Name)
 	guns    map[string]*gunView // other players' gun views by gun ID + tacz.Choice.Key
 	fired   []int               // slots whose gun went off, to show and play
 
@@ -132,6 +134,7 @@ type netGame struct {
 	gunAt      [4]mgl32.Mat4 // by slot: the held gun's model→world this frame (remoteGunMat)
 	gunPosed   [4]bool       // gunAt is set
 	arrowInsts []render.ModelInstance
+	tags       []nametag.Tag
 	skins      [][]mgl32.Mat4
 }
 
@@ -277,6 +280,7 @@ func (g *game) netStart() {
 		n.mu.Lock()
 		n.skinNew[p.Slot], n.skinSet[p.Slot] = p.Skin, true
 		n.held[p.Slot] = p.Held // no gun when the slot was freed
+		n.names[p.Slot] = p.Name
 		n.mu.Unlock()
 	}
 	cl.OnFired = func(slot int) {
@@ -409,7 +413,7 @@ func (g *game) netFrame() {
 // (drawNet), advancing their walk cycles.
 func (g *game) netPose(alpha float64) {
 	n := g.net
-	n.insts, n.bows, n.mats = n.insts[:0], n.bows[:0], n.mats[:0]
+	n.insts, n.bows, n.mats, n.tags = n.insts[:0], n.bows[:0], n.mats[:0], n.tags[:0]
 	views := n.cl.Players()
 	if len(n.skins) < len(views) {
 		n.skins = make([][]mgl32.Mat4, len(views))
@@ -427,7 +431,7 @@ func (g *game) netPose(alpha float64) {
 			continue
 		}
 		n.mu.Lock()
-		held := n.held[v.Slot]
+		held, name := n.held[v.Slot], n.names[v.Slot]
 		n.mu.Unlock()
 		gv := g.remoteGun(held)
 		if !ra.seen {
@@ -449,6 +453,14 @@ func (g *game) netPose(alpha float64) {
 		if gv != nil {
 			n.gunAt[v.Slot], n.gunPosed[v.Slot] = remoteGunMat(n.body, n.skins[i], root, gv), true
 		}
+		sky, blk := g.Light(v.X, v.Y+1, v.Z)
+		if !v.Dead {
+			top := character.PlayerHeight
+			if v.Sneak {
+				top = character.PlayerCrouchHeight
+			}
+			n.tags = append(n.tags, nametag.Tag{Text: name, X: v.X, Y: v.Y + top, Z: v.Z, Discrete: v.Sneak, Sky: sky, Block: blk})
+		}
 		if v.Protected && time.Now().UnixMilli()/150%2 == 0 {
 			continue // blinks while spawn-protected (the walk cycle runs on)
 		}
@@ -456,7 +468,6 @@ func (g *game) netPose(alpha float64) {
 		if tex == 0 {
 			tex = n.defTex
 		}
-		sky, blk := g.Light(v.X, v.Y+1, v.Z)
 		in := render.ModelInstance{Model: n.bodyModel, X: v.X, Y: v.Y, Z: v.Z, Yaw: v.Yaw, Tilt: tilt, TiltYaw: tiltYaw,
 			Skin: n.skins[i], Texture: tex, Sky: sky, Block: blk}
 		if ra.hurt > 0 || v.Dead { // getOverlayCoords: hurtTime > 0 || deathTime > 0
@@ -523,6 +534,9 @@ func (g *game) drawNet(cam *render.Camera) {
 	g.Models.Draw(cam, n.insts)
 	g.Models.Draw(cam, n.bows)
 	g.Models.Draw(cam, n.arrowInsts)
+	if g.nameTags != nil {
+		g.nameTags.Draw(cam, n.tags)
+	}
 	if r := n.cl.Round(); r.Mode == mp.BattleRoyale && r.Phase == mp.PhasePlaying {
 		g.drawWall(cam, r.Zone, r.Shrinking)
 	}

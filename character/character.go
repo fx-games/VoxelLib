@@ -136,6 +136,8 @@ const (
 	PlayerWidth     = 0.6
 	PlayerHeight    = 1.8
 	PlayerEyeHeight = 1.62
+	// PlayerCrouchHeight is a crouching player's height (1.20 crouching pose).
+	PlayerCrouchHeight = 1.5
 )
 
 // New returns a player-sized character standing at x,y,z.
