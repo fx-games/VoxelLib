@@ -26,6 +26,11 @@ func TestLoadPack(t *testing.T) {
 				t.Errorf("%s: no clip %s", g.ID, c)
 			}
 		}
+		if want := (weapon.MuzzleFlash{Flash: "assets/tacz/particle_definitions/muzzle_flash.particle.json",
+			Smoke: "assets/tacz/particle_definitions/muzzle_flash_smoke.particle.json", Scale: 0.75, FlashLight: 15,
+			SmokeScale: 1.65, SpeedScale: 1.7, SmokeCount: 16}); g.ID == "ak47" && (g.Muzzle == nil || *g.Muzzle != want) {
+			t.Errorf("ak47 muzzle %+v", g.Muzzle)
+		}
 		if g.Mag == 0 && g.Reload.Kind != weapon.Inventory || g.RPM == 0 || g.Name == "" {
 			t.Errorf("%s: mag %d rpm %v name %q", g.ID, g.Mag, g.RPM, g.Name)
 		}

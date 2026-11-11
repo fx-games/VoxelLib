@@ -11,6 +11,7 @@ import (
 	"image"
 	"image/png"
 	"io/fs"
+	"math"
 	"path"
 	"slices"
 	"sort"
@@ -186,6 +187,7 @@ func (p *Pack) loadGun(file string, lang map[string]string, sound func(string) s
 		Default                         string  `json:"use_default_animation"`
 		Zoom                            float32 `json:"iron_zoom"`
 		Sounds                          map[string]json.RawMessage
+		Muzzle                          json.RawMessage `json:"muzzle_flash"`
 	}
 	if err := readJSON(p.FS, asset("display/guns", index.Display)+".json", &disp); err != nil {
 		return err
@@ -237,6 +239,9 @@ func (p *Pack) loadGun(file string, lang map[string]string, sound func(string) s
 	spec.Hud = asset("textures", disp.Hud) + ".png"
 	if disp.HudEmpty != "" {
 		spec.HudEmpty = asset("textures", disp.HudEmpty) + ".png"
+	}
+	if spec.Muzzle, err = muzzleFlash(disp.Muzzle); err != nil {
+		return fmt.Errorf("%s: muzzle_flash: %w", id, err)
 	}
 	p.Guns = append(p.Guns, spec)
 	p.guns[id] = files
@@ -504,4 +509,130 @@ func Clean(src []byte) []byte {
 		}
 	}
 	return out
+}
+
+// Default first-person particle ids (MuzzleFlash.DEFAULT_FIRST_PERSON_*).
+const (
+	defaultFlashParticle = "tacz:muzzle_flash"
+	defaultSmokeParticle = "tacz:muzzle_flash_smoke"
+)
+
+// muzzleFlash reads a display's muzzle_flash block as TACZ's MuzzleFlash
+// does (absent fields keep its defaults, a null particle id disables that
+// layer); nil unless its type is "renew".
+func muzzleFlash(raw json.RawMessage) (*weapon.MuzzleFlash, error) {
+	if len(raw) == 0 {
+		return nil, nil
+	}
+	flash, smoke := defaultFlashParticle, defaultSmokeParticle
+	m := struct {
+		Type             string          `json:"type"`
+		Scale            float32         `json:"scale"`
+		FlashLight       int             `json:"flash_light_level"`
+		Flash            *string         `json:"first_person_flash"`
+		Smoke            *string         `json:"first_person_smoke"`
+		SpeedScale       float32         `json:"initial_speed_scale"`
+		SmokeCount       float32         `json:"smoke_particle_count"`
+		SmokeScale       float32         `json:"smoke_scale"`
+		SmokeDirection   json.RawMessage `json:"smoke_direction"`
+		SmokeDirections  json.RawMessage `json:"smoke_directions"`
+		SmokeSpreadAngle *float32        `json:"smoke_spread_angle"`
+		SmokeSpread      *float32        `json:"smoke_spread"`
+	}{Scale: 1, FlashLight: 15, Flash: &flash, Smoke: &smoke, SpeedScale: 1}
+	if err := json.Unmarshal(raw, &m); err != nil {
+		return nil, err
+	}
+	if m.Type != "renew" {
+		return nil, nil
+	}
+	file := func(id *string) string {
+		if id == nil {
+			return ""
+		}
+		return asset("particle_definitions", *id) + ".particle.json"
+	}
+	return &weapon.MuzzleFlash{Flash: file(m.Flash), Smoke: file(m.Smoke), Scale: m.Scale,
+		FlashLight: min(15, max(0, m.FlashLight)), SpeedScale: m.SpeedScale, SmokeCount: m.SmokeCount,
+		SmokeScale: max(0, m.SmokeScale),
+		Direction:  smokeDirection(m.SmokeDirections, m.SmokeSpreadAngle, m.SmokeDirection, m.SmokeSpread)}, nil
+}
+
+// Smoke direction defaults (SmokeDirectionData).
+const (
+	defaultSmokeSpread      = 0.35
+	defaultSmokeSpreadAngle = 20.0
+)
+
+// smokeDirection is SmokeDirectionData.parse: angle directions win over
+// vectors; anything malformed is nil (even scatter).
+func smokeDirection(angles json.RawMessage, spreadAngle *float32, vectors json.RawMessage, spread *float32) *weapon.SmokeDirection {
+	if dirs := smokeAngles(angles); dirs != nil {
+		s := float32(defaultSmokeSpreadAngle)
+		if spreadAngle != nil && *spreadAngle >= 0 && *spreadAngle <= 180 {
+			s = *spreadAngle
+		}
+		return &weapon.SmokeDirection{Dirs: dirs, Spread: s, AngleMode: true}
+	}
+	if dirs := smokeVectors(vectors); dirs != nil {
+		s := float32(defaultSmokeSpread)
+		if spread != nil && *spread >= 0 {
+			s = *spread
+		}
+		return &weapon.SmokeDirection{Dirs: dirs, Spread: s}
+	}
+	return nil
+}
+
+// smokeAngles is SmokeDirectionData.parseAngles: one {plane_angle,
+// out_angle} object or a list of them, in degrees.
+func smokeAngles(raw json.RawMessage) [][3]float32 {
+	type angle struct {
+		Plane *float64 `json:"plane_angle"`
+		Out   *float64 `json:"out_angle"`
+	}
+	var list []angle
+	if json.Unmarshal(raw, &list) != nil {
+		var one angle
+		if json.Unmarshal(raw, &one) != nil {
+			return nil
+		}
+		list = []angle{one}
+	}
+	if len(list) == 0 {
+		return nil
+	}
+	var dirs [][3]float32
+	for _, a := range list[:min(len(list), weapon.MaxSmokeDirections)] {
+		if a.Plane == nil || a.Out == nil || *a.Plane < -180 || *a.Plane > 180 || *a.Out < -90 || *a.Out > 90 {
+			return nil
+		}
+		p, o := *a.Plane*math.Pi/180, *a.Out*math.Pi/180
+		dirs = append(dirs, [3]float32{float32(math.Cos(o) * math.Cos(p)), float32(math.Cos(o) * math.Sin(p)), float32(-math.Sin(o))})
+	}
+	return dirs
+}
+
+// smokeVectors is SmokeDirectionData.parseDirections: [x, y, z] or a list
+// of them, normalised.
+func smokeVectors(raw json.RawMessage) [][3]float32 {
+	var list [][3]float64
+	if json.Unmarshal(raw, &list) != nil {
+		var one [3]float64
+		if json.Unmarshal(raw, &one) != nil {
+			return nil
+		}
+		list = [][3]float64{one}
+	}
+	if len(list) == 0 {
+		return nil
+	}
+	var dirs [][3]float32
+	for _, d := range list[:min(len(list), weapon.MaxSmokeDirections)] {
+		l := math.Sqrt(d[0]*d[0] + d[1]*d[1] + d[2]*d[2])
+		if l <= 1e-6 {
+			return nil
+		}
+		dirs = append(dirs, [3]float32{float32(d[0] / l), float32(d[1] / l), float32(d[2] / l)})
+	}
+	return dirs
 }

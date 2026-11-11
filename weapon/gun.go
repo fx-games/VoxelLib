@@ -144,6 +144,8 @@ type Gun struct {
 	Shoot    string           `json:"shoot"` // sound events
 	Dry      string           `json:"dry"`
 	Cues     map[string][]Cue `json:"cues"` // clip name → sounds
+	// Muzzle is the display's renew muzzle flash; nil for the legacy one.
+	Muzzle *MuzzleFlash `json:"muzzle,omitempty"`
 }
 
 type Ammo struct {

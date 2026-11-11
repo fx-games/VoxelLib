@@ -1092,7 +1092,8 @@ func (s *System) Sprites(buf []Particle, pt float64, light Light, boostLight Boo
 		lc := light(x, y, z)
 		c := [4]float32{col[0] * lc[0], col[1] * lc[1], col[2] * lc[2], col[3]}
 		buf = append(buf, Particle{X: x, Y: y, Z: z, PrevX: x, PrevY: y, PrevZ: z, Life: 1,
-			Size0: size, Size1: size, Col0: c, Col1: c, Sprite: q.Sprite, Additive: q.Additive})
+			Size0: size, Size1: size, Col0: c, Col1: c, Sprite: q.Sprite, Additive: q.Additive, Lit: q.Lit,
+			Sheet: q.Sheet, UV: q.Rect(), Roll: q.Roll})
 	}
 	for i := range s.FX {
 		if s.FX[i].Kind == KindHuge {

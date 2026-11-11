@@ -60,14 +60,72 @@ type Particle struct {
 	// clockwise as the viewer sees it (glRotate about the eye-to-particle
 	// axis); 0: upright.
 	Roll float32
+	// Ghost passes through blocks (Bedrock particles have no collision
+	// unless they ask for it).
+	Ghost bool
+	// Spin turns Roll by this many radians per second.
+	Spin float32
+	// Lit lights an Additive particle like terrain (Bedrock's
+	// particle_appearance_lighting); additive ones are otherwise unlit.
+	Lit bool
+	// Grad, when set, is the colour over life in place of Col0..Col1.
+	Grad Gradient
+	// Frames > 1 steps UV by Step every 1/Frames of life (a flipbook
+	// stretched to the lifetime).
+	Frames uint8
+	Step   [2]float32
+}
+
+// GradStop is a colour at a fraction of life.
+type GradStop struct {
+	T   float32
+	Col [4]float32
+}
+
+// Gradient is colour stops sorted by T, linearly interpolated and held
+// past the ends.
+type Gradient []GradStop
+
+// At is the colour at life fraction t.
+func (g Gradient) At(t float32) [4]float32 {
+	if t <= g[0].T {
+		return g[0].Col
+	}
+	for i := 1; i < len(g); i++ {
+		if t <= g[i].T {
+			a, b := g[i-1], g[i]
+			f := (t - a.T) / (b.T - a.T)
+			var c [4]float32
+			for k := range c {
+				c[k] = a.Col[k] + (b.Col[k]-a.Col[k])*f
+			}
+			return c
+		}
+	}
+	return g[len(g)-1].Col
+}
+
+// Rect is the particle's UV rectangle at its age (UV, stepped by the
+// flipbook).
+func (p *Particle) Rect() [4]float32 {
+	if p.Frames <= 1 {
+		return p.UV
+	}
+	f := float32(min(int(p.Age/p.Life*float64(p.Frames)), int(p.Frames)-1))
+	du, dv := p.Step[0]*f, p.Step[1]*f
+	return [4]float32{p.UV[0] + du, p.UV[1] + dv, p.UV[2] + du, p.UV[3] + dv}
 }
 
 // Lerp is the particle's position between the last two ticks, its size and
 // its colour (alpha in [3]).
 func (p *Particle) Lerp(alpha float64) (x, y, z float64, size float32, col [4]float32) {
 	t := float32(math.Min(1, p.Age/p.Life))
-	for i := range col {
-		col[i] = p.Col0[i] + (p.Col1[i]-p.Col0[i])*t
+	if p.Grad != nil {
+		col = p.Grad.At(t)
+	} else {
+		for i := range col {
+			col[i] = p.Col0[i] + (p.Col1[i]-p.Col0[i])*t
+		}
 	}
 	return p.PrevX + (p.X-p.PrevX)*alpha, p.PrevY + (p.Y-p.PrevY)*alpha, p.PrevZ + (p.Z-p.PrevZ)*alpha,
 		p.Size0 + (p.Size1-p.Size0)*t, col
@@ -155,6 +213,7 @@ func (s *System) Tick(dt float64, solid func(x, y, z int) bool) {
 			continue
 		}
 		p.PrevX, p.PrevY, p.PrevZ = p.X, p.Y, p.Z
+		p.Roll += p.Spin * float32(dt)
 		p.VY -= p.Gravity * dt
 		d := math.Max(0, 1-p.Drag*dt)
 		p.VX, p.VY, p.VZ = p.VX*d, p.VY*d, p.VZ*d
@@ -162,7 +221,7 @@ func (s *System) Tick(dt float64, solid func(x, y, z int) bool) {
 		move := func(pos, vel *float64, step float64) bool {
 			old := *pos
 			*pos += step
-			if solid != nil && solid(int(math.Floor(p.X)), int(math.Floor(p.Y)), int(math.Floor(p.Z))) {
+			if solid != nil && !p.Ghost && solid(int(math.Floor(p.X)), int(math.Floor(p.Y)), int(math.Floor(p.Z))) {
 				*pos = old
 				*vel *= -p.Bounce
 				return true

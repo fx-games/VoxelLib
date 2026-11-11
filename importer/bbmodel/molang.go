@@ -20,6 +20,16 @@ type Ctx struct {
 	AnimTime float64 // query.anim_time, seconds into the clip
 	LifeTime float64 // query.life_time
 	Vars     map[string]float64
+	// Rand draws math.random and math.random_integer (nil: the global
+	// source), so a seeded caller gets a deterministic result.
+	Rand *rand.Rand
+}
+
+func (c *Ctx) float() float64 {
+	if c.Rand == nil {
+		return rand.Float64()
+	}
+	return c.Rand.Float64()
 }
 
 type num float64
@@ -217,32 +227,32 @@ func (p *parser) unary() Expr {
 
 const deg = math.Pi / 180
 
-var funcs = map[string]func(a []float64) float64{
-	"math.sin":   func(a []float64) float64 { return math.Sin(a[0] * deg) },
-	"math.cos":   func(a []float64) float64 { return math.Cos(a[0] * deg) },
-	"math.asin":  func(a []float64) float64 { return math.Asin(a[0]) / deg },
-	"math.acos":  func(a []float64) float64 { return math.Acos(a[0]) / deg },
-	"math.atan":  func(a []float64) float64 { return math.Atan(a[0]) / deg },
-	"math.atan2": func(a []float64) float64 { return math.Atan2(a[0], a[1]) / deg },
-	"math.abs":   func(a []float64) float64 { return math.Abs(a[0]) },
-	"math.sqrt":  func(a []float64) float64 { return math.Sqrt(a[0]) },
-	"math.exp":   func(a []float64) float64 { return math.Exp(a[0]) },
-	"math.ln":    func(a []float64) float64 { return math.Log(a[0]) },
-	"math.pow":   func(a []float64) float64 { return math.Pow(a[0], a[1]) },
-	"math.floor": func(a []float64) float64 { return math.Floor(a[0]) },
-	"math.ceil":  func(a []float64) float64 { return math.Ceil(a[0]) },
-	"math.round": func(a []float64) float64 { return math.Round(a[0]) },
-	"math.trunc": func(a []float64) float64 { return math.Trunc(a[0]) },
-	"math.mod":   func(a []float64) float64 { return math.Mod(a[0], a[1]) },
-	"math.min":   func(a []float64) float64 { return math.Min(a[0], a[1]) },
-	"math.max":   func(a []float64) float64 { return math.Max(a[0], a[1]) },
-	"math.clamp": func(a []float64) float64 { return math.Max(a[1], math.Min(a[2], a[0])) },
-	"math.lerp":  func(a []float64) float64 { return a[0] + (a[1]-a[0])*a[2] },
-	"math.random": func(a []float64) float64 {
-		return a[0] + rand.Float64()*(a[1]-a[0])
+var funcs = map[string]func(c *Ctx, a []float64) float64{
+	"math.sin":   func(_ *Ctx, a []float64) float64 { return math.Sin(a[0] * deg) },
+	"math.cos":   func(_ *Ctx, a []float64) float64 { return math.Cos(a[0] * deg) },
+	"math.asin":  func(_ *Ctx, a []float64) float64 { return math.Asin(a[0]) / deg },
+	"math.acos":  func(_ *Ctx, a []float64) float64 { return math.Acos(a[0]) / deg },
+	"math.atan":  func(_ *Ctx, a []float64) float64 { return math.Atan(a[0]) / deg },
+	"math.atan2": func(_ *Ctx, a []float64) float64 { return math.Atan2(a[0], a[1]) / deg },
+	"math.abs":   func(_ *Ctx, a []float64) float64 { return math.Abs(a[0]) },
+	"math.sqrt":  func(_ *Ctx, a []float64) float64 { return math.Sqrt(a[0]) },
+	"math.exp":   func(_ *Ctx, a []float64) float64 { return math.Exp(a[0]) },
+	"math.ln":    func(_ *Ctx, a []float64) float64 { return math.Log(a[0]) },
+	"math.pow":   func(_ *Ctx, a []float64) float64 { return math.Pow(a[0], a[1]) },
+	"math.floor": func(_ *Ctx, a []float64) float64 { return math.Floor(a[0]) },
+	"math.ceil":  func(_ *Ctx, a []float64) float64 { return math.Ceil(a[0]) },
+	"math.round": func(_ *Ctx, a []float64) float64 { return math.Round(a[0]) },
+	"math.trunc": func(_ *Ctx, a []float64) float64 { return math.Trunc(a[0]) },
+	"math.mod":   func(_ *Ctx, a []float64) float64 { return math.Mod(a[0], a[1]) },
+	"math.min":   func(_ *Ctx, a []float64) float64 { return math.Min(a[0], a[1]) },
+	"math.max":   func(_ *Ctx, a []float64) float64 { return math.Max(a[0], a[1]) },
+	"math.clamp": func(_ *Ctx, a []float64) float64 { return math.Max(a[1], math.Min(a[2], a[0])) },
+	"math.lerp":  func(_ *Ctx, a []float64) float64 { return a[0] + (a[1]-a[0])*a[2] },
+	"math.random": func(c *Ctx, a []float64) float64 {
+		return a[0] + c.float()*(a[1]-a[0])
 	},
-	"math.random_integer": func(a []float64) float64 {
-		return math.Floor(a[0] + rand.Float64()*(a[1]-a[0]+1))
+	"math.random_integer": func(c *Ctx, a []float64) float64 {
+		return math.Floor(a[0] + c.float()*(a[1]-a[0]+1))
 	},
 }
 
@@ -298,7 +308,7 @@ func (p *parser) primary() Expr {
 			for i, a := range args {
 				v[i] = a.Eval(c)
 			}
-			return f(v)
+			return f(c, v)
 		})
 	}
 	switch name {
