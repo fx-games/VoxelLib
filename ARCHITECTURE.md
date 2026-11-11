@@ -2,7 +2,7 @@
 
 ## Layers
 ```
-cmd/explorer ── demo: items, creatures, combat, crossbow, TACZ guns, zombie waves, torches, signs (hooks on app)
+cmd/explorer ── demo: zombie defense (on a private server), animals, TACZ guns, torches, signs (hooks on app)
    │
 app ─────────── game shell: window, input mapping, 20 Hz tick + render loop,
    │            player (controller, camera, hand, reach, break/place), entities,

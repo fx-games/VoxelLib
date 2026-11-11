@@ -52,33 +52,35 @@ run.sh does both if they're missing.
 
 Creatures: `-pets` (default `~/Downloads/CubePetsVol2_Free_v1.0.zip`) imports a Roblox-style pack at
 startup. Its license forbids redistributing the model files, so they are never copied into the repo.
-`-mcassets` (default `assets/cleannrooster`, a copy of
-https://github.com/memmaker/forg-cleannrooster-assets: Blockbench models, animations, item textures)
-adds humanoid mobs, animated props and 128 more pickup items. `-mob-count` sets how many spawn.
-Half of the `-item-count` scattered items come from the pack. Armor-only sets (every cube in an
-`armor*` group, meant to be drawn over a player body) look hollow alone and are skipped. Mobs push
-each other apart, and the player pushes them aside.
+`-mob-count` sets how many animals spawn. Mobs push each other apart, and the player pushes them
+aside.
 Debugging models: `-lineup -species NAME -anim CLIP` stands one creature per matching species
 in front of you, playing CLIP (`bind` shows the rest pose).
 
-**Guns and zombies.** The explorer is a zombie-apocalypse demo with every gun of the TACZ default
-pack (`assets/tacz`, kept in the pack's own formats; details and status in [docs/tacz.md](docs/tacz.md)).
-Waves of zombies come for you; each kill drops a magazine of the held gun's ammo. V takes the next
-gun, LMB fires, RMB aims, R reloads, H inspects, B switches the fire mode, Z melees, X unloads, J opens the refit screen (click a slot to cycle its attachments); C still swaps to the crossbow.
+**Zombie defense** (the default, single player and LAN). Single player is a private server in the
+game, so both play by the same rules (`mp/zdefense.go`): every 15 s a zombie spawns 20-200 blocks
+from a player, and a gun and an ammunition pickup 8-40 blocks away, all out of every player's view.
+Players start bare-handed; walking over a pickup takes it (a gun is drawn if the hands are empty),
+and the top line counts the zombies and points at the nearest gun (ammo once you have one).
+Zombies chase the nearest player; each kill drops a magazine of the killer's gun. Dying loses
+your guns and ammo. Guns are the TACZ default pack (`assets/tacz`, details in
+[docs/tacz.md](docs/tacz.md)). V takes the next gun you own, LMB fires, RMB aims, R reloads,
+H inspects, B switches the fire mode, Z melees, X unloads, J opens the refit screen (click a slot
+to cycle its attachments). `-sandbox` (implied by `-world`, `-map`, `-bench`, `-autofly`) explores
+instead: animals and every gun, no zombies.
 Scopes magnify only inside the lens (a second, lens-clipped world render); `-full-zoom` magnifies the
 whole screen instead, as TACZ does, for slower machines. `-gun ID` starts with a gun in hand.
 
 **Multiplayer** (LAN, up to 4 players): the main menu's Multiplayer screen sets your name and skin,
 lists the games found on the LAN, joins one by address and creates a game (name, seed, world
-type, mode) hosted in the game itself. Modes: deathmatch; team deathmatch (Red against Blue,
+type, mode) hosted in the game itself. Modes: zombie defense (the default, co-op); deathmatch; team deathmatch (Red against Blue,
 joiners fill the smaller team, no friendly fire); battle royale (rounds of one life each; the
 playing field is a square round all players at the start, bounded by a translucent energy wall
 that kills on touch and closes in to a smaller square every 5 minutes; the last one standing
 wins the round). `-host` and
 `-connect HOST[:PORT]` skip the menu; `-name` and `-skin NAME` preset the choice. Skins are the
 64x64 PNGs in `-skins` (default `skins/`, filled by `go run ./cmd/fetchskins`, not in git).
-Everyone carries the crossbow, and guns work too (the server casts each pellet); a head shot kills. After (re)spawning a player is protected for
-3 seconds (blinking; arrows fly through). Hold Tab for the ranking (kills, deaths); it also shows
+The server casts each pellet. After (re)spawning a player is protected for 3 seconds (blinking). Hold Tab for the ranking (kills, deaths); it also shows
 while dead. The time of day is the server's. Placed and broken blocks (and doors) sync to
 everyone, late joiners included. The server uses UDP port 28960 (allow it in the firewall).
 
@@ -93,7 +95,7 @@ models built from their entity renderers. The map holds Mojang's textures, so `m
 of git.
 
 `go run ./cmd/voxserver` is the dedicated server: no window or GPU (it builds with
-`CGO_ENABLED=0`), flags `-addr`, `-name`, `-seed`, `-gen overworld|flat`, `-map NAME` (a folder of `-maps`), `-mode dm|tdm|br`,
+`CGO_ENABLED=0`), flags `-addr`, `-name`, `-seed`, `-gen overworld|flat`, `-map NAME` (a folder of `-maps`), `-mode zd|dm|tdm|br` (default zd),
 `-zone-interval`, `-zone-shrink`, and a console on
 stdin: `status` (the ranking with health and ping), `say TEXT`, `kick SLOT|NAME`,
 `time [set day|noon|night|midnight|N | add N | stop | run]`, `quit`.
@@ -113,10 +115,8 @@ stdin: `status` (the ranking with health and ping), `say TEXT`, `kick SLOT|NAME`
 | G | toggle no-clip |
 | N | day/night (single player) |
 | R | respawn |
-| Q | throw held item |
 | K | preview the nearest creature's animations one by one (name in the title) |
 | Tab (hold) | multiplayer ranking |
-| C | take out / put away the crossbow (from an imported pack); left click shoots arrows that arc and stick; a head shot kills; humanoids you wound fight back (crossbow carriers shoot, the rest swing a sword), and you have 10 hearts |
 | F2 | screenshot to `screenshots/<timestamp>.png`, plus a `.txt` with position, look and a command to restore the view |
 | F3 | frame stats to stdout |
 
@@ -126,7 +126,7 @@ stdin: `status` (the ranking with health and ping), `say TEXT`, `kick SLOT|NAME`
 - `-vsync on|limit|off` sets frame pacing.
 - `-bench 25s` runs unfocused without grabbing the mouse, then prints the frame rate and CPU time per frame.
 - `-shot file.png -shot-at TICK` saves a screenshot and quits. It never grabs the mouse.
-- `-pos x,y,z`, `-look yaw,pitch`, `-hold ITEM` and `-edits` set up test scenes.
+- `-pos x,y,z`, `-look yaw,pitch`, `-gun ID` and `-edits` set up test scenes.
 
 ## Credits
 - Textures: RPG16 pack, CC BY-SA 4.0 (assets/rpg16pack/LICENSE.txt).

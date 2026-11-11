@@ -8,7 +8,7 @@
 - Verify with `gofmt -l . && go vet ./... && go test ./...`.
 - Visual check without touching the user's mouse or keyboard:
   `go build -o explorer ./cmd/explorer && ./explorer -world '' -shot /tmp/x.png -shot-at 160`
-  (add `-pos`, `-look`, `-edits`, `-hold` to set up a scene). Look at the PNG.
+  (add `-pos`, `-look`, `-edits`, `-gun` to set up a scene). Look at the PNG.
 - Frame-time budget: the CPU must stay under 12 ms per frame while flying at 22–30 blocks/s.
   Check with `-autofly 30 -verbose`. Never take the world write lock on the main thread
   per frame, and never block on GPU read-backs.
