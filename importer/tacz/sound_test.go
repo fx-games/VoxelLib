@@ -5,10 +5,12 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/memmaker/voxellib/weapon"
 )
 
-// TestSoundsResolve fails when a sound the pack references (clip cues, shoot,
-// dry fire) resolves to no pack file, unless testdata/absent_sounds.txt lists
+// TestSoundsResolve fails when a sound the pack references (clip cues, display
+// sounds) resolves to no pack file, unless testdata/absent_sounds.txt lists
 // it: ids with no .ogg at their TACZ location (TACZ plays nothing for them).
 func TestSoundsResolve(t *testing.T) {
 	p, err := Load(os.DirFS("../../assets/tacz/tacz_default_gun"), os.DirFS("../../assets/tacz/defaults"))
@@ -32,8 +34,8 @@ func TestSoundsResolve(t *testing.T) {
 		}
 	}
 	for _, g := range p.Guns {
-		if g.Shoot == "" || g.Dry == "" {
-			t.Errorf("%s: shoot %q dry %q", g.ID, g.Shoot, g.Dry)
+		if g.Sounds[weapon.SoundShoot] == "" || g.Sounds[weapon.SoundDryFire] == "" {
+			t.Errorf("%s: no shoot or dry_fire sound: %v", g.ID, g.Sounds)
 		}
 	}
 }

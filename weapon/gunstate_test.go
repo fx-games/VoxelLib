@@ -93,3 +93,42 @@ func TestHeat(t *testing.T) {
 		t.Fatalf("heat %v locked %v after cooling", s.Heat, s.Overheated)
 	}
 }
+
+// TestActionSounds: each action starts its display sound, a tube reload
+// choosing reload_empty/reload_tactical by the barrel as a magazine does.
+func TestActionSounds(t *testing.T) {
+	lens := func(string) float32 { return 0.5 }
+	sounds := func(ev []GunEvent) (out []GunSound) {
+		for _, e := range ev {
+			if e.Sound != "" {
+				out = append(out, e.Sound)
+			}
+		}
+		return out
+	}
+	stock := 10
+	for _, kind := range []ReloadKind{Magazine, Tube} {
+		g := &Gun{Mag: 5, RPM: 60, Modes: []FireMode{Semi, Auto}}
+		g.Reload.Kind = kind
+		s := &GunState{Gun: g, ClipLen: lens}
+		if got := sounds(s.Draw()); len(got) != 1 || got[0] != SoundDraw {
+			t.Fatalf("draw: %v", got)
+		}
+		s.Phase = Ready
+		if got := sounds(s.Tick(tick, GunInput{Reload: true}, &stock)); len(got) != 1 || got[0] != SoundReloadEmpty {
+			t.Fatalf("%v reload on empty: %v", kind, got)
+		}
+		s.Phase, s.Ammo = Ready, 1
+		if got := sounds(s.Tick(tick, GunInput{Reload: true}, &stock)); len(got) != 1 || got[0] != SoundReloadTactical {
+			t.Fatalf("%v reload: %v", kind, got)
+		}
+		s.Phase = Ready
+		if got := sounds(s.Tick(tick, GunInput{Inspect: true}, &stock)); len(got) != 1 || got[0] != SoundInspect {
+			t.Fatalf("inspect: %v", got)
+		}
+		s.Phase = Ready
+		if got := sounds(s.Tick(tick, GunInput{NextMode: true}, &stock)); len(got) != 1 || got[0] != SoundFireSelect {
+			t.Fatalf("fire select: %v", got)
+		}
+	}
+}

@@ -145,8 +145,15 @@ func Load(pack, defaults fs.FS) (*Pack, error) {
 	return p, nil
 }
 
-// defaultDryFire is GunDisplay's dry_fire sound when a display names none.
-const defaultDryFire = "tacz:dry_fire"
+// defaultSounds are GunDisplayInstance.checkSounds' defaults for sounds a
+// display's sounds map leaves out.
+var defaultSounds = map[weapon.GunSound]string{
+	weapon.SoundDryFire:    "tacz:dry_fire",
+	weapon.SoundFireSelect: "tacz:fire_select",
+	weapon.SoundHeadHit:    "tacz:head_hit",
+	weapon.SoundFleshHit:   "tacz:flesh_hit",
+	weapon.SoundKill:       "tacz:kill",
+}
 
 // SoundFile is the pack file of a sound event ("tacz:ak47/ak47_shoot").
 func SoundFile(event string) string {
@@ -305,18 +312,19 @@ func (p *Pack) loadGun(file string, lang map[string]string, sound func(string) s
 			}
 		}
 	}
-	shoot, err := soundRef(disp.Sounds["shoot"])
-	if err != nil {
-		return err
+	spec.Sounds = map[weapon.GunSound]string{}
+	for _, name := range weapon.GunSounds {
+		id, err := soundRef(disp.Sounds[string(name)])
+		if err != nil {
+			return fmt.Errorf("sound %s: %w", name, err)
+		}
+		if id == "" && len(disp.Sounds) > 0 { // checkSounds adds defaults to a sounds map only
+			id = defaultSounds[name]
+		}
+		if ev := sound(id); ev != "" {
+			spec.Sounds[name] = ev
+		}
 	}
-	dry, err := soundRef(disp.Sounds["dry_fire"])
-	if err != nil {
-		return err
-	}
-	if dry == "" {
-		dry = defaultDryFire
-	}
-	spec.Shoot, spec.Dry = sound(shoot), sound(dry)
 	// GunDisplay's defaults where absent.
 	spec.Zoom = orDefault(disp.Zoom, gunIronZoom)
 	spec.Spin = disp.StateMachine == minigunStateMachine

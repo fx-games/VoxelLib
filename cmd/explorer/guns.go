@@ -70,6 +70,10 @@ type gunsState struct {
 	recoilTicks      int
 	recoilP, recoilY float32
 	sounds           gunSounds
+	// actionVoice plays the last action sound (actionName), as
+	// SoundPlayManager's tmpSoundInstance.
+	actionVoice *audio.Voice
+	actionName  firearm.GunSound
 	// cue is the playing clip's timed sounds.
 	cueClip string
 	cueT    float32
@@ -285,9 +289,52 @@ func (g *game) gunEvents(ev []firearm.GunEvent) {
 			g.shoot()
 		}
 		if e.Dry {
-			g.sounds.play(g.gun.Gun.Dry, audio.UI(1, 1))
+			g.gunSound(firearm.SoundDryFire, 1, g.soundPitch())
+		}
+		if e.Sound != "" {
+			g.actionSound(e.Sound)
 		}
 	}
+}
+
+// Display sound volumes and pitches (SoundPlayManager).
+const (
+	shotSoundVolume   = 0.8
+	pitchBase         = 0.9
+	pitchRandomRange  = 0.125
+	actionSoundVolume = 1
+)
+
+// soundPitch is SoundPlayManager's 0.9 + random·0.125.
+func (g *game) soundPitch() float32 {
+	return pitchBase + g.gunRand.Float32()*pitchRandomRange
+}
+
+// gunSound plays a display sound of the held gun at the player.
+func (g *game) gunSound(name firearm.GunSound, volume, pitch float32) *audio.Voice {
+	return g.sounds.play(g.gun.Gun.Sounds[name], audio.UI(volume, pitch))
+}
+
+// actionSound is SoundPlayManager's tmpSoundInstance: draw, reload and
+// inspect stop the last action sound first (stopPlayGunSound); bolt and
+// fire select do not, and fire select is not kept.
+func (g *game) actionSound(name firearm.GunSound) {
+	switch name {
+	case firearm.SoundFireSelect:
+		g.gunSound(name, actionSoundVolume, 1)
+		return
+	case firearm.SoundBolt:
+	default:
+		g.stopActionSound()
+	}
+	g.actionVoice, g.actionName = g.gunSound(name, actionSoundVolume, 1), name
+}
+
+func (g *game) stopActionSound() {
+	if g.actionVoice != nil {
+		g.actionVoice.Stop()
+	}
+	g.actionVoice = nil
 }
 
 // TACZ's default state machine tracks, as Animator layers over the base
@@ -413,7 +460,10 @@ func (g *game) aimStep() float32 {
 // shoot fires one round: its pellets, the sound and the camera kick.
 func (g *game) shoot() {
 	spec := g.gun.Gun
-	g.sounds.play(spec.Shoot, audio.UI(1, 1))
+	if g.actionName == firearm.SoundInspect { // firing interrupts inspecting
+		g.stopActionSound()
+	}
+	g.gunSound(firearm.SoundShoot, shotSoundVolume, g.soundPitch())
 	aim := g.aimFrac(1)
 	p := g.Player
 	moving := math.Hypot(p.VX, p.VZ) > 0.01
@@ -463,7 +513,15 @@ func (g *game) hitscan(shot mp.Shot, eye [3]float64) {
 		if c.isHead(h.Part) && spec.Bullet.Headshot > 0 {
 			dmg *= spec.Bullet.Headshot
 		}
-		g.hitCreature(c, dmg, d)
+		head := c.isHead(h.Part)
+		switch {
+		case g.hitCreature(c, dmg, d):
+			g.gunSound(firearm.SoundKill, actionSoundVolume, 1)
+		case head:
+			g.gunSound(firearm.SoundHeadHit, actionSoundVolume, 1)
+		default:
+			g.gunSound(firearm.SoundFleshHit, actionSoundVolume, 1)
+		}
 	}
 }
 
@@ -476,14 +534,15 @@ func (g *game) applyRecoil(alpha float64) {
 	g.recoilP, g.recoilY = p, y
 }
 
-// hitCreature applies a bullet's damage, killing at creatureHealth.
-func (g *game) hitCreature(c *creature, dmg float32, dir [3]float64) {
+// hitCreature applies a bullet's damage, killing at creatureHealth; it
+// reports a kill.
+func (g *game) hitCreature(c *creature, dmg float32, dir [3]float64) bool {
 	c.damage += dmg
 	yaw := math.Atan2(-dir[0], -dir[2])
 	if c.damage >= creatureHealth {
 		log.Printf("guns: %s killed", c.sp.model.Name)
 		g.kill(c, yaw)
-		return
+		return true
 	}
 	g.provoke(c)
 	if m := c.mob; !m.Static {
@@ -491,6 +550,7 @@ func (g *game) hitCreature(c *creature, dmg float32, dir [3]float64) {
 		m.VX += dir[0] / l * gunKnockback
 		m.VZ += dir[2] / l * gunKnockback
 	}
+	return false
 }
 
 // isHead reports whether a hit on part (a bone, -1 for none) struck the head.
@@ -636,7 +696,9 @@ func (s *gunSounds) preload(spec *firearm.Gun) {
 			evs = append(evs, c.Sound)
 		}
 	}
-	evs = append(evs, spec.Shoot, spec.Dry)
+	for _, ev := range spec.Sounds {
+		evs = append(evs, ev)
+	}
 	go func() {
 		for _, ev := range evs {
 			s.load(ev)
@@ -670,14 +732,16 @@ func (s *gunSounds) load(ev string) {
 	s.mu.Unlock()
 }
 
-func (s *gunSounds) play(ev string, p audio.Params) {
+// play plays a loaded sound event (nil: none played).
+func (s *gunSounds) play(ev string, p audio.Params) *audio.Voice {
 	if s.mixer == nil || ev == "" {
-		return
+		return nil
 	}
 	s.mu.Lock()
 	snd := s.buf[ev]
 	s.mu.Unlock()
-	if snd != nil {
-		s.mixer.Play(snd, p)
+	if snd == nil {
+		return nil
 	}
+	return s.mixer.Play(snd, p)
 }

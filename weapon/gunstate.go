@@ -34,6 +34,9 @@ type GunEvent struct {
 	Clip string // clip to play now ("" for none)
 	Shot bool   // a round left the barrel
 	Dry  bool   // trigger pulled on an empty gun
+	// Sound is the display sound an action starts (draw, put away, reload,
+	// inspect, bolt, fire select; "" for none). Shots and Dry have their own.
+	Sound GunSound
 }
 
 // GunInput is the player's input for one tick.
@@ -85,13 +88,13 @@ func (s *GunState) CoolingDown() bool { return s.cooldown > 0 }
 // Draw starts taking the gun out.
 func (s *GunState) Draw() []GunEvent {
 	s.Phase, s.T, s.burstLeft = Drawing, 0, 0
-	return []GunEvent{{Clip: ClipDraw}}
+	return []GunEvent{{Clip: ClipDraw, Sound: SoundDraw}}
 }
 
 // PutAway starts putting the gun away; Phase becomes Holstered when done.
 func (s *GunState) PutAway() []GunEvent {
 	s.Phase, s.T = PuttingAway, 0
-	return []GunEvent{{Clip: ClipPutAway}}
+	return []GunEvent{{Clip: ClipPutAway, Sound: SoundPutAway}}
 }
 
 // FireMode returns the selected fire mode.
@@ -143,14 +146,15 @@ func (s *GunState) Tick(dt float32, in GunInput, stock *int) []GunEvent {
 		return ev
 	case in.Inspect:
 		s.Phase, s.T = Inspecting, 0
-		clip := ClipInspect
+		clip, sound := ClipInspect, SoundInspect
 		if s.Ammo == 0 {
-			clip = ClipInspectEmpty
+			clip, sound = ClipInspectEmpty, SoundInspectEmpty
 		}
-		return append(ev, GunEvent{Clip: clip})
+		return append(ev, GunEvent{Clip: clip, Sound: sound})
 	case in.NextMode && len(g.Modes) > 1:
 		s.Mode = (s.Mode + 1) % len(g.Modes)
 		s.burstLeft = 0
+		ev = append(ev, GunEvent{Sound: SoundFireSelect})
 	}
 	if in.Pressed {
 		switch s.FireMode() {
@@ -190,7 +194,7 @@ func (s *GunState) Tick(dt float32, in GunInput, stock *int) []GunEvent {
 		s.sinceShot, s.interval = 0, interval
 		if g.Bolt == ManualAction && s.Ammo > 0 {
 			s.Phase, s.T, s.burstLeft = Bolting, 0, 0
-			ev = append(ev, GunEvent{Clip: ClipBolt})
+			ev = append(ev, GunEvent{Clip: ClipBolt, Sound: SoundBolt})
 			break
 		}
 	}
@@ -259,14 +263,14 @@ func (s *GunState) ready(ev *[]GunEvent) {
 
 func (s *GunState) startReload(ev *[]GunEvent) {
 	s.Phase, s.T, s.fed, s.empty, s.ending, s.burstLeft = Reloading, 0, false, s.Ammo == 0, false, 0
-	clip := ClipReloadTactical
-	switch {
-	case s.Gun.Reload.Kind == Tube:
-		clip = ClipReloadIntro
-	case s.empty:
-		clip = ClipReloadEmpty
+	clip, sound := ClipReloadTactical, SoundReloadTactical
+	if s.empty {
+		clip, sound = ClipReloadEmpty, SoundReloadEmpty
 	}
-	*ev = append(*ev, GunEvent{Clip: clip})
+	if s.Gun.Reload.Kind == Tube {
+		clip = ClipReloadIntro
+	}
+	*ev = append(*ev, GunEvent{Clip: clip, Sound: sound})
 }
 
 // tickReload: a magazine goes in at the feed time; a tube reload runs

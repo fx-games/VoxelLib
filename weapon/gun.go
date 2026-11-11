@@ -150,9 +150,10 @@ type Gun struct {
 	// HUD sprites (39x13) beside the ammo count; HudEmpty "" tints Hud red when empty.
 	Hud      string           `json:"hud"`
 	HudEmpty string           `json:"hud_empty"`
-	Shoot    string           `json:"shoot"` // sound events
-	Dry      string           `json:"dry"`
-	Cues     map[string][]Cue `json:"cues"` // clip name → sounds
+	// Sounds are the display's sound events by name (GunDisplay "sounds",
+	// with its defaults); Cues are the animations' own, played alongside.
+	Sounds map[GunSound]string `json:"sounds"`
+	Cues   map[string][]Cue    `json:"cues"` // clip name → sounds
 	// Muzzle is the display's renew muzzle flash; nil for the legacy one.
 	Muzzle *MuzzleFlash `json:"muzzle,omitempty"`
 	// Shell is the casing ejection; nil: the gun ejects none.
@@ -163,6 +164,32 @@ type Gun struct {
 	// Heat is the overheating; nil: the gun never heats.
 	Heat *Heat `json:"heat,omitempty"`
 }
+
+// GunSound names a display sound (TACZ SoundManager's keys).
+type GunSound string
+
+// The display sounds the game plays (SoundPlayManager's callers).
+const (
+	SoundShoot          GunSound = "shoot"           // the shooter's shot
+	SoundShoot3P        GunSound = "shoot_3p"        // a shot heard by everyone else
+	SoundDryFire        GunSound = "dry_fire"        // trigger on an empty or overheat-locked gun
+	SoundDraw           GunSound = "draw"
+	SoundPutAway        GunSound = "put_away"
+	SoundReloadEmpty    GunSound = "reload_empty"    // reload start with no round in the barrel
+	SoundReloadTactical GunSound = "reload_tactical"
+	SoundInspect        GunSound = "inspect"
+	SoundInspectEmpty   GunSound = "inspect_empty"
+	SoundBolt           GunSound = "bolt"
+	SoundFireSelect     GunSound = "fire_select"
+	SoundHeadHit        GunSound = "head_hit"        // the shooter's hit marks
+	SoundFleshHit       GunSound = "flesh_hit"
+	SoundKill           GunSound = "kill"
+)
+
+// GunSounds lists the display sounds the game plays.
+var GunSounds = []GunSound{SoundShoot, SoundShoot3P, SoundDryFire, SoundDraw, SoundPutAway,
+	SoundReloadEmpty, SoundReloadTactical, SoundInspect, SoundInspectEmpty, SoundBolt,
+	SoundFireSelect, SoundHeadHit, SoundFleshHit, SoundKill}
 
 // Heat is a gun data's "heat" block (TACZ GunHeatData, sp_heat.lua): each
 // shot adds PerShot up to Max, where the gun locks; Delay seconds after the

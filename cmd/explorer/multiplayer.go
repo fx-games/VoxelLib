@@ -523,7 +523,7 @@ func (g *game) remoteShot(slot int, gun string) {
 			continue
 		}
 		x, y, z := remoteGunOrigin(v)
-		g.sounds.play(spec.Shoot, audio.At(x, y, z, remoteShotVolume, 1))
+		g.sounds.play(spec.Sounds[firearm.SoundShoot3P], audio.At(x, y, z, remoteShotVolume, g.soundPitch()))
 		m := mgl32.Translate3D(float32(x), float32(y), float32(z)).Mul4(remoteGunPose(v, gv))
 		if b := gv.m.Bone(muzzleBone); b >= 0 {
 			m = m.Mul4(gv.rest[b]).Mul4(gv.m.Bones[b].InvBind.Inv()).Mul4(mgl32.HomogRotate3DZ(math.Pi)) // see drawMuzzle
