@@ -413,6 +413,10 @@ func writePNG(path string, img image.Image) error {
 	return png.Encode(f, img)
 }
 
+// benchHitch is the frame interval the bench counts as a visible hitch
+// (below 30 fps).
+const benchHitch = 33 * time.Millisecond
+
 func ms(d time.Duration) float64 { return float64(d.Microseconds()) / 1000 }
 
 // printBench reports Debug.Bench: frame interval and CPU cost (frame start
@@ -434,6 +438,13 @@ func printBench(frames, cpu []time.Duration, m0 *runtime.MemStats) {
 	cm, cp, c50 := stat(cpu)
 	fmt.Printf("bench %s: %d frames, %.0f fps, interval mean %.2fms p99 %.2fms, cpu mean %.2fms p99 %.2fms, p50 interval %.2fms cpu %.2fms\n",
 		render.Backend, len(frames), float64(time.Second)/float64(fm), ms(fm), ms(fp), ms(cm), ms(cp), ms(f50), ms(c50))
+	hitches := 0
+	for _, d := range frames {
+		if d > benchHitch {
+			hitches++
+		}
+	}
+	fmt.Printf("bench: interval max %.2fms, %d frames over %v\n", ms(frames[len(frames)-1]), hitches, benchHitch)
 	var m1 runtime.MemStats
 	runtime.ReadMemStats(&m1)
 	n := uint64(len(frames))
