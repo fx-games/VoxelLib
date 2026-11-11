@@ -7,13 +7,15 @@
 //	a.HUD = u                       // the overlay, every frame
 //	a.Hooks.PauseScreen = func() app.Screen { return u.Screen(ui.NewPauseMenu(...)) }
 //	u.Open(&ui.DialogScreen{...})   // from game code
-//	u.Item = func(s *inventory.Stack) ui.ItemStack { ... } // the game's item icons
+//	u.Inventory.Item = func(s *inventory.Stack) ui.ItemStack { ... } // the game's item icons
 //
-// The HUD shows the player's hotbar (app.Player.Inv) and the inventory
-// action (E) opens the inventory screen.
+// Inventory is the ui.PlayerGUI of app.Player.Inv: the HUD's hotbar and
+// the inventory screen the inventory action (E) opens. The game registers
+// its items, sets Inventory.Item and listens on app.Hooks.Held.
 package uiapp
 
 import (
+	"fmt"
 	"io/fs"
 	"log"
 
@@ -35,10 +37,9 @@ type UI struct {
 	// Top draws over everything, open screens included (the reference's
 	// achievement window, drawn last in the game loop).
 	Top func(ctx *ui.Context)
-	// Item is how a slot shows a stack (nil: every slot empty).
-	Item func(*inventory.Stack) ui.ItemStack
-
-	invBox *inventory.Container // the open inventory screen's (nil: none)
+	// Inventory runs app.Player.Inv: the game sets its Item. Its HUD is
+	// HUD; what the cursor carries on closing goes back into the inventory.
+	Inventory *ui.PlayerGUI
 
 	canvas   *guicanvas.Canvas
 	in       ui.GLFWInput
@@ -47,10 +48,17 @@ type UI struct {
 	open     bool
 }
 
-// New loads the font from assets (resource pack stack) and wires the
-// manager to the app's screen stack.
+// InventoryTexture is the inventory screen's background, which assets
+// must have (the client jar's).
+const InventoryTexture = "textures/gui/container/inventory.png"
+
+// New loads the font from assets (resource pack stack: the client jar)
+// and wires the manager to the app's screen stack.
 func New(a *app.App, assets fs.FS, lang *i18n.Catalog) (*UI, error) {
-	u := &UI{App: a, HUD: &ui.HUD{}, canvas: guicanvas.New()}
+	if _, err := fs.Stat(assets, ui.AssetPath(InventoryTexture)); err != nil {
+		return nil, fmt.Errorf("uiapp: GUI assets lack %s (give the client jar): %w", InventoryTexture, err)
+	}
+	u := &UI{App: a, canvas: guicanvas.New()}
 	ctx, err := ui.NewContext(u.canvas, assets, lang)
 	if err != nil {
 		return nil, err
@@ -64,15 +72,39 @@ func New(a *app.App, assets fs.FS, lang *i18n.Catalog) (*UI, error) {
 		ctx.Clipboard = a.Win.GetClipboardString // the native clipboard (GLFW)
 		ctx.SetClipboard = a.Win.SetClipboardString
 	}
-	a.Hooks.InventoryScreen = u.inventoryScreen
+	// The player (and its inventory) comes with each session: bound on opening.
+	pg := ui.NewPlayerGUI(ctx, nil, nil, func(*inventory.Stack) ui.ItemStack { return ui.ItemStack{} })
+	pg.Keys = nil // app.ActInventory's bindings open and close it
+	pg.NoEquip, pg.NoPreview, pg.NoCrafting = true, true, true
+	u.Inventory, u.HUD = pg, pg.HUD
+	a.Hooks.InventoryScreen = func() app.Screen {
+		if inv := a.Player.Inv; pg.Player != inv {
+			pg.Player, pg.Container = inv, playerContainer(inv)
+		}
+		u.open = true
+		pg.Open()
+		return u.adapter()
+	}
 	ctx.Screens.OnEmpty = func() {
-		u.closeInventory()
+		pg.Close()
 		if u.open {
 			u.open = false
 			a.CloseScreen()
 		}
 	}
 	return u, nil
+}
+
+// playerContainer is inv's screen without crafting. With no world to drop
+// into, what the cursor carries goes back in on closing.
+func playerContainer(inv *inventory.Player) *inventory.Container {
+	c, _ := inventory.NewPlayerContainer(inv, nil)
+	c.Drop = func(s *inventory.Stack) {
+		if inv.Add(s); s.Count > 0 {
+			log.Printf("uiapp: inventory full, %d %s lost", s.Count, s.Item.Key)
+		}
+	}
+	return c
 }
 
 // Open shows s, putting the ui layer on the app's stack when needed.
@@ -94,36 +126,6 @@ func (u *UI) Screen(s ui.Screen) app.Screen {
 
 func (u *UI) adapter() app.Screen { return (*screen)(u) }
 
-func (u *UI) item(s *inventory.Stack) ui.ItemStack {
-	if u.Item == nil {
-		return ui.ItemStack{}
-	}
-	return u.Item(s)
-}
-
-// inventoryScreen is the player's inventory (Hooks.InventoryScreen): its
-// slots, without crafting and armour. With no world to drop into, what
-// the cursor carries goes back in on closing.
-func (u *UI) inventoryScreen() app.Screen {
-	inv := u.App.Player.Inv
-	c, _ := inventory.NewPlayerContainer(inv, nil)
-	c.Drop = func(s *inventory.Stack) {
-		if inv.Add(s); s.Count > 0 {
-			log.Printf("uiapp: inventory full, %d %s lost", s.Count, s.Item.Key)
-		}
-	}
-	u.invBox = c
-	lay := ui.InventoryLayout(ui.InventoryOptions{NoEquip: true, NoPreview: true, NoCrafting: true})
-	return u.Screen(&ui.ContainerScreen{Layout: lay, Model: ui.NewContainerView(c, u.item, nil)})
-}
-
-func (u *UI) closeInventory() {
-	if c := u.invBox; c != nil {
-		u.invBox = nil
-		c.Close()
-	}
-}
-
 // Draw implements app.HUD.
 func (u *UI) Draw(fbW, fbH int) {
 	if u.HUD == nil {
@@ -144,7 +146,7 @@ func (u *UI) Draw(fbW, fbH int) {
 	}
 	u.HUD.State.Crosshair = false // the app draws its own crosshair
 	if p := u.App.Player; p != nil {
-		u.HUD.ShowPlayer(p.Inv, u.item)
+		u.HUD.ShowPlayer(p.Inv, u.Inventory.Item)
 	}
 	u.HUD.Draw(u.Ctx, partial)
 	if u.Top != nil && u.Ctx.Screens.Len() == 0 {
@@ -204,8 +206,8 @@ func (s *screen) HandleInput(ev app.Event) bool {
 	if sc <= 0 {
 		sc = float64(max(u.Ctx.Scale, 1))
 	}
-	if u.invBox != nil && ev.Type == app.KeyEvent && ev.Action == glfw.Press && u.App.Input.Bound(app.ActInventory, ev) {
-		u.Ctx.Screens.CloseAll() // the inventory key closes it too
+	if u.Inventory.IsOpen() && ev.Type == app.KeyEvent && ev.Action == glfw.Press && u.App.Input.Bound(app.ActInventory, ev) {
+		u.Inventory.Close() // the inventory key closes it too
 		return true
 	}
 	var e ui.Event
@@ -227,5 +229,5 @@ func (s *screen) HandleInput(ev app.Event) bool {
 	default:
 		return false
 	}
-	return u.Ctx.Screens.Input(e)
+	return u.Inventory.Input(e)
 }

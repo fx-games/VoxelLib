@@ -338,6 +338,10 @@ func (s *ContainerScreen) Init(ctx *Context) {
 
 func (s *ContainerScreen) Update() {}
 
+// PausesGame is false: the world runs on behind a container
+// (GuiContainer.doesGuiPauseGame).
+func (s *ContainerScreen) PausesGame() bool { return false }
+
 func (s *ContainerScreen) slotAt(mx, my int) int {
 	for i, p := range s.Layout.Slots {
 		x, y := mx-s.left, my-s.top

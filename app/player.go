@@ -608,9 +608,6 @@ func (p *Player) BreakStage() int {
 	return int(p.damage*10) - 1
 }
 
-// HotbarSlots is the hotbar's size: the inventory's first row.
-const HotbarSlots = 9
-
 // tickHeld tells Hooks.Held when the held stack changed.
 func (p *Player) tickHeld() {
 	if s := p.Inv.Current(); s != p.held {

@@ -4,6 +4,7 @@ import (
 	"math"
 	"time"
 
+	"github.com/memmaker/voxellib/inventory"
 	"github.com/memmaker/voxellib/platform/glfw"
 )
 
@@ -263,7 +264,7 @@ func (in *Input) dispatch(name string, pressed bool) {
 		}
 	default:
 		if len(name) == len(ActHotbar)+1 && name[:len(ActHotbar)] == ActHotbar {
-			if i := int(name[len(ActHotbar)] - '1'); i >= 0 && i < HotbarSlots {
+			if i := int(name[len(ActHotbar)] - '1'); i >= 0 && i < inventory.HotbarSlots {
 				a.Player.Inv.Hold(i)
 			}
 		}
@@ -309,12 +310,7 @@ func (in *Input) install() {
 		if in.toScreen(Event{Type: ScrollEvent, X: dx, Y: dy}) || !a.Captured {
 			return
 		}
-		inv := a.Player.Inv
-		if dy < 0 {
-			inv.Hold((inv.Held + 1) % HotbarSlots)
-		} else if dy > 0 {
-			inv.Hold((inv.Held + HotbarSlots - 1) % HotbarSlots)
-		}
+		a.Player.Inv.Scroll(dy)
 	})
 	in.lastX, in.lastY = w.GetCursorPos()
 	w.SetCursorPosCallback(func(_ *glfw.Window, x, y float64) {

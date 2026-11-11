@@ -12,7 +12,6 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/memmaker/voxellib/app"
 	"github.com/memmaker/voxellib/importer/tacz"
 	"github.com/memmaker/voxellib/inventory"
 	"github.com/memmaker/voxellib/mp"
@@ -34,7 +33,7 @@ const (
 	creativeStock = 1 << 20
 	// sandboxFirstGunSlot is where the sandbox's guns start: past the
 	// hotbar, which stays empty for placing blocks.
-	sandboxFirstGunSlot = app.HotbarSlots
+	sandboxFirstGunSlot = inventory.HotbarSlots
 )
 
 func tagValue[T any](s *inventory.Stack, key string) (T, bool) {
@@ -89,7 +88,7 @@ func (g *game) stackMode(s *inventory.Stack) firearm.FireMode {
 func (g *game) setupItems(sandbox bool) {
 	g.inv().Creative = sandbox
 	if g.ui != nil {
-		g.ui.Item = g.slotItem
+		g.ui.Inventory.Item = g.slotItem
 	}
 	g.itemReg = inventory.NewRegistry()
 	g.icons = map[*inventory.Item]*ui.Sprite{}
@@ -242,7 +241,7 @@ func (g *game) giveGun(id string) bool {
 	if !g.inv().Add(inventory.New(it, 1)) {
 		return false
 	}
-	if slot >= 0 && slot < app.HotbarSlots && (!g.gunOn() || g.gunDry()) {
+	if slot >= 0 && slot < inventory.HotbarSlots && (!g.gunOn() || g.gunDry()) {
 		g.inv().Hold(slot)
 	}
 	return true

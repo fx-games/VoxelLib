@@ -6,6 +6,7 @@ package main
 // screen, and the pause menu.
 
 import (
+	"archive/zip"
 	"fmt"
 	"log"
 	"strconv"
@@ -22,18 +23,23 @@ import (
 	"github.com/memmaker/voxellib/ui/uiapp"
 )
 
-// setupUI makes the ui layer: chat lines (the kill feed) over the HUD, and
-// the menus.
-func (g *game) setupUI() {
+// setupUI makes the ui layer from the client jar's GUI textures, font and
+// language (as VoxelRogue does; basepack under it): the HUD, the
+// inventory, chat lines (the kill feed) and the menus.
+func (g *game) setupUI(jar string) error {
+	zr, err := zip.OpenReader(jar)
+	if err != nil {
+		return fmt.Errorf("GUI assets (-jar): %w", err)
+	}
+	assets := ui.StackFS{zr, basepack.FS}
 	cat := i18n.New()
-	if err := cat.LoadFS(basepack.FS); err != nil {
-		log.Printf("ui: %v", err)
+	if err := cat.LoadFS(assets); err != nil {
+		return err
 	}
 	cat.SetLanguage("en_US")
-	u, err := uiapp.New(g.App, ui.StackFS{basepack.FS}, cat)
+	u, err := uiapp.New(g.App, assets, cat)
 	if err != nil {
-		log.Printf("ui disabled: %v", err)
-		return
+		return err
 	}
 	// The explorer draws its own hearts; this HUD shows the hotbar and chat.
 	u.HUD.State.Creative = true
@@ -43,6 +49,7 @@ func (g *game) setupUI() {
 		g.drawGunHUD(ctx)
 	}
 	g.Hooks.PauseScreen = func() app.Screen { return g.ui.Screen(g.pauseMenu()) }
+	return nil
 }
 
 // hudStack draws several HUDs in order.

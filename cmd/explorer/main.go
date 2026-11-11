@@ -97,6 +97,7 @@ func main() {
 		cfg      app.Config
 		worldDir = flag.String("world", "saves/demo", "world directory to load/save ('' = memory only)")
 		readOnly = flag.Bool("readonly", false, "never write to the world directory")
+		jar      = flag.String("jar", filepath.Join(os.Getenv("HOME"), "Library/Application Support/PrismLauncher/libraries/com/mojang/minecraft/1.7.10/minecraft-1.7.10-client.jar"), "Minecraft 1.7.10 client jar (GUI textures, font, language)")
 		packs    = flag.String("pack", "", "extra resource packs (dir/zip/jar), comma separated, highest priority first")
 		genName  = flag.String("gen", "overworld", "terrain generator for new chunks: overworld | flat")
 		seed     = flag.Int64("seed", 1337, "terrain seed")
@@ -120,7 +121,7 @@ func main() {
 	flag.StringVar(&o.press, "press", "", "debug: actions held down from the start, comma separated (e.g. use,attack: aim and fire)")
 	flag.BoolVar(&o.fullZoom, "full-zoom", false, "aiming magnifies the whole screen as TACZ does, instead of a second render inside scope lenses (for slower machines)")
 	watch := flag.String("watch", "", "debug: in multiplayer, view the first other player from angle,distance (degrees from their facing, blocks) instead of your eyes")
-	flag.StringVar(&o.gun, "gun", "", "debug: gun (a TACZ gun ID, e.g. tacz:ak47) given and in hand at start")
+	flag.StringVar(&o.gun, "gun", "", "debug: gun (a TACZ gun ID, e.g. ak47) given and in hand at start")
 	flag.StringVar(&o.attach, "attach", "", "debug: attachments installed on the -gun in order, slot=ID comma separated (e.g. scope=tacz:scope_acog_ta31; an empty ID removes one); adapter.slot=ID selects a slot adapter")
 	flag.StringVar(&cfg.Debug.Edits, "edits", "", "debug: 'dx,dy,dz,block;...' edits relative to the player, applied once terrain is ready as blocks the player placed (shared in multiplayer)")
 	flag.DurationVar(&cfg.Debug.AutoTurn, "autoturn", 0, "debug: stand and turn round from this long into the game on, firing after 5 and 15 s (benchmark under real conditions)")
@@ -277,7 +278,9 @@ func main() {
 	}
 	a.HUD = g
 	g.solo = func() error { return g.playSolo(*genName, *seed) }
-	g.setupUI()
+	if err := g.setupUI(*jar); err != nil {
+		log.Fatal(err)
+	}
 	if g.ui != nil {
 		a.HUD = hudStack{g, g.ui}
 		g.registerSkins()

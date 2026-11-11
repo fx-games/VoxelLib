@@ -57,6 +57,10 @@ aside.
 Debugging models: `-lineup -species NAME -anim CLIP` stands one creature per matching species
 in front of you, playing CLIP (`bind` shows the rest pose).
 
+The GUI (font, HUD, hotbar, inventory, menus) comes from the Minecraft 1.7.10 client jar, as in
+VoxelRogue: `-jar PATH` (default: PrismLauncher's `minecraft-1.7.10-client.jar`). Without it the
+explorer refuses to start.
+
 **Zombie defense** (the default, single player and LAN). Single player is a private server in the
 game, so both play by the same rules (`mp/zdefense.go`): every 15 s a zombie spawns 20-200 blocks
 from a player, and a gun and an ammunition pickup 8-40 blocks away, all out of every player's view.

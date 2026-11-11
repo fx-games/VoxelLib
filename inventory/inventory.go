@@ -181,6 +181,20 @@ func (p *Player) Hold(i int) {
 	}
 }
 
+// HotbarSlots is the hotbar's size: Main's first row.
+const HotbarSlots = 9
+
+// Scroll moves the held slot by the mouse wheel's dy: down (dy < 0) to
+// the next slot, up to the one before, wrapping round the hotbar.
+func (p *Player) Scroll(dy float64) {
+	switch {
+	case dy < 0:
+		p.Hold((p.Held + 1) % HotbarSlots)
+	case dy > 0:
+		p.Hold((p.Held + HotbarSlots - 1) % HotbarSlots)
+	}
+}
+
 // OffSlot is the off-hand slot's index as an Inventory (40 with the
 // default equipment), -1 without one.
 func (p *Player) OffSlot() int {

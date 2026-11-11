@@ -142,18 +142,14 @@ func (g *PlayerGUI) Input(ev Event) bool {
 		return g.Ctx.Screens.Input(ev)
 	}
 	switch {
-	case ev.Type == KeyPress && ev.Key >= Key1 && ev.Key <= Key1+8:
+	case ev.Type == KeyPress && ev.Key >= Key1 && ev.Key < Key1+inventory.HotbarSlots:
 		g.Player.Hold(ev.Key - Key1)
 	case ev.Type == KeyPress && !ev.Repeat && slices.Contains(g.SwapKeys, ev.Key) && g.Player.OffSlot() >= 0:
 		if g.Player.SwapHands() && g.OnSwap != nil {
 			g.OnSwap()
 		}
 	case ev.Type == MouseScroll && ev.DY != 0:
-		d := 1
-		if ev.DY > 0 {
-			d = 8 // wheel up: the slot before
-		}
-		g.Player.Hold((g.Player.Held + d) % 9)
+		g.Player.Scroll(ev.DY)
 	default:
 		return false
 	}
