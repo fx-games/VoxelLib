@@ -51,7 +51,7 @@ type Config struct {
 	// desktop video mode (the panel's native resolution, so no mode switch
 	// and no scaling; no desktop compositing). Width and Height are ignored.
 	Fullscreen bool
-	VSync      string // "on" (default), "limit" (sleep to max(display, 120 Hz)), "off", or a rate in Hz (no vsync, sleep to it: drivers that ignore the swap interval)
+	VSync      string // DefaultVSync if empty; "on", "limit" (sleep to max(display, 120 Hz)), "off", or a rate in Hz (no vsync, sleep to it: drivers that ignore the swap interval)
 	Engine     engine.Config
 	// Start, when set, is where a new game starts (else the world's spawn,
 	// else the generator's FindLand near 0,0).
@@ -249,7 +249,7 @@ func New(cfg Config) (*App, error) {
 		cfg.VSync = v
 	}
 	if cfg.VSync == "" {
-		cfg.VSync = "on"
+		cfg.VSync = DefaultVSync
 	}
 	if err := glfw.Init(); err != nil {
 		return nil, err
@@ -587,3 +587,8 @@ func (a *App) Alpha() float64 { return a.alpha }
 // Screenshot saves the next frame to screenshots/<timestamp>.png with a
 // .txt of position and look (as F2).
 func (a *App) Screenshot() { a.shotReq = true }
+
+// DefaultVSync paces frames to 60 Hz by sleeping rather than by the swap
+// interval, which some drivers ignore in a window (Win7 HD 8280E ran at
+// 110 fps with vsync on); 60 Hz also leaves the chunk workers a core.
+const DefaultVSync = "60"
