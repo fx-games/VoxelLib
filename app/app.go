@@ -70,7 +70,7 @@ type Debug struct {
 	// AutoTurn: stand and turn round from this long into the session on
 	// (a benchmark under real conditions)
 	AutoTurn time.Duration
-	Verbose bool          // print frame stats to stdout
+	Verbose  bool // print frame stats to stdout
 	// Edits: "dx,dy,dz,block;..." block edits relative to the player,
 	// applied once the terrain under the player is ready.
 	Edits string
@@ -184,9 +184,12 @@ type App struct {
 	Mixer  *audio.Mixer // nil without Config.Audio
 
 	// Per session (rebuilt by NewGame):
-	Eng      *engine.Engine
-	Models   *render.ModelRenderer // shared model renderer (entities, games)
-	Cam      render.Camera
+	Eng    *engine.Engine
+	Models *render.ModelRenderer // shared model renderer (entities, games)
+	Cam    render.Camera
+	// ScopeFOV (vertical, radians) renders a magnified scope view of the
+	// world each frame for a hand-pass HandStencil.ScopeView draw; 0: none.
+	ScopeFOV float64
 	Player   *Player
 	Entities Entities
 	Terrain  *Terrain // the world as character.World / collide.Solids

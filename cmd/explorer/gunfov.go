@@ -1,9 +1,12 @@
 package main
 
-// Aiming zoom as TACZ's CameraSetupEvent: the world narrows to the
+// Aiming zoom as TACZ's CameraSetupEvent: the scope view narrows to the
 // gun's magnification (applyScopeMagnification) and the hand lens from
 // the gun's model_fov to its aiming one (applyGunModelFovModifying), both
 // by easeInExpo of the aim progress and smoothed by SecondOrderDynamics.
+// Unlike TACZ, the magnification applies only inside a scope's view disc
+// (App.ScopeFOV, gunlens.go): the screen keeps baseFOV, and sights and
+// guns without a scope lens are not magnified (docs/tacz.md).
 
 import (
 	"math"
@@ -80,7 +83,7 @@ func magnificationToFov(mag, fov float32) float32 {
 	return float32(2 * math.Atan(math.Tan(float64(fov)*math.Pi/360)/float64(mag)) * 180 / math.Pi)
 }
 
-// gunFOV sets the world and hand fields of view for this frame.
+// gunFOV sets the scope view's and hand's fields of view for this frame.
 func (g *game) gunFOV(alpha float64) {
 	g.fx.frameTime()
 	g.applyRecoil(alpha)
@@ -104,6 +107,12 @@ func (g *game) gunFOV(alpha float64) {
 		s.hand.step()
 		s.aim.step()
 	}
-	g.Cam.FOV = float64(s.world.value()) * math.Pi / 180
+	g.Cam.FOV = baseFOV * math.Pi / 180
+	g.ScopeFOV = 0
+	if g.gunOn() {
+		if v := g.gunViews[g.gun.Gun.ID]; v != nil && v.lens != nil && v.lens.scope && s.aim.value() > 0 {
+			g.ScopeFOV = float64(s.world.value()) * math.Pi / 180 // lensViews' disc shows it
+		}
+	}
 	g.Eng.Renderer.HandFOV = s.hand.value()
 }
