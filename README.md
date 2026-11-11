@@ -126,6 +126,8 @@ stdin: `status` (the ranking with health and ping), `say TEXT`, `kick SLOT|NAME`
 - `-vsync on|limit|off` sets frame pacing.
 - `-bench 25s` runs unfocused without grabbing the mouse, then prints the frame rate and CPU time per frame.
 - `-shot file.png -shot-at TICK` saves a screenshot and quits. It never grabs the mouse.
+- `-autoplay` plays zombie defense by itself (fetches guns and ammo, shoots, reloads) and logs each step; with `-shot` it scripts single player and LAN test runs.
+- `-zombies N` (explorer, voxserver) adds N zombies to the first wave and logs the server tick time every 5 s.
 - `-pos x,y,z`, `-look yaw,pitch`, `-gun ID` and `-edits` set up test scenes.
 
 ## Credits
