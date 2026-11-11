@@ -82,10 +82,16 @@ type Config struct {
 	// Workers is the size of each background pool (mesh, generation).
 	// Default (NumCPU-3)/2: with the light and save workers that leaves a
 	// core (and a Go P) free for the render thread; oversubscribing shows up
-	// as frame hitches. Workers also run at a lower OS priority (macOS).
+	// as frame hitches. Workers also run at a lower OS priority than the
+	// render thread (macOS, Windows), so a frame never waits for them.
 	Workers      int
-	UploadBudget time.Duration // GPU upload time per frame, default 4ms
+	UploadBudget time.Duration // mesh upload time per frame, default DefaultUploadBudget
 }
+
+// DefaultUploadBudget is how long Update uploads finished meshes per frame
+// at most; the rest wait for the next frame, nearest the viewer first.
+// Player edits (SetBlock) are not counted: they show in the next frame.
+const DefaultUploadBudget = 4 * time.Millisecond
 
 // dimSrc is one dimension of the world: where its chunks come from and
 // where its changes go.
@@ -132,6 +138,7 @@ type Engine struct {
 
 	meshJobs    chan voxel.SectionPos
 	meshRes     chan *mesh.Mesh
+	ready       []*mesh.Mesh // meshed, not yet uploaded (over the frame's budget)
 	dirty       map[voxel.SectionPos]bool
 	inFlight    map[voxel.SectionPos]bool
 	redo        map[voxel.SectionPos]bool
@@ -189,7 +196,7 @@ func New(cfg Config) (*Engine, error) {
 		cfg.Workers = max(1, (runtime.NumCPU()-3)/2)
 	}
 	if cfg.UploadBudget == 0 {
-		cfg.UploadBudget = 4 * time.Millisecond
+		cfg.UploadBudget = DefaultUploadBudget
 	}
 	renderThread()
 	w := voxel.NewWorld(cfg.Registry, cfg.MinY, cfg.Height)
@@ -682,6 +689,8 @@ func (e *Engine) dropAll(to *dimSrc) {
 	clear(e.redo)
 	clear(e.dirty)
 	clear(e.edited)
+	clear(e.ready)
+	e.ready = e.ready[:0]
 	all := make([]voxel.ChunkPos, 0, len(e.loaded))
 	for p := range e.loaded {
 		all = append(all, p)
@@ -778,15 +787,13 @@ func (e *Engine) dispatch() {
 		return
 	}
 	R := e.cfg.RenderDistance
-	vx, vy, vz := e.viewer[0], e.viewer[1], e.viewer[2]
 	list := e.dispatchBuf[:0]
 	for p := range e.dirty {
 		if !e.inRange(p.Chunk(), R) {
 			delete(e.dirty, p)
 			continue
 		}
-		dx, dy, dz := float64(p.X*16+8)-vx, float64(p.Y*16+8)-vy, float64(p.Z*16+8)-vz
-		list = append(list, meshCand{p, dx*dx + dy*dy*2 + dz*dz})
+		list = append(list, meshCand{p, e.viewerDist2(p)})
 	}
 	e.dispatchBuf = list
 	// Partial selection: move the nearest candidates to the front. Dropped
@@ -827,9 +834,13 @@ func (e *Engine) dispatch() {
 	}
 }
 
+// uploadResults takes the finished meshes and uploads them, nearest the
+// viewer first, until the frame's UploadBudget is spent; the rest wait in
+// e.ready for the next frame.
 func (e *Engine) uploadResults() {
 	start := time.Now()
-	for time.Since(start) < e.cfg.UploadBudget {
+recv:
+	for {
 		select {
 		case m := <-e.meshRes:
 			delete(e.inFlight, m.Pos)
@@ -841,17 +852,33 @@ func (e *Engine) uploadResults() {
 				delete(e.redo, m.Pos)
 				e.dirty[m.Pos] = true
 			}
-			if !e.loaded[m.Pos.Chunk()] {
-				continue
-			}
-			e.Renderer.Upload(m)
-			e.MeshedSections++
+			e.ready = append(e.ready, m)
 		default:
-			e.LastUploadTime = time.Since(start)
-			return
+			break recv
 		}
 	}
+	// Stable: of two meshes of one section, the older uploads first.
+	slices.SortStableFunc(e.ready, func(a, b *mesh.Mesh) int { return cmp.Compare(e.viewerDist2(a.Pos), e.viewerDist2(b.Pos)) })
+	n := 0
+	for ; n < len(e.ready) && time.Since(start) < e.cfg.UploadBudget; n++ {
+		m := e.ready[n]
+		if !e.loaded[m.Pos.Chunk()] {
+			continue
+		}
+		e.Renderer.Upload(m)
+		e.MeshedSections++
+	}
+	rest := copy(e.ready, e.ready[n:])
+	clear(e.ready[rest:])
+	e.ready = e.ready[:rest]
 	e.LastUploadTime = time.Since(start)
+}
+
+// viewerDist2 is the squared distance from the viewer to a section's
+// centre, vertical distance doubled as dispatch weighs it.
+func (e *Engine) viewerDist2(p voxel.SectionPos) float64 {
+	dx, dy, dz := float64(p.X*16+8)-e.viewer[0], float64(p.Y*16+8)-e.viewer[1], float64(p.Z*16+8)-e.viewer[2]
+	return dx*dx + dy*dy*2 + dz*dz
 }
 
 // Render draws the world.
@@ -893,6 +920,9 @@ func (e *Engine) SetBlock(x, y, z int, id voxel.StateID) bool {
 // render thread at the start of Update: SetBlock may run on the tick
 // goroutine, which must not touch the GPU.
 func (e *Engine) rebuildEdited() {
+	if len(e.edited) > 0 { // a waiting mesh from before the edit must not replace it
+		e.ready = slices.DeleteFunc(e.ready, func(m *mesh.Mesh) bool { return e.edited[m.Pos] })
+	}
 	for p := range e.edited {
 		e.mainMesher.Snap.Capture(e.World, p)
 		e.Renderer.Upload(e.mainMesher.Build(e.World.Reg.Table(), e.meshCfg))
