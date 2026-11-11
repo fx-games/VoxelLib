@@ -72,17 +72,35 @@ func (r *Renderer) drawTerrain(cam *Camera, vp mgl32.Mat4) {
 	if r.Opt.Sky != nil { // clear to the fog colour, then the sky draws
 		skyCol, sun = fogCol, mgl32.Vec3{}
 	}
-	if !clearSky {
+	drawSkyPass := func(p *wgpu.RenderPassEncoder) {
 		p.SetPipeline(dev.pipes.sky)
 		bindUniforms(p, g.u.reset().mat(vp.Inv()).f(fogCol[0], fogCol[1], fogCol[2], 0).f(skyCol[0], skyCol[1], skyCol[2], 0).
 			f(sun[0], sun[1], sun[2], 0))
 		dev.draws++
 		p.Draw(gputypes.DrawArgs{VertexCount: 3, InstanceCount: 1})
 	}
-	GPUMark("sky objects")
-	r.drawSky(cam, r.Opt.Sky)
-	GPUMark("terrain opaque")
-	r.drawBatches(curPass(), vp, fog, fogCol, r.batches)
+	if r.Opt.Sky == nil {
+		// Without sky objects the sky goes after the opaque terrain: at
+		// its depth (behind all terrain) the depth test drops the pixels
+		// terrain covers instead of shading them twice; the same pixels.
+		n := len(r.batches)
+		for n > 0 && r.batches[n-1].layer == voxel.LayerTranslucent {
+			n--
+		}
+		GPUMark("terrain opaque")
+		r.drawBatches(p, vp, fog, fogCol, r.batches[:n])
+		GPUMark("sky")
+		drawSkyPass(curPass())
+		r.drawBatches(curPass(), vp, fog, fogCol, r.batches[n:])
+	} else {
+		if !clearSky {
+			drawSkyPass(p)
+		}
+		GPUMark("sky objects")
+		r.drawSky(cam, r.Opt.Sky)
+		GPUMark("terrain opaque")
+		r.drawBatches(curPass(), vp, fog, fogCol, r.batches)
+	}
 	GPUMark("clouds")
 	r.drawSky(cam, r.Opt.SkyAfter)
 }

@@ -135,6 +135,7 @@ type Engine struct {
 	dirty       map[voxel.SectionPos]bool
 	inFlight    map[voxel.SectionPos]bool
 	redo        map[voxel.SectionPos]bool
+	edited      map[voxel.SectionPos]bool // SetBlock: rebuilt by the next Update
 	staleMesh   map[voxel.SectionPos]bool // in flight at Regenerate: not uploaded
 	mainMesher  *mesh.Mesher
 	cfgMu       sync.RWMutex
@@ -206,7 +207,7 @@ func New(cfg Config) (*Engine, error) {
 		worldOps: make(chan worldOp, 4096), litRes: make(chan voxel.ChunkPos, 1<<16),
 		lit: map[voxel.ChunkPos]bool{}, saveReq: make(chan *voxel.Chunk, 1024),
 		meshJobs: make(chan voxel.SectionPos, meshQueue), meshRes: make(chan *mesh.Mesh, 1024),
-		dirty: map[voxel.SectionPos]bool{}, inFlight: map[voxel.SectionPos]bool{}, redo: map[voxel.SectionPos]bool{},
+		dirty: map[voxel.SectionPos]bool{}, inFlight: map[voxel.SectionPos]bool{}, redo: map[voxel.SectionPos]bool{}, edited: map[voxel.SectionPos]bool{},
 		staleMesh:  map[voxel.SectionPos]bool{},
 		mainMesher: mesh.NewMesher(), meshCfg: r.MeshConfig(), quit: make(chan struct{}),
 	}
@@ -433,6 +434,7 @@ func (e *Engine) mark(i int, t *time.Time) {
 // the render thread.
 func (e *Engine) Update(x, y, z float64) {
 	e.viewer = [3]float64{x, y, z}
+	e.rebuildEdited()
 	t := time.Now()
 	c := voxel.ChunkPos{X: int(math.Floor(x)) >> 4, Z: int(math.Floor(z)) >> 4}
 	R := e.cfg.RenderDistance
@@ -679,6 +681,7 @@ func (e *Engine) dropAll(to *dimSrc) {
 	}
 	clear(e.redo)
 	clear(e.dirty)
+	clear(e.edited)
 	all := make([]voxel.ChunkPos, 0, len(e.loaded))
 	for p := range e.loaded {
 		all = append(all, p)
@@ -857,8 +860,9 @@ func (e *Engine) Render(cam *render.Camera) { e.Renderer.Render(cam) }
 // Block returns the state at a position.
 func (e *Engine) Block(x, y, z int) voxel.StateID { return e.World.Block(x, y, z) }
 
-// SetBlock changes a block for the player and rebuilds the affected sections
-// at once on the calling (render) thread, so the edit shows in the same frame:
+// SetBlock changes a block for the player; the next Update rebuilds the
+// affected sections on the render thread before any other mesh, so the edit
+// shows in the next frame:
 // the reference's "player affected" sections, which it compiles synchronously.
 //
 // Every other block change (doors, gates, NPCs, block ticks, a simulation tick
@@ -880,10 +884,20 @@ func (e *Engine) SetBlock(x, y, z int, id voxel.StateID) bool {
 			e.redo[p] = true
 		}
 		delete(e.dirty, p)
+		e.edited[p] = true
+	}
+	return true
+}
+
+// rebuildEdited meshes and uploads the sections SetBlock changed, on the
+// render thread at the start of Update: SetBlock may run on the tick
+// goroutine, which must not touch the GPU.
+func (e *Engine) rebuildEdited() {
+	for p := range e.edited {
 		e.mainMesher.Snap.Capture(e.World, p)
 		e.Renderer.Upload(e.mainMesher.Build(e.World.Reg.Table(), e.meshCfg))
 	}
-	return true
+	clear(e.edited)
 }
 
 // Raycast finds the targeted block from an eye position along dir.

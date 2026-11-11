@@ -370,17 +370,8 @@ func (p *Pack) loadGun(file string, lang map[string]string, sound func(string) s
 		return err
 	}
 	files := gunFiles{texture: asset("textures", disp.Texture) + ".png", animation: asset("animations", disp.Animation) + ".animation.json", defaults: disp.Default}
-	anims, err := p.animations(files)
-	if err != nil {
-		return err
-	}
-	clips := map[string]bool{}
-	for _, a := range anims {
-		clips[a.Name] = true
-	}
-	if clips[weapon.ClipReloadIntro] && clips[weapon.ClipReloadLoop] {
-		spec.Reload.Kind = weapon.Tube
-	}
+	// The clip names only: the keyframes are parsed when the model loads
+	// (Model), which takes most of a pack's load time.
 	raw, err := fs.ReadFile(p.FS, files.animation)
 	if err != nil {
 		return err
@@ -388,6 +379,16 @@ func (p *Pack) loadGun(file string, lang map[string]string, sound func(string) s
 	cues, err := rawCues(raw)
 	if err != nil {
 		return err
+	}
+	clips := map[string]bool{}
+	for _, c := range cues {
+		clips[c.clip] = true
+	}
+	for _, a := range p.defaults[files.defaults] {
+		clips[a.Name] = true
+	}
+	if clips[weapon.ClipReloadIntro] && clips[weapon.ClipReloadLoop] {
+		spec.Reload.Kind = weapon.Tube
 	}
 	spec.Cues = map[string][]weapon.Cue{}
 	for _, a := range cues {

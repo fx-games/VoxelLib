@@ -125,7 +125,8 @@ func (a *App) loop() {
 				}
 				if idle := !quiet.IsZero() && time.Since(quiet) > 3*time.Second; idle || el > 3*time.Minute {
 					warm, end = el, el+dbg.Bench
-					log.Printf("bench: measuring from %v (streaming idle: %v)", el.Round(time.Second), idle)
+					log.Printf("bench: measuring from %v (streaming idle: %v); streaming done %v after process start",
+						el.Round(time.Second), idle, quiet.Sub(procStart).Round(10*time.Millisecond))
 				}
 			}
 			if el > end {
