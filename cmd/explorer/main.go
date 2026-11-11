@@ -142,7 +142,7 @@ func main() {
 	flag.BoolVar(&o.autoplay, "autoplay", false, "debug: play zombie defense by itself (fetch guns and ammo, shoot zombies), logging each step")
 	flag.BoolVar(&o.sandbox, "sandbox", false, "explore the world (animals, every gun) instead of playing zombie defense; implied by -world, -map, -bench and -autofly")
 	flag.BoolVar(&cfg.Fullscreen, "fullscreen", false, "fullscreen on the primary monitor at its desktop (native) resolution")
-	flag.StringVar(&cfg.VSync, "vsync", "on", "frame pacing: on (vsync), limit (no vsync, sleep to max(display rate, 120Hz)), off (unlimited)")
+	flag.StringVar(&cfg.VSync, "vsync", "on", "frame pacing: on (vsync), limit (no vsync, sleep to max(display rate, 120Hz)), off (unlimited), or a rate in Hz (e.g. 60)")
 	logPath := flag.String("log", "", "also write the log and any crash trace to this file")
 	flag.Parse()
 	if *logPath != "" {

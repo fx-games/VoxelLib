@@ -23,6 +23,7 @@ import (
 	"log"
 	"math"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/memmaker/voxellib/audio"
@@ -50,7 +51,7 @@ type Config struct {
 	// desktop video mode (the panel's native resolution, so no mode switch
 	// and no scaling; no desktop compositing). Width and Height are ignored.
 	Fullscreen bool
-	VSync      string // "on" (default), "limit" (sleep to max(display, 120 Hz)), "off"
+	VSync      string // "on" (default), "limit" (sleep to max(display, 120 Hz)), "off", or a rate in Hz (no vsync, sleep to it: drivers that ignore the swap interval)
 	Engine     engine.Config
 	// Start, when set, is where a new game starts (else the world's spawn,
 	// else the generator's FindLand near 0,0).
@@ -292,6 +293,9 @@ func New(cfg Config) (*App, error) {
 		if m := glfw.GetPrimaryMonitor(); m != nil && m.GetVideoMode().RefreshRate > hz {
 			hz = m.GetVideoMode().RefreshRate
 		}
+		a.frameLimit = time.Second / time.Duration(hz)
+	}
+	if hz, err := strconv.Atoi(cfg.VSync); err == nil && hz > 0 {
 		a.frameLimit = time.Second / time.Duration(hz)
 	}
 	if cfg.Audio {
