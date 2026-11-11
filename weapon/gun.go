@@ -2,8 +2,7 @@ package weapon
 
 import "fmt"
 
-// Guns: the spec of a firearm as cmd/importtacz writes it (assets/tacz/guns.json)
-// from the TACZ gun pack. Times are seconds, speeds blocks/second, angles degrees.
+// Guns: the spec of a firearm, as importer/tacz reads it from a TACZ gun pack. Times are seconds, speeds blocks/second, angles degrees.
 
 // FireMode is how a trigger pull fires.
 type FireMode uint8
@@ -27,14 +26,15 @@ const (
 type ReloadKind uint8
 
 const (
-	Magazine ReloadKind = iota // one feed fills the magazine
-	Tube                       // reload_intro, then reload_loop once per round, then reload_end
+	Magazine  ReloadKind = iota // one feed fills the magazine
+	Tube                        // reload_intro, then reload_loop once per round, then reload_end
+	Inventory                   // no magazine: shots come straight from the stock (minigun)
 )
 
 var (
 	fireModeNames   = []string{"semi", "auto", "burst"}
 	boltNames       = []string{"closed_bolt", "open_bolt", "manual_action"}
-	reloadKindNames = []string{"magazine", "tube"}
+	reloadKindNames = []string{"magazine", "tube", "inventory"}
 )
 
 func enumText(names []string, v uint8) ([]byte, error) {
@@ -136,8 +136,8 @@ type Gun struct {
 		Aim   float32 `json:"aim"`
 	} `json:"inaccuracy"`
 	Zoom  float32          `json:"zoom"`  // iron sight magnification
-	Model string           `json:"model"` // glTF path in the pack dir
-	Icon  string           `json:"icon"`  // slot sprite path in the pack dir
+	Model string           `json:"model"` // model file in the pack
+	Icon  string           `json:"icon"`  // slot sprite file in the pack
 	Shoot string           `json:"shoot"` // sound events
 	Dry   string           `json:"dry"`
 	Cues  map[string][]Cue `json:"cues"` // clip name → sounds
@@ -148,10 +148,4 @@ type Ammo struct {
 	Name  string `json:"name"`
 	Stack int    `json:"stack"`
 	Icon  string `json:"icon"`
-}
-
-// Pack is assets/tacz/guns.json.
-type Pack struct {
-	Guns []Gun  `json:"guns"`
-	Ammo []Ammo `json:"ammo"`
 }

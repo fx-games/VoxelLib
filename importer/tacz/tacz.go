@@ -1,7 +1,7 @@
-// Package tacz converts the TACZ default gun pack (Bedrock gun models and
-// animations, gun/ammo data, slot icons, sounds) into VoxelLib assets:
-// glTF models with baked clips and a weapon.Pack. Lua state machines,
-// attachments and third-person animations are not converted.
+// Package tacz loads TACZ gun packs in their own formats: Bedrock gun
+// models and animations (played as authored by importer/bbmodel), gun and
+// ammo data mapped to weapon.Gun, slot icons and sounds. Lua state machines,
+// attachments and third-person animations are not used.
 package tacz
 
 import (
@@ -12,6 +12,7 @@ import (
 	"image/png"
 	"io/fs"
 	"path"
+	"slices"
 	"sort"
 	"strings"
 
@@ -20,60 +21,51 @@ import (
 	"github.com/memmaker/voxellib/weapon"
 )
 
-// BakeFPS is the sampling rate of the baked clips.
-const BakeFPS = 60
-
-// Gun is one converted gun: its spec and its model (clips baked).
-type Gun struct {
-	Spec  weapon.Gun
-	Model *model.Model
-	Icon  image.Image
-}
-
-// Result is the converted pack. Sounds maps every referenced sound event
-// ("tacz:ak47/ak47_shoot") to its .ogg path in the pack.
-type Result struct {
-	Guns      []Gun
-	Ammo      []weapon.Ammo
-	AmmoIcons map[string]image.Image
-	Sounds    map[string]string
+// Pack is a loaded gun pack. Guns and Ammo are sorted by ID; their Icon,
+// Model and sound paths are files in FS.
+type Pack struct {
+	FS   fs.FS
+	Guns []weapon.Gun
+	Ammo []weapon.Ammo
 	// Missing lists sound events the pack's clips name but no file provides
 	// (TACZ plays nothing for them either).
 	Missing []string
+
+	guns     map[string]gunFiles
+	defaults map[string][]*bbmodel.Animation
 }
 
-// Import reads the gun pack at pack (the tacz_default_gun directory) and the
-// mod's own assets at mod (assets/tacz: the default rifle/pistol animations).
-func Import(pack, mod fs.FS) (*Result, error) {
+type gunFiles struct {
+	texture, animation, defaults string
+}
+
+// Load reads the gun pack at pack (a tacz_default_gun directory) and the
+// default rifle/pistol animations at defaults (<kind>_default.animation.json).
+func Load(pack, defaults fs.FS) (*Pack, error) {
 	lang := map[string]string{}
 	if err := readJSON(pack, "assets/tacz/lang/en_us.json", &lang); err != nil {
 		return nil, err
 	}
-	defaults := map[string][]*bbmodel.Animation{}
+	p := &Pack{FS: pack, guns: map[string]gunFiles{}, defaults: map[string][]*bbmodel.Animation{}}
 	for _, d := range []string{"rifle", "pistol"} {
-		data, err := fs.ReadFile(mod, "animations/"+d+"_default.animation.json")
+		data, err := fs.ReadFile(defaults, d+"_default.animation.json")
 		if err != nil {
 			return nil, err
 		}
-		if defaults[d], err = bbmodel.ParseAnimationFile(data); err != nil {
+		if p.defaults[d], err = bbmodel.ParseAnimationFile(data); err != nil {
 			return nil, fmt.Errorf("%s_default: %w", d, err)
 		}
 	}
-	r := &Result{AmmoIcons: map[string]image.Image{}, Sounds: map[string]string{}}
 	missing := map[string]bool{}
 	sound := func(id string) string {
 		if id == "" {
 			return ""
 		}
-		ns, p := split(id)
-		file := "assets/" + ns + "/tacz_sounds/" + p + ".ogg"
-		if _, err := fs.Stat(pack, file); err != nil {
+		if _, err := fs.Stat(pack, SoundFile(id)); err != nil {
 			missing[id] = true
 			return ""
 		}
-		ev := ns + ":" + p
-		r.Sounds[ev] = file
-		return ev
+		return id
 	}
 
 	idx, err := fs.Glob(pack, "data/tacz/index/guns/*.json")
@@ -81,13 +73,11 @@ func Import(pack, mod fs.FS) (*Result, error) {
 		return nil, err
 	}
 	for _, f := range idx {
-		g, err := importGun(pack, f, lang, defaults, sound)
-		if err != nil {
+		if err := p.loadGun(f, lang, sound); err != nil {
 			return nil, fmt.Errorf("%s: %w", f, err)
 		}
-		r.Guns = append(r.Guns, *g)
 	}
-	sort.Slice(r.Guns, func(i, j int) bool { return r.Guns[i].Spec.ID < r.Guns[j].Spec.ID })
+	sort.Slice(p.Guns, func(i, j int) bool { return p.Guns[i].ID < p.Guns[j].ID })
 
 	idx, err = fs.Glob(pack, "data/tacz/index/ammo/*.json")
 	if err != nil {
@@ -109,74 +99,52 @@ func Import(pack, mod fs.FS) (*Result, error) {
 			return nil, err
 		}
 		id := strings.TrimSuffix(path.Base(f), ".json")
-		icon, err := readPNG(pack, asset("textures", disp.Slot)+".png")
-		if err != nil {
-			return nil, fmt.Errorf("ammo %s: %w", id, err)
-		}
-		r.AmmoIcons[id] = icon
-		r.Ammo = append(r.Ammo, weapon.Ammo{ID: id, Name: lang[in.Name], Stack: in.Stack, Icon: "icons/ammo/" + id + ".png"})
+		p.Ammo = append(p.Ammo, weapon.Ammo{ID: id, Name: lang[in.Name], Stack: in.Stack, Icon: asset("textures", disp.Slot) + ".png"})
 	}
 	for id := range missing {
-		r.Missing = append(r.Missing, id)
+		p.Missing = append(p.Missing, id)
 	}
-	sort.Strings(r.Missing)
-	return r, nil
+	sort.Strings(p.Missing)
+	return p, nil
 }
 
-func importGun(pack fs.FS, file string, lang map[string]string, defaults map[string][]*bbmodel.Animation, sound func(string) string) (*Gun, error) {
-	var index struct {
-		Name    string `json:"name"`
-		Display string `json:"display"`
-		Data    string `json:"data"`
-		Type    string `json:"type"`
-	}
-	if err := readJSON(pack, file, &index); err != nil {
-		return nil, err
-	}
-	var disp struct {
-		Model, Texture, Slot, Animation string
-		Default                         string  `json:"use_default_animation"`
-		Zoom                            float32 `json:"iron_zoom"`
-		Sounds                          map[string]json.RawMessage
-	}
-	if err := readJSON(pack, asset("display/guns", index.Display)+".json", &disp); err != nil {
-		return nil, err
-	}
-	var data taczData
-	if err := readJSON(pack, dataPath("guns", index.Data), &data); err != nil {
-		return nil, err
-	}
-	id := strings.TrimSuffix(path.Base(file), ".json")
+// SoundFile is the pack file of a sound event ("tacz:ak47/ak47_shoot").
+func SoundFile(event string) string {
+	ns, p := split(event)
+	return "assets/" + ns + "/tacz_sounds/" + p + ".ogg"
+}
 
-	tex, err := readPNG(pack, asset("textures", disp.Texture)+".png")
+// Icon reads a gun's or ammo's slot icon.
+func (p *Pack) Icon(file string) (image.Image, error) { return readPNG(p.FS, file) }
+
+// Model parses a gun's model with its clips: the gun's animations, plus the
+// default animation set's for clips the gun lacks. The bones TACZ hides on a
+// gun without attachments are removed.
+func (p *Pack) Model(id string) (*model.Model, error) {
+	i := slices.IndexFunc(p.Guns, func(g weapon.Gun) bool { return g.ID == id })
+	if i < 0 {
+		return nil, fmt.Errorf("tacz: no gun %q", id)
+	}
+	f := p.guns[id]
+	tex, err := readPNG(p.FS, f.texture)
 	if err != nil {
 		return nil, err
 	}
-	geo, err := fs.ReadFile(pack, asset("geo_models", disp.Model)+".json")
+	geo, err := fs.ReadFile(p.FS, p.Guns[i].Model)
 	if err != nil {
 		return nil, err
 	}
 	models, err := bbmodel.ParseGeometry(geo, func(string) image.Image { return tex })
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%s: %w", id, err)
 	}
 	m := models[0]
 	m.Name = id
-	anims, err := fs.ReadFile(pack, asset("animations", disp.Animation)+".animation.json")
+	anims, err := p.animations(f)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%s: %w", id, err)
 	}
-	clips, err := bbmodel.ParseAnimationFile(anims)
-	if err != nil {
-		return nil, err
-	}
-	spec, err := data.spec(id, lang[index.Name], index.Type)
-	if err != nil {
-		return nil, err
-	}
-	spec.Zoom = disp.Zoom
-	spec.Cues = map[string][]weapon.Cue{}
-	for _, a := range append(clips, defaults[disp.Default]...) {
+	for _, a := range anims {
 		if _, dup := m.Clips[a.Name]; dup {
 			continue // the gun's own clip wins over the default one
 		}
@@ -184,10 +152,72 @@ func importGun(pack fs.FS, file string, lang map[string]string, defaults map[str
 			m.Clips[a.Name] = c
 		}
 	}
-	cues, err := rawCues(anims)
+	stripHidden(m)
+	return m, nil
+}
+
+// animations returns the gun's animations followed by its default set's.
+func (p *Pack) animations(f gunFiles) ([]*bbmodel.Animation, error) {
+	data, err := fs.ReadFile(p.FS, f.animation)
 	if err != nil {
 		return nil, err
 	}
+	own, err := bbmodel.ParseAnimationFile(data)
+	if err != nil {
+		return nil, err
+	}
+	return append(own, p.defaults[f.defaults]...), nil
+}
+
+func (p *Pack) loadGun(file string, lang map[string]string, sound func(string) string) error {
+	var index struct {
+		Name    string `json:"name"`
+		Display string `json:"display"`
+		Data    string `json:"data"`
+		Type    string `json:"type"`
+	}
+	if err := readJSON(p.FS, file, &index); err != nil {
+		return err
+	}
+	var disp struct {
+		Model, Texture, Slot, Animation string
+		Default                         string  `json:"use_default_animation"`
+		Zoom                            float32 `json:"iron_zoom"`
+		Sounds                          map[string]json.RawMessage
+	}
+	if err := readJSON(p.FS, asset("display/guns", index.Display)+".json", &disp); err != nil {
+		return err
+	}
+	var data taczData
+	if err := readJSON(p.FS, dataPath("guns", index.Data), &data); err != nil {
+		return err
+	}
+	id := strings.TrimSuffix(path.Base(file), ".json")
+	spec, err := data.spec(id, lang[index.Name], index.Type)
+	if err != nil {
+		return err
+	}
+	files := gunFiles{texture: asset("textures", disp.Texture) + ".png", animation: asset("animations", disp.Animation) + ".animation.json", defaults: disp.Default}
+	anims, err := p.animations(files)
+	if err != nil {
+		return err
+	}
+	clips := map[string]bool{}
+	for _, a := range anims {
+		clips[a.Name] = true
+	}
+	if clips[weapon.ClipReloadIntro] && clips[weapon.ClipReloadLoop] {
+		spec.Reload.Kind = weapon.Tube
+	}
+	raw, err := fs.ReadFile(p.FS, files.animation)
+	if err != nil {
+		return err
+	}
+	cues, err := rawCues(raw)
+	if err != nil {
+		return err
+	}
+	spec.Cues = map[string][]weapon.Cue{}
 	for _, a := range cues {
 		for _, c := range a.cues {
 			if ev := sound(c.Sound); ev != "" {
@@ -195,22 +225,16 @@ func importGun(pack fs.FS, file string, lang map[string]string, defaults map[str
 			}
 		}
 	}
-	if m.Clips["reload_intro"] != nil && m.Clips["reload_loop"] != nil {
-		spec.Reload.Kind = weapon.Tube
-	}
 	shoot, err := soundRef(disp.Sounds["shoot"])
 	if err != nil {
-		return nil, err
+		return err
 	}
 	spec.Shoot, spec.Dry = sound(shoot), sound("tacz:dry_fire")
-	stripHidden(m)
-	m.Bake(BakeFPS)
-	icon, err := readPNG(pack, asset("textures", disp.Slot)+".png")
-	if err != nil {
-		return nil, err
-	}
-	spec.Model, spec.Icon = "models/"+id+".gltf", "icons/gun/"+id+".png"
-	return &Gun{Spec: spec, Model: m, Icon: icon}, nil
+	spec.Zoom = disp.Zoom
+	spec.Model, spec.Icon = asset("geo_models", disp.Model)+".json", asset("textures", disp.Slot)+".png"
+	p.Guns = append(p.Guns, spec)
+	p.guns[id] = files
+	return nil
 }
 
 // taczData is the part of a TACZ gun data file we convert.
@@ -239,6 +263,7 @@ type taczData struct {
 		} `json:"extra_damage"`
 	} `json:"bullet"`
 	Reload struct {
+		Type     string
 		Feed     struct{ Empty, Tactical float32 }
 		Cooldown struct{ Empty, Tactical float32 }
 	}
@@ -282,6 +307,9 @@ func (d *taczData) spec(id, name, class string) (weapon.Gun, error) {
 		b.Falloff = append(b.Falloff, weapon.Falloff{Dist: dist, Damage: a.Damage})
 	}
 	r := &g.Reload
+	if d.Reload.Type == "inventory" {
+		r.Kind = weapon.Inventory
+	}
 	r.FeedEmpty, r.FeedTactical = d.Reload.Feed.Empty, d.Reload.Feed.Tactical
 	r.DoneEmpty, r.DoneTactical = d.Reload.Cooldown.Empty, d.Reload.Cooldown.Tactical
 	g.Draw, g.PutAway, g.Aim = d.Draw, d.PutAway, d.Aim
