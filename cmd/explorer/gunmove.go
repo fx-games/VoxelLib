@@ -53,30 +53,23 @@ const (
 
 // movement is the movement track's state machine state.
 type movement struct {
-	state moveState
-	mode  moveMode
-	// loop: the clip plays LOOP, else PLAY_ONCE_HOLD.
-	loop   bool
+	state  moveState
+	mode   moveMode
 	anchor float64 // anchorWalkDist
 }
 
-// run is context:runAnimation on the movement track (blending).
-func (v *gunView) runMove(name string, loop bool, transition float32) {
-	c := v.m.Clips[name]
-	if c == nil {
-		return
+// runMove is context:runAnimation on the movement track (blending) with
+// play type LOOP or PLAY_ONCE_HOLD.
+func (v *gunView) runMove(name string, play model.Loop, transition float32) {
+	if c := v.m.Clips[name]; c != nil {
+		v.anim.Layers[movementTrack].Run(c, play, transition)
 	}
-	v.anim.Layers[movementTrack].Run(c, transition)
-	v.move.loop = loop
 }
 
 // tickMovement runs the movement track for a tick (after tickGunTracks).
 func (g *game) tickMovement(v *gunView) {
 	l, m, p := &v.anim.Layers[movementTrack], &v.move, g.Player
-	if c := l.Clip; c != nil && l.Time >= c.Length && m.loop && c.Length > 0 {
-		l.Time = float32(math.Mod(float64(l.Time), float64(c.Length)))
-	}
-	holding := l.Clip != nil && !m.loop && l.Time >= l.Clip.Length
+	holding := l.Ended()
 	mainStopped := v.anim.Layers[mainTrack].Clip == nil
 	up, down := g.Input.Down(app.ActForward), g.Input.Down(app.ActBack)
 	side := g.Input.Down(app.ActLeft) || g.Input.Down(app.ActRight)
@@ -107,13 +100,13 @@ func (g *game) tickMovement(v *gunView) {
 	if next != m.state {
 		switch m.state { // exit
 		case moveRun:
-			v.runMove(clipRunEnd, false, 0.3)
+			v.runMove(clipRunEnd, model.LoopHold, 0.3)
 		case moveWalk:
-			v.runMove(clipMoveIdle, false, 0.4)
+			v.runMove(clipMoveIdle, model.LoopHold, 0.4)
 		}
 		m.state, m.mode = next, modeNone // entry
 		if next == moveRun {
-			v.runMove(clipRunStart, false, 0.2)
+			v.runMove(clipRunStart, model.LoopHold, 0.2)
 		}
 		holding = false
 	}
@@ -127,7 +120,7 @@ func (g *game) tickMovement(v *gunView) {
 	play := func(mode moveMode, clip string, transition float32, anchor bool) {
 		if m.mode != mode {
 			m.mode = mode
-			v.runMove(clip, true, transition)
+			v.runMove(clip, model.LoopRepeat, transition)
 			if anchor {
 				m.anchor, dist = p.WalkDist(), 0
 			}
@@ -136,11 +129,11 @@ func (g *game) tickMovement(v *gunView) {
 	switch m.state {
 	case moveIdle:
 		if l.Clip == nil || holding {
-			v.runMove(clipMoveIdle, true, 0)
+			v.runMove(clipMoveIdle, model.LoopRepeat, 0)
 		}
 	case moveRun:
 		if holding {
-			v.runMove(clipRun, true, 0.2)
+			v.runMove(clipRun, model.LoopRepeat, 0.2)
 			m.mode, m.anchor, dist = modeSteady, p.WalkDist(), 0
 		}
 		if m.mode != modeNone {

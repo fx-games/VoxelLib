@@ -7,9 +7,8 @@ package main
 // "slide_back" and holds.
 
 import (
-	"math"
-
 	"github.com/memmaker/voxellib/app"
+	"github.com/memmaker/voxellib/model"
 )
 
 const (
@@ -26,25 +25,22 @@ type slideState struct {
 // tickSlide runs the slide track for a tick (after tickGunTracks).
 func (g *game) tickSlide(v *gunView) {
 	l, s := &v.anim.Layers[slideTrack], &v.slide
-	if c := l.Clip; c != nil && s.idle && l.Time >= c.Length && c.Length > 0 {
-		l.Time = float32(math.Mod(float64(l.Time), float64(c.Length))) // LOOP
-	}
 	should := v.spec.Slide && g.Input.Down(app.ActSneak) && v.anim.Layers[mainTrack].Clip == nil &&
 		!g.Input.Down(app.ActUse)
-	run := func(name string, transition float32) {
+	run := func(name string, play model.Loop, transition float32) {
 		if c := v.m.Clips[name]; c != nil {
-			l.Run(c, transition)
+			l.Run(c, play, transition)
 		}
 	}
 	switch {
 	case !s.on && should: // entry
 		s.on, s.idle = true, false
-		run(clipSlide, 0.5)
+		run(clipSlide, model.LoopHold, 0.5)
 	case s.on && !should: // exit
 		s.on, s.idle = false, false
-		run(clipSlideBack, 0.2)
-	case s.on && !s.idle && l.Clip != nil && l.Time >= l.Clip.Length: // update: holding
+		run(clipSlideBack, model.LoopHold, 0.2)
+	case s.on && !s.idle && l.Ended(): // update: holding
 		s.idle = true
-		run(clipSlideIdle, 0.4)
+		run(clipSlideIdle, model.LoopRepeat, 0.4)
 	}
 }

@@ -508,8 +508,8 @@ func (g *game) playGunClip(v *gunView, clip string) {
 		v.anim.Layers[mainTrack].Clip = nil // the base track shows through
 		return
 	case firearm.ClipShoot:
-		if c != nil {
-			v.anim.Layers = append(v.anim.Layers, model.Layer{Clip: c, Blend: true})
+		if c != nil { // a new blending track per shot, PLAY_ONCE_STOP whatever the clip's loop flag
+			v.anim.Layers = append(v.anim.Layers, model.Layer{Clip: c, Blend: true, Play: model.LoopOnce})
 		}
 		return
 	}
@@ -518,8 +518,19 @@ func (g *game) playGunClip(v *gunView, clip string) {
 	} else {
 		v.anim.FadeFrom(mainTransition)
 	}
-	v.anim.Layers[mainTrack] = model.Layer{Clip: c}
+	v.anim.Layers[mainTrack] = model.Layer{Clip: c, Play: mainPlay(clip)}
 	g.cueClip, g.cueT, g.cueNext = clip, 0, 0
+}
+
+// mainPlay is the play type default_state_machine (spas_12's for the tube
+// reload) runs a main track clip with: put_away and the tube reload's intro
+// and loop hold their last frame, the rest PLAY_ONCE_STOP.
+func mainPlay(clip string) model.Loop {
+	switch clip {
+	case firearm.ClipPutAway, firearm.ClipReloadIntro, firearm.ClipReloadLoop:
+		return model.LoopHold
+	}
+	return model.LoopOnce
 }
 
 // Blending track clips the scripts run by state, not by gun event.
@@ -538,7 +549,7 @@ func (g *game) stateTracks(v *gunView) {
 	if s.Overheated != v.overheated {
 		v.overheated = s.Overheated
 		if c := v.m.Clips[clipOverHeat]; c != nil && s.Overheated {
-			v.anim.Layers = append(v.anim.Layers, model.Layer{Clip: c, Blend: true})
+			v.anim.Layers = append(v.anim.Layers, model.Layer{Clip: c, Blend: true, Play: model.LoopOnce})
 		}
 	}
 	setLoops(v, v.m.Clips[clipStaticOverHeating], b2i(s.Overheated))
@@ -548,7 +559,8 @@ func (g *game) stateTracks(v *gunView) {
 	}
 }
 
-// setLoops keeps n blended layers of a looping clip (nil: none to play).
+// setLoops keeps n blended LOOP layers of clip c (nil: none to play).
+// ponytail: minigun_state_machine reruns spin PLAY_ONCE_HOLD on its own cadence; looping approximates it.
 func setLoops(v *gunView, c *model.Clip, n int) {
 	if c == nil {
 		return
@@ -563,7 +575,7 @@ func setLoops(v *gunView, c *model.Clip, n int) {
 		}
 	}
 	for ; n > 0; n-- {
-		v.anim.Layers = append(v.anim.Layers, model.Layer{Clip: c, Blend: true})
+		v.anim.Layers = append(v.anim.Layers, model.Layer{Clip: c, Blend: true, Play: model.LoopRepeat})
 	}
 }
 
@@ -579,7 +591,7 @@ func (g *game) tickGunTracks(v *gunView, dt float32) {
 	v.anim.Update(dt)
 	ls := v.anim.Layers
 	for i := range ls {
-		ls[i].Time += dt
+		ls[i].Advance(dt)
 	}
 	if ls[mainTrack].Done() {
 		ls[mainTrack].Clip = nil
@@ -842,7 +854,7 @@ func (g *game) poseGun(alpha float64) {
 	for i := range v.anim.Layers {
 		l := &v.anim.Layers[i]
 		v.times = append(v.times, l.Time)
-		l.Time = ahead(l.Clip, l.Time)
+		l.Advance(da)
 	}
 	v.skin = v.anim.Skin(v.skin)
 	v.anim.Time = t

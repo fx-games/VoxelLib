@@ -126,6 +126,11 @@ func CatmullRomVec(p0, p1, p2, p3 mgl32.Vec4, t float32) mgl32.Vec4 {
 // adds its values to the pose so far (translations and rotations add,
 // scales multiply). Its Time is advanced by the caller.
 //
+// Play is the layer's play type (TACZ runAnimation's playType), chosen by
+// whoever starts it, never the clip's own loop flag: LoopRepeat wraps Time
+// (Advance), LoopOnce is Done at the clip's end (PLAY_ONCE_STOP: the caller
+// drops it), LoopHold stays on the last frame (PLAY_ONCE_HOLD).
+//
 // A Blend layer may be in a transition (TACZ's runAnimation transition
 // time, see Run): while Time < 0 it shows From frozen at FromTime fading
 // into Clip's first frame, -Time of Fade seconds left.
@@ -133,25 +138,39 @@ type Layer struct {
 	Clip     *Clip // nil: off
 	Time     float32
 	Blend    bool
+	Play     Loop
 	From     *Clip
 	FromTime float32
 	Fade     float32
 }
 
-// Run starts clip c on a Blend layer with a transition of d seconds from
-// what the layer shows now (nil: nothing, so c fades in).
+// Run starts clip c with play type play on a Blend layer with a transition
+// of d seconds from what the layer shows now (nil: nothing, so c fades in).
 // ponytail: a transition started mid-transition fades from the clip being
 // faded to, not the blend shown.
-func (l *Layer) Run(c *Clip, d float32) {
-	*l = Layer{Clip: c, Blend: l.Blend, From: l.Clip, FromTime: max(l.Time, 0), Fade: d, Time: -d}
+func (l *Layer) Run(c *Clip, play Loop, d float32) {
+	*l = Layer{Clip: c, Blend: l.Blend, Play: play, From: l.Clip, FromTime: max(l.Time, 0), Fade: d, Time: -d}
 	if d <= 0 {
 		l.Time, l.From = 0, nil
 	}
 }
 
-// Done reports whether the layer is off or its clip has played once through.
+// Advance moves the layer's time on by dt, wrapping a LoopRepeat layer.
+func (l *Layer) Advance(dt float32) {
+	l.Time += dt
+	if c := l.Clip; c != nil && l.Play == LoopRepeat && c.Length > 0 && l.Time >= c.Length {
+		l.Time = float32(math.Mod(float64(l.Time), float64(c.Length)))
+	}
+}
+
+// Ended reports whether a non-repeating layer reached its clip's end.
+func (l *Layer) Ended() bool {
+	return l.Clip != nil && l.Play != LoopRepeat && l.Time >= l.Clip.Length
+}
+
+// Done reports whether the layer is off or a LoopOnce layer has played once through.
 func (l *Layer) Done() bool {
-	return l.Clip == nil || l.Clip.Loop != LoopRepeat && l.Time >= l.Clip.Length
+	return l.Clip == nil || l.Play == LoopOnce && l.Time >= l.Clip.Length
 }
 
 // Animator plays clips on a model and produces skinning matrices.

@@ -15,11 +15,26 @@ func TestLayerRunFade(t *testing.T) {
 	}
 	a := NewAnimator(m)
 	l := Layer{Blend: true, Clip: clip(2)}
-	l.Run(clip(4), 1)
+	l.Run(clip(4), LoopOnce, 1)
 	l.Time += 0.5
 	a.Layers = []Layer{l}
 	a.Skin(nil)
 	if got := a.poses[0].t[0]; got != 3 {
 		t.Fatalf("x = %v, want 3", got)
+	}
+}
+
+// A layer's play type, not its clip's loop flag, decides when it ends:
+// a looping clip run once is Done (TACZ PLAY_ONCE_STOP), a repeat wraps.
+func TestLayerPlayOverridesClipLoop(t *testing.T) {
+	once := Layer{Clip: &Clip{Length: 1, Loop: LoopRepeat}, Play: LoopOnce}
+	once.Advance(1.5)
+	if !once.Done() {
+		t.Fatal("LoopOnce layer of a looping clip not Done past its end")
+	}
+	rep := Layer{Clip: &Clip{Length: 1, Loop: LoopOnce}, Play: LoopRepeat}
+	rep.Advance(1.5)
+	if rep.Done() || rep.Time != 0.5 {
+		t.Fatalf("LoopRepeat layer: Done %v, Time %v; want false, 0.5", rep.Done(), rep.Time)
 	}
 }
