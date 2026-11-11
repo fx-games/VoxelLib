@@ -40,6 +40,7 @@ type Client struct {
 	OnHit    func(Hit)
 	OnText   func(string)
 	OnPlayer func(PlayerInfo)
+	OnFired  func(slot int) // another player's gun went off
 
 	net  *netcode.Client
 	dec  netcode.Decoder
@@ -122,6 +123,13 @@ func (c *Client) Stats() netcode.Stats { return c.net.Stats() }
 // SendSkin sets the local player's skin (png bytes) for everyone.
 func (c *Client) SendSkin(png []byte) { c.net.SendReliable(append([]byte{msgSkin}, png...)) }
 
+// SendHold tells the server which gun is in hand (a weapon.Gun ID, ""
+// for none); everyone sees it in PlayerInfo.Gun.
+func (c *Client) SendHold(gun string) { c.net.SendReliable(append([]byte{msgHold}, gun...)) }
+
+// SendShot fires a round of the held gun; the server deals the damage.
+func (c *Client) SendShot(s Shot) { c.net.SendReliable(s.encode()) }
+
 // SendEdit reports a block the local player changed. It is logged at once
 // so a column that loads later shows it, and the server passes it on.
 func (c *Client) SendEdit(e BlockEdit) {
@@ -178,6 +186,11 @@ func (c *Client) reliable(msg []byte) {
 		h := decodeHit(&r)
 		if r.err == nil && c.OnHit != nil {
 			c.OnHit(h)
+		}
+	case msgFired:
+		slot := int(r.u8())
+		if r.err == nil && slot < len(c.Info) && c.OnFired != nil {
+			c.OnFired(slot)
 		}
 	case msgText:
 		if c.OnText != nil {

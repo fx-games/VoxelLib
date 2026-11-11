@@ -15,6 +15,7 @@ import (
 	"github.com/memmaker/voxellib/netcode"
 	"github.com/memmaker/voxellib/projectile"
 	"github.com/memmaker/voxellib/voxel"
+	"github.com/memmaker/voxellib/weapon"
 )
 
 // Game rules.
@@ -58,7 +59,10 @@ type ServerConfig struct {
 	// Spawn, when set, picks where a player (re)spawns: feet position.
 	// Without it players spawn around the world spawn.
 	Spawn func(slot int, w *World) (x, y, z float64)
-	Logf  func(format string, args ...any)
+	// Guns are the guns players may hold (a TACZ pack's); shots with
+	// any other are ignored.
+	Guns []weapon.Gun
+	Logf func(format string, args ...any)
 }
 
 // Server is the authoritative simulation (Q3's server game): it runs every
@@ -80,6 +84,7 @@ type Server struct {
 	spawnTop float64
 	players  [4]*sPlayer
 	arrows   map[*projectile.Arrow]arrowMeta
+	guns     map[string]*weapon.Gun // cfg.Guns by ID
 	nextID   uint32
 	m        match
 
@@ -109,6 +114,7 @@ type sPlayer struct {
 	deaths  int
 	wins    int     // battle royale rounds won
 	team    int     // TeamRed, TeamBlue or 0
+	gun     string  // the held gun's ID, "" for none
 	out     bool    // out of the battle royale round: watching until the next
 	lag     float64 // smoothed ticks between the server's time and what the player saw
 
@@ -158,6 +164,10 @@ func StartServer(cfg ServerConfig) (*Server, error) {
 	}
 	s := &Server{cfg: cfg, edits: NewEditLog(), body: NewBody(), arrows: map[*projectile.Arrow]arrowMeta{},
 		time: TimeDay, calls: make(chan func()), stop: make(chan struct{}), done: make(chan struct{})}
+	s.guns = map[string]*weapon.Gun{}
+	for i := range cfg.Guns {
+		s.guns[cfg.Guns[i].ID] = &cfg.Guns[i]
+	}
 	s.m.interval = max(1, int(cfg.ZoneInterval*TickRate/time.Second))
 	s.m.shrinkTicks = max(1, int(cfg.ShrinkTime*TickRate/time.Second))
 	minY, height := Heights(cfg.Generator)
@@ -198,7 +208,7 @@ func (p *sPlayer) score() Score {
 }
 
 func (p *sPlayer) info() PlayerInfo {
-	return PlayerInfo{Slot: p.slot, Joined: true, Name: p.name, Skin: p.skin, Team: p.team}
+	return PlayerInfo{Slot: p.slot, Joined: true, Name: p.name, Skin: p.skin, Team: p.team, Gun: p.gun}
 }
 
 // Ranking is the players by kills, most first, then by fewest deaths.
@@ -497,6 +507,18 @@ func (s *Server) reliable(p *sPlayer, msg []byte) {
 	case msgSkin:
 		p.skin = append([]byte(nil), msg[1:]...)
 		s.broadcast(p.info().encode())
+	case msgHold:
+		id := string(msg[1:])
+		if id != "" && s.guns[id] == nil {
+			s.cfg.Logf("mp: %s holds unknown gun %q", p.name, id)
+			return
+		}
+		p.gun = id
+		s.broadcast(p.info().encode())
+	case msgShoot:
+		if sh := decodeShot(&r); r.err == nil {
+			s.shoot(p, sh)
+		}
 	case msgSetBlock:
 		e := decodeBlockEdit(&r)
 		if r.err != nil || s.cfg.Reg.Parse(e.State) == voxel.Air && e.State != s.cfg.Reg.StateString(voxel.Air) {
