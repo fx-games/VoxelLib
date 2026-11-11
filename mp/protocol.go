@@ -6,12 +6,13 @@ import (
 	"math"
 
 	"github.com/memmaker/voxellib/character"
+	"github.com/memmaker/voxellib/importer/tacz"
 )
 
 // Protocol is the netcode protocol id: "VLMP" plus a version byte. Bump the
 // version on any wire change; older peers are refused and stay invisible to
 // discovery.
-const Protocol = 0x564C4D00 | 6
+const Protocol = 0x564C4D00 | 7
 
 // DefaultPort is the server's UDP port.
 const DefaultPort = 28960
@@ -368,7 +369,7 @@ const (
 	msgSkin      = 1 // png bytes: the player's skin
 	msgSetBlock  = 2 // x, y, z i32, state name: a block the player broke or placed
 	msgRespawnMe = 3 // (unused: respawn is automatic)
-	msgHold      = 4 // gun ID ("": none): the gun in the player's hand
+	msgHold      = 4 // Hold: the gun in the player's hand
 	msgShoot     = 5 // Shot: a round of the held gun
 	msgMelee     = 6 // gun ID, yaw, pitch f32: the held gun's melee hit lands
 	// server → client
@@ -451,7 +452,7 @@ type PlayerInfo struct {
 	Name   string
 	Skin   []byte // png, nil for the default
 	Team   int    // TeamRed, TeamBlue or 0
-	Gun    string // the gun in hand (a weapon.Gun ID), "" for none
+	Held   Hold   // the gun in hand
 }
 
 func (p PlayerInfo) encode() []byte {
@@ -461,12 +462,49 @@ func (p PlayerInfo) encode() []byte {
 	b.str(p.Name)
 	b.bytes(p.Skin)
 	b.u8(uint8(p.Team))
-	b.str(p.Gun)
+	p.Held.encode(&b)
 	return b
 }
 
 func decodePlayerInfo(r *rbuf) PlayerInfo {
-	return PlayerInfo{Slot: int(r.u8()), Joined: r.u8()&1 != 0, Name: r.str(), Skin: r.bytes(), Team: int(r.u8()), Gun: r.str()}
+	p := PlayerInfo{Slot: int(r.u8()), Joined: r.u8()&1 != 0, Name: r.str(), Skin: r.bytes(), Team: int(r.u8())}
+	p.Held = decodeHold(r)
+	return p
+}
+
+// Hold is the gun in a player's hand with its attachments.
+type Hold struct {
+	Gun    string      // a weapon.Gun ID, "" for none
+	Choice tacz.Choice // the installed attachments (tacz.Pack.Gun)
+}
+
+// encode writes the gun and its filled slots in tacz.Slots order.
+func (h Hold) encode(b *wbuf) {
+	var set []tacz.Slot
+	for _, s := range tacz.Slots {
+		if h.Choice[s] != "" {
+			set = append(set, s)
+		}
+	}
+	b.str(h.Gun)
+	b.u8(uint8(len(set)))
+	for _, s := range set {
+		b.str(string(s))
+		b.str(h.Choice[s])
+	}
+}
+
+func decodeHold(r *rbuf) Hold {
+	h := Hold{Gun: r.str()}
+	n := int(r.u8())
+	if n > 0 {
+		h.Choice = tacz.Choice{}
+	}
+	for range n {
+		s := tacz.Slot(r.str())
+		h.Choice[s] = r.str()
+	}
+	return h
 }
 
 // Look is a direction as yaw and pitch (radians, the camera's).

@@ -123,9 +123,13 @@ func (c *Client) Stats() netcode.Stats { return c.net.Stats() }
 // SendSkin sets the local player's skin (png bytes) for everyone.
 func (c *Client) SendSkin(png []byte) { c.net.SendReliable(append([]byte{msgSkin}, png...)) }
 
-// SendHold tells the server which gun is in hand (a weapon.Gun ID, ""
-// for none); everyone sees it in PlayerInfo.Gun.
-func (c *Client) SendHold(gun string) { c.net.SendReliable(append([]byte{msgHold}, gun...)) }
+// SendHold tells the server which gun is in hand with its attachments;
+// everyone sees it in PlayerInfo.Held.
+func (c *Client) SendHold(h Hold) {
+	b := wbuf{msgHold}
+	h.encode(&b)
+	c.net.SendReliable(b)
+}
 
 // SendMelee lands the held gun's melee hit along look; the server deals the damage.
 func (c *Client) SendMelee(gun string, look Look) {

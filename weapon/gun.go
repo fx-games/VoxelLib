@@ -213,6 +213,29 @@ type Silence struct {
 	UseSilenceSound bool `json:"use_silence_sound"`
 }
 
+// DefaultFireSoundDistance is how far a shot is heard, in blocks
+// (GunConfig.DEFAULT_GUN_FIRE_SOUND_DISTANCE).
+const DefaultFireSoundDistance = 64
+
+// SoundDistance is how far the gun's shot is heard by the others, in blocks
+// (SilenceModifier: the default plus the muzzle's addend; 0 or less: unheard).
+func (g *Gun) SoundDistance() int {
+	if g.Silence == nil {
+		return DefaultFireSoundDistance
+	}
+	return DefaultFireSoundDistance + g.Silence.DistanceAddend
+}
+
+// ShotSound3P is the sound the others hear for a shot: silence_3p with a
+// muzzle that has use_silence_sound, else shoot_3p
+// (ModernKineticGunScriptAPI.shoot).
+func (g *Gun) ShotSound3P() GunSound {
+	if g.Silence != nil && g.Silence.UseSilenceSound {
+		return SoundSilence3P
+	}
+	return SoundShoot3P
+}
+
 // GunSound names a display sound (TACZ SoundManager's keys).
 type GunSound string
 

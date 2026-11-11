@@ -20,8 +20,8 @@ const GunRange = 256
 // ponytail: the client's ammo, fire rate and spread are trusted (a LAN
 // game); validate them here against the gun's spec if cheating matters.
 func (s *Server) shoot(p *sPlayer, sh Shot) {
-	gun := s.guns[sh.Gun]
-	if gun == nil || sh.Gun != p.gun || p.dead > 0 || len(sh.Pellets) > max(gun.Bullet.Pellets, 1) {
+	gun := p.gun
+	if gun == nil || sh.Gun != p.held.Gun || p.dead > 0 || len(sh.Pellets) > max(gun.Bullet.Pellets, 1) {
 		return
 	}
 	targets := s.targets(p, atomic.LoadUint32(&s.tick))
@@ -58,8 +58,8 @@ func (s *Server) shoot(p *sPlayer, sh Shot) {
 //
 // ponytail: the client's melee cooldown is trusted, like its fire rate.
 func (s *Server) melee(p *sPlayer, gun string, l Look) {
-	g := s.guns[gun]
-	if g == nil || g.Melee == nil || gun != p.gun || p.dead > 0 {
+	g := p.gun
+	if g == nil || g.Melee == nil || gun != p.held.Gun || p.dead > 0 {
 		return
 	}
 	m := g.Melee

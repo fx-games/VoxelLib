@@ -57,6 +57,7 @@ func (g *game) refit(slot tacz.Slot, att string) error {
 	st.Ammo = min(st.Ammo, v.spec.Mag)
 	g.gun = st
 	g.sounds.preload(&v.spec)
+	g.sendHold()
 	if att != "" {
 		g.refitSound(att, tacz.SoundInstall)
 	} else {

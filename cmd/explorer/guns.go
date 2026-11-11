@@ -229,7 +229,16 @@ func (g *game) gunView(id string) (*gunView, error) {
 	if v := g.gunViews[id]; v != nil {
 		return v, nil
 	}
-	c := g.gunChoice(id)
+	v, err := g.newGunView(id, g.gunChoice(id))
+	if err != nil {
+		return nil, err
+	}
+	g.gunViews[id] = v
+	return v, nil
+}
+
+// newGunView builds gun id's view with attachments c.
+func (g *game) newGunView(id string, c tacz.Choice) (*gunView, error) {
 	spec, err := g.gunPack.Gun(id, c)
 	if err != nil {
 		return nil, err
@@ -263,16 +272,19 @@ func (g *game) gunView(id string) (*gunView, error) {
 	v.addMagBone = m.Bone(additionalMag)
 	v.addMag = m.Descendants(v.addMagBone)
 	v.hands = [2]int{m.Bone("lefthand_pos"), m.Bone("righthand_pos")}
-	g.gunViews[id] = v
 	return v, nil
 }
 
-// dropGunView frees gun id's view (its models; the shared lens disc stays).
+// dropGunView frees gun id's view.
 func (g *game) dropGunView(id string) {
-	v := g.gunViews[id]
-	if v == nil {
-		return
+	if v := g.gunViews[id]; v != nil {
+		g.freeGunView(v)
+		delete(g.gunViews, id)
 	}
+}
+
+// freeGunView frees a view's models (the shared lens disc stays).
+func (g *game) freeGunView(v *gunView) {
 	g.Models.Remove(v.handle)
 	if l := v.lens; l != nil {
 		for _, h := range append([]int{l.ring, l.body}, l.divisions...) {
@@ -286,7 +298,6 @@ func (g *game) dropGunView(id string) {
 			}
 		}
 	}
-	delete(g.gunViews, id)
 }
 
 // cameraAt is the view matrix that puts the camera at bone b's bind pose.
