@@ -66,3 +66,14 @@ func TestViewBobRideDead(t *testing.T) {
 		t.Fatalf("dead bobYaw %v", p.bobYaw)
 	}
 }
+
+func TestCamEyeSmooths(t *testing.T) {
+	p := &Player{Character: character.New(0, 64, 0), a: &App{}}
+	p.eyeTick()
+	p.EyeHeight = character.PlayerCrouchEyeHeight
+	p.eyeTick()
+	want := character.PlayerEyeHeight + (character.PlayerCrouchEyeHeight-character.PlayerEyeHeight)*camEyeLerp
+	if math.Abs(p.CamEye(1)-want) > 1e-12 || p.CamEye(0) != character.PlayerEyeHeight {
+		t.Fatalf("cam eye %v..%v, want %v", p.CamEye(0), p.CamEye(1), want)
+	}
+}

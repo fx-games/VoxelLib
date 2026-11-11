@@ -6,7 +6,6 @@ import (
 	"slices"
 
 	"github.com/go-gl/mathgl/mgl32"
-	"github.com/memmaker/voxellib/app"
 	"github.com/memmaker/voxellib/character"
 	"github.com/memmaker/voxellib/mp"
 	"github.com/memmaker/voxellib/projectile"
@@ -72,7 +71,7 @@ func (g *game) drawTracers(cam *render.Camera, alpha float64) {
 	}
 	var list []tracer
 	p := g.Player
-	me := [3]float64{p.PrevX + (p.X-p.PrevX)*alpha, p.PrevY + (p.Y-p.PrevY)*alpha + character.PlayerEye(g.Input.Down(app.ActSneak)), p.PrevZ + (p.Z-p.PrevZ)*alpha}
+	me := [3]float64{p.PrevX + (p.X-p.PrevX)*alpha, p.PrevY + (p.Y-p.PrevY)*alpha + g.Player.EyeHeight, p.PrevZ + (p.Z-p.PrevZ)*alpha}
 	if g.net == nil {
 		for _, b := range g.bullets {
 			if b.Tracer {

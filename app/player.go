@@ -96,6 +96,9 @@ type Player struct {
 	EntityReach, EntityBorder float64
 	// Spawn point, for Respawn.
 	SpawnX, SpawnY, SpawnZ float64
+	// The camera's smoothed eye height (Camera.eyeHeight, eyeHeightOld).
+	camEye, camEyePrev float64
+	camEyeSet          bool
 	// Frozen: the chunk under the player isn't ready; the player waits.
 	Frozen bool
 	// Dead is set by the game while the player is dead (health 0): no
@@ -209,7 +212,9 @@ func (p *Player) tick() {
 		return
 	}
 	sneakEdge := p.OnGround && ci.Sneak // moveEntity's flag, from the last tick's onGround
+	p.EyeHeight = character.PlayerEye(ci.Sneak)
 	p.Tick(a.Terrain, ci)
+	p.eyeTick()
 	p.bobTick(a.Cam.Yaw, a.Cam.Pitch, sneakEdge, false)
 	if !p.Flying && !sneakEdge { // canTriggerWalking, moveEntity's flag
 		x, y, z := int(math.Floor(p.X)), int(math.Floor(p.Y-0.20000000298023224)), int(math.Floor(p.Z))
@@ -226,6 +231,27 @@ func (p *Player) tick() {
 		}
 	}
 }
+
+// eyeTick is Camera.tick's eye height: it moves half the way to the
+// entity's eye each tick (eyeHeightOld keeps the last for interpolation).
+func (p *Player) eyeTick() {
+	if !p.camEyeSet {
+		p.camEye, p.camEyeSet = p.EyeHeight, true
+	}
+	p.camEyePrev = p.camEye
+	p.camEye += (p.EyeHeight - p.camEye) * camEyeLerp
+}
+
+// CamEye is the camera's eye height above the feet at alpha.
+func (p *Player) CamEye(alpha float64) float64 {
+	if !p.camEyeSet {
+		return p.EyeHeight
+	}
+	return p.camEyePrev + (p.camEye-p.camEyePrev)*alpha
+}
+
+// camEyeLerp is Camera.tick's per-tick approach to the eye height.
+const camEyeLerp = 0.5
 
 // Sneaking reports whether the sneak action is held.
 func (p *Player) Sneaking() bool { return p.a.Input.Down(ActSneak) }

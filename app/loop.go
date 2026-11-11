@@ -232,7 +232,7 @@ func (a *App) loop() {
 		// refresh): that wait is not CPU cost.
 		render.BeginFrame(fw, fh, 0.75, 0.85, 1)
 		acquire := time.Since(tAcq)
-		a.Cam.X, a.Cam.Y, a.Cam.Z = ix, iy+p.EyeHeight, iz
+		a.Cam.X, a.Cam.Y, a.Cam.Z = ix, iy+p.CamEye(alpha), iz
 		a.Cam.Bob = p.ViewBob(alpha)
 		a.Cam.Aspect = float64(fw) / float64(max(fh, 1))
 		opt := &a.Eng.Renderer.Opt
