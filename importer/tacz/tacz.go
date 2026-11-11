@@ -181,6 +181,8 @@ func (p *Pack) loadGun(file string, lang map[string]string, sound func(string) s
 	}
 	var disp struct {
 		Model, Texture, Slot, Animation string
+		Hud                             string
+		HudEmpty                        string  `json:"hud_empty"`
 		Default                         string  `json:"use_default_animation"`
 		Zoom                            float32 `json:"iron_zoom"`
 		Sounds                          map[string]json.RawMessage
@@ -232,6 +234,10 @@ func (p *Pack) loadGun(file string, lang map[string]string, sound func(string) s
 	spec.Shoot, spec.Dry = sound(shoot), sound("tacz:dry_fire")
 	spec.Zoom = disp.Zoom
 	spec.Model, spec.Icon = asset("geo_models", disp.Model)+".json", asset("textures", disp.Slot)+".png"
+	spec.Hud = asset("textures", disp.Hud) + ".png"
+	if disp.HudEmpty != "" {
+		spec.HudEmpty = asset("textures", disp.HudEmpty) + ".png"
+	}
 	p.Guns = append(p.Guns, spec)
 	p.guns[id] = files
 	return nil

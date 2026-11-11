@@ -20,7 +20,7 @@ is the gun cycle (draw, idle, shoot, bolt, reload magazine/tube/inventory, inspe
 - [x] weapon: Gun spec + GunState cycle, DamageAt, Spread, Recoil (TACZ spline-delta camera recoil; tests)
 - [x] explorer: first-person model with clips, keys V (next gun), R, H, B; -gun, -press
 - [x] arms at lefthand_pos/righthand_pos as TACZ draws them (renderHand pose, player skin, mp.Body.FirstPersonArms)
-- [ ] explorer: hotbar slot icons, HUD ammo count
+- [x] explorer: TACZ GunHudOverlay (hud sprite, ammo, stock, fire mode icon; assets/tacz/hud from the mod); no hotbar in the explorer, so slot icons stay unused
 - [x] explorer: hitscan pellets with spread vs creatures (headshot multiplier, falloff), recoil kick, ADS zoom
 - [x] audio: pack sounds (cues per clip, shoot, dry); 172 cues name sounds missing from the pack
 - [x] runtime bone visibility: bullet_in_mag/bullet_in_barrel/bullet_chain with ammo, additional_magazine while keyed

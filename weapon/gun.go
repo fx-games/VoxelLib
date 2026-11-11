@@ -135,12 +135,15 @@ type Gun struct {
 		Sneak float32 `json:"sneak"`
 		Aim   float32 `json:"aim"`
 	} `json:"inaccuracy"`
-	Zoom  float32          `json:"zoom"`  // iron sight magnification
-	Model string           `json:"model"` // model file in the pack
-	Icon  string           `json:"icon"`  // slot sprite file in the pack
-	Shoot string           `json:"shoot"` // sound events
-	Dry   string           `json:"dry"`
-	Cues  map[string][]Cue `json:"cues"` // clip name → sounds
+	Zoom  float32 `json:"zoom"`  // iron sight magnification
+	Model string  `json:"model"` // model file in the pack
+	Icon  string  `json:"icon"`  // slot sprite file in the pack
+	// HUD sprites (39x13) beside the ammo count; HudEmpty "" tints Hud red when empty.
+	Hud      string           `json:"hud"`
+	HudEmpty string           `json:"hud_empty"`
+	Shoot    string           `json:"shoot"` // sound events
+	Dry      string           `json:"dry"`
+	Cues     map[string][]Cue `json:"cues"` // clip name → sounds
 }
 
 type Ammo struct {

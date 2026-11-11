@@ -37,7 +37,10 @@ func (g *game) setupUI() {
 	}
 	u.HUD.State.Hidden = true // the explorer draws its own HUD; this one shows chat
 	g.ui = u
-	u.Top = g.drawMatch
+	u.Top = func(ctx *ui.Context) {
+		g.drawMatch(ctx)
+		g.drawGunHUD(ctx)
+	}
 	g.Hooks.PauseScreen = func() app.Screen { return g.ui.Screen(g.pauseMenu()) }
 }
 

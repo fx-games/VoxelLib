@@ -25,6 +25,7 @@ import (
 	"github.com/memmaker/voxellib/model"
 	"github.com/memmaker/voxellib/mp"
 	"github.com/memmaker/voxellib/projectile"
+	"github.com/memmaker/voxellib/ui"
 	"github.com/memmaker/voxellib/voxel"
 	"github.com/memmaker/voxellib/voxel/collide"
 	"github.com/memmaker/voxellib/voxel/render"
@@ -60,9 +61,10 @@ type gunsState struct {
 	gunSel   int // index into gunPack.Guns; -1 = no gun in hand
 	gun      firearm.GunState
 	arms     gunArms
-	gunViews map[string]*gunView // by gun ID, loaded on first use
-	stock    map[string]int      // ammo ID → rounds carried
-	aim      int                 // ticks of aiming, 0..aimTicks
+	hudTex   map[string]ui.Texture // HUD sprites by pack/hud path
+	gunViews map[string]*gunView   // by gun ID, loaded on first use
+	stock    map[string]int        // ammo ID → rounds carried
+	aim      int                   // ticks of aiming, 0..aimTicks
 	aimPrev  int
 	gunRand  *rand.Rand
 	// gunRecoil is the last shot's camera curve, recoilTicks ticks old;
