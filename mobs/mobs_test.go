@@ -5,6 +5,7 @@ import (
 	"math/rand"
 	"testing"
 
+	"github.com/memmaker/voxellib/character"
 	"github.com/memmaker/voxellib/voxel/collide"
 )
 
@@ -63,5 +64,31 @@ func TestHostileChasesAndStrikes(t *testing.T) {
 	// After reaching the goal: one strike per attack + cooldown (16 ticks).
 	if want := (200 - firstStrike) / 16; strikes < want-1 || strikes > want+1 {
 		t.Errorf("%d strikes, want about %d", strikes, want)
+	}
+}
+
+// A push decays as LivingEntity.travel's friction: ·0.546 a tick on the
+// ground, ·0.91 airborne, not blended toward the walk speed.
+func TestKnockbackDecaysByFriction(t *testing.T) {
+	m := New(Walker, 0, 0, 0, 0.6, 1.8)
+	m.locomote(floor, 0) // settle: lands, then OnGround
+	m.locomote(floor, 0)
+	m.VX = 0.4
+	m.locomote(floor, 0)
+	if want := 0.4 * character.GroundDrag; math.Abs(m.VX-want) > 1e-9 {
+		t.Fatalf("ground: VX %.4f, want %.4f", m.VX, want)
+	}
+	m.VX, m.VY, m.OnGround = 0.4, 0.4, false
+	m.locomote(floor, 0)
+	if want := 0.4 * character.AirFriction; math.Abs(m.VX-want) > 1e-9 {
+		t.Fatalf("air: VX %.4f, want %.4f", m.VX, want)
+	}
+	// Walking still settles at speed.
+	m = New(Walker, 0, 0, 0, 0.6, 1.8)
+	for range 60 {
+		m.locomote(floor, 0.1)
+	}
+	if v := math.Hypot(m.VX, m.VZ) / character.GroundDrag; math.Abs(v-0.1) > 1e-3 {
+		t.Fatalf("walk: %.4f a tick, want 0.1", v)
 	}
 }

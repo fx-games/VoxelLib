@@ -55,7 +55,7 @@ func (c *Character) groundSlip(w World) (f2, k float64) {
 		return 0, 0
 	}
 	f := sl * 0.91
-	return float64(f), float64(0.16277136/(f*f*f)) / (0.16277136 / (groundDrag * groundDrag * groundDrag))
+	return float64(f), float64(0.16277136/(f*f*f)) / (0.16277136 / (GroundDrag * GroundDrag * GroundDrag))
 }
 
 // MoveModel selects how the character accelerates on foot.
@@ -196,12 +196,12 @@ const PlayerMoveSpeed = 0.1
 // Movement constants (blocks/tick), from the reference's LivingEntity.travel.
 const (
 	gravity      = 0.08
-	airDrag      = 0.98 // vertical, per tick
-	groundDrag   = 0.546
-	airFriction  = 0.91
+	airDrag      = 0.98  // vertical, per tick
+	GroundDrag   = 0.546 // horizontal, per tick on default ground (0.6·0.91)
+	AirFriction  = 0.91  // horizontal, per tick airborne
 	walkAccel    = PlayerMoveSpeed
 	sprintAccel  = 0.13
-	airAccel     = 0.02
+	AirAccel     = 0.02 // jumpMovementFactor: acceleration at full input airborne
 	sprintAirAcc = 0.026
 	flyAccel     = 0.05
 	jumpVelocity = 0.42
@@ -261,8 +261,8 @@ func (c *Character) Tick(w World, in Input) {
 		}
 		c.move(w, in)
 		c.VY *= 0.6
-		c.VX *= airFriction
-		c.VZ *= airFriction
+		c.VX *= AirFriction
+		c.VZ *= AirFriction
 		if c.OnGround && !c.NoClip {
 			c.Flying = false
 		}
@@ -335,7 +335,7 @@ func (c *Character) Tick(w World, in Input) {
 			c.quakeTick(w, in)
 			return
 		}
-		a, drag := airAccel, airFriction
+		a, drag := AirAccel, AirFriction
 		if sprint {
 			a = sprintAirAcc
 		}
@@ -343,7 +343,7 @@ func (c *Character) Tick(w World, in Input) {
 			a = c.AirAccel
 		}
 		if c.OnGround {
-			a, drag = walkAccel, groundDrag
+			a, drag = walkAccel, GroundDrag
 			if sprint {
 				a = sprintAccel
 			}

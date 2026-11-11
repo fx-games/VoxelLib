@@ -11,6 +11,7 @@ import (
 	"math"
 	"math/rand"
 
+	"github.com/memmaker/voxellib/character"
 	"github.com/memmaker/voxellib/voxel/collide"
 )
 
@@ -205,20 +206,37 @@ func (m *Mob) hostile() float64 {
 // locomote moves a walker at speed along its yaw, with gravity, collisions
 // and hops up single blocks, and picks the movement state.
 func (m *Mob) locomote(w collide.Solids, speed float64) {
-	// Speed is a target velocity; ground friction makes it snappy.
-	fx, fz := math.Sin(m.Yaw)*speed, -math.Cos(m.Yaw)*speed
-	m.VX += (fx - m.VX) * 0.5
-	m.VZ += (fz - m.VZ) * 0.5
+	// LivingEntity.travel: the walk input is an acceleration, friction from
+	// the ground under the feet before the move (0.6·0.91) or the air
+	// (0.91) applies after it. speed is the steady walking speed, so on the
+	// ground it accelerates by speed·(1-drag); airborne by AirAccel.
+	drag, accel := character.AirFriction, 0.0
+	switch {
+	case m.OnGround:
+		drag, accel = character.GroundDrag, speed*(1-character.GroundDrag)
+	case speed > 0:
+		accel = character.AirAccel
+	}
+	m.VX += math.Sin(m.Yaw) * accel
+	m.VZ -= math.Cos(m.Yaw) * accel
 	// Move, then apply gravity, as the reference does: the jump's full 0.42
 	// counts on its first tick, so the arc peaks at ~1.25 blocks.
 	mx, my, mz := collide.Move(w, m.Box(), m.VX, m.VY, m.VZ)
 	blocked := (mx != m.VX || mz != m.VZ) && speed > 0
+	if mx != m.VX { // a horizontal collision stops that axis (Entity.move)
+		m.VX = 0
+	}
+	if mz != m.VZ {
+		m.VZ = 0
+	}
 	m.OnGround = m.VY < 0 && my > m.VY
 	if my != m.VY {
 		m.VY = 0
 	}
 	m.X, m.Y, m.Z = m.X+mx, m.Y+my, m.Z+mz
 	m.VY = (m.VY - 0.08) * 0.98
+	m.VX *= drag
+	m.VZ *= drag
 	if blocked && m.OnGround {
 		m.VY = 0.42 // hop up one block
 		m.set(Jump)
