@@ -55,6 +55,7 @@ type Anim struct {
 	Gun                   bool
 	Hold                  weapon.ThirdPersonHold
 	Aim                   weapon.AimProgress
+	Age                   float64 // ticks lived: the idle arm bob (each side's own clock)
 }
 
 // Walk advances the walk cycle by one tick in which the body moved dx, dz
@@ -63,6 +64,7 @@ func (a *Anim) Walk(dx, dz float64) {
 	d := math.Min(1, math.Hypot(dx, dz)*4)
 	a.LimbAmount += (d - a.LimbAmount) * 0.4
 	a.LimbSwing += a.LimbAmount
+	a.Age++
 }
 
 // Advance runs the walk cycle over a frame of ticks (fractional) in which
@@ -75,13 +77,14 @@ func (a *Anim) Advance(dx, dz, ticks float64) {
 	d := math.Min(1, math.Hypot(dx, dz)/ticks*4)
 	a.LimbAmount += (d - a.LimbAmount) * math.Min(1, 0.4*ticks)
 	a.LimbSwing += a.LimbAmount * ticks
+	a.Age += ticks
 }
 
 // Lerp blends two animation states (the previous and current tick).
 func (a Anim) Lerp(b Anim, t float64) Anim {
 	return Anim{Pitch: a.Pitch + (b.Pitch-a.Pitch)*t, LimbSwing: a.LimbSwing + (b.LimbSwing-a.LimbSwing)*t,
 		LimbAmount: a.LimbAmount + (b.LimbAmount-a.LimbAmount)*t, Sneak: b.Sneak, Bare: b.Bare, Gun: b.Gun, Hold: b.Hold,
-		Aim: a.Aim + (b.Aim-a.Aim)*weapon.AimProgress(t)}
+		Aim: a.Aim + (b.Aim-a.Aim)*weapon.AimProgress(t), Age: a.Age + (b.Age-a.Age)*t}
 }
 
 // Body is the player model shared by drawing and hit tests, so an arrow hits
@@ -137,6 +140,7 @@ func (b *Body) Skin(a Anim, dst []mgl32.Mat4) []mgl32.Mat4 {
 		pp[partLeftArm].Rot = [3]float32{-math.Pi/2 + head, 0.1 + 0.4, 0}
 	}
 	b.sneak(a)
+	bobArms(pp, a.Age)
 	if a.Gun {
 		b.gunHold(a, head)
 	}
@@ -183,13 +187,7 @@ func (b *Body) ZombieSkin(a Anim, aggressive bool, attack, age float64, dst []mg
 	x := -math.Pi/raise + f*1.2 - f1*0.4
 	pp[partRightArm].Rot = [3]float32{x, -(0.1 - f*0.6), 0}
 	pp[partLeftArm].Rot = [3]float32{x, 0.1 - f*0.6, 0}
-	// AnimationUtils.bobArms
-	bz := float32(math.Cos(age*0.09))*0.05 + 0.05
-	bx := float32(math.Sin(age*0.067)) * 0.05
-	pp[partRightArm].Rot[2] += bz
-	pp[partLeftArm].Rot[2] -= bz
-	pp[partRightArm].Rot[0] += bx
-	pp[partLeftArm].Rot[0] -= bx
+	bobArms(pp, age)
 	b.sneak(a)
 	return b.pose.Skin(b.Model, b.Geo, dst)
 }
@@ -208,7 +206,22 @@ func (b *Body) legs(a Anim) ([]cuboid.PartPose, float32) {
 	return pp, head
 }
 
-// sneak crouches the posed body when a sneaks.
+// bobArms is AnimationUtils.bobModelPart on both arms, age in ticks.
+func bobArms(pp []cuboid.PartPose, age float64) {
+	bz := float32(math.Cos(age*0.09))*0.05 + 0.05
+	bx := float32(math.Sin(age*0.067)) * 0.05
+	pp[partRightArm].Rot[2] += bz
+	pp[partLeftArm].Rot[2] -= bz
+	pp[partRightArm].Rot[0] += bx
+	pp[partLeftArm].Rot[0] -= bx
+}
+
+// sneakRenderOffset is PlayerRenderer.getRenderOffset while crouching
+// (0.125 blocks down), in model pixels (y down).
+const sneakRenderOffset = 0.125 * 16
+
+// sneak crouches the posed body when a sneaks: 1.20 HumanoidModel.setupAnim
+// plus the render offset, applied to the root parts so hit tests see it too.
 func (b *Body) sneak(a Anim) {
 	if !a.Sneak {
 		return
@@ -217,9 +230,16 @@ func (b *Body) sneak(a Anim) {
 	pp[partBody].Rot[0] = 0.5
 	pp[partRightArm].Rot[0] += 0.4
 	pp[partLeftArm].Rot[0] += 0.4
-	pp[partRightLeg].Pivot[1], pp[partRightLeg].Pivot[2] = 9, 4
-	pp[partLeftLeg].Pivot[1], pp[partLeftLeg].Pivot[2] = 9, 4
-	pp[partHead].Pivot[1] = 1
+	pp[partRightLeg].Pivot[1], pp[partRightLeg].Pivot[2] = 12.2, 4
+	pp[partLeftLeg].Pivot[1], pp[partLeftLeg].Pivot[2] = 12.2, 4
+	pp[partHead].Pivot[1] = 4.2
+	pp[partBody].Pivot[1] = 3.2
+	pp[partRightArm].Pivot[1], pp[partLeftArm].Pivot[1] = 5.2, 5.2
+	for i := range pp {
+		if b.Geo.Parts[i].Parent < 0 {
+			pp[i].Pivot[1] += sneakRenderOffset
+		}
+	}
 }
 
 func cos(x float32) float32 { return float32(math.Cos(float64(x))) }
