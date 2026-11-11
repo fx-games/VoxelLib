@@ -25,12 +25,14 @@ import (
 
 	"github.com/go-gl/mathgl/mgl32"
 	"github.com/memmaker/voxellib/app"
+	"github.com/memmaker/voxellib/audio"
 	"github.com/memmaker/voxellib/character"
 	"github.com/memmaker/voxellib/mp"
 	"github.com/memmaker/voxellib/netcode"
 	"github.com/memmaker/voxellib/voxel"
 	"github.com/memmaker/voxellib/voxel/engine"
 	"github.com/memmaker/voxellib/voxel/render"
+	firearm "github.com/memmaker/voxellib/weapon"
 )
 
 // skin is a player skin to choose from.
@@ -105,7 +107,9 @@ type netGame struct {
 	mu      sync.Mutex // the client's callbacks (tick) vs drawing
 	skinNew [4][]byte  // skins to upload (nil entry: none pending)
 	skinSet [4]bool
-	lines   []string // kill feed lines to show
+	lines   []string  // kill feed lines to show
+	held    [4]string // by slot: the gun in hand (PlayerInfo.Gun)
+	fired   []int     // slots whose gun went off, to show and play
 
 	anims      [4]remoteAnim
 	lastFrame  time.Time
@@ -113,7 +117,7 @@ type netGame struct {
 	arrows     []mp.ArrowPose
 	insts      []render.ModelInstance
 	bows       []render.ModelInstance
-	mats       []mgl32.Mat4
+	mats       []mgl32.Mat4 // per bows entry
 	skins      [][]mgl32.Mat4
 }
 
@@ -139,7 +143,11 @@ func (g *game) hostGame(name string, seed int64, gen string, mode mp.Mode) error
 	if seed == 0 {
 		seed = time.Now().UnixNano() & 0xFFFFFFF
 	}
-	srv, err := mp.StartServer(mp.ServerConfig{Name: name, Seed: seed, Generator: gen, Mode: mode, Reg: voxel.NewRegistry()})
+	var guns []firearm.Gun
+	if g.gunPack != nil {
+		guns = g.gunPack.Guns
+	}
+	srv, err := mp.StartServer(mp.ServerConfig{Name: name, Seed: seed, Generator: gen, Mode: mode, Reg: voxel.NewRegistry(), Guns: guns})
 	if err != nil {
 		return err
 	}
@@ -245,6 +253,12 @@ func (g *game) netStart() {
 	cl.OnPlayer = func(p mp.PlayerInfo) {
 		n.mu.Lock()
 		n.skinNew[p.Slot], n.skinSet[p.Slot] = p.Skin, true
+		n.held[p.Slot] = p.Gun // "" when the slot was freed
+		n.mu.Unlock()
+	}
+	cl.OnFired = func(slot int) {
+		n.mu.Lock()
+		n.fired = append(n.fired, slot)
 		n.mu.Unlock()
 	}
 	cl.OnText = func(s string) {
@@ -311,6 +325,7 @@ func (g *game) tickNet() {
 	g.Player.Dead = own.Dead
 	if own.Dead && !n.dead {
 		n.mu.Lock()
+		g.drawRemoteMuzzles()
 		if r := n.cl.Round(); r.Mode == mp.BattleRoyale && r.Phase == mp.PhasePlaying {
 			n.lines = append(n.lines, "§cYou are out - watching until the next round")
 		} else {
@@ -349,9 +364,12 @@ func (g *game) netFrame() {
 		}
 		n.skinNew[slot], n.skinSet[slot] = nil, false
 	}
-	lines := n.lines
-	n.lines = nil
+	lines, fired, held := n.lines, n.fired, n.held
+	n.lines, n.fired = nil, nil
 	n.mu.Unlock()
+	for _, slot := range fired {
+		g.remoteShot(slot, held[slot])
+	}
 	if g.ui != nil {
 		for _, l := range lines {
 			g.ui.HUD.Message(l)
@@ -389,7 +407,14 @@ func (g *game) drawNet(alpha float64) {
 		sky, blk := g.Light(v.X, v.Y+1, v.Z)
 		n.insts = append(n.insts, render.ModelInstance{Model: n.bodyModel, X: v.X, Y: v.Y, Z: v.Z, Yaw: v.Yaw,
 			Skin: n.skins[i], Texture: tex, Sky: sky, Block: blk})
-		if g.bowModel >= 0 {
+		n.mu.Lock()
+		held := n.held[v.Slot]
+		n.mu.Unlock()
+		if gv := g.remoteGun(held); gv != nil {
+			n.mats = append(n.mats, remoteGunPose(v, gv))
+			x, y, z := remoteGunOrigin(v)
+			n.bows = append(n.bows, render.ModelInstance{Model: gv.handle, X: x, Y: y, Z: z, Skin: gv.rest, Sky: sky, Block: blk})
+		} else if g.bowModel >= 0 {
 			// The crossbow at the right hand, aimed along the look, its
 			// cut-out on edge (rolled from the first-person hold, which
 			// lies flat) so it shows its profile from the side.
@@ -431,6 +456,78 @@ func (g *game) drawNet(alpha float64) {
 	}
 	g.Models.Draw(&g.Cam, g.modelInsts)
 }
+
+// sendHold tells the server which gun is in hand (none: the crossbow).
+func (g *game) sendHold() {
+	if g.net == nil {
+		return
+	}
+	id := ""
+	if g.gunOn() {
+		id = g.gun.Gun.ID
+	}
+	g.net.cl.SendHold(id)
+}
+
+// remoteGun is the model of another player's held gun (nil: none, or not
+// in this pack).
+func (g *game) remoteGun(id string) *gunView {
+	spec := g.gunSpec(id)
+	if spec == nil {
+		return nil
+	}
+	v, err := g.gunView(spec)
+	if err != nil {
+		log.Printf("gun %s: %v", id, err)
+		return nil
+	}
+	return v
+}
+
+// Another player's gun is the first-person model as its holder sees it
+// (camera at idle_view), turned to their look, lowered from their eye
+// toward the hand and scaled down: the first-person model is drawn with
+// the hand's field of view, its muzzle over 2 blocks out.
+const (
+	remoteGunDrop  = 0.35
+	remoteGunScale = 0.4
+)
+
+func remoteGunOrigin(v mp.PlayerView) (x, y, z float64) {
+	return v.X, v.Y + character.PlayerEyeHeight - remoteGunDrop, v.Z
+}
+
+// remoteGunPose maps gun model space to the world, less the translation
+// to remoteGunOrigin: the view turned to the look (render.Camera.Forward).
+func remoteGunPose(v mp.PlayerView, gv *gunView) mgl32.Mat4 {
+	return mgl32.HomogRotate3DY(float32(-v.Yaw)).Mul4(mgl32.HomogRotate3DX(float32(v.Pitch))).
+		Mul4(mgl32.Scale3D(remoteGunScale, remoteGunScale, remoteGunScale)).Mul4(gv.idle)
+}
+
+// remoteShot plays another player's shot: the gun's sound where they stand
+// and its muzzle flash at their gun's muzzle.
+func (g *game) remoteShot(slot int, gun string) {
+	spec, gv := g.gunSpec(gun), g.remoteGun(gun)
+	if spec == nil || gv == nil {
+		return
+	}
+	for _, v := range g.net.cl.Players() {
+		if v.Slot != slot || v.Dead {
+			continue
+		}
+		x, y, z := remoteGunOrigin(v)
+		g.sounds.play(spec.Shoot, audio.At(x, y, z, remoteShotVolume, 1))
+		m := mgl32.Translate3D(float32(x), float32(y), float32(z)).Mul4(remoteGunPose(v, gv))
+		if b := gv.m.Bone(muzzleBone); b >= 0 {
+			m = m.Mul4(gv.rest[b]).Mul4(gv.m.Bones[b].InvBind.Inv()).Mul4(mgl32.HomogRotate3DZ(math.Pi)) // see drawMuzzle
+		}
+		f := frameOf(m)
+		g.startMuzzle(spec, &f)
+	}
+}
+
+// remoteShotVolume reaches 16 × 4 = 64 blocks (audio.Params.Volume).
+const remoteShotVolume = 4
 
 // sendEdit reports a block the player changed at pos.
 func (g *game) sendEdit(pos voxel.BlockPos) {

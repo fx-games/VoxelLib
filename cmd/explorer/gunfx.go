@@ -20,6 +20,7 @@ type gunFX struct {
 	effects  map[string]*particles.Effect // by definition file
 	sheets   map[string]uint8             // by texture file
 	emitters []*particles.Emitter
+	remote   []*particles.Emitter // other players' shots, placed in the world
 	world    particles.System
 	sprites  []particles.Particle
 	last     time.Time
@@ -29,8 +30,10 @@ type gunFX struct {
 // muzzleBone is TACZ's MUZZLE_FLASH_ORIGIN_NODE.
 const muzzleBone = "muzzle_flash"
 
-// startMuzzle starts a shot's emitters (none when the flash is scaled to 0, as TACZ).
-func (g *game) startMuzzle(spec *firearm.Gun) {
+// startMuzzle starts a shot's emitters (none when the flash is scaled to 0,
+// as TACZ): at the held gun's muzzle, or for another player's shot (at not
+// nil) fixed at that world frame.
+func (g *game) startMuzzle(spec *firearm.Gun, at *particles.Frame) {
 	m := spec.Muzzle
 	if m == nil || m.Scale <= 0 {
 		return
@@ -43,8 +46,15 @@ func (g *game) startMuzzle(spec *firearm.Gun) {
 			continue
 		}
 		fx, sheet := g.muzzleEffect(l.file)
-		if fx != nil {
-			g.fx.emitters = append(g.fx.emitters, fx.Start(l.vars, g.gunRand, sheet))
+		if fx == nil {
+			continue
+		}
+		em := fx.Start(l.vars, g.gunRand, sheet)
+		if at != nil {
+			em.Local, em.World = *at, *at
+			g.fx.remote = append(g.fx.remote, em)
+		} else {
+			g.fx.emitters = append(g.fx.emitters, em)
 		}
 	}
 }
@@ -125,6 +135,30 @@ func (g *game) drawMuzzle(v *gunView, view mgl32.Mat4) []particles.Particle {
 	f.world.Tick(dt, nil)
 	f.rend.Draw(&g.Cam, f.world.P, 1, g.Light)
 	return f.sprites
+}
+
+// drawRemoteMuzzles ticks and draws other players' muzzle flashes, and the
+// world smoke when no gun in hand does (drawMuzzle).
+func (g *game) drawRemoteMuzzles() {
+	f := &g.fx
+	if f.rend == nil {
+		return
+	}
+	var sprites []particles.Particle
+	live := f.remote[:0]
+	for _, em := range f.remote {
+		em.Tick(float64(f.dt), &f.world)
+		if !em.Done() {
+			live = append(live, em)
+			sprites = em.Sprites(sprites)
+		}
+	}
+	f.remote = live
+	f.rend.Draw(&g.Cam, sprites, 1, g.Light)
+	if !g.gunOn() {
+		f.world.Tick(float64(f.dt), nil)
+		f.rend.Draw(&g.Cam, f.world.P, 1, g.Light)
+	}
 }
 
 func frameOf(m mgl32.Mat4) particles.Frame {

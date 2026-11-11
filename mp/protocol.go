@@ -11,7 +11,7 @@ import (
 // Protocol is the netcode protocol id: "VLMP" plus a version byte. Bump the
 // version on any wire change; older peers are refused and stay invisible to
 // discovery.
-const Protocol = 0x564C4D00 | 4
+const Protocol = 0x564C4D00 | 5
 
 // DefaultPort is the server's UDP port.
 const DefaultPort = 28960
@@ -368,12 +368,15 @@ const (
 	msgSkin      = 1 // png bytes: the player's skin
 	msgSetBlock  = 2 // x, y, z i32, state name: a block the player broke or placed
 	msgRespawnMe = 3 // (unused: respawn is automatic)
+	msgHold      = 4 // gun ID ("": none): the gun in the player's hand
+	msgShoot     = 5 // Shot: a round of the held gun
 	// server → client
 	msgPlayer = 10 // slot u8, joined u8, name, skin png: a player joined, changed skin or left
 	msgBlock  = 11 // x, y, z i32, state name: a block changed
 	msgHit    = 12 // attacker u8, victim u8, damage u8, flags (head, killed)
 	msgText   = 13 // a line for the chat/kill feed
 	msgScore  = 14 // slot u8, kills u16, deaths u16: a player's score changed
+	msgFired  = 15 // slot u8: that player's gun went off (not sent to the shooter)
 )
 
 // BlockEdit is one block change.
@@ -445,6 +448,7 @@ type PlayerInfo struct {
 	Name   string
 	Skin   []byte // png, nil for the default
 	Team   int    // TeamRed, TeamBlue or 0
+	Gun    string // the gun in hand (a weapon.Gun ID), "" for none
 }
 
 func (p PlayerInfo) encode() []byte {
@@ -454,9 +458,46 @@ func (p PlayerInfo) encode() []byte {
 	b.str(p.Name)
 	b.bytes(p.Skin)
 	b.u8(uint8(p.Team))
+	b.str(p.Gun)
 	return b
 }
 
 func decodePlayerInfo(r *rbuf) PlayerInfo {
-	return PlayerInfo{Slot: int(r.u8()), Joined: r.u8()&1 != 0, Name: r.str(), Skin: r.bytes(), Team: int(r.u8())}
+	return PlayerInfo{Slot: int(r.u8()), Joined: r.u8()&1 != 0, Name: r.str(), Skin: r.bytes(), Team: int(r.u8()), Gun: r.str()}
+}
+
+// Look is a direction as yaw and pitch (radians, the camera's).
+type Look struct{ Yaw, Pitch float64 }
+
+// Dir is the look's unit vector (render.Camera.Forward).
+func (l Look) Dir() [3]float64 {
+	return [3]float64{math.Sin(l.Yaw) * math.Cos(l.Pitch), math.Sin(l.Pitch), -math.Cos(l.Yaw) * math.Cos(l.Pitch)}
+}
+
+// Shot is one round of the shooter's held gun: each pellet's direction
+// from their eye (the client rolls the spread). The server casts the rays
+// against the players as the shooter saw them and deals the damage.
+type Shot struct {
+	Gun     string // the held gun's ID
+	Pellets []Look
+}
+
+func (s Shot) encode() []byte {
+	b := wbuf{msgShoot}
+	b.str(s.Gun)
+	b.u8(uint8(min(len(s.Pellets), math.MaxUint8)))
+	for _, l := range s.Pellets[:min(len(s.Pellets), math.MaxUint8)] {
+		b.f32(l.Yaw)
+		b.f32(l.Pitch)
+	}
+	return b
+}
+
+func decodeShot(r *rbuf) Shot {
+	s := Shot{Gun: r.str()}
+	n := int(r.u8())
+	for range n {
+		s.Pellets = append(s.Pellets, Look{Yaw: r.f32(), Pitch: r.f32()})
+	}
+	return s
 }

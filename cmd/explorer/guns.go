@@ -14,7 +14,6 @@ import (
 	"log"
 	"math"
 	"math/rand"
-	"os"
 	"sync"
 
 	"github.com/go-gl/mathgl/mgl32"
@@ -33,12 +32,8 @@ import (
 )
 
 const (
-	gunPackDir     = "assets/tacz/tacz_default_gun"
-	gunDefaultsDir = "assets/tacz/defaults"
 	// creatureHealth is the hit points of every creature (a vanilla zombie's).
 	creatureHealth = 20
-	// gunRange is how far a bullet reaches, in blocks.
-	gunRange = 256
 	// startRounds is the stock of each ammo type a new game starts with.
 	startRounds = 300
 	// gunKnockback is the push (blocks/tick) a creature gets from a hit.
@@ -94,11 +89,12 @@ type gunView struct {
 	addMagBone int
 	hands      [2]int // lefthand_pos, righthand_pos (-1: no arm)
 	skin       []mgl32.Mat4
-	times      []float32 // layer times saved while posing between ticks
-	lens       *lensView // nil: no scope
-	overheated bool      // the over_heat clip has run for the current lock
-	move       movement  // the movement track's state
-	camBone    int       // "camera" (-1: none)
+	times      []float32    // layer times saved while posing between ticks
+	lens       *lensView    // nil: no scope
+	rest       []mgl32.Mat4 // static_idle at its start: the gun in other players' hands
+	overheated bool         // the over_heat clip has run for the current lock
+	move       movement     // the movement track's state
+	camBone    int          // "camera" (-1: none)
 }
 
 // gunArms draws the player's arms at a gun's hand bones as TACZ does
@@ -113,7 +109,7 @@ type gunArms struct {
 // setupGuns loads the gun pack and gives the player a stock of every ammo type.
 func (g *game) setupGuns() {
 	g.gunSel, g.heatScale, g.lensDisc = -1, 0.25, -1 // heatScale: HeatBarOverlay.heatScale
-	p, err := tacz.Load(os.DirFS(gunPackDir), os.DirFS(gunDefaultsDir))
+	p, err := tacz.LoadDefault()
 	if err != nil {
 		log.Printf("guns disabled: %v", err)
 		return
@@ -152,10 +148,24 @@ func (g *game) selectGunID(id string) {
 	log.Printf("no gun %q", id)
 }
 
+// gunSpec is the pack's gun with this ID (nil: none).
+func (g *game) gunSpec(id string) *firearm.Gun {
+	if g.gunPack == nil {
+		return nil
+	}
+	for i := range g.gunPack.Guns {
+		if g.gunPack.Guns[i].ID == id {
+			return &g.gunPack.Guns[i]
+		}
+	}
+	return nil
+}
+
 // selectGun takes out gun i of the pack (out of range: no gun).
 func (g *game) selectGun(i int) {
 	if i < 0 || i >= len(g.gunPack.Guns) {
 		g.gunSel = -1
+		g.sendHold()
 		return
 	}
 	spec := &g.gunPack.Guns[i]
@@ -163,6 +173,7 @@ func (g *game) selectGun(i int) {
 	if err != nil {
 		log.Printf("gun %s: %v", spec.ID, err)
 		g.gunSel = -1
+		g.sendHold()
 		return
 	}
 	g.equipped = false // the crossbow goes away
@@ -173,6 +184,7 @@ func (g *game) selectGun(i int) {
 		}
 		return 0
 	}}
+	g.sendHold()
 	g.sounds.preload(spec)
 	g.gunEvents(g.gun.Draw())
 }
@@ -199,6 +211,9 @@ func (g *game) gunView(spec *firearm.Gun) (*gunView, error) {
 	v.anim.Play(firearm.ClipIdle, true)
 	v.anim.Layers = []model.Layer{mainTrack: {}, movementTrack: {Blend: true}}
 	v.camBone = m.Bone(cameraBone)
+	rest := model.NewAnimator(m)
+	rest.Play(firearm.ClipIdle, true)
+	v.rest = rest.Skin(nil)
 	world := m.BindWorld()
 	v.idle, v.iron = cameraAt(world, m.Bone("idle_view")), cameraAt(world, m.Bone(spec.Sight))
 	for _, n := range ammoBones {
@@ -256,7 +271,7 @@ func (g *game) tickGun() {
 	g.cueT += 1.0 / app.TickRate
 	cues := g.gun.Gun.Cues[g.cueClip]
 	for ; g.cueNext < len(cues) && cues[g.cueNext].T <= g.cueT; g.cueNext++ {
-		g.sounds.play(cues[g.cueNext].Sound, 1)
+		g.sounds.play(cues[g.cueNext].Sound, audio.UI(1, 1))
 	}
 }
 
@@ -270,7 +285,7 @@ func (g *game) gunEvents(ev []firearm.GunEvent) {
 			g.shoot()
 		}
 		if e.Dry {
-			g.sounds.play(g.gun.Gun.Dry, 1)
+			g.sounds.play(g.gun.Gun.Dry, audio.UI(1, 1))
 		}
 	}
 }
@@ -398,17 +413,13 @@ func (g *game) aimStep() float32 {
 // shoot fires one round: its pellets, the sound and the camera kick.
 func (g *game) shoot() {
 	spec := g.gun.Gun
-	g.sounds.play(spec.Shoot, 1)
+	g.sounds.play(spec.Shoot, audio.UI(1, 1))
 	aim := g.aimFrac(1)
 	p := g.Player
 	moving := math.Hypot(p.VX, p.VZ) > 0.01
 	spread := float64(spec.Spread(aim >= 1, moving, g.Input.Down(app.ActSneak)) * g.gun.SpreadFactor())
 	ex, ey, ez := p.Eye()
-	targets := g.creatureTargets()
-	w := g.Eng.World
-	boxes := func(x, y, z int, id voxel.StateID, buf []collide.AABB) []collide.AABB {
-		return w.StateBoxes(id, x, y, z, buf)
-	}
+	shot := mp.Shot{Gun: spec.ID}
 	for range spec.Bullet.Pellets {
 		yaw, pitch := g.Cam.Yaw, g.Cam.Pitch
 		// a uniform direction in the cone: angle from the axis and around it
@@ -416,8 +427,31 @@ func (g *game) shoot() {
 		a := g.gunRand.Float64() * 2 * math.Pi
 		yaw += r * math.Cos(a) / math.Max(math.Cos(pitch), 0.1)
 		pitch += r * math.Sin(a)
-		d := [3]float64{-math.Sin(yaw) * math.Cos(pitch), math.Sin(pitch), -math.Cos(yaw) * math.Cos(pitch)}
-		h, ok := projectile.Hitscan(w, boxes, [3]float64{ex, ey, ez}, d, gunRange, targets)
+		shot.Pellets = append(shot.Pellets, mp.Look{Yaw: yaw, Pitch: pitch})
+	}
+	if g.net != nil {
+		g.net.cl.SendShot(shot) // the server deals the damage
+	} else {
+		g.hitscan(shot, [3]float64{ex, ey, ez})
+	}
+	g.startMuzzle(spec, nil)
+	g.ejectShells(spec, g.gunViews[spec.ID])
+	g.gunRecoil = spec.NewRecoil(g.gunRand, firearm.AimRecoil(aim, spec.Zoom))
+	g.recoilTicks, g.recoilP, g.recoilY = 0, 0, 0
+}
+
+// hitscan casts a shot's pellets from eye against the creatures (single
+// player; in multiplayer the server does it against the players).
+func (g *game) hitscan(shot mp.Shot, eye [3]float64) {
+	spec := g.gun.Gun
+	targets := g.creatureTargets()
+	w := g.Eng.World
+	boxes := func(x, y, z int, id voxel.StateID, buf []collide.AABB) []collide.AABB {
+		return w.StateBoxes(id, x, y, z, buf)
+	}
+	for _, l := range shot.Pellets {
+		d := l.Dir()
+		h, ok := projectile.Hitscan(w, boxes, eye, d, mp.GunRange, targets)
 		if !ok || h.Block {
 			continue
 		}
@@ -431,10 +465,6 @@ func (g *game) shoot() {
 		}
 		g.hitCreature(c, dmg, d)
 	}
-	g.startMuzzle(spec)
-	g.ejectShells(spec, g.gunViews[spec.ID])
-	g.gunRecoil = spec.NewRecoil(g.gunRand, firearm.AimRecoil(aim, spec.Zoom))
-	g.recoilTicks, g.recoilP, g.recoilY = 0, 0, 0
 }
 
 // applyRecoil turns the camera by the recoil curve's change since the last
@@ -640,7 +670,7 @@ func (s *gunSounds) load(ev string) {
 	s.mu.Unlock()
 }
 
-func (s *gunSounds) play(ev string, vol float32) {
+func (s *gunSounds) play(ev string, p audio.Params) {
 	if s.mixer == nil || ev == "" {
 		return
 	}
@@ -648,6 +678,6 @@ func (s *gunSounds) play(ev string, vol float32) {
 	snd := s.buf[ev]
 	s.mu.Unlock()
 	if snd != nil {
-		s.mixer.Play(snd, audio.UI(vol, 1))
+		s.mixer.Play(snd, p)
 	}
 }

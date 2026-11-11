@@ -1,0 +1,80 @@
+package mp
+
+import (
+	"math"
+	"slices"
+	"testing"
+	"time"
+
+	"github.com/memmaker/voxellib/netcode"
+	"github.com/memmaker/voxellib/voxel"
+	"github.com/memmaker/voxellib/weapon"
+)
+
+func TestShotEncoding(t *testing.T) {
+	in := Shot{Gun: "tacz:m870", Pellets: []Look{{0.5, -0.25}, {-3, 1}}}
+	msg := in.encode()
+	if msg[0] != msgShoot {
+		t.Fatalf("type %d", msg[0])
+	}
+	r := rbuf{p: msg[1:]}
+	out := decodeShot(&r)
+	if r.err != nil || out.Gun != in.Gun || !slices.Equal(out.Pellets, in.Pellets) {
+		t.Fatalf("got %+v (%v), want %+v", out, r.err, in)
+	}
+	info := PlayerInfo{Slot: 2, Joined: true, Name: "a", Team: TeamRed, Gun: "tacz:ak47"}
+	r = rbuf{p: info.encode()[1:]}
+	if got := decodePlayerInfo(&r); r.err != nil || got.Gun != info.Gun || got.Team != info.Team {
+		t.Fatalf("got %+v (%v)", got, r.err)
+	}
+}
+
+// TestGunShot: the shooter's held gun shows in everyone's PlayerInfo, a
+// shot deals the gun's damage once per pellet on the server, and the
+// others hear it go off.
+func TestGunShot(t *testing.T) {
+	gun := weapon.Gun{ID: "test:shotgun"}
+	gun.Bullet.Damage, gun.Bullet.Pellets = 4, 2
+	s, err := StartServer(ServerConfig{Addr: "127.0.0.1:0", Name: "test", Seed: 7, Generator: "flat",
+		Reg: voxel.NewRegistry(), Logf: t.Logf, Guns: []weapon.Gun{gun},
+		Spawn: func(slot int, w *World) (float64, float64, float64) {
+			return 0.5, float64(w.Surface(0, 0)), 0.5 - float64(slot)*10 // slot 1 stands 10 blocks north
+		}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(s.Close)
+	a := newBot(t, s.Addr().String(), "A", netcode.Config{})
+	b := newBot(t, s.Addr().String(), "B", netcode.Config{})
+	fired := 0
+	b.c.OnFired = func(slot int) {
+		if slot == a.c.Slot() {
+			fired++
+		}
+	}
+	a.c.SendHold(gun.ID)
+	run(t, 3*time.Second, nil, func(int) bool {
+		a.step(0, 0, false)
+		b.step(0, 0, false)
+		return a.c.Ready() && b.c.Ready() && b.c.Info[a.c.Slot()].Gun == gun.ID
+	})
+	s.call(func() { s.players[b.c.Slot()].protect = 0 })
+	ex, ey, ez := a.ch.Eye()
+	pitch := math.Atan2(b.ch.Y+1-ey, math.Hypot(b.ch.X-ex, b.ch.Z-ez)) // the chest
+	a.c.SendShot(Shot{Gun: gun.ID, Pellets: []Look{{0, pitch}, {0, pitch}}})
+	run(t, 3*time.Second, nil, func(int) bool {
+		a.step(0, 0, false)
+		b.step(0, 0, false)
+		return len(b.hits) >= 2 && fired > 0
+	})
+	for _, h := range b.hits {
+		if h.Damage != 4 || h.Attacker != a.c.Slot() || h.Victim != b.c.Slot() || h.Head {
+			t.Fatalf("hit %+v", h)
+		}
+	}
+	var health int
+	s.call(func() { health = s.players[b.c.Slot()].health })
+	if health != MaxHealth-8 || len(b.hits) != 2 {
+		t.Fatalf("health %d after %d hits", health, len(b.hits))
+	}
+}

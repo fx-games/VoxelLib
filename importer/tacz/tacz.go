@@ -12,6 +12,7 @@ import (
 	"image/png"
 	"io/fs"
 	"math"
+	"os"
 	"path"
 	"slices"
 	"sort"
@@ -46,6 +47,15 @@ type gunFiles struct {
 	shell                        shellFiles            // the display's own casing, if any
 	texture, animation, defaults string
 }
+
+// The committed gun pack and default animations, relative to the repo root.
+const (
+	PackDir     = "assets/tacz/tacz_default_gun"
+	DefaultsDir = "assets/tacz/defaults"
+)
+
+// LoadDefault loads the committed gun pack (PackDir, DefaultsDir).
+func LoadDefault() (*Pack, error) { return Load(os.DirFS(PackDir), os.DirFS(DefaultsDir)) }
 
 // Load reads the gun pack at pack (a tacz_default_gun directory) and the
 // default rifle/pistol animations at defaults (<kind>_default.animation.json).
@@ -346,7 +356,7 @@ const (
 	gunIronZoom = 1.2
 	// minigunStateMachine is the script that spins the barrel.
 	minigunStateMachine = "tacz:minigun_state_machine"
-	gunModelFOV = 70
+	gunModelFOV         = 70
 )
 
 // orDefault is *v, or def when the key was absent.

@@ -87,12 +87,14 @@ func (s *Server) rewind(p *sPlayer, tick uint32, lag float64) (*rewound, bool) {
 	t0 := uint32(math.Floor(t))
 	f := t - float64(t0)
 	a, b := p.hist[t0%historyTicks], p.hist[(t0+1)%historyTicks]
+	// Ticks start at 1: an empty history entry (tick 0) is no pose.
+	has := func(q pose, t uint32) bool { return q.tick == t && t != 0 }
 	switch {
-	case a.tick != t0 && b.tick == t0+1:
+	case !has(a, t0) && has(b, t0+1):
 		a, f = b, 0
-	case a.tick != t0:
+	case !has(a, t0):
 		a, f = p.hist[tick%historyTicks], 0 // no history (just joined): now
-	case b.tick != t0+1:
+	case !has(b, t0+1):
 		b = a
 	}
 	if !a.alive || !b.alive {
@@ -108,6 +110,21 @@ func lerpAngle(a, b, f float64) float64 {
 	return a + d*f
 }
 
+// targets are p's enemies as p saw them at tick (lag compensated). The
+// dead and the protected have no body: shots pass through them.
+func (s *Server) targets(p *sPlayer, tick uint32) []projectile.Target {
+	var targets []projectile.Target
+	for _, o := range s.players {
+		if o == nil || !enemies(p, o) || o.dead > 0 || o.protect > 0 {
+			continue
+		}
+		if r, ok := s.rewind(o, tick, p.lag); ok {
+			targets = append(targets, r)
+		}
+	}
+	return targets
+}
+
 // tickArrows flies each shooter's arrows against the other players as that
 // shooter saw them.
 func (s *Server) tickArrows(tick uint32) {
@@ -115,17 +132,7 @@ func (s *Server) tickArrows(tick uint32) {
 		if p == nil {
 			continue
 		}
-		var targets []projectile.Target
-		for _, o := range s.players {
-			// The dead and the protected have no body for arrows: they
-			// fly through.
-			if o == nil || !enemies(p, o) || o.dead > 0 || o.protect > 0 {
-				continue
-			}
-			if r, ok := s.rewind(o, tick, p.lag); ok {
-				targets = append(targets, r)
-			}
-		}
+		targets := s.targets(p, tick)
 		shooter := p
 		p.arrows.Hit = func(a *projectile.Arrow, t projectile.Target) {
 			if r, ok := t.(*rewound); ok {
@@ -170,12 +177,17 @@ func (s *Server) hit(shooter, victim *sPlayer, a *projectile.Arrow) {
 	if h.Head {
 		h.Damage = HeadDamage
 	}
+	s.damage(h, a.VX, a.VZ)
+}
+
+// damage deals a hit (arrow or bullet) to a live, unprotected victim and
+// knocks them back along dx,dz, like an arrow's knockback in the reference.
+func (s *Server) damage(h Hit, dx, dz float64) {
+	shooter, victim := s.players[h.Attacker], s.players[h.Victim]
 	victim.health -= h.Damage
-	// Knock the victim back along the arrow's flight, like an arrow's
-	// knockback in the reference.
-	if l := math.Hypot(a.VX, a.VZ); l > 0 {
-		victim.ch.VX += a.VX / l * 0.4
-		victim.ch.VZ += a.VZ / l * 0.4
+	if l := math.Hypot(dx, dz); l > 0 {
+		victim.ch.VX += dx / l * 0.4
+		victim.ch.VZ += dz / l * 0.4
 		victim.ch.VY = math.Max(victim.ch.VY, 0.3)
 	}
 	if victim.health <= 0 {
