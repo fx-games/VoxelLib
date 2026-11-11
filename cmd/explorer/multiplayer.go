@@ -266,6 +266,7 @@ func (g *game) netStart() {
 	}
 	n.defTex = g.Models.AddTexture(plainSkin())
 	cl.SendSkin(g.skins[g.skinIdx].png)
+	g.sendHold() // the crossbow, or an empty hand without one
 	cl.OnBlock = func(e mp.BlockEdit) {
 		reg := g.Eng.World.Reg
 		if id := reg.Parse(e.State); g.Eng.Block(e.X, e.Y, e.Z) != id {
@@ -433,7 +434,7 @@ func (g *game) netPose(alpha float64) {
 		}
 		ra.Advance(v.X-ra.x, v.Z-ra.z, n.frameTicks)
 		ra.x, ra.z = v.X, v.Z
-		ra.Pitch, ra.Sneak, ra.Gun, ra.Aim = v.Pitch, v.Sneak, held.Gun != "", v.Aim
+		ra.Pitch, ra.Sneak, ra.Gun, ra.Aim, ra.Bare = v.Pitch, v.Sneak, held.Gun != "", v.Aim, held.Bare
 		if gv != nil {
 			ra.Hold = gv.spec.ThirdPersonHold
 		}
@@ -481,7 +482,7 @@ func (g *game) netPose(alpha float64) {
 					n.bows = append(n.bows, render.ModelInstance{Model: h, X: float64(t[0]), Y: float64(t[1]), Z: float64(t[2]), Skin: skin, Sky: sky, Block: blk})
 				}
 			}
-		} else if g.bowModel >= 0 {
+		} else if g.bowModel >= 0 && !held.Bare {
 			// The crossbow at the right hand, aimed along the look, its
 			// cut-out on edge (rolled from the first-person hold, which
 			// lies flat) so it shows its profile from the side.
@@ -526,12 +527,12 @@ func (g *game) drawNet(cam *render.Camera) {
 	}
 }
 
-// sendHold tells the server which gun is in hand (none: the crossbow).
+// sendHold tells the server what is in hand: the gun, else the crossbow or nothing.
 func (g *game) sendHold() {
 	if g.net == nil {
 		return
 	}
-	var h mp.Hold
+	h := mp.Hold{Bare: !g.bowReady()}
 	if g.gunOn() {
 		h = mp.Hold{Gun: g.gun.Gun.ID, Choice: g.gunChoice(g.gun.Gun.ID), Mode: g.gun.FireMode()}
 	}
@@ -545,7 +546,7 @@ func (g *game) sendNextHold(i int) {
 	if g.net == nil {
 		return
 	}
-	var h mp.Hold
+	h := mp.Hold{Bare: !g.bowReady()}
 	if g.gunPack != nil && i >= 0 && i < len(g.gunPack.Guns) {
 		spec := &g.gunPack.Guns[i]
 		mode, ok := g.modes[spec.ID]

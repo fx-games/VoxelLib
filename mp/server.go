@@ -639,7 +639,7 @@ func (s *Server) runCmd(p *sPlayer, c Cmd) {
 	p.ch.Tick(s.world, in)
 	p.anim.Walk(p.ch.X-x0, p.ch.Z-z0)
 	p.anim.Pitch, p.anim.Sneak = c.Pitch, in.Sneak
-	if c.Buttons&BtnAttack != 0 && p.reload == 0 {
+	if c.Buttons&BtnAttack != 0 && p.reload == 0 && p.held.Gun == "" && !p.held.Bare { // the crossbow in hand
 		ex, ey, ez := p.ch.Eye()
 		a := p.arrows.Shoot(ex, ey-0.1, ez, c.Yaw, c.Pitch, projectile.Speed)
 		p.shots++
@@ -662,5 +662,5 @@ func (s *Server) tickAim(p *sPlayer) {
 		p.aim = p.aim.Tick(p.flags&GunAiming != 0, p.gun.Aim, time.Second/TickRate)
 		p.anim.Hold = p.gun.ThirdPersonHold
 	}
-	p.anim.Gun, p.anim.Aim = p.gun != nil, p.aim
+	p.anim.Gun, p.anim.Aim, p.anim.Bare = p.gun != nil, p.aim, p.held.Bare
 }

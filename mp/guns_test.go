@@ -34,6 +34,14 @@ func TestShotEncoding(t *testing.T) {
 		len(got.Held.Choice.Attachments) != 2 || got.Held.Choice.Adapters[tacz.SlotGrip] != "tacz:riser" {
 		t.Fatalf("got %+v (%v)", got, r.err)
 	}
+	r = rbuf{p: PlayerInfo{Slot: 1, Joined: true, Held: Hold{Bare: true}}.encode()[1:]}
+	if got := decodePlayerInfo(&r); r.err != nil || !got.Held.Bare {
+		t.Fatalf("bare hand: got %+v (%v)", got, r.err)
+	}
+	v, ok := decodePlayerView(PlayerView{Slot: 1, Empty: true}.encode())
+	if !ok || !v.Empty {
+		t.Fatalf("empty gun: got %+v", v)
+	}
 }
 
 // TestHoldChoice: a held gun's attachments reach the server's resolver and

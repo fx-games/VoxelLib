@@ -91,7 +91,10 @@ func (g *game) setupCrossbow(p *bbmodel.Pack) {
 
 // crossbowOn reports whether the crossbow is in hand (one weapon at a
 // time: a drawn gun puts it away).
-func (g *game) crossbowOn() bool { return g.equipped && g.bowModel >= 0 && !g.gunOn() }
+func (g *game) crossbowOn() bool { return g.bowReady() && !g.gunOn() }
+
+// bowReady reports whether the crossbow is taken out (in hand unless a gun is).
+func (g *game) bowReady() bool { return g.equipped && g.bowModel >= 0 }
 
 // toggleCrossbow (C) puts the crossbow away or takes it out.
 func (g *game) toggleCrossbow() {

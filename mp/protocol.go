@@ -492,11 +492,13 @@ func decodePlayerInfo(r *rbuf) PlayerInfo {
 	return p
 }
 
-// Hold is the gun in a player's hand with its attachments and fire mode.
+// Hold is what a player has in hand: a gun with its attachments and fire
+// mode, else the crossbow, or nothing (Bare).
 type Hold struct {
 	Gun    string          // a weapon.Gun ID, "" for none
 	Choice tacz.Choice     // the installed attachments (tacz.Pack.Gun)
 	Mode   weapon.FireMode // the selected fire mode (tacz.Pack.Gun: fire_mode_adjust)
+	Bare   bool            // no gun and the crossbow put away: an empty hand
 }
 
 // encode writes the gun, its fire mode and its filled slots (adapter,
@@ -510,6 +512,7 @@ func (h Hold) encode(b *wbuf) {
 	}
 	b.str(h.Gun)
 	b.u8(uint8(h.Mode))
+	b.u8(flag(h.Bare, 1))
 	b.u8(uint8(len(set)))
 	for _, s := range set {
 		b.str(string(s))
@@ -520,6 +523,7 @@ func (h Hold) encode(b *wbuf) {
 
 func decodeHold(r *rbuf) Hold {
 	h := Hold{Gun: r.str(), Mode: weapon.FireMode(r.u8())}
+	h.Bare = r.u8()&1 != 0
 	for range int(r.u8()) {
 		s := tacz.Slot(r.str())
 		if ad := r.str(); ad != "" {
