@@ -587,3 +587,29 @@ func (g *game) sendEdit(pos voxel.BlockPos) {
 
 func (g *game) blockBroken(pos voxel.BlockPos, _ voxel.StateID) { g.sendEdit(pos) }
 func (g *game) blockPlaced(pos voxel.BlockPos, _ voxel.StateID) { g.sendEdit(pos) }
+
+// watchChestHeight is where the -watch camera looks at a player (blocks
+// above the feet).
+const watchChestHeight = 1.2
+
+// watchCam is the -watch debug camera: it views the first other player
+// from the set angle and distance at chest height, and the hand is not
+// drawn while it does.
+func (g *game) watchCam() {
+	g.watching = false
+	w := g.opt.watch
+	if w == nil {
+		return
+	}
+	views := g.net.cl.Players()
+	if len(views) == 0 {
+		return
+	}
+	v := views[0]
+	a := v.Yaw + w[0]
+	tx, ty, tz := v.X, v.Y+watchChestHeight, v.Z
+	g.Cam.X, g.Cam.Y, g.Cam.Z = tx+math.Sin(a)*w[1], ty, tz-math.Cos(a)*w[1]
+	g.Cam.Yaw, g.Cam.Pitch = math.Atan2(tx-g.Cam.X, -(tz-g.Cam.Z)), 0
+	g.Cam.Bob = mgl32.Mat4{} // no view bobbing
+	g.watching = true
+}

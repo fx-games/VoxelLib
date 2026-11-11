@@ -67,6 +67,9 @@ type options struct {
 	// fullZoom magnifies the whole screen while aiming (TACZ; cheaper)
 	// instead of only inside a scope's lens (a second world render).
 	fullZoom bool
+	// watch is the debug camera on another player (-watch): the angle
+	// (radians from their facing, clockwise from above) and distance.
+	watch *[2]float64
 }
 
 // attachAdapterPrefix marks a slot adapter in -attach (adapter.scope=ID).
@@ -104,6 +107,7 @@ func main() {
 	flag.StringVar(&o.hold, "hold", "sword_01", "item held at start")
 	flag.StringVar(&o.press, "press", "", "debug: actions held down from the start, comma separated (e.g. use,attack: aim and fire)")
 	flag.BoolVar(&o.fullZoom, "full-zoom", false, "aiming magnifies the whole screen as TACZ does, instead of a second render inside scope lenses (for slower machines)")
+	watch := flag.String("watch", "", "debug: in multiplayer, view the first other player from angle,distance (degrees from their facing, blocks) instead of your eyes")
 	flag.StringVar(&o.gun, "gun", "", "gun (a TACZ gun ID, e.g. ak47) in hand at start")
 	flag.StringVar(&o.attach, "attach", "", "debug: attachments installed on the -gun in order, slot=ID comma separated (e.g. scope=tacz:scope_acog_ta31; an empty ID removes one); adapter.slot=ID selects a slot adapter")
 	flag.StringVar(&cfg.Debug.Edits, "edits", "", "debug: 'dx,dy,dz,block;...' edits relative to the player, applied once terrain is ready")
@@ -144,6 +148,14 @@ func main() {
 		var p [3]float64
 		fmt.Sscanf(*startPos, "%f,%f,%f", &p[0], &p[1], &p[2])
 		cfg.Start = &p
+	}
+	if *watch != "" {
+		var w [2]float64
+		if _, err := fmt.Sscanf(*watch, "%f,%f", &w[0], &w[1]); err != nil {
+			log.Fatalf("-watch %q: %v", *watch, err)
+		}
+		w[0] = w[0] * math.Pi / 180
+		o.watch = &w
 	}
 	if *look != "" {
 		var yd, pd float64
@@ -259,10 +271,12 @@ func main() {
 // game is the explorer's state on top of the app shell.
 type game struct {
 	*app.App
-	opt     options
-	hotbar  []voxel.StateID
-	signs   *signtext.Renderer
-	torches torchFX
+	opt options
+	// watching: the -watch camera views another player this frame
+	watching bool
+	hotbar   []voxel.StateID
+	signs    *signtext.Renderer
+	torches  torchFX
 
 	itemsState
 	creaturesState
@@ -437,6 +451,7 @@ func (g *game) render(alpha float64, _ *render.Options) {
 	if g.net != nil {
 		g.netFrame()
 		g.netPose(alpha)
+		g.watchCam()
 	}
 	g.fxFrame()
 }
@@ -459,6 +474,7 @@ func (g *game) drawWorld(cam *render.Camera, alpha float64) {
 // drawHand draws the held item in first person (Hooks.DrawHand).
 func (g *game) drawHand(alpha float64) {
 	switch {
+	case g.watching:
 	case g.gunOn():
 		g.drawGunHand(alpha)
 	case g.crossbowOn():
