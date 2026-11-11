@@ -25,6 +25,10 @@ type Bullet struct {
 	Pierce         int        // targets it can pass through, at least 1
 	Tracer         bool
 	Gone           bool
+	// Yaw, Pitch are the model's heading (radians, atan2(x, z) and up),
+	// eased toward the velocity each tick (lerpRotation); PrevYaw,
+	// PrevPitch the last tick's (yRotO, xRotO), for drawing between ticks.
+	Yaw, Pitch, PrevYaw, PrevPitch float64
 	// Gun is the shooter's spec when fired: damage, falloff, head shot,
 	// knockback. Nil on a client (a bullet drawn from its spawn).
 	Gun *weapon.Gun
@@ -66,7 +70,41 @@ func NewBullet(at, dir [3]float64, g *weapon.Gun, inaccuracy float64, tracer boo
 	for i := range 3 {
 		b.Vel[i] = n[i] * speed
 	}
+	b.Face()
 	return b
+}
+
+// rotationEase is Projectile.lerpRotation's step toward the velocity's heading.
+const rotationEase = 0.2
+
+// heading is the yaw and pitch of v (EntityKineticBullet.tick, shoot).
+func heading(v [3]float64) (yaw, pitch float64) {
+	return math.Atan2(v[0], v[2]), math.Atan2(v[1], math.Hypot(v[0], v[2]))
+}
+
+// Face turns a new bullet to its velocity, this tick and the last (shoot,
+// or the spawn packet's rotation on a client).
+func (b *Bullet) Face() {
+	b.Yaw, b.Pitch = heading(b.Vel)
+	b.PrevYaw, b.PrevPitch = b.Yaw, b.Pitch
+}
+
+// lerpRotation is Projectile.lerpRotation: a step of rotationEase from a
+// toward b the short way round.
+func lerpRotation(a, b float64) float64 {
+	for b-a < -math.Pi {
+		a -= 2 * math.Pi
+	}
+	for b-a >= math.Pi {
+		a += 2 * math.Pi
+	}
+	return a + (b-a)*rotationEase
+}
+
+// LerpRotation is the heading between ticks (the renderer's Mth.lerp of
+// yRotO..yRot and xRotO..xRot).
+func (b *Bullet) LerpRotation(alpha float64) (yaw, pitch float64) {
+	return b.PrevYaw + (b.Yaw-b.PrevYaw)*alpha, b.PrevPitch + (b.Pitch-b.PrevPitch)*alpha
 }
 
 // BulletSpawn is where a shooter's bullet starts: halfway between the
@@ -173,6 +211,11 @@ func (b *Bullet) Tick(w BulletWorld, c *BulletCollider) {
 			return
 		}
 	}
+	// baseTick keeps the last rotation; the heading of this tick's motion
+	// is eased toward (EntityKineticBullet.tick).
+	b.PrevYaw, b.PrevPitch = b.Yaw, b.Pitch
+	yaw, pitch := heading(b.Vel)
+	b.Yaw, b.Pitch = lerpRotation(b.PrevYaw, yaw), lerpRotation(b.PrevPitch, pitch)
 	b.Prev = b.Pos
 	for i := range 3 {
 		b.Pos[i] += b.Vel[i]

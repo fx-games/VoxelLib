@@ -43,7 +43,8 @@ type gunTracers struct {
 // tracer is a bullet to draw as a tracer.
 type tracer struct {
 	b     *projectile.Bullet
-	eye   [3]float64 // the shooter's eye
+	eye   [3]float64 // the shooter's eye between ticks (getEyePosition(partialTicks))
+	eyeAt [3]float64 // the shooter's eye this tick (getEyePosition())
 	own   bool       // the local player's, seen in first person
 	color [3]float32
 }
@@ -72,10 +73,11 @@ func (g *game) drawTracers(cam *render.Camera, alpha float64) {
 	var list []tracer
 	p := g.Player
 	me := [3]float64{p.PrevX + (p.X-p.PrevX)*alpha, p.PrevY + (p.Y-p.PrevY)*alpha + g.Player.EyeHeight, p.PrevZ + (p.Z-p.PrevZ)*alpha}
+	meAt := [3]float64{p.X, p.Y + g.Player.EyeHeight, p.Z}
 	if g.net == nil {
 		for _, b := range g.bullets {
 			if b.Tracer {
-				list = append(list, tracer{b, me, !g.watching, b.Gun.Bullet.TracerColor})
+				list = append(list, tracer{b, me, meAt, !g.watching, b.Gun.Bullet.TracerColor})
 			}
 		}
 	} else {
@@ -87,7 +89,7 @@ func (g *game) drawTracers(cam *render.Camera, alpha float64) {
 			}
 			tr := tracer{b: b.Bullet, color: spec.Bullet.TracerColor}
 			if b.Shooter == g.net.cl.Slot() {
-				tr.eye, tr.own = me, !g.watching
+				tr.eye, tr.eyeAt, tr.own = me, meAt, !g.watching
 			} else {
 				i := slices.IndexFunc(views, func(v mp.PlayerView) bool { return v.Slot == b.Shooter })
 				if i < 0 {
@@ -95,6 +97,7 @@ func (g *game) drawTracers(cam *render.Camera, alpha float64) {
 				}
 				v := views[i]
 				tr.eye = [3]float64{v.X, v.Y + character.PlayerEye(v.Sneak), v.Z}
+				tr.eyeAt = tr.eye // ponytail: other players' views are not kept per tick
 			}
 			list = append(list, tr)
 		}
@@ -104,7 +107,7 @@ func (g *game) drawTracers(cam *render.Camera, alpha float64) {
 	for _, tr := range list {
 		pos := tr.b.Lerp(alpha)
 		d := math.Sqrt(sq(pos[0]-tr.eye[0]) + sq(pos[1]-tr.eye[1]) + sq(pos[2]-tr.eye[2]))
-		if tr.b.Age < tracerMinTicks && d <= tracerMinDist {
+		if tr.b.Age < tracerMinTicks && math.Sqrt(sq(pos[0]-tr.eyeAt[0])+sq(pos[1]-tr.eyeAt[1])+sq(pos[2]-tr.eyeAt[2])) <= tracerMinDist {
 			continue
 		}
 		v := tr.b.Vel
@@ -124,8 +127,7 @@ func (g *game) drawTracers(cam *render.Camera, alpha float64) {
 			}
 		}
 		w := float32(tracerWidth * math.Max(1, d/tracerWidthDist))
-		yaw := math.Atan2(v[0], v[2])
-		pitch := math.Atan2(v[1], math.Hypot(v[0], v[2]))
+		yaw, pitch := tr.b.LerpRotation(alpha)
 		// Ry(yRot-180)·Rx(xRot) turns +Z backwards along the flight.
 		m := mgl32.HomogRotate3DY(float32(yaw - math.Pi)).Mul4(mgl32.HomogRotate3DX(float32(pitch))).
 			Mul4(mgl32.Translate3D(0, float32(drop), float32(trail/2))).
@@ -144,15 +146,24 @@ func (g *game) drawTracers(cam *render.Camera, alpha float64) {
 }
 
 // muzzleOffset is the held gun's muzzle relative to the camera as drawn
-// this frame (GunItemRendererWrapper.muzzleRenderOffset); zero without one.
+// this frame, turned into the world by the camera's rotation
+// (GunItemRendererWrapper.cacheMuzzlePosition's muzzleRenderOffset, which
+// the tracer turns by the camera rotation it stores); zero without one.
+// The muzzle's camera-space x and y are scaled by
+// tan(worldFov/2)/tan(modelFov/2), so the tracer starts where the hand's
+// projection shows the muzzle; z stays.
 func (g *game) muzzleOffset() [3]float64 {
 	if !g.gunOn() {
 		return [3]float64{}
 	}
-	_, world, ok := g.muzzleFrames(g.heldView())
+	v := g.heldView()
+	local, _, ok := g.muzzleFrames(v)
 	if !ok {
 		return [3]float64{}
 	}
-	o := world.Col(3)
-	return [3]float64{float64(o[0]) - g.Cam.X, float64(o[1]) - g.Cam.Y, float64(o[2]) - g.Cam.Z}
+	o := g.gunHandView(v).Mul4(local).Col(3)
+	lateral := float32(math.Tan(g.Cam.FOV/2) / math.Tan(float64(g.Eng.Renderer.HandFOV)*math.Pi/360))
+	o[0], o[1] = o[0]*lateral, o[1]*lateral
+	w := mgl32.LookAtV(mgl32.Vec3{}, g.Cam.Forward(), mgl32.Vec3{0, 1, 0}).Inv().Mul4x1(mgl32.Vec4{o[0], o[1], o[2], 0})
+	return [3]float64{float64(w[0]), float64(w[1]), float64(w[2])}
 }

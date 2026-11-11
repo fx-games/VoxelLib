@@ -236,8 +236,10 @@ func (c *Client) reliable(msg []byte) {
 		}
 	case msgBullet:
 		if b := decodeBulletSpawn(&r); r.err == nil {
-			c.Bullets[b.ID] = &RemoteBullet{Shooter: b.Shooter, Gun: b.Gun, Bullet: &projectile.Bullet{Pos: b.Pos, Prev: b.Pos, Start: b.Pos, Vel: b.Vel,
-				Gravity: float64(b.Gravity), Friction: float64(b.Friction), Life: b.Life, Pierce: 1, Tracer: b.Tracer}}
+			pb := &projectile.Bullet{Pos: b.Pos, Prev: b.Pos, Start: b.Pos, Vel: b.Vel,
+				Gravity: float64(b.Gravity), Friction: float64(b.Friction), Life: b.Life, Pierce: 1, Tracer: b.Tracer}
+			pb.Face()
+			c.Bullets[b.ID] = &RemoteBullet{Shooter: b.Shooter, Gun: b.Gun, Bullet: pb}
 		}
 	case msgBulletGone:
 		if id := r.u32(); r.err == nil {

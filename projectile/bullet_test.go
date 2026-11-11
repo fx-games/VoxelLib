@@ -12,6 +12,16 @@ import (
 	"github.com/memmaker/voxellib/weapon"
 )
 
+// lerpRotation eases a fifth of the way, the short way round the ±π seam.
+func TestLerpRotation(t *testing.T) {
+	if got := lerpRotation(0, 1); math.Abs(got-0.2) > 1e-12 {
+		t.Errorf("lerpRotation(0, 1) = %v, want 0.2", got)
+	}
+	if got := lerpRotation(3, -3); math.Abs(got-(3-2*math.Pi+0.2*(2*math.Pi-6))) > 1e-12 {
+		t.Errorf("lerpRotation(3, -3) = %v: not across the seam", got)
+	}
+}
+
 type fakeBlocks struct{}
 
 func (fakeBlocks) Block(x, y, z int) voxel.StateID     { return voxel.StateID(1) }
