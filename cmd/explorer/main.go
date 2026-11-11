@@ -258,6 +258,7 @@ type game struct {
 	crossbowState
 	gunsState
 	combatState
+	wavesState
 	help     *render.Overlay // F1 help screen
 	showHelp bool
 	debugMsg string // shown in the title (K animation preview)
@@ -321,9 +322,11 @@ func (g *game) start() {
 		lineup: o.lineup, lineupAnim: o.anim}
 	g.crossbowState = crossbowState{bowModel: -1, arrowModel: -1} // set by setupCrossbow
 	g.combatState = combatState{swordModel: -1}                   // set by setupCombat
+	g.wavesState = wavesState{}                                   // set by setupZombies
 	g.gunsState = gunsState{sounds: gunSounds{mixer: g.Mixer}}
 	g.setupGuns()
 	g.setupArms()
+	g.setupZombies()
 	if o.gun != "" {
 		g.selectGunID(o.gun)
 	}
@@ -398,6 +401,7 @@ func (g *game) tick() {
 	g.tickGun()
 	g.tickItems()
 	g.tickCreatures()
+	g.tickWaves()
 	g.tickArrows()
 	g.tickTorches()
 	g.tickPlayerHealth()

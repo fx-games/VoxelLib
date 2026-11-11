@@ -24,7 +24,7 @@ is the gun cycle (draw, idle, shoot, bolt, reload magazine/tube/inventory, inspe
 - [x] explorer: hitscan pellets with spread vs creatures (headshot multiplier, falloff), recoil kick, ADS zoom
 - [x] audio: pack sounds (cues per clip, shoot, dry); 172 cues name sounds missing from the pack
 - [x] runtime bone visibility: bullet_in_mag/bullet_in_barrel/bullet_chain with ammo, additional_magazine while keyed
-- [ ] explorer: zombies (hostile, waves), ammo loot
+- [x] explorer: zombie waves (vanilla biped in the zombie skin posed as ZombieModel, always hostile, bare-handed melee), ammo loot (a magazine of the held gun's ammo per kill, into the stock); crossbow and guns exclusive (no arrows from guns)
 - [x] muzzle flash and smoke: TACZ "renew" particle definitions on the particles package (hand space + world)
 - [x] animation tracks: static_idle base, main track override, blended shoot per shot (model.Animator layers)
 - [x] shells: ShellRender per shot at shell/shell_N bones (display's shell model, else the ammo's), camera space from the bone's first-frame pose

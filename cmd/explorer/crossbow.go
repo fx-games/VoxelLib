@@ -93,13 +93,15 @@ func (g *game) setupCrossbow(p *bbmodel.Pack) {
 	}
 }
 
-// crossbowOn reports whether the crossbow is in hand.
-func (g *game) crossbowOn() bool { return g.equipped && g.bowModel >= 0 }
+// crossbowOn reports whether the crossbow is in hand (one weapon at a
+// time: a drawn gun puts it away).
+func (g *game) crossbowOn() bool { return g.equipped && g.bowModel >= 0 && !g.gunOn() }
 
 // toggleCrossbow (C) puts the crossbow away or takes it out.
 func (g *game) toggleCrossbow() {
 	if g.bowModel >= 0 {
-		g.equipped = !g.equipped
+		g.equipped = !g.crossbowOn()
+		g.gunSel = -1 // the gun goes away
 	}
 }
 
@@ -285,6 +287,7 @@ func (g *game) kill(c *creature, arrowYaw float64) {
 	m.OnGround = false // fallCorpse finds the ground on its first step
 	m.PrevX, m.PrevY, m.PrevZ, m.PrevYaw = m.X, m.Y, m.Z, m.Yaw
 	m.Static = true
+	g.dropAmmo(c)
 	g.debugMsg = c.sp.model.Name + ": head shot"
 }
 

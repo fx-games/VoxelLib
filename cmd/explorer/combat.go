@@ -129,8 +129,11 @@ func (g *game) weaponOf(sp *species) *weapon {
 	if w, ok := g.weapons[sp]; ok {
 		return w
 	}
-	m := sp.model
 	w := &weapon{hand: -1}
+	if sp.body != nil { // zombies fight bare-handed
+		return w
+	}
+	m := sp.model
 	has := func(n string) bool { _, ok := m.Clips[n]; return ok }
 	pick := func(names ...string) []string {
 		var out []string
@@ -188,7 +191,7 @@ func (g *game) provoke(c *creature) {
 		return
 	}
 	w := g.weaponOf(c.sp)
-	if len(w.clips) == 0 {
+	if len(w.clips) == 0 && c.sp.body == nil { // no attack to play (zombies swing bare-handed)
 		return
 	}
 	m := c.mob
@@ -211,7 +214,7 @@ func (g *game) aimHostiles() {
 		if !m.Hostile || c.dying > 0 {
 			continue
 		}
-		if math.Hypot(p.X-m.X, p.Z-m.Z) > giveUpRange {
+		if c.sp.body == nil && math.Hypot(p.X-m.X, p.Z-m.Z) > giveUpRange { // zombies never give up
 			m.Hostile = false
 			m.HomeX, m.HomeY, m.HomeZ = m.X, m.Y, m.Z
 			continue
@@ -230,7 +233,11 @@ func (g *game) applyStrikes() {
 			continue
 		}
 		w := g.weaponOf(c.sp)
-		if m.State == mobs.Attack && m.StateTicks == 0 { // a new attack
+		switch {
+		case m.State != mobs.Attack || m.StateTicks != 0:
+		case len(w.clips) == 0: // a bare swing (zombies.go poses it)
+			m.AttackTicks, m.HitTick = zombieAttackTicks, 1
+		default: // a new attack
 			c.attacks++
 			clip := w.clips[c.attacks%len(w.clips)]
 			c.anim.Play(clip, true)

@@ -252,16 +252,8 @@ func (w *World) tick(d *Drop, s collide.Solids) {
 // and the previously held item is dropped at (x,y,z). It returns the picked
 // item, or "" if nothing was picked up.
 func (w *World) Collect(body collide.AABB, held *string, x, y, z float64) string {
-	reach := body.Grow(1, 0.5, 1) // the reference's pickup range
 	for i, d := range w.Drops {
-		touch := reach.Intersects(d.Box())
-		if d.WaitLeave {
-			if !touch {
-				d.WaitLeave = false
-			}
-			continue
-		}
-		if !touch || d.PickupDelay > 0 {
+		if !w.reached(body, d) {
 			continue
 		}
 		w.Drops = append(w.Drops[:i], w.Drops[i+1:]...)
@@ -274,4 +266,31 @@ func (w *World) Collect(body collide.AABB, held *string, x, y, z float64) string
 		return d.Item
 	}
 	return ""
+}
+
+// Take removes every drop a collector with box body can pick up that keep
+// accepts (e.g. ammunition going to a stock instead of the hand), calling
+// keep once per such drop.
+func (w *World) Take(body collide.AABB, keep func(item string) bool) {
+	left := w.Drops[:0]
+	for _, d := range w.Drops {
+		if !w.reached(body, d) || !keep(d.Item) {
+			left = append(left, d)
+		}
+	}
+	clear(w.Drops[len(left):])
+	w.Drops = left
+}
+
+// reached applies the pickup range and delays to one drop (clearing
+// WaitLeave once the collector has stepped away).
+func (w *World) reached(body collide.AABB, d *Drop) bool {
+	touch := body.Grow(1, 0.5, 1).Intersects(d.Box()) // the reference's pickup range
+	if d.WaitLeave {
+		if !touch {
+			d.WaitLeave = false
+		}
+		return false
+	}
+	return touch && d.PickupDelay <= 0
 }

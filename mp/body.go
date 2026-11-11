@@ -98,6 +98,42 @@ func NewBody() *Body {
 // Skin poses the body for a (ModelBiped.setRotationAngles with aimedBow:
 // the crossbow is always raised) and returns its skinning matrices.
 func (b *Body) Skin(a Anim, dst []mgl32.Mat4) []mgl32.Mat4 {
+	pp, head := b.legs(a)
+	// aimedBow: both arms forward along the look, the left one across.
+	pp[partRightArm].Rot = [3]float32{-math.Pi/2 + head, -0.1, 0}
+	pp[partLeftArm].Rot = [3]float32{-math.Pi/2 + head, 0.1 + 0.4, 0}
+	b.sneak(a)
+	return b.pose.Skin(b.Model, b.Geo, dst)
+}
+
+// ZombieSkin poses the body as ZombieModel: the walk cycle, then the arms
+// held out (AnimationUtils.animateZombieArms) raised higher when aggressive,
+// swinging with attack (0..1 through a blow) and bobbing with age (ticks).
+func (b *Body) ZombieSkin(a Anim, aggressive bool, attack, age float64, dst []mgl32.Mat4) []mgl32.Mat4 {
+	pp, _ := b.legs(a)
+	f := float32(math.Sin(attack * math.Pi))
+	f1 := float32(math.Sin((1 - (1-attack)*(1-attack)) * math.Pi))
+	raise := float32(2.25)
+	if aggressive {
+		raise = 1.5
+	}
+	x := -math.Pi/raise + f*1.2 - f1*0.4
+	pp[partRightArm].Rot = [3]float32{x, -(0.1 - f*0.6), 0}
+	pp[partLeftArm].Rot = [3]float32{x, 0.1 - f*0.6, 0}
+	// AnimationUtils.bobArms
+	bz := float32(math.Cos(age*0.09))*0.05 + 0.05
+	bx := float32(math.Sin(age*0.067)) * 0.05
+	pp[partRightArm].Rot[2] += bz
+	pp[partLeftArm].Rot[2] -= bz
+	pp[partRightArm].Rot[0] += bx
+	pp[partLeftArm].Rot[0] -= bx
+	b.sneak(a)
+	return b.pose.Skin(b.Model, b.Geo, dst)
+}
+
+// legs resets the pose and sets the head pitch and the walk cycle; it
+// returns the parts and the head's pitch.
+func (b *Body) legs(a Anim) ([]cuboid.PartPose, float32) {
 	p := b.pose
 	p.Reset(b.Geo)
 	pp := p.Parts
@@ -106,18 +142,21 @@ func (b *Body) Skin(a Anim, dst []mgl32.Mat4) []mgl32.Mat4 {
 	sw, amt := float32(a.LimbSwing*0.6662), float32(a.LimbAmount)
 	pp[partRightLeg].Rot[0] = cos(sw) * 1.4 * amt
 	pp[partLeftLeg].Rot[0] = cos(sw+math.Pi) * 1.4 * amt
-	// aimedBow: both arms forward along the look, the left one across.
-	pp[partRightArm].Rot = [3]float32{-math.Pi/2 + head, -0.1, 0}
-	pp[partLeftArm].Rot = [3]float32{-math.Pi/2 + head, 0.1 + 0.4, 0}
-	if a.Sneak {
-		pp[partBody].Rot[0] = 0.5
-		pp[partRightArm].Rot[0] += 0.4
-		pp[partLeftArm].Rot[0] += 0.4
-		pp[partRightLeg].Pivot[1], pp[partRightLeg].Pivot[2] = 9, 4
-		pp[partLeftLeg].Pivot[1], pp[partLeftLeg].Pivot[2] = 9, 4
-		pp[partHead].Pivot[1] = 1
+	return pp, head
+}
+
+// sneak crouches the posed body when a sneaks.
+func (b *Body) sneak(a Anim) {
+	if !a.Sneak {
+		return
 	}
-	return p.Skin(b.Model, b.Geo, dst)
+	pp := b.pose.Parts
+	pp[partBody].Rot[0] = 0.5
+	pp[partRightArm].Rot[0] += 0.4
+	pp[partLeftArm].Rot[0] += 0.4
+	pp[partRightLeg].Pivot[1], pp[partRightLeg].Pivot[2] = 9, 4
+	pp[partLeftLeg].Pivot[1], pp[partLeftLeg].Pivot[2] = 9, 4
+	pp[partHead].Pivot[1] = 1
 }
 
 func cos(x float32) float32 { return float32(math.Cos(float64(x))) }

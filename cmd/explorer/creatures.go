@@ -11,6 +11,7 @@ import (
 	"github.com/memmaker/voxellib/app"
 	"github.com/memmaker/voxellib/mobs"
 	"github.com/memmaker/voxellib/model"
+	"github.com/memmaker/voxellib/mp"
 	"github.com/memmaker/voxellib/voxel"
 	"github.com/memmaker/voxellib/voxel/render"
 )
@@ -25,6 +26,7 @@ type species struct {
 	height float64
 	static bool       // props: stay put
 	shape  *shapeInfo // for exact arrow hits, built on first use
+	body   *mp.Body   // posed as the vanilla zombie instead of by clips (zombies.go)
 }
 
 type creature struct {
@@ -51,6 +53,9 @@ type creature struct {
 	fallYaw                      float64     // direction a corpse falls
 	drawFrame, poseFrame         int         // pose is the drawn skin, rebuilt when stale
 	pose                         *model.Pose // deformed vertices for hit tests
+	// zombies (sp.body): the walk cycle this and last tick, ticks alive
+	limb, prevLimb mp.Anim
+	age            int
 }
 
 // creaturesState is the explorer's creature glue: imported models →
@@ -154,18 +159,11 @@ func (g *game) tickCreatures() {
 		g.spawnLineup()
 	}
 	for tries := 0; g.spawnLeft > 0 && tries < 8; tries++ {
-		a := g.mobRand.Float64() * 2 * math.Pi
-		r := 4 + g.mobRand.Float64()*16
-		x, z := p.X+math.Cos(a)*r, p.Z+math.Sin(a)*r
-		if !g.Eng.ChunkReady(voxel.ChunkPos{X: int(math.Floor(x)) >> 4, Z: int(math.Floor(z)) >> 4}) {
-			continue
-		}
-		y, ok := g.Eng.SurfaceY(int(math.Floor(x)), int(math.Floor(z)))
+		x, fy, z, ok := g.spawnSpot(4, 20)
 		if !ok {
 			continue
 		}
 		sp := g.species[(g.spawnLeft)%len(g.species)]
-		fy := float64(y)
 		if sp.kind == mobs.Flyer {
 			fy += 2 + g.mobRand.Float64()*3
 		}
@@ -201,6 +199,20 @@ func (g *game) tickCreatures() {
 		e.X, e.Y, e.Z, e.Yaw = m.X, m.Y, m.Z, m.Yaw
 		e.PrevX, e.PrevY, e.PrevZ, e.PrevYaw = m.PrevX, m.PrevY, m.PrevZ, m.PrevYaw
 	}
+}
+
+// spawnSpot picks a random surface spot between rMin and rMax blocks
+// around the player (ok false where the terrain isn't loaded).
+func (g *game) spawnSpot(rMin, rMax float64) (x, y, z float64, ok bool) {
+	p := g.Player
+	a := g.mobRand.Float64() * 2 * math.Pi
+	r := rMin + g.mobRand.Float64()*(rMax-rMin)
+	x, z = p.X+math.Cos(a)*r, p.Z+math.Sin(a)*r
+	if !g.Eng.ChunkReady(voxel.ChunkPos{X: int(math.Floor(x)) >> 4, Z: int(math.Floor(z)) >> 4}) {
+		return 0, 0, 0, false
+	}
+	sy, ok := g.Eng.SurfaceY(int(math.Floor(x)), int(math.Floor(z)))
+	return x, float64(sy), z, ok
 }
 
 // addCreature adds a creature and its app entity.
@@ -256,7 +268,11 @@ func (g *game) animStep() {
 // and remembers the drawn pose for exact arrow hits.
 func (g *game) poseCreature(e *app.Entity, alpha float64, in *render.ModelInstance) bool {
 	c := e.Data.(*creature)
-	if c.dying == 0 || c.skin == nil { // the dead keep their last pose
+	switch {
+	case c.dying > 0 && c.skin != nil: // the dead keep their last pose
+	case c.sp.body != nil:
+		c.zombieSkin(alpha)
+	default:
 		clip := c.debugClip
 		if clip == "" {
 			clip = g.combatClip(c)

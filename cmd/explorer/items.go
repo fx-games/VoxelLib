@@ -142,6 +142,9 @@ func (g *game) tickItems() {
 	}
 	g.drops.Tick(g.Terrain)
 	if !p.NoClip {
+		if g.gunPack != nil {
+			g.takeAmmo() // before the hand takes it
+		}
 		g.drops.Collect(p.Box(), &g.held, p.X, p.Y, p.Z)
 	}
 }
