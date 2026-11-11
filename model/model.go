@@ -7,8 +7,10 @@
 package model
 
 import (
+	"fmt"
 	"image"
 	"math"
+	"slices"
 
 	"github.com/go-gl/mathgl/mgl32"
 )
@@ -195,6 +197,66 @@ func (m *Model) Subtree(name string) *Model {
 	}
 	if len(out.Meshes) == 0 {
 		return nil
+	}
+	return out
+}
+
+// Graft adds sub's bones and meshes under bone parent of m, sub's origin
+// and axes at that bone's frame (e.g. an attachment on a gun's slot bone):
+// its roots become children of parent and its geometry follows parent's
+// animation. Sub's clips are dropped; it must have no baked root transform.
+func (m *Model) Graft(parent int, sub *Model) error {
+	if sub.root0() != mgl32.Ident4() {
+		return fmt.Errorf("model: graft %s: sub-model has a root transform", sub.Name)
+	}
+	if parent < 0 || parent >= len(m.Bones) {
+		return fmt.Errorf("model: graft %s: no bone %d in %s", sub.Name, parent, m.Name)
+	}
+	at := m.root0().Mul4(m.BindWorld()[parent]) // sub's origin in m's bind space
+	nt := at.Mat3().Inv().Transpose()
+	world := sub.BindWorld()
+	base, texBase := len(m.Bones), len(m.Textures)
+	for i, b := range sub.Bones {
+		if b.Parent < 0 {
+			b.Parent = parent
+		} else {
+			b.Parent += base
+		}
+		b.InvBind = at.Mul4(world[i]).Inv()
+		m.Bones = append(m.Bones, b)
+	}
+	m.Textures = append(m.Textures, sub.Textures...)
+	for _, me := range sub.Meshes {
+		nm := Mesh{Indices: slices.Clone(me.Indices), Texture: -1, Verts: make([]Vertex, len(me.Verts))}
+		if me.Texture >= 0 {
+			nm.Texture = me.Texture + texBase
+		}
+		for i, v := range me.Verts {
+			v.Pos = mgl32.TransformCoordinate(v.Pos, at)
+			v.Normal = nt.Mul3x1(v.Normal).Normalize()
+			for k := range v.Joints {
+				v.Joints[k] += uint16(base)
+			}
+			nm.Verts[i] = v
+		}
+		m.Meshes = append(m.Meshes, nm)
+	}
+	return nil
+}
+
+// Descendants is bone b and its descendants (nil for b < 0).
+func (m *Model) Descendants(b int) []int {
+	if b < 0 {
+		return nil
+	}
+	in := make([]bool, len(m.Bones))
+	in[b] = true
+	out := []int{b}
+	for i, bn := range m.Bones { // parents precede children
+		if bn.Parent >= 0 && in[bn.Parent] {
+			in[i] = true
+			out = append(out, i)
+		}
 	}
 	return out
 }

@@ -42,7 +42,8 @@ type shellFiles struct {
 }
 
 type gunFiles struct {
-	shell                        shellFiles // the display's own casing, if any
+	atts                         map[string]attachment // shown attachments by slot type
+	shell                        shellFiles            // the display's own casing, if any
 	texture, animation, defaults string
 }
 
@@ -146,29 +147,29 @@ func (p *Pack) Icon(file string) (image.Image, error) { return readPNG(p.FS, fil
 // Model parses a gun's model with its clips: the gun's animations, plus the
 // default animation set's for clips the gun lacks. The bones TACZ hides on a
 // gun without attachments are removed.
-func (p *Pack) Model(id string) (*model.Model, error) {
+func (p *Pack) Model(id string) (*model.Model, *Lens, error) {
 	i := slices.IndexFunc(p.Guns, func(g weapon.Gun) bool { return g.ID == id })
 	if i < 0 {
-		return nil, fmt.Errorf("tacz: no gun %q", id)
+		return nil, nil, fmt.Errorf("tacz: no gun %q", id)
 	}
 	f := p.guns[id]
 	tex, err := readPNG(p.FS, f.texture)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	geo, err := fs.ReadFile(p.FS, p.Guns[i].Model)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	models, err := bbmodel.ParseGeometry(geo, func(string) image.Image { return tex })
 	if err != nil {
-		return nil, fmt.Errorf("%s: %w", id, err)
+		return nil, nil, fmt.Errorf("%s: %w", id, err)
 	}
 	m := models[0]
 	m.Name = id
 	anims, err := p.animations(f)
 	if err != nil {
-		return nil, fmt.Errorf("%s: %w", id, err)
+		return nil, nil, fmt.Errorf("%s: %w", id, err)
 	}
 	for _, a := range anims {
 		if _, dup := m.Clips[a.Name]; dup {
@@ -178,8 +179,17 @@ func (p *Pack) Model(id string) (*model.Model, error) {
 			m.Clips[a.Name] = c
 		}
 	}
-	stripHidden(m)
-	return m, nil
+	stripHidden(m, f.atts)
+	if err := p.graftAttachments(m, f.atts); err != nil {
+		return nil, nil, fmt.Errorf("%s: %w", id, err)
+	}
+	var lens *Lens
+	if a, ok := f.atts[slotScope]; ok && a.model != "" && m.Bone(slotScope+"_pos") >= 0 {
+		if lens, err = splitLens(m, a); err != nil {
+			return nil, nil, err
+		}
+	}
+	return m, lens, nil
 }
 
 // ShellModel parses a gun's casing (Gun.Shell must be set).
@@ -297,6 +307,19 @@ func (p *Pack) loadGun(file string, lang map[string]string, sound func(string) s
 	if spec.Muzzle, err = muzzleFlash(disp.Muzzle); err != nil {
 		return fmt.Errorf("%s: muzzle_flash: %w", id, err)
 	}
+	if files.atts, err = p.loadAttachments(data.Builtin); err != nil {
+		return fmt.Errorf("%s: %w", id, err)
+	}
+	spec.Sight = ironView
+	if sc, ok := files.atts[slotScope]; ok && sc.model != "" {
+		if spec.Sight, err = p.scopeView(sc); err != nil {
+			return fmt.Errorf("%s: %w", id, err)
+		}
+		spec.IdleRaise = sc.idleAdjust / 16
+		if sc.zoom > 0 {
+			spec.Zoom = sc.zoom
+		}
+	}
 	p.Guns = append(p.Guns, spec)
 	p.guns[id] = files
 	return nil
@@ -304,12 +327,13 @@ func (p *Pack) loadGun(file string, lang map[string]string, sound func(string) s
 
 // taczData is the part of a TACZ gun data file we convert.
 type taczData struct {
-	Ammo  string   `json:"ammo"`
-	Mag   int      `json:"ammo_amount"`
-	RPM   float32  `json:"rpm"`
-	Bolt  string   `json:"bolt"`
-	Modes []string `json:"fire_mode"`
-	Burst struct {
+	Builtin map[string]json.RawMessage `json:"builtin_attachments"`
+	Ammo    string                     `json:"ammo"`
+	Mag     int                        `json:"ammo_amount"`
+	RPM     float32                    `json:"rpm"`
+	Bolt    string                     `json:"bolt"`
+	Modes   []string                   `json:"fire_mode"`
+	Burst   struct {
 		Count int     `json:"count"`
 		BPM   float32 `json:"bpm"`
 	} `json:"burst_data"`
@@ -437,24 +461,23 @@ func soundRef(raw json.RawMessage) (string, error) {
 	return o.ID, err
 }
 
-// hiddenBone reports the bones TACZ's BedrockGunModel hides on a gun with
-// no attachments fitted (the subtree goes with it).
-func hiddenBone(name string) bool {
-	switch name {
-	case "mag_extended_1", "mag_extended_2", "mag_extended_3", "mount", "sight_folded",
-		"handguard_tactical", "muzzle_flash", "lefthand_pos", "righthand_pos":
-		return true
+// stripHidden removes the triangles (and vertices) of bones hidden with the
+// attachments shown and their descendants, and of attachment_adapter's
+// children but the adapters of those attachments.
+func stripHidden(m *model.Model, atts map[string]attachment) {
+	adapters := map[string]bool{}
+	for _, a := range atts {
+		adapters[a.adapter] = a.adapter != ""
 	}
-	return strings.HasSuffix(name, "_pos")
-}
-
-// stripHidden removes the triangles (and vertices) of hidden bones and their descendants,
-// and of attachment_adapter's children (no adapter is rendered without attachments).
-func stripHidden(m *model.Model) {
 	hide := make([]bool, len(m.Bones))
 	for i, b := range m.Bones {
-		hide[i] = hiddenBone(b.Name) || b.Parent >= 0 && (hide[b.Parent] || m.Bones[b.Parent].Name == "attachment_adapter")
+		hide[i] = hiddenBone(b.Name, atts) || b.Parent >= 0 && (hide[b.Parent] || m.Bones[b.Parent].Name == "attachment_adapter" && !adapters[b.Name])
 	}
+	stripBones(m, hide)
+}
+
+// stripBones removes the triangles (and vertices) bound to the bones marked.
+func stripBones(m *model.Model, hide []bool) {
 	for mi := range m.Meshes {
 		me := &m.Meshes[mi]
 		var verts []model.Vertex

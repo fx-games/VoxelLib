@@ -135,9 +135,14 @@ type Gun struct {
 		Sneak float32 `json:"sneak"`
 		Aim   float32 `json:"aim"`
 	} `json:"inaccuracy"`
-	Zoom  float32 `json:"zoom"`  // iron sight magnification
-	Model string  `json:"model"` // model file in the pack
-	Icon  string  `json:"icon"`  // slot sprite file in the pack
+	Zoom float32 `json:"zoom"` // aiming magnification (the iron sight's, or the built-in scope's)
+	// Sight is the bone the camera aims through: iron_view, or the view
+	// bone of a built-in scope; IdleRaise lifts the idle view (blocks) by
+	// the scope's idle_scope_height_adjust, fading out while aiming.
+	Sight     string  `json:"sight"`
+	IdleRaise float32 `json:"idle_raise,omitempty"`
+	Model     string  `json:"model"` // model file in the pack
+	Icon      string  `json:"icon"`  // slot sprite file in the pack
 	// HUD sprites (39x13) beside the ammo count; HudEmpty "" tints Hud red when empty.
 	Hud      string           `json:"hud"`
 	HudEmpty string           `json:"hud_empty"`

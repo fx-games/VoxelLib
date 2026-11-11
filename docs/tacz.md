@@ -28,4 +28,7 @@ is the gun cycle (draw, idle, shoot, bolt, reload magazine/tube/inventory, inspe
 - [x] muzzle flash and smoke: TACZ "renew" particle definitions on the particles package (hand space + world)
 - [x] animation tracks: static_idle base, main track override, blended shoot per shot (model.Animator layers)
 - [x] shells: ShellRender per shot at shell/shell_N bones (display's shell model, else the ammo's), camera space from the bone's first-frame pose
-- [ ] later: attachments (builtin stocks on AK etc. are currently stripped), minigun heat
+- [x] attachments: builtin_attachments shown as TACZ shows them (adapters, <type>_pos grafts via model.Graft, bone visibility), scope aiming (scope_view_N, zoom, idle_scope_height_adjust)
+- [x] scope lens parts split out of the gun (tacz.Lens: ring, body, oculars, divisions on the gun skeleton); ring + body drawn plainly
+- [ ] scope stencil passes (renderScope/renderSight) — renderer agent adding a hand-pass stencil
+- [ ] minigun heat, TACZ movement/camera tracks, missing sounds, guns in multiplayer, README/ARCHITECTURE

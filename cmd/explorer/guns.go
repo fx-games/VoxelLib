@@ -88,13 +88,17 @@ type gunView struct {
 	handle     int
 	m          *model.Model
 	anim       *model.Animator
-	idle, iron mgl32.Mat4 // view placing the camera at idle_view / iron_view
+	idle, iron mgl32.Mat4 // view placing the camera at idle_view / the gun's sight (Gun.Sight)
 	ammo       []int      // bones of ammoBones (with descendants)
 	addMag     []int      // additional_magazine and descendants
 	addMagBone int
 	hands      [2]int // lefthand_pos, righthand_pos (-1: no arm)
 	skin       []mgl32.Mat4
 	times      []float32 // layer times saved while posing between ticks
+	// lensPlain are the scope's ring and body, drawn as TACZ draws them
+	// outside first person. ponytail: oculars and reticles wait for the
+	// hand pass stencil (BedrockAttachmentModel.renderScope).
+	lensPlain []int
 }
 
 // gunArms draws the player's arms at a gun's hand bones as TACZ does
@@ -177,7 +181,7 @@ func (g *game) gunView(spec *firearm.Gun) (*gunView, error) {
 	if v := g.gunViews[spec.ID]; v != nil {
 		return v, nil
 	}
-	m, err := g.gunPack.Model(spec.ID)
+	m, lens, err := g.gunPack.Model(spec.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -186,16 +190,28 @@ func (g *game) gunView(spec *firearm.Gun) (*gunView, error) {
 		return nil, err
 	}
 	v := &gunView{handle: h, m: m, anim: model.NewAnimator(m)}
+	if lens != nil {
+		for _, p := range []*model.Model{lens.Ring, lens.Body} {
+			if p == nil {
+				continue
+			}
+			ph, err := g.Models.Add(p)
+			if err != nil {
+				return nil, err
+			}
+			v.lensPlain = append(v.lensPlain, ph)
+		}
+	}
 	v.anim.FadeTime = 0
 	v.anim.Play(firearm.ClipIdle, true)
 	v.anim.Layers = []model.Layer{mainTrack: {}}
 	world := m.BindWorld()
-	v.idle, v.iron = cameraAt(world, m.Bone("idle_view")), cameraAt(world, m.Bone("iron_view"))
+	v.idle, v.iron = cameraAt(world, m.Bone("idle_view")), cameraAt(world, m.Bone(spec.Sight))
 	for _, n := range ammoBones {
-		v.ammo = append(v.ammo, subtree(m, m.Bone(n))...)
+		v.ammo = append(v.ammo, m.Descendants(m.Bone(n))...)
 	}
 	v.addMagBone = m.Bone(additionalMag)
-	v.addMag = subtree(m, v.addMagBone)
+	v.addMag = m.Descendants(v.addMagBone)
 	v.hands = [2]int{m.Bone("lefthand_pos"), m.Bone("righthand_pos")}
 	g.gunViews[spec.ID] = v
 	return v, nil
@@ -209,22 +225,6 @@ func cameraAt(world []mgl32.Mat4, b int) mgl32.Mat4 {
 	return world[b].Inv()
 }
 
-// subtree returns bone b and its descendants (none for b < 0).
-func subtree(m *model.Model, b int) []int {
-	if b < 0 {
-		return nil
-	}
-	in := make([]bool, len(m.Bones))
-	out := []int{b}
-	in[b] = true
-	for i, bn := range m.Bones { // parents precede children
-		if bn.Parent >= 0 && in[bn.Parent] {
-			in[i] = true
-			out = append(out, i)
-		}
-	}
-	return out
-}
 
 // tickGun runs the held gun's cycle for one tick.
 func (g *game) tickGun() {
@@ -461,8 +461,12 @@ func (g *game) drawGunHand(alpha float64) {
 	}
 	f := g.aimFrac(alpha)
 	view := lerpMat(v.idle, v.iron, f)
+	view = mgl32.Translate3D(0, g.gun.Gun.IdleRaise*(1-f), 0).Mul4(view) // a scope's idle height adjust
 	sky, blk := g.Light(g.Cam.X, g.Cam.Y, g.Cam.Z)
 	ins := []render.ModelInstance{{Model: v.handle, Skin: v.skin, Sky: sky, Block: blk}}
+	for _, h := range v.lensPlain {
+		ins = append(ins, render.ModelInstance{Model: h, Skin: v.skin, Sky: sky, Block: blk})
+	}
 	a := &g.arms
 	for i, b := range v.hands {
 		if b < 0 || a.model < 0 {
