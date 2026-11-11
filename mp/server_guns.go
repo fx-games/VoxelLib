@@ -38,6 +38,10 @@ func (s *Server) shoot(p *sPlayer, sh Shot) {
 	at := projectile.BulletSpawn(prev, [3]float64{p.ch.X, p.ch.Y, p.ch.Z}, p.ch.EyeHeight)
 	moving := math.Sqrt(sq(p.ch.X-prev[0])+sq(p.ch.Y-prev[1])+sq(p.ch.Z-prev[2])) > weapon.MoveThreshold
 	inacc := float64(gun.Spread(p.aim == weapon.Aimed, moving, p.anim.Sneak) * heatFactor(gun, sh.Heat))
+	// applyRecoilPush on the server, before the bullets spawn; the
+	// snapshot carries the new motion to the shooter
+	push := gun.RecoilPush.Push(sh.Look.Dir(), p.ch.OnGround, p.anim.Sneak, gun.Bullet.Pellets)
+	p.ch.VX, p.ch.VY, p.ch.VZ = p.ch.VX+push[0], p.ch.VY+push[1], p.ch.VZ+push[2]
 	for _, b := range projectile.Fire(at, sh.Look.Dir(), gun, inacc, &p.tracers, s.rng) {
 		s.nextID++
 		sb := &sBullet{id: s.nextID, shooter: p.slot, gun: gun.ID, b: b}

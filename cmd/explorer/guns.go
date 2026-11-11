@@ -681,7 +681,11 @@ func (g *game) shoot() {
 		p := g.Player
 		prev, now := [3]float64{p.PrevX, p.PrevY, p.PrevZ}, [3]float64{p.X, p.Y, p.Z}
 		moving := math.Sqrt(sq(now[0]-prev[0])+sq(now[1]-prev[1])+sq(now[2]-prev[2])) > firearm.MoveThreshold
-		inacc := float64(spec.Spread(g.shotAim() == firearm.Aimed, moving, g.Input.Down(app.ActSneak)) * g.gun.SpreadFactor())
+		sneak := g.Input.Down(app.ActSneak)
+		inacc := float64(spec.Spread(g.shotAim() == firearm.Aimed, moving, sneak) * g.gun.SpreadFactor())
+		// applyRecoilPush, before the bullets spawn
+		push := spec.RecoilPush.Push(look.Dir(), p.OnGround, sneak, spec.Bullet.Pellets)
+		p.VX, p.VY, p.VZ = p.VX+push[0], p.VY+push[1], p.VZ+push[2]
 		at := projectile.BulletSpawn(prev, now, g.Player.EyeHeight)
 		g.bullets = append(g.bullets, projectile.Fire(at, look.Dir(), spec, inacc, &g.tracers, g.gunRand)...)
 	}

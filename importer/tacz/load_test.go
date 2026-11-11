@@ -40,6 +40,13 @@ func TestLoadPack(t *testing.T) {
 			SmokeScale: 1.65, SpeedScale: 1.7, SmokeCount: 16}); g.ID == "ak47" && (g.Muzzle == nil || *g.Muzzle != want) {
 			t.Errorf("ak47 muzzle %+v", g.Muzzle)
 		}
+		// recoil_push: m95 leaves projectile_multiplier out (1); ak47's is commented out
+		if want := (weapon.RecoilPush{Ground: 0.05, Air: 0.25, Sneak: 0.025, ProjectileMultiplier: 1}); g.ID == "m95" && (g.RecoilPush == nil || *g.RecoilPush != want) {
+			t.Errorf("m95 recoil push %+v", g.RecoilPush)
+		}
+		if g.ID == "ak47" && g.RecoilPush != nil {
+			t.Errorf("ak47 recoil push %+v, want none", g.RecoilPush)
+		}
 		if g.Shell != nil {
 			shells++
 			if _, err := p.ShellModel(&g); err != nil || g.Shell.Life <= 0 {

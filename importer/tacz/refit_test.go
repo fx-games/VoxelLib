@@ -186,7 +186,7 @@ func TestModifiers(t *testing.T) {
 
 // knownUnsupported are the attachment data keys the spec does not use
 // (UnsupportedData); a change to that list must be deliberate.
-var knownUnsupported = []string{"armor_ignore", "explosion", "flash_hider", "ignite", "lie_inaccuracy", "recoil_push",
+var knownUnsupported = []string{"armor_ignore", "explosion", "flash_hider", "ignite", "lie_inaccuracy",
 	"smoke_count_scale", "smoke_direction", "smoke_directions", "smoke_hider", "smoke_speed_scale", "smoke_spread", "smoke_spread_angle"}
 
 // TestModifierForms checks the forms no pack attachment uses

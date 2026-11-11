@@ -520,6 +520,7 @@ type taczData struct {
 		}
 	}
 	Inaccuracy  struct{ Stand, Move, Sneak, Aim float32 }
+	RecoilPush  *taczRecoilPush `json:"recoil_push"`
 	Heat        *taczHeat
 	Melee       taczGunMelee
 	CanSlide    *bool  `json:"can_slide"` // GunData's default: true
@@ -615,6 +616,7 @@ func (d *taczData) spec(id, name, class string) (weapon.Gun, error) {
 	for _, k := range d.Recoil.Yaw {
 		g.Recoil.Yaw = append(g.Recoil.Yaw, weapon.RecoilKey{T: k.Time, Min: k.Value[0], Max: k.Value[1]})
 	}
+	g.RecoilPush = d.RecoilPush.spec()
 	in := d.Inaccuracy
 	g.Inaccuracy.Stand, g.Inaccuracy.Move, g.Inaccuracy.Sneak, g.Inaccuracy.Aim = in.Stand, in.Move, in.Sneak, in.Aim
 	if h := d.Heat; h != nil {

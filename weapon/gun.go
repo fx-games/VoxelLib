@@ -153,6 +153,8 @@ type Gun struct {
 		Pitch []RecoilKey `json:"pitch"`
 		Yaw   []RecoilKey `json:"yaw"`
 	} `json:"recoil"`
+	// RecoilPush pushes the shooter back on each shot; nil: none.
+	RecoilPush *RecoilPush `json:"recoil_push,omitempty"`
 	Inaccuracy struct {
 		Stand float32 `json:"stand"`
 		Move  float32 `json:"move"`

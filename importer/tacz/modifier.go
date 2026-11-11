@@ -19,7 +19,7 @@ var appliedData = []string{
 	"ads", "ads_addend", "weight", "weight_modifier",
 	"inaccuracy", "inaccuracy_addend", "aim_inaccuracy", "sneak_inaccuracy",
 	"recoil", "recoil_modifier", "rpm", "ammo_speed", "damage", "effective_range",
-	"head_shot", "pierce", "knockback", "movement_speed",
+	"head_shot", "pierce", "knockback", "movement_speed", "recoil_push",
 	"extended_mag_level", "melee", "silence",
 }
 
@@ -31,7 +31,6 @@ var UnsupportedData = map[string]string{
 	"armor_ignore":       "no armor",
 	"explosion":          "no explosive bullets",
 	"ignite":             "no incendiary bullets",
-	"recoil_push":        "no recoil push",
 	"flash_hider":        "muzzle particle overrides not applied",
 	"smoke_hider":        "muzzle particle overrides not applied",
 	"smoke_speed_scale":  "muzzle particle overrides not applied",
@@ -45,10 +44,11 @@ var UnsupportedData = map[string]string{
 // attMods is an installed attachment's modifiers (identity where absent).
 type attMods struct {
 	ads, weight, rpm, ammoSpeed, damage, headShot, pierce, knockback modifier
-	stand, move, sneak, aim                                          modifier          // inaccuracy by stance
-	pitch, yaw                                                       modifier          // recoil
-	effectiveRange                                                   *modifier         // nil: none
-	moveSpeed                                                        *weapon.MoveSpeed // nil: none
+	stand, move, sneak, aim                                          modifier           // inaccuracy by stance
+	pitch, yaw                                                       modifier           // recoil
+	effectiveRange                                                   *modifier          // nil: none
+	moveSpeed                                                        *weapon.MoveSpeed  // nil: none
+	recoilPush                                                       *weapon.RecoilPush // nil: none
 }
 
 // parseMods reads an attachment data's modifiers as the modifiers'
@@ -82,6 +82,7 @@ func parseMods(raw []byte) (attMods, error) {
 		Pierce           *modifier                     `json:"pierce"`
 		Knockback        *modifier                     `json:"knockback"`
 		MoveSpeed        *weapon.MoveSpeed             `json:"movement_speed"`
+		RecoilPush       *taczRecoilPush               `json:"recoil_push"`
 	}
 	if err := json.Unmarshal(raw, &d); err != nil {
 		return attMods{}, err
@@ -102,7 +103,7 @@ func parseMods(raw []byte) (attMods, error) {
 		stand: or(d.Inaccuracy, addend(d.InaccuracyAddend)), move: or(d.Inaccuracy, addend(d.InaccuracyAddend)),
 		sneak: or(d.SneakInaccuracy, identity), aim: or(d.AimInaccuracy, identity),
 		pitch: identity, yaw: identity,
-		effectiveRange: d.EffectiveRange, moveSpeed: d.MoveSpeed,
+		effectiveRange: d.EffectiveRange, moveSpeed: d.MoveSpeed, recoilPush: d.RecoilPush.spec(),
 	}
 	switch {
 	case d.Recoil != nil:
@@ -156,6 +157,11 @@ func applyMods(g *weapon.Gun, adj modeAdjust, atts []attMods) error {
 	}
 	ev := func(f func(*attMods) modifier, base float32) float32 { return float32(eval(all(f), float64(base))) }
 	g.Aim = ev(func(a *attMods) modifier { return a.ads }, g.Aim)
+	for _, a := range atts { // RecoilPushModifier.eval: the last attachment's push replaces
+		if a.recoilPush != nil {
+			g.RecoilPush = a.recoilPush
+		}
+	}
 	g.Weight = ev(func(a *attMods) modifier { return a.weight }, g.Weight)
 	// ModernKineticGunScriptAPI clamps the spread at 0
 	// (the base: GunData.getInaccuracy(type, addend), clamped at 0 too)
