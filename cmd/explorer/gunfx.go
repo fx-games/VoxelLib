@@ -23,6 +23,7 @@ type gunFX struct {
 	world    particles.System
 	sprites  []particles.Particle
 	last     time.Time
+	dt       float32 // last frame time (capped)
 }
 
 // muzzleBone is TACZ's MUZZLE_FLASH_ORIGIN_NODE.
@@ -92,6 +93,7 @@ func (g *game) drawMuzzle(v *gunView, view mgl32.Mat4) []particles.Particle {
 	now := time.Now()
 	dt := math.Min(now.Sub(f.last).Seconds(), 0.1)
 	f.last = now
+	f.dt = float32(dt)
 	f.sprites = f.sprites[:0]
 	if f.rend == nil {
 		return nil

@@ -146,6 +146,24 @@ type Gun struct {
 	Cues     map[string][]Cue `json:"cues"` // clip name → sounds
 	// Muzzle is the display's renew muzzle flash; nil for the legacy one.
 	Muzzle *MuzzleFlash `json:"muzzle,omitempty"`
+	// Shell is the casing ejection; nil: the gun ejects none.
+	Shell *ShellEjection `json:"shell,omitempty"`
+}
+
+// ShellEjection is a gun display's "shell" block (TACZ ShellEjection):
+// each shot throws a casing from the "shell" bone along
+// (Velocity + random·Random)·t + Accel·t²/2 (blocks, TACZ's frame),
+// turning Angular degrees per second, for Life seconds.
+type ShellEjection struct {
+	Velocity [3]float32 `json:"velocity"`
+	Random   [3]float32 `json:"random"`
+	Accel    [3]float32 `json:"accel"`
+	Angular  [3]float32 `json:"angular"`
+	Life     float32    `json:"life"`
+	// Model and Texture are the casing's geometry and texture files in the
+	// pack (the gun's own, else its ammo's).
+	Model   string `json:"model"`
+	Texture string `json:"texture"`
 }
 
 type Ammo struct {

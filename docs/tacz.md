@@ -27,4 +27,5 @@ is the gun cycle (draw, idle, shoot, bolt, reload magazine/tube/inventory, inspe
 - [ ] explorer: zombies (hostile, waves), ammo loot
 - [x] muzzle flash and smoke: TACZ "renew" particle definitions on the particles package (hand space + world)
 - [x] animation tracks: static_idle base, main track override, blended shoot per shot (model.Animator layers)
-- [ ] later: shells, attachments (builtin stocks on AK etc. are currently stripped), minigun heat
+- [x] shells: ShellRender per shot at shell/shell_N bones (display's shell model, else the ammo's), camera space from the bone's first-frame pose
+- [ ] later: attachments (builtin stocks on AK etc. are currently stripped), minigun heat

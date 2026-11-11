@@ -36,7 +36,13 @@ type Pack struct {
 	defaults map[string][]*bbmodel.Animation
 }
 
+// shellFiles names a casing's geometry and texture (resource ids).
+type shellFiles struct {
+	Model, Texture string
+}
+
 type gunFiles struct {
+	shell                        shellFiles // the display's own casing, if any
 	texture, animation, defaults string
 }
 
@@ -48,6 +54,7 @@ func Load(pack, defaults fs.FS) (*Pack, error) {
 		return nil, err
 	}
 	p := &Pack{FS: pack, guns: map[string]gunFiles{}, defaults: map[string][]*bbmodel.Animation{}}
+	ammoShell := map[string]shellFiles{} // by ammo ID
 	for _, d := range []string{"rifle", "pistol"} {
 		data, err := fs.ReadFile(defaults, d+"_default.animation.json")
 		if err != nil {
@@ -94,13 +101,31 @@ func Load(pack, defaults fs.FS) (*Pack, error) {
 			return nil, err
 		}
 		var disp struct {
-			Slot string `json:"slot"`
+			Slot  string `json:"slot"`
+			Shell shellFiles
 		}
 		if err := readJSON(pack, asset("display/ammo", in.Display)+".json", &disp); err != nil {
 			return nil, err
 		}
 		id := strings.TrimSuffix(path.Base(f), ".json")
+		ammoShell[id] = disp.Shell
 		p.Ammo = append(p.Ammo, weapon.Ammo{ID: id, Name: lang[in.Name], Stack: in.Stack, Icon: asset("textures", disp.Slot) + ".png"})
+	}
+	// A gun without its own casing throws its ammo's.
+	for i := range p.Guns {
+		g := &p.Guns[i]
+		if g.Shell == nil {
+			continue
+		}
+		f := p.guns[g.ID].shell
+		if f.Model == "" || f.Texture == "" {
+			f = ammoShell[g.Ammo]
+		}
+		if f.Model == "" || f.Texture == "" {
+			g.Shell = nil // TACZ draws nothing without a model
+			continue
+		}
+		g.Shell.Model, g.Shell.Texture = asset("geo_models", f.Model)+".json", asset("textures", f.Texture)+".png"
 	}
 	for id := range missing {
 		p.Missing = append(p.Missing, id)
@@ -157,6 +182,23 @@ func (p *Pack) Model(id string) (*model.Model, error) {
 	return m, nil
 }
 
+// ShellModel parses a gun's casing (Gun.Shell must be set).
+func (p *Pack) ShellModel(g *weapon.Gun) (*model.Model, error) {
+	tex, err := readPNG(p.FS, g.Shell.Texture)
+	if err != nil {
+		return nil, err
+	}
+	geo, err := fs.ReadFile(p.FS, g.Shell.Model)
+	if err != nil {
+		return nil, err
+	}
+	models, err := bbmodel.ParseGeometry(geo, func(string) image.Image { return tex })
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", g.Shell.Model, err)
+	}
+	return models[0], nil
+}
+
 // animations returns the gun's animations followed by its default set's.
 func (p *Pack) animations(f gunFiles) ([]*bbmodel.Animation, error) {
 	data, err := fs.ReadFile(p.FS, f.animation)
@@ -188,6 +230,14 @@ func (p *Pack) loadGun(file string, lang map[string]string, sound func(string) s
 		Zoom                            float32 `json:"iron_zoom"`
 		Sounds                          map[string]json.RawMessage
 		Muzzle                          json.RawMessage `json:"muzzle_flash"`
+		Shell                           *struct {
+			shellFiles
+			Velocity [3]float32 `json:"initial_velocity"`
+			Random   [3]float32 `json:"random_velocity"`
+			Accel    [3]float32 `json:"acceleration"`
+			Angular  [3]float32 `json:"angular_velocity"`
+			Life     float32    `json:"living_time"`
+		}
 	}
 	if err := readJSON(p.FS, asset("display/guns", index.Display)+".json", &disp); err != nil {
 		return err
@@ -237,6 +287,10 @@ func (p *Pack) loadGun(file string, lang map[string]string, sound func(string) s
 	spec.Zoom = disp.Zoom
 	spec.Model, spec.Icon = asset("geo_models", disp.Model)+".json", asset("textures", disp.Slot)+".png"
 	spec.Hud = asset("textures", disp.Hud) + ".png"
+	if sh := disp.Shell; sh != nil {
+		spec.Shell = &weapon.ShellEjection{Velocity: sh.Velocity, Random: sh.Random, Accel: sh.Accel, Angular: sh.Angular, Life: sh.Life}
+		files.shell = sh.shellFiles
+	}
 	if disp.HudEmpty != "" {
 		spec.HudEmpty = asset("textures", disp.HudEmpty) + ".png"
 	}

@@ -1,0 +1,126 @@
+package main
+
+import (
+	"log"
+	"strings"
+
+	"github.com/go-gl/mathgl/mgl32"
+	"github.com/memmaker/voxellib/voxel/render"
+	firearm "github.com/memmaker/voxellib/weapon"
+)
+
+// TACZ's ShellRender: each shot throws a casing from every shell bone; the
+// casing flies in view space from the bone's pose at its first frame.
+const (
+	shellBone = "shell"
+	maxShells = 128
+)
+
+type shell struct {
+	spec  *firearm.ShellEjection
+	model shellModel
+	bone  int // shell bone of the gun's model
+	start mgl32.Mat4
+	posed bool
+	t     float32
+	rnd   mgl32.Vec3
+}
+
+type shellModel struct{ handle, bones int }
+
+type gunShells struct {
+	models map[string]shellModel // by gun ID (handle -1: none)
+	live   []shell
+	skin   [][]mgl32.Mat4
+}
+
+// shellBones are a model's shell, shell_1, shell_2, ... bones.
+func shellBones(v *gunView) []int {
+	var bs []int
+	for i, b := range v.m.Bones {
+		if n, ok := strings.CutPrefix(b.Name, shellBone); ok && (n == "" || n[0] == '_') {
+			bs = append(bs, i)
+		}
+	}
+	return bs
+}
+
+// ejectShells queues one casing per shell bone of the held gun.
+func (g *game) ejectShells(spec *firearm.Gun, v *gunView) {
+	if spec.Shell == nil {
+		return
+	}
+	s := &g.shells
+	if s.models == nil {
+		s.models = map[string]shellModel{}
+	}
+	h, ok := s.models[spec.ID]
+	if !ok {
+		h.handle = -1
+		m, err := g.gunPack.ShellModel(spec)
+		if err == nil {
+			h.bones = len(m.Bones)
+			h.handle, err = g.Models.Add(m)
+		}
+		if err != nil {
+			log.Printf("guns: %s shell: %v", spec.ID, err)
+			h.handle = -1
+		}
+		s.models[spec.ID] = h
+	}
+	if h.handle < 0 {
+		return
+	}
+	for _, b := range shellBones(v) {
+		r := spec.Shell.Random
+		rnd := mgl32.Vec3{r[0] * g.gunRand.Float32(), r[1] * g.gunRand.Float32(), r[2] * g.gunRand.Float32()}
+		s.live = append(s.live, shell{spec: spec.Shell, model: h, bone: b, rnd: rnd})
+	}
+	if n := len(s.live) - maxShells; n > 0 {
+		s.live = s.live[n:]
+	}
+}
+
+// shellInstances ages the casings by dt and appends them for drawing with
+// view; they fly in camera space from the bone's pose at their first frame.
+func (g *game) shellInstances(v *gunView, view mgl32.Mat4, dt float32, sky, blk uint8, ins []render.ModelInstance) []render.ModelInstance {
+	s := &g.shells
+	live := s.live[:0]
+	for _, c := range s.live {
+		if !c.posed {
+			if c.bone >= len(v.skin) {
+				continue // the gun changed before the first frame
+			}
+			c.start, c.posed = view.Mul4(v.skin[c.bone]).Mul4(v.m.Bones[c.bone].InvBind.Inv()), true
+		} else {
+			c.t += dt
+		}
+		if c.t < c.spec.Life {
+			live = append(live, c)
+		}
+	}
+	s.live = live
+	unview := view.Inv()
+	for len(s.skin) < len(live) {
+		s.skin = append(s.skin, nil)
+	}
+	for i, c := range live {
+		e := c.spec
+		t := c.t
+		var p mgl32.Vec3
+		for k := range 3 {
+			p[k] = (e.Velocity[k]+c.rnd[k])*t + 0.5*e.Accel[k]*t*t
+		}
+		deg := func(k int) float32 { return mgl32.DegToRad(e.Angular[k] * t) }
+		// TACZ's T(-x,-y,z)·Rx(-a)·Ry(-b)·Rz(c) in its model frame is this in ours (Rz180 between them).
+		m := unview.Mul4(c.start).Mul4(mgl32.Translate3D(p[0], p[1], p[2])).Mul4(mgl32.HomogRotate3DX(deg(0))).
+			Mul4(mgl32.HomogRotate3DY(deg(1))).Mul4(mgl32.HomogRotate3DZ(deg(2)))
+		sk := s.skin[i][:0]
+		for range c.model.bones {
+			sk = append(sk, m)
+		}
+		s.skin[i] = sk
+		ins = append(ins, render.ModelInstance{Model: c.model.handle, Skin: sk, Sky: sky, Block: blk})
+	}
+	return ins
+}

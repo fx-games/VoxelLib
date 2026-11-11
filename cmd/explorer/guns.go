@@ -62,6 +62,7 @@ type gunsState struct {
 	gun      firearm.GunState
 	arms     gunArms
 	fx       gunFX
+	shells   gunShells
 	hudTex   map[string]ui.Texture // HUD sprites by pack/hud path
 	gunViews map[string]*gunView   // by gun ID, loaded on first use
 	stock    map[string]int        // ammo ID → rounds carried
@@ -374,6 +375,7 @@ func (g *game) shoot() {
 		g.hitCreature(c, dmg, d)
 	}
 	g.startMuzzle(spec)
+	g.ejectShells(spec, g.gunViews[spec.ID])
 	g.gunRecoil = spec.NewRecoil(g.gunRand, firearm.AimRecoil(aim, spec.Zoom))
 	g.recoilTicks, g.recoilP, g.recoilY = 0, 0, 0
 }
@@ -477,6 +479,7 @@ func (g *game) drawGunHand(alpha float64) {
 		ins = append(ins, render.ModelInstance{Model: a.model, Skin: a.draw[i], Sky: sky, Block: blk})
 	}
 	sprites := g.drawMuzzle(v, view) // world smoke first: the hand clears depth
+	ins = g.shellInstances(v, view, g.fx.dt, sky, blk, ins)
 	g.Models.DrawHandInstance(float32(g.Cam.Aspect), view, ins...)
 	if g.fx.rend != nil {
 		g.fx.rend.DrawHand(float32(g.Cam.Aspect), view, sprites, sky, blk)
