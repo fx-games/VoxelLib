@@ -62,7 +62,7 @@ func forcefieldImage() image.Image {
 }
 
 // drawWall draws the zone's wall for the camera.
-func (g *game) drawWall(z mp.Zone, closing bool) {
+func (g *game) drawWall(cam *render.Camera, z mp.Zone, closing bool) {
 	r := g.Eng.Renderer
 	if _, ok := r.Opt.SkyTextures.(*wallTextures); !ok {
 		r.Opt.SkyTextures = &wallTextures{next: r.Opt.SkyTextures, img: forcefieldImage()}
@@ -71,7 +71,7 @@ func (g *game) drawWall(z mp.Zone, closing bool) {
 		}
 	}
 	far := float64(r.Opt.RenderDistance * 16)
-	cx, cy, cz := g.Cam.X, g.Cam.Y, g.Cam.Z
+	cx, cy, cz := cam.X, cam.Y, cam.Z
 	// The closest distance to a side (WorldBorder.getClosestDistance).
 	d := math.Min(math.Min(cx-z.MinX, z.MaxX-cx), math.Min(cz-z.MinZ, z.MaxZ-cz))
 	if d > far {
@@ -125,7 +125,7 @@ func (g *game) drawWall(z mp.Zone, closing bool) {
 		return
 	}
 	g.wallDraw[0] = render.SkyDraw{Texture: forcefield, Additive: true, Verts: verts, Transform: mgl32.Ident4()}
-	r.DrawSkyDraws(&g.Cam, g.wallDraw[:])
+	r.DrawSkyDraws(cam, g.wallDraw[:])
 }
 
 func along(alongZ bool, x, z float64) float64 {

@@ -11,7 +11,7 @@
 //	a, err := app.New(cfg)
 //	a.Hooks.Start = func() { ... }          // per session: GPU assets, entities
 //	a.Hooks.Tick = func() { ... }           // 20 Hz game rules
-//	a.Hooks.Draw = func(alpha float64) {...} // extra world passes
+//	a.Hooks.DrawWorld = func(cam *render.Camera, alpha float64) {...} // extra world passes
 //	err = a.Run()
 //
 // Everything runs on the main (render) thread; hooks need no locking.
@@ -114,10 +114,15 @@ type Hooks struct {
 	// daylight and the like in opt (the renderer's options). The app has
 	// already set the under-water/lava fog.
 	Render func(alpha float64, opt *render.Options)
-	// Draw runs each frame after the terrain, the block outline and the
-	// entities: extra world passes, then the first-person hand last
-	// (hands clear depth).
-	Draw func(alpha float64)
+	// DrawWorld draws the game's world passes (models, particles, text)
+	// for cam, after the terrain, the block outline and the entities and
+	// before the weather. It runs for the main view and again for each
+	// scope view (App.DrawScopeView), so it only draws: advance state in
+	// Render.
+	DrawWorld func(cam *render.Camera, alpha float64)
+	// DrawHand runs each frame after the world (DrawWorld, weather): the
+	// first-person hand (hands clear depth) and its scope view.
+	DrawHand func(alpha float64)
 	// BlockInteract: the player attacked (first click) or used a block
 	// within reach. Return true when handled: no breaking/placing follows.
 	BlockInteract func(hit physics.Hit, act Action) bool

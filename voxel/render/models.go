@@ -396,13 +396,13 @@ func (mr *ModelRenderer) DrawHandSkinned(handle int, aspect float32, view mgl32.
 // texture, colour, blend, cutoff and emissive settings (its position and
 // pose fields are ignored: view places it), e.g. the first-person fire.
 //
-// When an instance has a Stencil state (outside shader-pack frames), the
-// call draws into its own depth-stencil buffer, depth and stencil cleared
+// When an instance has a Stencil state, the call (in a shader-pack frame
+// after the pack's composites, see beginHandStencil) draws into its own depth-stencil buffer, depth and stencil cleared
 // (to 1 and 0) once at its start even within BeginHands, and the
 // instances honour their Stencil in order; later draws start on a
 // cleared depth buffer.
 func (mr *ModelRenderer) DrawHandInstance(aspect float32, view mgl32.Mat4, ins ...ModelInstance) {
-	stencil := dev.pk == nil && usesStencil(ins)
+	stencil := usesStencil(ins)
 	if stencil {
 		beginHandStencil()
 		defer endHandStencil()

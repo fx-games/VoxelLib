@@ -27,13 +27,19 @@ var scope struct {
 // ModelRenderer.Draw, ...) to the scope view, cleared, at the world's
 // resolution, rasterising only inside clip (world pixels, e.g. a lens's
 // ModelRenderer.HandBounds: the view shows only there), and reports
-// whether it did: not outside a frame, in shader-pack frames or for a
-// clip off the screen.
+// whether it did: not outside a frame or for a clip off the screen.
+//
+// In a shader-pack frame it first ends the pack's world (packResolve):
+// the scope view, and the stencil hand pass that shows it, draw with the
+// engine's own programs over the composited frame. The pack's programs
+// can't draw a second camera: its gbuffers, composites and per-frame
+// uniform buffer exist once, for the main view.
 func BeginScopeView(clip image.Rectangle) bool {
 	clip = clip.Intersect(image.Rect(0, 0, dev.ww, dev.wh))
-	if dev.enc == nil || dev.pk != nil || clip.Empty() {
+	if dev.enc == nil || clip.Empty() {
 		return false
 	}
+	packResolve()
 	scope.clip = gputypes.ScissorRect{X: uint32(clip.Min.X), Y: uint32(clip.Min.Y), Width: uint32(clip.Dx()), Height: uint32(clip.Dy())}
 	endPass()
 	w, h := dev.ww, dev.wh

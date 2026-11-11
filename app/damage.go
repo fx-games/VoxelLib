@@ -65,7 +65,7 @@ func (a *App) expireCracks() {
 // and the other breakers' (RenderGlobal.drawBlockDamageTexture: dropped
 // past 32 blocks from the player). The game sets the textures with
 // Renderer.SetDamageTextures.
-func (a *App) drawDamage(alpha float64) {
+func (a *App) drawDamage(cam *render.Camera, alpha float64) {
 	p := a.Player
 	stage, b := p.BreakStage(), p.Breaking
 	if c := a.Config.Debug.Crack; c > 0 {
@@ -73,7 +73,7 @@ func (a *App) drawDamage(alpha float64) {
 			stage, b = min(c, 10)-1, h.Block
 		}
 	}
-	a.drawCrack(&a.damage, b, stage)
+	a.drawCrack(cam, &a.damage, b, stage)
 	px, py, pz := p.Lerp(alpha)
 	for id, c := range a.cracks {
 		dx, dy, dz := float64(c.pos.X)-px, float64(c.pos.Y)-py, float64(c.pos.Z)-pz
@@ -82,11 +82,11 @@ func (a *App) drawDamage(alpha float64) {
 			delete(a.cracks, id)
 			continue
 		}
-		a.drawCrack(&c.d, c.pos, c.stage)
+		a.drawCrack(cam, &c.d, c.pos, c.stage)
 	}
 }
 
-func (a *App) drawCrack(d *damageOverlay, b voxel.BlockPos, stage int) {
+func (a *App) drawCrack(cam *render.Camera, d *damageOverlay, b voxel.BlockPos, stage int) {
 	if stage < 0 {
 		return
 	}
@@ -107,5 +107,5 @@ func (a *App) drawCrack(d *damageOverlay, b voxel.BlockPos, stage int) {
 		d.pos, d.state, d.built = b, st, true
 	}
 	o := sp.Origin()
-	a.Eng.Renderer.DrawBlockDamage(&a.Cam, d.mesh, [3]int{o.X, o.Y, o.Z}, stage)
+	a.Eng.Renderer.DrawBlockDamage(cam, d.mesh, [3]int{o.X, o.Y, o.Z}, stage)
 }

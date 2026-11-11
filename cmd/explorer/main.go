@@ -216,7 +216,8 @@ func main() {
 		Tick:          g.tick,
 		Action:        g.action,
 		Render:        g.render,
-		Draw:          g.draw,
+		DrawWorld:     g.drawWorld,
+		DrawHand:      g.drawHand,
 		BlockInteract: g.blockInteract,
 		BreakStrength: g.breakStrength,
 		HeldBlock:     func() voxel.StateID { return g.hotbar[min(a.Player.Selected, len(g.hotbar)-1)] },
@@ -417,21 +418,37 @@ func (g *game) render(alpha float64, _ *render.Options) {
 	g.animStep()
 	if g.net != nil {
 		g.netFrame()
+		g.netPose(alpha)
 	}
+	g.fxFrame()
 }
 
-// draw adds the explorer's world passes after the terrain and creatures;
-// the held item (which clears depth) comes last.
-func (g *game) draw(alpha float64) {
-	g.drawSigns()
-	g.drawWeapons()
+// drawWorld adds the explorer's world passes for cam after the terrain
+// and creatures (Hooks.DrawWorld: the main view and the scope view).
+func (g *game) drawWorld(cam *render.Camera, alpha float64) {
+	g.drawSigns(cam)
+	g.drawWeapons(cam)
 	if g.net != nil {
-		g.drawNet(alpha)
+		g.drawNet(cam)
 	} else {
-		g.drawArrows(alpha)
+		g.drawArrows(cam, alpha)
 	}
-	g.drawTorches(alpha)
-	g.drawItems(alpha)
+	g.drawTorches(cam, alpha)
+	g.drawDrops(cam, alpha)
+	g.drawFX(cam)
+}
+
+// drawHand draws the held item in first person (Hooks.DrawHand).
+func (g *game) drawHand(alpha float64) {
+	switch {
+	case g.gunOn():
+		g.drawGunHand(alpha)
+	case g.crossbowOn():
+		g.drawCrossbowHand(alpha)
+	case g.held != "" && g.itemRend != nil:
+		sky, blk := g.Light(g.Cam.X, g.Cam.Y, g.Cam.Z)
+		g.itemRend.DrawHand(g.held, float32(g.Cam.Aspect), g.Player.HandPose(alpha), sky, blk)
+	}
 }
 
 // Draw is the explorer's app.HUD: hearts, hurt flash, F1 help.

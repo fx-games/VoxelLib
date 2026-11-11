@@ -112,8 +112,9 @@ func (es *Entities) sweep() {
 	es.List = live
 }
 
-// draw draws every entity with a model within the render distance.
-func (a *App) drawEntities(alpha float64) {
+// buildEntities poses every entity with a model within the render
+// distance for this frame's views (drawWorld).
+func (a *App) buildEntities(alpha float64) {
 	es := &a.Entities
 	es.insts = es.insts[:0]
 	if len(es.List) == 0 {
@@ -135,20 +136,41 @@ func (a *App) drawEntities(alpha float64) {
 			es.insts = es.insts[:len(es.insts)-1]
 		}
 	}
-	a.Models.Draw(&a.Cam, es.insts)
 }
 
-// DrawScopeView renders the world and entities again with fov (vertical,
-// radians) into the scope view (render.BeginScopeView) inside clip, for a
-// hand-pass HandStencil.ScopeView draw this frame. Call it from
-// Hooks.Draw, before that hand draw.
-func (a *App) DrawScopeView(fov float64, clip image.Rectangle) {
+// drawWorld draws for cam what the engine's terrain pass leaves out: the
+// block outline and cracks, the entities (buildEntities), the game's
+// Hooks.DrawWorld and the weather; for the main view and each scope view.
+func (a *App) drawWorld(cam *render.Camera, alpha float64) {
+	if h, ent, ok := a.Target(); ok && ent == nil && !a.ScreenOpen() {
+		if a.Hooks.SelectBox != nil {
+			if b, ok := a.Hooks.SelectBox(h); ok {
+				a.Eng.Renderer.DrawBoxOutline(cam, b)
+			}
+		} else {
+			a.Eng.Renderer.DrawBlockOutline(cam, h.Block.X, h.Block.Y, h.Block.Z)
+		}
+	}
+	a.drawDamage(cam, alpha)
+	a.Models.Draw(cam, a.Entities.insts)
+	if a.Hooks.DrawWorld != nil {
+		a.Hooks.DrawWorld(cam, alpha)
+	}
+	a.Eng.Renderer.DrawWeather(cam) // Options.Weather, after particles as in 1.7
+}
+
+// DrawScopeView renders the world again with fov (vertical, radians), as
+// the main view draws it (terrain, then drawWorld), into the scope view
+// (render.BeginScopeView) inside clip, for a hand-pass
+// HandStencil.ScopeView draw this frame. Call it from Hooks.DrawHand,
+// before that hand draw.
+func (a *App) DrawScopeView(fov float64, clip image.Rectangle, alpha float64) {
 	if !render.BeginScopeView(clip) {
 		return
 	}
 	cam := a.Cam
 	cam.FOV = fov
 	a.Eng.Renderer.RenderView(&cam)
-	a.Models.Draw(&cam, a.Entities.insts)
+	a.drawWorld(&cam, alpha)
 	render.EndScopeView()
 }

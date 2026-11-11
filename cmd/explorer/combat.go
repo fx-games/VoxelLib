@@ -335,7 +335,7 @@ func (g *game) combatClip(c *creature) string {
 
 // drawWeapons draws the sword in each melee creature's hand, posed with
 // the hand bone as drawn this frame.
-func (g *game) drawWeapons() {
+func (g *game) drawWeapons(cam *render.Camera) {
 	if g.swordModel < 0 {
 		return
 	}
@@ -359,7 +359,7 @@ func (g *game) drawWeapons() {
 	for i := range g.weaponBuf {
 		g.weaponBuf[i].Transform = &g.weaponMats[i]
 	}
-	g.Models.Draw(&g.Cam, g.weaponBuf)
+	g.Models.Draw(cam, g.weaponBuf)
 }
 
 // unscaled drops the scale from a rigid transform (bone frames carry the
