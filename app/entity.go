@@ -114,11 +114,11 @@ func (es *Entities) sweep() {
 // draw draws every entity with a model within the render distance.
 func (a *App) drawEntities(alpha float64) {
 	es := &a.Entities
+	es.insts = es.insts[:0]
 	if len(es.List) == 0 {
 		return
 	}
 	far := float64(a.Eng.Renderer.Opt.RenderDistance * 16)
-	es.insts = es.insts[:0]
 	for _, e := range es.List {
 		if e.Model < 0 || e.Removed {
 			continue
@@ -135,4 +135,17 @@ func (a *App) drawEntities(alpha float64) {
 		}
 	}
 	a.Models.Draw(&a.Cam, es.insts)
+}
+
+// drawScopeView renders the world and entities again with ScopeFOV into
+// the scope view (render.BeginScopeView), when set.
+func (a *App) drawScopeView() {
+	if a.ScopeFOV <= 0 || !render.BeginScopeView() {
+		return
+	}
+	cam := a.Cam
+	cam.FOV = a.ScopeFOV
+	a.Eng.Renderer.RenderView(&cam)
+	a.Models.Draw(&cam, a.Entities.insts)
+	render.EndScopeView()
 }

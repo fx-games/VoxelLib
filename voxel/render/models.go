@@ -381,6 +381,10 @@ func (mr *ModelRenderer) DrawHandInstance(aspect float32, view mgl32.Mat4, ins .
 	proj := mr.r.handProj(aspect)
 	mr.begin(modelLight{proj, Fog{Start: 1e6, End: 2e6}, mr.r.Opt.Daylight, mr.r.Opt.BlockBrightness})
 	for _, in := range ins {
+		if stencil && in.Stencil.ScopeView {
+			drawScopeView(in.Stencil)
+			continue
+		}
 		if in.Model >= 0 && in.Model < len(mr.models) {
 			if stencil {
 				handStencil = &in.Stencil

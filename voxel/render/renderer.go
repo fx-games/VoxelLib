@@ -610,6 +610,19 @@ func (r *Renderer) Render(cam *Camera) {
 	r.drawTerrain(cam, vp)
 }
 
+// RenderView draws sky and terrain again for a second camera this frame,
+// after Render, into BeginScopeView.
+func (r *Renderer) RenderView(cam *Camera) {
+	if cam.Far == 0 {
+		cam.Far = float64(r.Opt.RenderDistance*16) * 2
+	}
+	vp := cam.ViewProj()
+	fr := makeFrustum(vp)
+	r.cullVisible(&fr)
+	r.buildBatches()
+	r.drawTerrain(cam, vp)
+}
+
 // buildBatches fills r.batches with the frame's multidraws: solid then
 // cutout per region (near to far), then translucent far to near, re-sorting
 // nearby sections when the camera moved.

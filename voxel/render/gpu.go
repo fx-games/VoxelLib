@@ -436,6 +436,7 @@ func BeginFrame(w, h int, r, g, b float32) {
 		worldTargets(dev.ww, dev.wh)
 	}
 	dev.lastDraws, dev.draws = dev.draws, 0
+	scope.ready = false
 	var err error
 	if dev.enc, err = dev.device.CreateCommandEncoder(&wgpu.CommandEncoderDescriptor{Label: "frame"}); err != nil {
 		panic(err)
@@ -477,6 +478,9 @@ func curPass() *wgpu.RenderPassEncoder {
 
 // frameTargets is the colour and depth view the frame draws to now.
 func frameTargets() (*wgpu.TextureView, *wgpu.TextureView) {
+	if scope.active {
+		return scope.color.view, scope.depth.view
+	}
 	if dev.inWorld {
 		return dev.world.view, dev.worldDepth.view
 	}

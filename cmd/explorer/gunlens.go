@@ -154,7 +154,8 @@ func (g *game) lensInstances(v *gunView, view mgl32.Mat4, aim float32, sky, blk 
 
 // lensViews is renderOcularAndDivision: each ocular (selective: only the
 // ocular_scope ones) inverts its mark inside the view disc, is masked black
-// and shows its reticle there; the others show their reticle on the mark.
+// outside it and shows the magnified scope view (App.ScopeFOV) and its
+// reticle inside; the others show their reticle on the mark.
 func (g *game) lensViews(v *gunView, view mgl32.Mat4, aim float32, selective bool,
 	draw func(int, render.HandStencil, []mgl32.Mat4), part func(int, render.HandStencil),
 	test func(render.StencilCompare, int) render.HandStencil) {
@@ -177,6 +178,9 @@ func (g *game) lensViews(v *gunView, view mgl32.Mat4, aim float32, selective boo
 			continue
 		}
 		part(l.oculars[i].handle, test(render.StencilEqual, i+1)) // the black mask
+		inside := test(render.StencilEqual, ^(i+1)&0xFF)
+		inside.ScopeView = true
+		part(l.oculars[i].handle, inside) // the magnified world in the disc
 		part(l.divisions[i], test(render.StencilEqual, ^(i+1)&0xFF))
 	}
 }

@@ -63,6 +63,9 @@ type HandStencil struct {
 	NoColor      bool      // write no colour
 	NoDepthWrite bool
 	DepthAlways  bool // the depth test always passes
+	// ScopeView draws the scope view (BeginScopeView) over the screen
+	// instead of the instance's model; nothing without one this frame.
+	ScopeView bool
 }
 
 // handVariant names an engine pipeline made for the stencil hand pass
