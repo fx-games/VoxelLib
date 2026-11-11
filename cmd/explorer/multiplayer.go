@@ -279,6 +279,9 @@ func (g *game) netStart() {
 		case h.Victim == me:
 			g.hurt = hurtTicks
 		case h.Attacker == me:
+			if h.Gun {
+				g.hitMark(h.Head, h.Killed)
+			}
 			msg := "Hit"
 			if h.Head {
 				msg = "Head shot"
