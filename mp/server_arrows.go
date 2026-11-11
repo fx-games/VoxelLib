@@ -182,7 +182,7 @@ func (s *Server) hit(shooter, victim *sPlayer, a *projectile.Arrow) {
 
 // damage deals a hit (arrow or bullet) to a live, unprotected victim and
 // knocks them back along dx,dz, like an arrow's knockback in the reference.
-// hitKnockback is the push (blocks/tick) of an arrow or bullet hit.
+// hitKnockback is the push (blocks/tick) of an arrow hit (a bullet pushes by its gun's Bullet.Knockback).
 const hitKnockback = 0.4
 
 // damage applies a hit, pushing the victim knock blocks/tick along (dx, dz).

@@ -43,10 +43,10 @@ func TestOldAIWalk(t *testing.T) {
 	m.Add(o)
 	m.Keeps = func(x, y *Actor) bool { return x == a && y == o }
 	a.Target = o
-	for i := 0; i < 40 && a.Body.MoveSpeed == 0; i++ {
+	for i := 0; i < 40 && a.Body.MoveSpeed.Or(0) == 0; i++ {
 		m.Tick()
 	}
-	if got, want := a.Body.MoveSpeed, 0.95*0.1/0.98; math.Abs(got-want) > 1e-9 {
+	if got, want := a.Body.MoveSpeed.Or(0), 0.95*0.1/0.98; math.Abs(got-want) > 1e-9 {
 		t.Fatalf("push %v, want %v", got, want)
 	}
 }

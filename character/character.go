@@ -97,9 +97,10 @@ type Character struct {
 	NoClip bool // fly through blocks (debug); implies Flying
 
 	// MoveSpeed is the ground acceleration per tick at full input
-	// (sprinting adds 30%); 0 means the player's 0.1. A ridden horse uses
-	// its movementSpeed attribute; package actors sets AI walkers'.
-	MoveSpeed float64
+	// (sprinting adds 30%); unset means the player's PlayerMoveSpeed. A
+	// ridden horse uses its movementSpeed attribute; package actors sets AI
+	// walkers'.
+	MoveSpeed Speed
 	// NoSprint stops sprinting from starting (EntityPlayerSP: blindness);
 	// a sprint already going continues.
 	NoSprint bool
@@ -168,6 +169,24 @@ func (c *Character) ToggleFly() {
 	if !c.Flying {
 		c.NoClip = false
 	}
+}
+
+// Speed is an optional ground acceleration per tick; the zero value is
+// unset.
+type Speed struct {
+	v   float64
+	set bool
+}
+
+// SpeedOf is the set speed v (0 stands still).
+func SpeedOf(v float64) Speed { return Speed{v, true} }
+
+// Or is the speed, or def when unset.
+func (s Speed) Or(def float64) float64 {
+	if s.set {
+		return s.v
+	}
+	return def
 }
 
 // PlayerMoveSpeed is the player's ground acceleration per tick at full
@@ -328,8 +347,8 @@ func (c *Character) Tick(w World, in Input) {
 			if sprint {
 				a = sprintAccel
 			}
-			if c.MoveSpeed > 0 {
-				a = c.MoveSpeed
+			if c.MoveSpeed.set {
+				a = c.MoveSpeed.v
 				if sprint {
 					a *= sprintAccel / walkAccel
 				}

@@ -347,8 +347,8 @@ func (m *Manager) rideInput(mt *Actor) character.Input {
 			fwd, strafe = 0, 0
 		}
 	}
-	b.MoveSpeed = mt.moveSpeed()
-	b.StepHeight, b.AirAccel = 1, b.MoveSpeed*0.1
+	b.MoveSpeed = character.SpeedOf(mt.moveSpeed())
+	b.StepHeight, b.AirAccel = 1, b.MoveSpeed.Or(0)*0.1
 	// a power sent in the air is dropped on landing, never used
 	if power > 0 && b.OnGround {
 		b.VY = s.JumpStrength * power

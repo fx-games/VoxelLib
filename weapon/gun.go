@@ -72,7 +72,8 @@ func (k *ReloadKind) UnmarshalText(t []byte) error {
 	return err
 }
 
-// Falloff is the damage of a bullet up to a distance (the last entry has Dist 0: any distance).
+// Falloff is the damage of a bullet hitting closer than Dist (TACZ
+// DistanceDamagePair; "infinite" is math.MaxFloat32).
 type Falloff struct {
 	Dist   float32 `json:"dist"`
 	Damage float32 `json:"damage"`
@@ -106,13 +107,16 @@ type Gun struct {
 		BPM   float32 `json:"bpm"`
 	} `json:"burst"`
 	Bullet struct {
-		Damage   float32   `json:"damage"`
-		Pellets  int       `json:"pellets"`
-		Speed    float32   `json:"speed"`
-		Gravity  float32   `json:"gravity"`
-		Pierce   int       `json:"pierce"`
-		Headshot float32   `json:"headshot"`
-		Falloff  []Falloff `json:"falloff"`
+		Damage   float32 `json:"damage"`
+		Pellets  int     `json:"pellets"`
+		Speed    float32 `json:"speed"`
+		Gravity  float32 `json:"gravity"`
+		Pierce   int     `json:"pierce"`
+		Headshot float32 `json:"headshot"`
+		// Knockback is the push (blocks/tick) a hit gives, replacing the
+		// hit's default (TACZ KnockBackModifier).
+		Knockback float32   `json:"knockback"`
+		Falloff   []Falloff `json:"falloff"`
 	} `json:"bullet"`
 	Reload struct {
 		Kind ReloadKind `json:"kind"`

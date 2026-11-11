@@ -143,7 +143,7 @@ func (m *Manager) boatTick(a *Actor) bool {
 		if !r.Player {
 			// an AI rider's moveForward is its AI speed while its navigation
 			// walks (EntityMoveHelper.setMoveForward(getAIMoveSpeed)), times 0.98
-			fwd, strafe = r.nav.in.Forward*math.Sqrt(r.Body.MoveSpeed*0.98)*0.98, 0
+			fwd, strafe = r.nav.in.Forward*math.Sqrt(r.Body.MoveSpeed.Or(0)*0.98)*0.98, 0
 		}
 		if bt.Strafe {
 			yaw += strafe * math.Pi / 2 // + -moveStrafing*90°, strafe right = -moveStrafing

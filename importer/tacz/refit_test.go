@@ -145,7 +145,8 @@ func TestModifiers(t *testing.T) {
 		// two attachments: percents add, multipliers multiply, addends add
 		{"db_short", map[Slot]string{SlotStock: "tacz:oem_stock_tactical", SlotExtendedMag: "tacz:ammo_mod_overpressure_recoil"}, func(b, g *weapon.Gun) []value {
 			return []value{{"inaccuracy", g.Inaccuracy.Stand, (b.Inaccuracy.Stand - 0.125) * 1.5},
-				{"damage", g.Bullet.Damage, b.Bullet.Damage * 1.5}, {"damage falloff", g.Bullet.Falloff[1].Damage, b.Bullet.Falloff[1].Damage * 1.5}}
+				{"damage", g.Bullet.Damage, b.Bullet.Damage * 1.5}, {"damage falloff", g.Bullet.Falloff[1].Damage, b.Bullet.Falloff[1].Damage * 1.5},
+				{"knockback multiplier", g.Bullet.Knockback, 0.875 * 2}}
 		}, 0.7 * 1.25, 0.8},
 		{"b93r", map[Slot]string{SlotMuzzle: "tacz:muzzle_silencer_wraith"}, func(b, g *weapon.Gun) []value {
 			return []value{{"ammo_speed", g.Bullet.Speed, b.Bullet.Speed * 1.2}, {"effective_range", g.Bullet.Falloff[0].Dist, b.Bullet.Falloff[0].Dist * 1.5}}
@@ -185,7 +186,7 @@ func TestModifiers(t *testing.T) {
 
 // knownUnsupported are the attachment data keys the spec does not use
 // (UnsupportedData); a change to that list must be deliberate.
-var knownUnsupported = []string{"armor_ignore", "explosion", "flash_hider", "ignite", "knockback", "lie_inaccuracy", "recoil_push",
+var knownUnsupported = []string{"armor_ignore", "explosion", "flash_hider", "ignite", "lie_inaccuracy", "recoil_push",
 	"smoke_count_scale", "smoke_direction", "smoke_directions", "smoke_hider", "smoke_speed_scale", "smoke_spread", "smoke_spread_angle"}
 
 // TestModifierForms checks the forms no pack attachment uses
@@ -216,6 +217,46 @@ func TestModifierForms(t *testing.T) {
 	}
 	if err := applyMods(&weapon.Gun{}, []attMods{{pitch: modifier{addend: 1, multiplier: 1}, yaw: identity}}); err == nil {
 		t.Error("a recoil addend was accepted")
+	}
+	// no attachments: GunData.getShootInterval still clamps the cached rpm
+	fast := weapon.Gun{RPM: 1500}
+	if err := applyMods(&fast, nil); err != nil || fast.RPM != maxRPM {
+		t.Errorf("rpm 1500 without attachments: %v %v, want %v", fast.RPM, err, maxRPM)
+	}
+	// EntityKineticBullet clamps the knockback at 0
+	kb := weapon.Gun{}
+	kb.Bullet.Knockback = 0.5
+	if err := applyMods(&kb, []attMods{{knockback: modifier{addend: -1, multiplier: 1}, pitch: identity, yaw: identity}}); err != nil || kb.Bullet.Knockback != 0 {
+		t.Errorf("knockback 0.5-1: %v %v, want 0", kb.Bullet.Knockback, err)
+	}
+}
+
+// TestDamageAt follows EntityKineticBullet.getDamage: the first pair the
+// hit is strictly closer than, 0 past the last; a gun without
+// damage_adjust has the one pair (Integer.MAX_VALUE, damage).
+func TestDamageAt(t *testing.T) {
+	p := loadPack(t)
+	g, err := p.Gun("m1866", p.DefaultChoice("m1866"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	f := g.Bullet.Falloff
+	last := f[len(f)-1]
+	if got := g.DamageAt(f[0].Dist); got != f[1].Damage {
+		t.Errorf("at the first distance %v: %v, want the second pair's %v", f[0].Dist, got, f[1].Damage)
+	}
+	if got := g.DamageAt(1e30); last.Dist != math.MaxFloat32 || got != last.Damage {
+		t.Errorf("infinite last pair %v: %v, want %v", last.Dist, got, last.Damage)
+	}
+	var short weapon.Gun
+	short.Bullet.Falloff = []weapon.Falloff{{Dist: 10, Damage: 5}}
+	if got := short.DamageAt(10); got != 0 {
+		t.Errorf("past the last pair: %v, want 0", got)
+	}
+	for id, pg := range p.guns {
+		if b := pg.base.Bullet; len(b.Falloff) == 0 || (b.Falloff[0].Dist == noAdjustRange && b.Falloff[0].Damage != b.Damage) {
+			t.Errorf("%s: falloff %v", id, b.Falloff)
+		}
 	}
 }
 

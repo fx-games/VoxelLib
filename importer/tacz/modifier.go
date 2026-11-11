@@ -19,7 +19,7 @@ var appliedData = []string{
 	"ads", "ads_addend", "weight", "weight_modifier",
 	"inaccuracy", "inaccuracy_addend", "aim_inaccuracy", "sneak_inaccuracy",
 	"recoil", "recoil_modifier", "rpm", "ammo_speed", "damage", "effective_range",
-	"head_shot", "pierce", "movement_speed",
+	"head_shot", "pierce", "knockback", "movement_speed",
 	"extended_mag_level", "melee", "silence",
 }
 
@@ -29,7 +29,6 @@ var appliedData = []string{
 var UnsupportedData = map[string]string{
 	"lie_inaccuracy":     "no prone stance",
 	"armor_ignore":       "no armor",
-	"knockback":          "hits push by the explorer's fixed gunKnockback",
 	"explosion":          "no explosive bullets",
 	"ignite":             "no incendiary bullets",
 	"recoil_push":        "no recoil push",
@@ -45,11 +44,11 @@ var UnsupportedData = map[string]string{
 
 // attMods is an installed attachment's modifiers (identity where absent).
 type attMods struct {
-	ads, weight, rpm, ammoSpeed, damage, headShot, pierce modifier
-	stand, move, sneak, aim                               modifier          // inaccuracy by stance
-	pitch, yaw                                            modifier          // recoil
-	effectiveRange                                        *modifier         // nil: none
-	moveSpeed                                             *weapon.MoveSpeed // nil: none
+	ads, weight, rpm, ammoSpeed, damage, headShot, pierce, knockback modifier
+	stand, move, sneak, aim                                          modifier          // inaccuracy by stance
+	pitch, yaw                                                       modifier          // recoil
+	effectiveRange                                                   *modifier         // nil: none
+	moveSpeed                                                        *weapon.MoveSpeed // nil: none
 }
 
 // parseMods reads an attachment data's modifiers as the modifiers'
@@ -81,6 +80,7 @@ func parseMods(raw []byte) (attMods, error) {
 		EffectiveRange   *modifier                     `json:"effective_range"`
 		HeadShot         *modifier                     `json:"head_shot"`
 		Pierce           *modifier                     `json:"pierce"`
+		Knockback        *modifier                     `json:"knockback"`
 		MoveSpeed        *weapon.MoveSpeed             `json:"movement_speed"`
 	}
 	if err := json.Unmarshal(raw, &d); err != nil {
@@ -97,7 +97,7 @@ func parseMods(raw []byte) (attMods, error) {
 		ads:    or(d.Ads, addend(d.AdsAddend)),
 		weight: or(d.WeightModifier, addend(d.Weight)),
 		rpm:    or(d.RPM, identity), ammoSpeed: or(d.AmmoSpeed, identity), damage: or(d.Damage, identity),
-		headShot: or(d.HeadShot, identity), pierce: or(d.Pierce, identity),
+		headShot: or(d.HeadShot, identity), pierce: or(d.Pierce, identity), knockback: or(d.Knockback, identity),
 		// inaccuracy: every stance but aim, sneak and lie
 		stand: or(d.Inaccuracy, addend(d.InaccuracyAddend)), move: or(d.Inaccuracy, addend(d.InaccuracyAddend)),
 		sneak: or(d.SneakInaccuracy, identity), aim: or(d.AimInaccuracy, identity),
@@ -125,11 +125,10 @@ const (
 const noAdjustRange = math.MaxInt32
 
 // applyMods applies the installed attachments' modifiers (in slot order)
-// to g as the modifiers' eval and their readers do.
+// to g as the modifiers' eval and their readers do. It runs without
+// attachments too: TACZ always reads the cache (the RPM clamp of
+// GunData.getShootInterval, Math.round of rpm and pierce).
 func applyMods(g *weapon.Gun, atts []attMods) error {
-	if len(atts) == 0 {
-		return nil
-	}
 	all := func(f func(*attMods) modifier) []modifier {
 		out := make([]modifier, len(atts))
 		for i := range atts {
@@ -167,6 +166,8 @@ func applyMods(g *weapon.Gun, atts []attMods) error {
 	b := &g.Bullet
 	b.Speed = ev(func(a *attMods) modifier { return a.ammoSpeed }, b.Speed)
 	b.Headshot = ev(func(a *attMods) modifier { return a.headShot }, b.Headshot)
+	// EntityKineticBullet clamps the knockback at 0
+	b.Knockback = max(0, ev(func(a *attMods) modifier { return a.knockback }, b.Knockback))
 	b.Pierce = javaRound(eval(all(func(a *attMods) modifier { return a.pierce }), float64(b.Pierce)))
 	damage := func(a *attMods) modifier { return a.damage }
 	b.Damage = ev(damage, b.Damage)
@@ -184,15 +185,8 @@ func applyMods(g *weapon.Gun, atts []attMods) error {
 		}
 	}
 	if len(ranges) > 0 {
-		if len(b.Falloff) == 0 {
-			b.Falloff = []weapon.Falloff{{Dist: noAdjustRange, Damage: b.Damage}}
-		}
 		first := b.Falloff[0].Dist
-		base := float64(first)
-		if first == 0 { // "infinite"
-			base = noAdjustRange
-		}
-		r := float32(eval(ranges, base))
+		r := float32(eval(ranges, float64(first)))
 		for i := range b.Falloff {
 			if b.Falloff[i].Dist == first {
 				b.Falloff[i].Dist = r

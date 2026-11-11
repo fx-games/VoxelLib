@@ -78,7 +78,7 @@ func TestSteerSteps(t *testing.T) {
 			f := float32(0.98) * 0.91
 			f2, k = float64(f), float64(0.16277136/(f*f*f))/(0.16277136/(0.546*0.546*0.546))
 		}
-		a := 0.003 * 0.98 * pig.Body.MoveSpeed * k
+		a := 0.003 * 0.98 * pig.Body.MoveSpeed.Or(0) * k
 		if v := math.Hypot(pig.Body.VX, pig.Body.VZ); !pig.Body.OnGround || math.Abs(v-a*f2*f2) > 1e-9 {
 			t.Fatalf("ice %v: v %v want %v", ice, v, a*f2*f2)
 		}

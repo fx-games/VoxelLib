@@ -380,12 +380,15 @@ func (s *GunState) take(n int, stock *int) {
 
 // DamageAt is the damage of one pellet hitting at dist blocks.
 func (g *Gun) DamageAt(dist float32) float32 {
+	if len(g.Bullet.Falloff) == 0 {
+		return g.Bullet.Damage
+	}
 	for _, f := range g.Bullet.Falloff {
-		if f.Dist == 0 || dist <= f.Dist {
+		if dist < f.Dist {
 			return f.Damage
 		}
 	}
-	return g.Bullet.Damage
+	return 0 // EntityKineticBullet.getDamage: past the last pair
 }
 
 // Spread is the cone half-angle (degrees) of a shot.

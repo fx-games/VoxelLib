@@ -37,8 +37,6 @@ const (
 	creatureHealth = 20
 	// startRounds is the stock of each ammo type a new game starts with.
 	startRounds = 300
-	// gunKnockback is the push (blocks/tick) a creature gets from a hit.
-	gunKnockback = 0.15
 )
 
 // Bones a gun shows only while it holds rounds (TACZ's GunModelConstant).
@@ -313,7 +311,7 @@ func cameraAt(world []mgl32.Mat4, b int) mgl32.Mat4 {
 
 // tickGun runs the held gun's cycle for one tick.
 func (g *game) tickGun() {
-	g.Player.MoveSpeed = 0 // default unless a gun is held
+	g.Player.MoveSpeed = character.Speed{} // default unless a gun is held
 	if !g.gunOn() {
 		return
 	}
@@ -332,7 +330,7 @@ func (g *game) tickGun() {
 		g.aim = max(g.aim-g.aimStep(), 0)
 	}
 	// LivingEntitySpeedModifier: the gun's weight and movement_speed.
-	g.Player.MoveSpeed = character.PlayerMoveSpeed * float64(g.gun.Gun.SpeedFactor(aiming, g.gun.Phase == firearm.Reloading))
+	g.Player.MoveSpeed = character.SpeedOf(character.PlayerMoveSpeed * float64(g.gun.Gun.SpeedFactor(aiming, g.gun.Phase == firearm.Reloading)))
 	in := firearm.GunInput{
 		Trigger:  g.Input.Down(app.ActAttack) && !g.ScreenOpen(),
 		Reload:   g.Input.Down("reload"),
@@ -615,7 +613,7 @@ func (g *game) hitscan(shot mp.Shot, eye [3]float64) {
 			dmg *= spec.Bullet.Headshot
 		}
 		head := c.isHead(h.Part)
-		g.hitMark(head, g.hitCreature(c, dmg, d, gunKnockback))
+		g.hitMark(head, g.hitCreature(c, dmg, d, float64(spec.Bullet.Knockback)))
 	}
 }
 

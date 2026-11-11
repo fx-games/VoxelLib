@@ -103,8 +103,8 @@ func TestMountFall(t *testing.T) {
 	h.Sprinting = true
 	p.RideInput.Forward = 1
 	m.Tick()
-	if math.Abs(h.Body.MoveSpeed-0.3*1.3) > 1e-12 {
-		t.Fatalf("sprinting move speed %.4f, want 0.39", h.Body.MoveSpeed)
+	if math.Abs(h.Body.MoveSpeed.Or(0)-0.3*1.3) > 1e-12 {
+		t.Fatalf("sprinting move speed %.4f, want 0.39", h.Body.MoveSpeed.Or(0))
 	}
 }
 

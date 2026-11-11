@@ -100,7 +100,7 @@ func (m *Manager) steerInput(mt *Actor) character.Input {
 	if s.speed >= s.Max*0.5 && m.Rand.Float32() < 0.006 && !s.boosted && s.Wear != nil {
 		s.Wear(mt, r)
 	}
-	b.MoveSpeed = ai * 0.16277136 / (0.546 * 0.546 * 0.546) // the body applies the ground's own f3
+	b.MoveSpeed = character.SpeedOf(ai * 0.16277136 / (0.546 * 0.546 * 0.546)) // the body applies the ground's own f3
 	s.jump = jump
 	return character.Input{Forward: f1, Yaw: mt.Yaw}
 }

@@ -44,7 +44,7 @@ func (s *Server) shoot(p *sPlayer, sh Shot) {
 		if head && gun.Bullet.Headshot > 0 {
 			dmg *= gun.Bullet.Headshot
 		}
-		s.damage(Hit{Attacker: p.slot, Victim: r.p.slot, Damage: max(1, int(math.Round(float64(dmg)))), Head: head, Gun: true}, d[0], d[2], hitKnockback)
+		s.damage(Hit{Attacker: p.slot, Victim: r.p.slot, Damage: max(1, int(math.Round(float64(dmg)))), Head: head, Gun: true}, d[0], d[2], float64(gun.Bullet.Knockback))
 	}
 	for _, o := range s.players {
 		if o != nil && o != p {

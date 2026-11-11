@@ -415,7 +415,10 @@ type taczData struct {
 		Speed   float32 `json:"speed"`
 		Gravity float32 `json:"gravity"`
 		Pierce  int     `json:"pierce"`
-		Extra   struct {
+		// Knockback is BulletData's knockback (default 0: TACZ bullets
+		// replace the vanilla push with it).
+		Knockback float32 `json:"knockback"`
+		Extra     struct {
 			Headshot float32 `json:"head_shot_multiplier"`
 			Adjust   []struct {
 				Distance json.RawMessage `json:"distance"` // a number or "infinite"
@@ -442,7 +445,7 @@ type taczData struct {
 	Inaccuracy  struct{ Stand, Move, Sneak, Aim float32 }
 	Heat        *taczHeat
 	Melee       taczGunMelee
-	CanSlide    *bool `json:"can_slide"` // GunData's default: true
+	CanSlide    *bool  `json:"can_slide"` // GunData's default: true
 	Script      string `json:"script"`
 	AllowUnload bool   `json:"allow_ammo_unload"`
 }
@@ -486,15 +489,18 @@ func (d *taczData) spec(id, name, class string) (weapon.Gun, error) {
 	g.Slide = d.CanSlide == nil || *d.CanSlide
 	b := &g.Bullet
 	b.Damage, b.Pellets, b.Speed, b.Gravity, b.Pierce = d.Bullet.Damage, max(d.Bullet.Amount, 1), d.Bullet.Speed, d.Bullet.Gravity, d.Bullet.Pierce
-	b.Headshot = d.Bullet.Extra.Headshot
+	b.Headshot, b.Knockback = d.Bullet.Extra.Headshot, d.Bullet.Knockback
 	for _, a := range d.Bullet.Extra.Adjust {
-		var dist float32 // "infinite" stays 0: any distance
+		dist := float32(math.MaxFloat32) // DistanceDamagePairSerializer: "infinite"
 		if string(a.Distance) != `"infinite"` {
 			if err := json.Unmarshal(a.Distance, &dist); err != nil {
 				return g, fmt.Errorf("damage_adjust distance %s: %w", a.Distance, err)
 			}
 		}
 		b.Falloff = append(b.Falloff, weapon.Falloff{Dist: dist, Damage: a.Damage})
+	}
+	if len(b.Falloff) == 0 { // DamageModifier: the one pair (Integer.MAX_VALUE, damage)
+		b.Falloff = []weapon.Falloff{{Dist: noAdjustRange, Damage: b.Damage}}
 	}
 	r := &g.Reload
 	if d.Reload.Type == "inventory" {
