@@ -62,6 +62,9 @@ type options struct {
 	itemDir, signFont, pets, modelPack, species, anim, hold, gun, press string
 	numItems, numMobs                                                   int
 	night, fly, lineup, help, aim                                       bool
+	// fullZoom magnifies the whole screen while aiming (TACZ; cheaper)
+	// instead of only inside a scope's lens (a second world render).
+	fullZoom bool
 }
 
 func main() {
@@ -95,6 +98,7 @@ func main() {
 	flag.BoolVar(&o.fly, "fly", false, "start flying")
 	flag.StringVar(&o.hold, "hold", "sword_01", "item held at start")
 	flag.StringVar(&o.press, "press", "", "debug: actions held down from the start, comma separated (e.g. use,attack: aim and fire)")
+	flag.BoolVar(&o.fullZoom, "full-zoom", false, "aiming magnifies the whole screen as TACZ does, instead of a second render inside scope lenses (for slower machines)")
 	flag.StringVar(&o.gun, "gun", "", "gun (a TACZ gun ID, e.g. ak47) in hand at start")
 	flag.StringVar(&cfg.Debug.Edits, "edits", "", "debug: 'dx,dy,dz,block;...' edits relative to the player, applied once terrain is ready")
 	flag.DurationVar(&cfg.Debug.AutoTurn, "autoturn", 0, "debug: stand and turn round from this long into the game on, firing after 5 and 15 s (benchmark under real conditions)")

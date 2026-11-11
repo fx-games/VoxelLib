@@ -109,7 +109,9 @@ func (g *game) gunFOV(alpha float64) {
 	}
 	g.Cam.FOV = baseFOV * math.Pi / 180
 	g.ScopeFOV = 0
-	if g.gunOn() {
+	if g.opt.fullZoom {
+		g.Cam.FOV = float64(s.world.value()) * math.Pi / 180
+	} else if g.gunOn() {
 		if v := g.gunViews[g.gun.Gun.ID]; v != nil && v.lens != nil && v.lens.scope && s.aim.value() > 0 {
 			g.ScopeFOV = float64(s.world.value()) * math.Pi / 180 // lensViews' disc shows it
 		}
