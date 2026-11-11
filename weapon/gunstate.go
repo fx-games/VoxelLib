@@ -64,7 +64,6 @@ type GunState struct {
 	fed       bool    // reload: magazine in / tube intro over
 	empty     bool    // the reload started on an empty gun
 	ending    bool    // tube reload: reload_end playing
-	heatShot  float32 // Heat at the last shot (or lock)
 	sinceShot float32 // seconds since then
 }
 
@@ -181,6 +180,9 @@ func (s *GunState) Tick(dt float32, in GunInput, stock *int) []GunEvent {
 	return ev
 }
 
+// heatCoolingScale: calcHeatReduction takes ms/10000, i.e. seconds/10.
+const heatCoolingScale = 10
+
 // heat adds a shot's heat (sp_heat.lua handle_shoot_heat).
 func (s *GunState) heat() {
 	h := s.Gun.Heat
@@ -188,11 +190,13 @@ func (s *GunState) heat() {
 		return
 	}
 	s.Heat = min(s.Heat+h.PerShot, h.Max)
-	s.heatShot, s.sinceShot = s.Heat, 0
+	s.sinceShot = 0
 	s.Overheated = s.Overheated || s.Heat >= h.Max
 }
 
-// cool lets the heat fall (sp_heat.lua tick_heat).
+// cool lets the heat fall, once per Tick (sp_heat.lua tick_heat, run per
+// entity tick): past the wait, by Cooling·(seconds since the shot)/10 each
+// tick (ModernKineticGunScriptAPI.calcHeatReduction).
 func (s *GunState) cool(dt float32) {
 	h := s.Gun.Heat
 	if h == nil {
@@ -203,9 +207,8 @@ func (s *GunState) cool(dt float32) {
 	if s.Overheated {
 		wait = h.Lock
 	}
-	// ponytail: t counts from the end of the wait; TACZ's calcHeatReduction is not in the source we have.
-	if t := s.sinceShot - wait; t > 0 {
-		s.Heat = max(s.heatShot-h.Cooling*t*t, 0)
+	if s.Heat > 0 && s.sinceShot >= wait {
+		s.Heat = max(s.Heat-s.sinceShot/heatCoolingScale*h.Cooling, 0)
 		s.Overheated = s.Overheated && s.Heat > 0
 	}
 }

@@ -80,13 +80,13 @@ func TestHeat(t *testing.T) {
 	if !s.Overheated || shots != 5 || s.SpreadFactor() != 1.5 {
 		t.Fatalf("overheated %v after %d shots, spread ×%v", s.Overheated, shots, s.SpreadFactor())
 	}
-	for range 30 { // 1.5 s: locked for 1 s, then 10 - 10·0.5² = 7.5
+	for range 21 { // locked until 1 s after the last shot, then −10·t/10 per tick: 1.0 + 1.05
 		s.Tick(0.05, GunInput{}, &stock)
 	}
-	if !s.Overheated || s.Heat > 7.6 || s.Heat < 7.4 {
+	if !s.Overheated || s.Heat > 7.96 || s.Heat < 7.94 {
 		t.Fatalf("heat %v locked %v", s.Heat, s.Overheated)
 	}
-	for range 20 {
+	for range 10 {
 		s.Tick(0.05, GunInput{}, &stock)
 	}
 	if s.Overheated || s.Heat != 0 {

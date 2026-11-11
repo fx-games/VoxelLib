@@ -159,8 +159,8 @@ type Gun struct {
 
 // Heat is a gun data's "heat" block (TACZ GunHeatData, sp_heat.lua): each
 // shot adds PerShot up to Max, where the gun locks; Delay seconds after the
-// last shot (Lock when locked) it cools by Cooling·t² over t seconds, the
-// lock lifting at 0. The heat fraction lerps the fire rate's and the
+// last shot (Lock when locked) it cools each tick by Cooling·t/10, t the
+// seconds since the shot, the lock lifting at 0. The heat fraction lerps the fire rate's and the
 // inaccuracy's factors between [0] and [1].
 type Heat struct {
 	Max        float32    `json:"max"`
