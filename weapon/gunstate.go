@@ -1,6 +1,9 @@
 package weapon
 
-import "strconv"
+import (
+	"slices"
+	"strconv"
+)
 
 // GunPhase is what a held gun is doing.
 type GunPhase uint8
@@ -54,13 +57,12 @@ type GunEvent struct {
 
 // GunInput is the player's input for one tick.
 type GunInput struct {
-	Trigger  bool // held
-	Pressed  bool // went down this tick
-	Reload   bool
-	Inspect  bool
-	NextMode bool
-	Melee    bool // went down this tick
-	Unload   bool // went down this tick
+	Trigger bool // held
+	Pressed bool // went down this tick
+	Reload  bool
+	Inspect bool
+	Melee   bool // went down this tick
+	Unload  bool // went down this tick
 }
 
 // GunState runs one gun's cycle. Ammo counts the rounds in the gun,
@@ -119,6 +121,28 @@ func (s *GunState) PutAway() []GunEvent {
 func (s *GunState) FireMode() FireMode {
 	m := s.Gun.FireModes()
 	return m[s.Mode%len(m)]
+}
+
+// NextMode selects the gun's next fire mode when it is ready and has
+// more than one (LivingEntityFireSelect). It is its own step, ahead of Tick,
+// as TACZ handles the key press before the tick's shot: the caller resolves
+// the new mode's spec, then ticks, so a shot in the same tick uses it.
+func (s *GunState) NextMode() []GunEvent {
+	if s.Phase != Ready || len(s.Gun.Modes) < 2 {
+		return nil
+	}
+	s.Mode = (s.Mode + 1) % len(s.Gun.Modes)
+	s.burstLeft = 0
+	return []GunEvent{{Sound: SoundFireSelect}}
+}
+
+// SetFireMode selects mode m if the gun has it, reporting whether it does.
+func (s *GunState) SetFireMode(m FireMode) bool {
+	i := slices.Index(s.Gun.FireModes(), m)
+	if i >= 0 {
+		s.Mode = i
+	}
+	return i >= 0
 }
 
 // Tick advances dt seconds. stock is the player's rounds of the gun's ammo;
@@ -186,10 +210,6 @@ func (s *GunState) Tick(dt float32, in GunInput, stock *int) []GunEvent {
 			clip, sound = ClipInspectEmpty, SoundInspectEmpty
 		}
 		return append(ev, GunEvent{Clip: clip, Sound: sound})
-	case in.NextMode && len(g.Modes) > 1:
-		s.Mode = (s.Mode + 1) % len(g.Modes)
-		s.burstLeft = 0
-		ev = append(ev, GunEvent{Sound: SoundFireSelect})
 	}
 	if in.Pressed {
 		switch s.FireMode() {

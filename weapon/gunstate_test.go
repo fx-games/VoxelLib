@@ -36,7 +36,7 @@ func TestGunCycle(t *testing.T) {
 		t.Fatalf("tactical: ammo %d stock %d phase %d", s.Ammo, stock, s.Phase)
 	}
 	// Semi: one shot per press.
-	s.Tick(tick, GunInput{NextMode: true}, &stock)
+	s.NextMode()
 	if n := run(s, 1, GunInput{Trigger: true, Pressed: true}, &stock); n != 1 {
 		t.Fatalf("semi: %d shots", n)
 	}
@@ -127,7 +127,7 @@ func TestActionSounds(t *testing.T) {
 			t.Fatalf("inspect: %v", got)
 		}
 		s.Phase = Ready
-		if got := sounds(s.Tick(tick, GunInput{NextMode: true}, &stock)); len(got) != 1 || got[0] != SoundFireSelect {
+		if got := sounds(s.NextMode()); len(got) != 1 || got[0] != SoundFireSelect {
 			t.Fatalf("fire select: %v", got)
 		}
 	}

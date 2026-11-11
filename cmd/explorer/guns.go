@@ -54,12 +54,13 @@ type gunsState struct {
 	arms      gunArms
 	fx        gunFX
 	shells    gunShells
-	hudTex    map[string]ui.Texture  // HUD sprites by pack/hud path
-	heatScale float32                // HeatBarOverlay's eased scale
-	lensDisc  int                    // the scopes' view disc model (-1: not uploaded)
-	gunViews  map[string]*gunView    // by gun ID, loaded on first use
-	choices   map[string]tacz.Choice // refitted guns' attachments by gun ID (refit.go)
-	stock     map[string]int         // ammo ID → rounds carried
+	hudTex    map[string]ui.Texture       // HUD sprites by pack/hud path
+	heatScale float32                     // HeatBarOverlay's eased scale
+	lensDisc  int                         // the scopes' view disc model (-1: not uploaded)
+	gunViews  map[string]*gunView         // by gun ID, loaded on first use
+	choices   map[string]tacz.Choice      // refitted guns' attachments by gun ID (refit.go)
+	modes     map[string]firearm.FireMode // guns' last fire modes by gun ID (TACZ keeps it on the item)
+	stock     map[string]int              // ammo ID → rounds carried
 	// aim is the aiming progress 0..1 (LocalPlayerAim: 1/aim_time per
 	// second), aimPrev the last tick's.
 	aim, aimPrev float32
@@ -126,7 +127,7 @@ func (g *game) setupGuns() {
 		log.Printf("guns disabled: %v", err)
 		return
 	}
-	g.gunPack, g.gunViews, g.stock, g.choices = p, map[string]*gunView{}, map[string]int{}, map[string]tacz.Choice{}
+	g.gunPack, g.gunViews, g.stock, g.choices, g.modes = p, map[string]*gunView{}, map[string]int{}, map[string]tacz.Choice{}, map[string]firearm.FireMode{}
 	g.gunRand = rand.New(rand.NewSource(1))
 	for _, a := range p.Ammo {
 		g.stock[a.ID] = startRounds
@@ -211,6 +212,9 @@ func (g *game) takeGun(i int) {
 	g.gunSel = i
 	spec := &v.spec
 	g.gun = firearm.GunState{Gun: spec, Ammo: spec.Mag, ClipLen: clipLen(v)}
+	if m, ok := g.modes[spec.ID]; ok && !g.gun.SetFireMode(m) {
+		log.Printf("gun %s: kept fire mode %v not among %v", spec.ID, m, spec.FireModes())
+	}
 	if err := g.resolveMode(); err != nil { // the view may hold another mode's spec
 		log.Printf("gun %s: %v", spec.ID, err)
 	}
@@ -350,25 +354,29 @@ func (g *game) tickGun() {
 	// LivingEntitySpeedModifier: the gun's weight and movement_speed.
 	g.Player.MoveSpeed = character.SpeedOf(character.PlayerMoveSpeed * float64(g.gun.Gun.SpeedFactor(aiming, g.gun.Phase == firearm.Reloading)))
 	in := firearm.GunInput{
-		Trigger:  g.Input.Down(app.ActAttack) && !g.ScreenOpen(),
-		Reload:   g.Input.Down("reload"),
-		Inspect:  g.keyPressed("inspect"),
-		NextMode: g.keyPressed("firemode"),
-		Melee:    g.keyPressed("melee"),
-		Unload:   g.keyPressed("unload"),
+		Trigger: g.Input.Down(app.ActAttack) && !g.ScreenOpen(),
+		Reload:  g.Input.Down("reload"),
+		Inspect: g.keyPressed("inspect"),
+		Melee:   g.keyPressed("melee"),
+		Unload:  g.keyPressed("unload"),
 	}
 	in.Pressed = in.Trigger && !g.triggerWas
 	g.triggerWas = in.Trigger
+	// Fire select first (TACZ handles the key before the tick's shot), its
+	// spec resolved (postChangeEvent), so a shot this tick uses the new mode.
+	if g.keyPressed("firemode") {
+		if ev := g.gun.NextMode(); ev != nil {
+			g.modes[g.gun.Gun.ID] = g.gun.FireMode()
+			if err := g.resolveMode(); err != nil {
+				log.Printf("gun %s: %v", g.gun.Gun.ID, err)
+			}
+			g.sendHold()
+			g.gunEvents(ev)
+		}
+	}
 	stock := g.stock[g.gun.Gun.Ammo]
-	mode := g.gun.FireMode()
 	ev := g.gun.Tick(1.0/app.TickRate, in, &stock)
 	g.stock[g.gun.Gun.Ammo] = stock
-	if g.gun.FireMode() != mode { // LivingEntityFireSelect: postChangeEvent
-		if err := g.resolveMode(); err != nil {
-			log.Printf("gun %s: %v", g.gun.Gun.ID, err)
-		}
-		g.sendHold()
-	}
 	g.gunEvents(ev)
 
 	v := g.gunViews[g.gun.Gun.ID]
