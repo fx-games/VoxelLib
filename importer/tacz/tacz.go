@@ -40,6 +40,7 @@ type Pack struct {
 	tags     map[string][]string    // attachment tags by ID ("tacz:muzzle")
 	adapters map[string]slotAdapter // by slot adapter ID
 	defaults map[string][]*bbmodel.Animation
+	internal fs.FS // the mod's own resources (DefaultsDir)
 }
 
 // shellFiles names a casing's geometry and texture (resource ids).
@@ -60,7 +61,8 @@ type gunFiles struct {
 	texture, animation, defaults string
 }
 
-// The committed gun pack and default animations, relative to the repo root.
+// The committed gun pack and the mod's own resources (default animations,
+// tracer), relative to the repo root.
 const (
 	PackDir     = "assets/tacz/tacz_default_gun"
 	DefaultsDir = "assets/tacz/defaults"
@@ -70,13 +72,13 @@ const (
 func LoadDefault() (*Pack, error) { return Load(os.DirFS(PackDir), os.DirFS(DefaultsDir)) }
 
 // Load reads the gun pack at pack (a tacz_default_gun directory) and the
-// default rifle/pistol animations at defaults (<kind>_default.animation.json).
+// mod's own resources at defaults (<kind>_default.animation.json, the tracer).
 func Load(pack, defaults fs.FS) (*Pack, error) {
 	lang := map[string]string{}
 	if err := readJSON(pack, "assets/tacz/lang/en_us.json", &lang); err != nil {
 		return nil, err
 	}
-	p := &Pack{FS: pack, guns: map[string]gunFiles{}, defaults: map[string][]*bbmodel.Animation{}}
+	p := &Pack{FS: pack, guns: map[string]gunFiles{}, defaults: map[string][]*bbmodel.Animation{}, internal: defaults}
 	ammoShell := map[string]shellFiles{} // by ammo ID
 	ammoTracer := map[string]string{}    // tracer_color by ammo ID
 	for _, d := range []string{"rifle", "pistol"} {
@@ -281,6 +283,24 @@ func (p *Pack) ShellModel(g *weapon.Gun) (*model.Model, error) {
 	models, err := bbmodel.ParseGeometry(geo, func(string) image.Image { return tex })
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", g.Shell.Model, err)
+	}
+	return models[0], nil
+}
+
+// TracerModel parses the mod's tracer (InternalAssetLoader's
+// DEFAULT_BULLET_MODEL basic_bullet.json with DEFAULT_BULLET_TEXTURE).
+func (p *Pack) TracerModel() (*model.Model, error) {
+	tex, err := readPNG(p.internal, "basic_bullet.png")
+	if err != nil {
+		return nil, err
+	}
+	geo, err := fs.ReadFile(p.internal, "basic_bullet.json")
+	if err != nil {
+		return nil, err
+	}
+	models, err := bbmodel.ParseGeometry(geo, func(string) image.Image { return tex })
+	if err != nil {
+		return nil, fmt.Errorf("basic_bullet: %w", err)
 	}
 	return models[0], nil
 }

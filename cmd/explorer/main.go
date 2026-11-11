@@ -470,6 +470,7 @@ func (g *game) drawWorld(cam *render.Camera, alpha float64) {
 	g.drawTorches(cam, alpha)
 	g.drawDrops(cam, alpha)
 	g.drawFX(cam)
+	g.drawTracers(cam, alpha)
 }
 
 // drawHand draws the held item in first person (Hooks.DrawHand).

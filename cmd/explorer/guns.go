@@ -54,6 +54,7 @@ type gunsState struct {
 	gun       firearm.GunState
 	arms      gunArms
 	fx        gunFX
+	tracerFX  gunTracers // tracer bullets drawn (guntracers.go)
 	shells    gunShells
 	hudTex    map[string]ui.Texture       // HUD sprites by pack/hud path
 	heatScale float32                     // HeatBarOverlay's eased scale

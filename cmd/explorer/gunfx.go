@@ -127,11 +127,7 @@ func (g *game) fxFrame() {
 	f.sprites, f.remoteSprites = f.sprites[:0], f.remoteSprites[:0]
 	if g.gunOn() {
 		v := g.gunViews[g.gun.Gun.ID]
-		if b := v.m.Bone(muzzleBone); b >= 0 && len(f.emitters) > 0 {
-			// TACZ's muzzle frame is our bone frame turned 180° about Z (see gunArms).
-			local := v.skin[b].Mul4(v.m.Bones[b].InvBind.Inv()).Mul4(mgl32.HomogRotate3DZ(math.Pi))
-			camRot := mgl32.LookAtV(mgl32.Vec3{}, g.Cam.Forward(), mgl32.Vec3{0, 1, 0}).Inv()
-			world := mgl32.Translate3D(float32(g.Cam.X), float32(g.Cam.Y), float32(g.Cam.Z)).Mul4(camRot).Mul4(g.gunHandView(v)).Mul4(local)
+		if local, world, ok := g.muzzleFrames(v); ok && len(f.emitters) > 0 {
 			f.emitters = tickEmitters(f.emitters, dt, frameOf(local), frameOf(world), &f.world, &f.sprites)
 		}
 	}
@@ -145,6 +141,20 @@ func (g *game) fxFrame() {
 	}
 	f.remote = live
 	f.world.Tick(dt, nil)
+}
+
+// muzzleFrames is the held gun's muzzle frame in its hand view (local)
+// and in the world as drawn this frame (ok false: no muzzle bone).
+func (g *game) muzzleFrames(v *gunView) (local, world mgl32.Mat4, ok bool) {
+	b := v.m.Bone(muzzleBone)
+	if b < 0 || b >= len(v.skin) {
+		return local, world, false
+	}
+	// TACZ's muzzle frame is our bone frame turned 180° about Z (see gunArms).
+	local = v.skin[b].Mul4(v.m.Bones[b].InvBind.Inv()).Mul4(mgl32.HomogRotate3DZ(math.Pi))
+	camRot := mgl32.LookAtV(mgl32.Vec3{}, g.Cam.Forward(), mgl32.Vec3{0, 1, 0}).Inv()
+	world = mgl32.Translate3D(float32(g.Cam.X), float32(g.Cam.Y), float32(g.Cam.Z)).Mul4(camRot).Mul4(g.gunHandView(v)).Mul4(local)
+	return local, world, true
 }
 
 // tickEmitters places the held gun's emitters at the muzzle, ticks them

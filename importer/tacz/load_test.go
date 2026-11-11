@@ -18,6 +18,12 @@ func TestLoadPack(t *testing.T) {
 	if len(p.Guns) < 70 || len(p.Ammo) < 25 {
 		t.Fatalf("%d guns, %d ammo", len(p.Guns), len(p.Ammo))
 	}
+	// basic_bullet: a 16 px cube with a 14 px core, bedrock y from 0 (TACZ draws it unflipped).
+	if tr, err := p.TracerModel(); err != nil {
+		t.Fatal(err)
+	} else if lo, hi := tr.Bounds(); lo != [3]float32{-0.5, 0, -0.5} || hi != [3]float32{0.5, 1, 0.5} {
+		t.Errorf("tracer bounds %v..%v", lo, hi)
+	}
 	shells := 0
 	for _, g := range p.Guns {
 		m, _, err := p.Model(g.ID, p.DefaultChoice(g.ID))
