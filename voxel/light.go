@@ -104,6 +104,7 @@ func (w *World) propagate(sky bool, t []StateInfo) {
 		}
 	}
 	w.lightQ = w.lightQ[:0]
+	maxY := w.MaxY()
 	for lvl := uint8(MaxLight); lvl > 1; lvl-- {
 		for len(b[lvl]) > 0 {
 			q := b[lvl]
@@ -116,14 +117,24 @@ func (w *World) propagate(sky bool, t []StateInfo) {
 			for f := Face(0); f < FaceCount; f++ {
 				d := faceNormals[f]
 				nx, ny, nz := x+d.X, y+d.Y, z+d.Z
-				if ny < w.MinY || ny >= w.MaxY() {
+				if ny < w.MinY || ny >= maxY {
 					continue
 				}
-				cur, ok := w.lightAt(nx, ny, nz, sky)
-				if !ok || cur >= lvl {
+				// lightAt and stateAt with one chunk lookup
+				c := w.chunkAt(nx, nz)
+				if c == nil {
 					continue
 				}
-				op := t[w.stateAt(nx, ny, nz)].Opacity
+				sec, i := c.Sections[(ny-w.MinY)>>4], SectionIndex(nx, ny, nz)
+				arr := sec.Block
+				if sky {
+					arr = sec.Sky
+				}
+				cur := getNibble(arr, i)
+				if cur >= lvl {
+					continue
+				}
+				op := t[sec.Blocks.Get(i)].Opacity
 				var nl uint8
 				if sky && f == FaceDown && lvl == MaxLight && op == 0 {
 					nl = MaxLight
@@ -135,7 +146,10 @@ func (w *World) propagate(sky bool, t []StateInfo) {
 					nl = lvl - loss
 				}
 				if nl > cur {
-					w.setLight(nx, ny, nz, sky, nl)
+					setNibble(arr, i, nl) // setLight
+					if c.Lit.Load() {
+						w.markLightDirty(nx, ny, nz)
+					}
 					b[nl] = append(b[nl], lightNode{int32(nx), int32(ny), int32(nz), nl})
 				}
 			}
