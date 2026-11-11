@@ -65,10 +65,10 @@ func TestGunShot(t *testing.T) {
 	run(t, 3*time.Second, nil, func(int) bool {
 		a.step(0, 0, false)
 		b.step(0, 0, false)
-		return len(b.hits) >= 2 && fired > 0
+		return len(b.hits) >= 2 && len(a.hits) >= 2 && fired > 0
 	})
 	for _, h := range b.hits {
-		if h.Damage != 4 || h.Attacker != a.c.Slot() || h.Victim != b.c.Slot() || h.Head {
+		if h.Damage != 4 || h.Attacker != a.c.Slot() || h.Victim != b.c.Slot() || h.Head || !h.Gun {
 			t.Fatalf("hit %+v", h)
 		}
 	}
@@ -76,5 +76,19 @@ func TestGunShot(t *testing.T) {
 	s.call(func() { health = s.players[b.c.Slot()].health })
 	if health != MaxHealth-8 || len(b.hits) != 2 {
 		t.Fatalf("health %d after %d hits", health, len(b.hits))
+	}
+	if a.hits[0] != b.hits[0] {
+		t.Fatalf("shooter got %+v, victim %+v", a.hits[0], b.hits[0])
+	}
+	// a killing pellet: the shooter's hit mark says kill
+	s.call(func() { s.players[b.c.Slot()].health = 4 })
+	a.c.SendShot(Shot{Gun: gun.ID, Pellets: []Look{{0, pitch}}})
+	run(t, 3*time.Second, nil, func(int) bool {
+		a.step(0, 0, false)
+		b.step(0, 0, false)
+		return len(a.hits) >= 3
+	})
+	if h := a.hits[2]; !h.Killed || !h.Gun || h.Attacker != a.c.Slot() {
+		t.Fatalf("kill hit %+v", h)
 	}
 }

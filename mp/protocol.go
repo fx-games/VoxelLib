@@ -373,7 +373,7 @@ const (
 	// server → client
 	msgPlayer = 10 // slot u8, joined u8, name, skin png: a player joined, changed skin or left
 	msgBlock  = 11 // x, y, z i32, state name: a block changed
-	msgHit    = 12 // attacker u8, victim u8, damage u8, flags (head, killed)
+	msgHit    = 12 // attacker u8, victim u8, damage u8, flags (head, killed, gun)
 	msgText   = 13 // a line for the chat/kill feed
 	msgScore  = 14 // slot u8, kills u16, deaths u16: a player's score changed
 	msgFired  = 15 // slot u8: that player's gun went off (not sent to the shooter)
@@ -403,6 +403,7 @@ type Hit struct {
 	Attacker, Victim int
 	Damage           int
 	Head, Killed     bool
+	Gun              bool // a bullet: the shooter plays TACZ's hit marks
 }
 
 func (h Hit) encode() []byte {
@@ -410,14 +411,14 @@ func (h Hit) encode() []byte {
 	b.u8(uint8(h.Attacker))
 	b.u8(uint8(h.Victim))
 	b.u8(uint8(h.Damage))
-	b.u8(flag(h.Head, 1) | flag(h.Killed, 2))
+	b.u8(flag(h.Head, 1) | flag(h.Killed, 2) | flag(h.Gun, 4))
 	return b
 }
 
 func decodeHit(r *rbuf) Hit {
 	h := Hit{Attacker: int(r.u8()), Victim: int(r.u8()), Damage: int(r.u8())}
 	f := r.u8()
-	h.Head, h.Killed = f&1 != 0, f&2 != 0
+	h.Head, h.Killed, h.Gun = f&1 != 0, f&2 != 0, f&4 != 0
 	return h
 }
 

@@ -514,14 +514,21 @@ func (g *game) hitscan(shot mp.Shot, eye [3]float64) {
 			dmg *= spec.Bullet.Headshot
 		}
 		head := c.isHead(h.Part)
-		switch {
-		case g.hitCreature(c, dmg, d):
-			g.gunSound(firearm.SoundKill, actionSoundVolume, 1)
-		case head:
-			g.gunSound(firearm.SoundHeadHit, actionSoundVolume, 1)
-		default:
-			g.gunSound(firearm.SoundFleshHit, actionSoundVolume, 1)
-		}
+		g.hitMark(head, g.hitCreature(c, dmg, d))
+	}
+}
+
+// hitMark is TACZ's ClientHitMark sound for the shooter's bullet hit:
+// kill, else head_hit or flesh_hit. Single player and multiplayer (the
+// server's mp.Hit) both play it here.
+func (g *game) hitMark(head, killed bool) {
+	switch {
+	case killed:
+		g.gunSound(firearm.SoundKill, actionSoundVolume, 1)
+	case head:
+		g.gunSound(firearm.SoundHeadHit, actionSoundVolume, 1)
+	default:
+		g.gunSound(firearm.SoundFleshHit, actionSoundVolume, 1)
 	}
 }
 
