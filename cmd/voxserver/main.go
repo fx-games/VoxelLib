@@ -20,8 +20,10 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/memmaker/voxellib/importer/tacz"
 	"github.com/memmaker/voxellib/mp"
 	"github.com/memmaker/voxellib/voxel"
+	"github.com/memmaker/voxellib/weapon"
 )
 
 func main() {
@@ -53,7 +55,7 @@ func main() {
 	}
 	log.Printf("generating the %s world (seed %d) for %s...", *gen, *seed, mode)
 	srv, err := mp.StartServer(mp.ServerConfig{Addr: *addr, Name: *name, Seed: *seed, Generator: *gen,
-		Mode: mode, ZoneInterval: *interval, ShrinkTime: *shrink, Reg: voxel.NewRegistry()})
+		Mode: mode, ZoneInterval: *interval, ShrinkTime: *shrink, Reg: voxel.NewRegistry(), Guns: loadGuns()})
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -218,4 +220,15 @@ func timeCommand(srv *mp.Server, arg string) {
 	}
 	srv.SetTime(t, frozen)
 	timeCommand(srv, "")
+}
+
+// loadGuns is the TACZ gun pack's guns players may hold (none when it is
+// missing: run from the repo root).
+func loadGuns() []weapon.Gun {
+	p, err := tacz.LoadDefault()
+	if err != nil {
+		log.Printf("guns disabled: %v", err)
+		return nil
+	}
+	return p.Guns
 }

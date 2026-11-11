@@ -307,7 +307,7 @@ func (g *game) start() {
 	g.Player.Flying = o.fly
 	g.Player.HotbarSize = len(g.hotbar)
 	if g.net != nil {
-		o = &options{hold: "", signFont: o.signFont, modelPack: o.modelPack} // no items, creatures or pets
+		o = &options{hold: "", signFont: o.signFont, modelPack: o.modelPack, gun: o.gun} // no items, creatures or pets
 	}
 	// the last session's renderers, freed now rather than by the garbage
 	// collector while this one draws
@@ -393,6 +393,7 @@ func (g *game) tick() {
 		g.fire()
 	}
 	if g.net != nil {
+		g.tickGun() // its shots go to the server
 		g.tickItems()
 		g.tickTorches()
 		g.tickNet()

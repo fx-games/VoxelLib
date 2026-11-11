@@ -101,7 +101,7 @@ func (g *game) crossbowOn() bool { return g.equipped && g.bowModel >= 0 && !g.gu
 func (g *game) toggleCrossbow() {
 	if g.bowModel >= 0 {
 		g.equipped = !g.crossbowOn()
-		g.gunSel = -1 // the gun goes away
+		g.selectGun(-1) // the gun goes away
 	}
 }
 
