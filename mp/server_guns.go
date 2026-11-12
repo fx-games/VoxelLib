@@ -41,14 +41,17 @@ func (s *Server) shoot(p *sPlayer, sh Shot) {
 	inacc := float64(gun.Spread(p.aim == weapon.Aimed, moving, p.anim.Sneak) * heatFactor(gun, sh.Heat))
 	// applyRecoilPush on the server, before the bullets spawn; the
 	// snapshot carries the new motion to the shooter
-	push := gun.RecoilPush.Push(sh.Look.Dir(), p.ch.OnGround, p.anim.Sneak, gun.Bullet.Pellets)
-	p.ch.VX, p.ch.VY, p.ch.VZ = p.ch.VX+push[0], p.ch.VY+push[1], p.ch.VZ+push[2]
-	for _, b := range projectile.Fire(at, sh.Look.Dir(), gun, inacc, &p.tracers, s.rng) {
-		s.nextID++
-		sb := &sBullet{id: s.nextID, shooter: p.slot, gun: gun.ID, b: b}
-		s.bullets = append(s.bullets, sb)
-		s.broadcast(BulletSpawn{ID: sb.id, Shooter: p.slot, Gun: gun.ID, Pos: b.Pos, Vel: b.Vel,
-			Gravity: float32(b.Gravity), Friction: float32(b.Friction), Life: b.Life, Tracer: b.Tracer}.encode())
+	// ponytail: the client's rounds per shot are trusted, like its fire rate
+	for range min(max(sh.Rounds, 1), max(gun.Burst.Volley, 1)) {
+		push := gun.RecoilPush.Push(sh.Look.Dir(), p.ch.OnGround, p.anim.Sneak, gun.Bullet.Pellets)
+		p.ch.VX, p.ch.VY, p.ch.VZ = p.ch.VX+push[0], p.ch.VY+push[1], p.ch.VZ+push[2]
+		for _, b := range projectile.Fire(at, sh.Look.Dir(), gun, inacc, &p.tracers, s.rng) {
+			s.nextID++
+			sb := &sBullet{id: s.nextID, shooter: p.slot, gun: gun.ID, b: b}
+			s.bullets = append(s.bullets, sb)
+			s.broadcast(BulletSpawn{ID: sb.id, Shooter: p.slot, Gun: gun.ID, Pos: b.Pos, Vel: b.Vel,
+				Gravity: float32(b.Gravity), Friction: float32(b.Friction), Life: b.Life, Tracer: b.Tracer}.encode())
+		}
 	}
 	for _, o := range s.players {
 		if o != nil && o != p {

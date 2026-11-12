@@ -123,6 +123,9 @@ type Gun struct {
 		// next burst's; Continuous keeps bursting while the trigger is held.
 		MinInterval float32 `json:"min_interval"`
 		Continuous  bool    `json:"continuous"`
+		// Volley is the rounds each burst shot fires at once
+		// (db_short_gun_logic: both barrels); 0 or 1: one.
+		Volley int `json:"volley,omitempty"`
 	} `json:"burst"`
 	Bullet struct {
 		Damage  float32 `json:"damage"`

@@ -541,6 +541,8 @@ type Shot struct {
 	Gun  string // the held gun's ID
 	Look Look
 	Heat float32 // weapon.GunState.SpreadFactor; 1 for a gun without heat
+	// Rounds the shot fires at once (weapon.GunEvent.Rounds), at least 1.
+	Rounds int
 }
 
 func (s Shot) encode() []byte {
@@ -549,11 +551,12 @@ func (s Shot) encode() []byte {
 	b.f32(s.Look.Yaw)
 	b.f32(s.Look.Pitch)
 	b.f32(float64(s.Heat))
+	b.u8(uint8(s.Rounds))
 	return b
 }
 
 func decodeShot(r *rbuf) Shot {
-	return Shot{Gun: r.str(), Look: Look{Yaw: r.f32(), Pitch: r.f32()}, Heat: float32(r.f32())}
+	return Shot{Gun: r.str(), Look: Look{Yaw: r.f32(), Pitch: r.f32()}, Heat: float32(r.f32()), Rounds: int(r.u8())}
 }
 
 // BulletSpawn is a bullet the server fired (EntityKineticBullet's spawn

@@ -46,8 +46,10 @@ const meleeBayonetClips = 3
 // GunEvent is something the game must show or apply this tick.
 type GunEvent struct {
 	Clip string // clip to play now ("" for none)
-	Shot bool   // a round left the barrel
-	Dry  bool   // trigger pulled on an empty gun
+	Shot bool   // a shot went off
+	// Rounds is the rounds the shot fired (shootOnce calls), at least 1.
+	Rounds int
+	Dry    bool // trigger pulled on an empty gun
 	// Melee: the melee attack's hit lands now (Gun.Melee).
 	Melee bool
 	// Unloaded is the rounds unloading took out (they went back to the stock).
@@ -279,9 +281,13 @@ func (s *GunState) Tick(dt float32, in GunInput, stock *int) []GunEvent {
 			}
 			break
 		}
-		*rounds--
+		n := 1
+		if s.FireMode() == Burst {
+			n = min(max(g.Burst.Volley, 1), *rounds)
+		}
+		*rounds -= n
 		s.shot = true
-		ev = append(ev, GunEvent{Clip: ClipShoot, Shot: true})
+		ev = append(ev, GunEvent{Clip: ClipShoot, Shot: true, Rounds: n})
 		interval := 60 / (g.RPM * s.heatFactor(func(h *Heat) [2]float32 { return h.RPM }))
 		s.heat()
 		if s.burstLeft > 0 {

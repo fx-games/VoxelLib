@@ -434,7 +434,7 @@ func (g *game) gunEvents(ev []firearm.GunEvent) {
 			g.playGunClip(v, e.Clip)
 		}
 		if e.Shot {
-			g.shoot()
+			g.shoot(e.Rounds)
 		}
 		if e.Dry {
 			g.gunSound(firearm.SoundDryFire, 1, g.soundPitch())
@@ -672,8 +672,9 @@ func (g *game) shotAim() firearm.AimProgress {
 	return g.aim
 }
 
-// shoot fires one round: its pellets, the sound and the camera kick.
-func (g *game) shoot() {
+// shoot fires a shot of rounds (each its pellets and recoil push, as
+// shootOnce), the sound and the camera kick.
+func (g *game) shoot(rounds int) {
 	spec := g.gun.Gun
 	if g.actionName == firearm.SoundInspect { // firing interrupts inspecting
 		g.stopActionSound()
@@ -687,7 +688,7 @@ func (g *game) shoot() {
 	look := mp.Look{Yaw: g.Cam.Yaw, Pitch: g.Cam.Pitch}
 	if g.net != nil {
 		// the server rolls the spread, flies the bullets and deals the damage
-		if err := g.net.cl.SendShot(mp.Shot{Gun: spec.ID, Look: look, Heat: g.gun.SpreadFactor()}); err != nil {
+		if err := g.net.cl.SendShot(mp.Shot{Gun: spec.ID, Look: look, Heat: g.gun.SpreadFactor(), Rounds: rounds}); err != nil {
 			log.Printf("mp: shot: %v", err)
 		}
 	} else {
@@ -697,10 +698,12 @@ func (g *game) shoot() {
 		sneak := g.Input.Down(app.ActSneak)
 		inacc := float64(spec.Spread(g.shotAim() == firearm.Aimed, moving, sneak) * g.gun.SpreadFactor())
 		// applyRecoilPush, before the bullets spawn
-		push := spec.RecoilPush.Push(look.Dir(), p.OnGround, sneak, spec.Bullet.Pellets)
-		p.VX, p.VY, p.VZ = p.VX+push[0], p.VY+push[1], p.VZ+push[2]
 		at := projectile.BulletSpawn(prev, now, g.Player.EyeHeight)
-		g.bullets = append(g.bullets, projectile.Fire(at, look.Dir(), spec, inacc, &g.tracers, g.gunRand)...)
+		for range max(rounds, 1) {
+			push := spec.RecoilPush.Push(look.Dir(), p.OnGround, sneak, spec.Bullet.Pellets)
+			p.VX, p.VY, p.VZ = p.VX+push[0], p.VY+push[1], p.VZ+push[2]
+			g.bullets = append(g.bullets, projectile.Fire(at, look.Dir(), spec, inacc, &g.tracers, g.gunRand)...)
+		}
 	}
 	g.startMuzzle(spec, nil)
 	g.ejectShells(spec, g.heldView())

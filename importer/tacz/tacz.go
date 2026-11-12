@@ -404,6 +404,13 @@ func (sp *scriptParam) UnmarshalJSON(b []byte) error {
 	return sp.XMag.UnmarshalJSON(b)
 }
 
+// doubleBarrelScript's shoot fires doubleBarrelVolley rounds at once in
+// burst mode.
+const (
+	doubleBarrelScript = "tacz:db_short_gun_logic"
+	doubleBarrelVolley = 2
+)
+
 // xmagReloadScript is the gun script whose magazine reload times depend
 // on the extended magazine's level.
 const xmagReloadScript = "tacz:xmag_reload_logic"
@@ -828,6 +835,9 @@ func (d *taczData) spec(id, name, class string) (weapon.Gun, error) {
 		g.Sprint = *d.Sprint
 	}
 	g.BoltTime, g.BoltHipTime = d.BoltAction, d.ScriptParam.BoltFastTime
+	if d.Script == doubleBarrelScript {
+		g.Burst.Volley = doubleBarrelVolley
+	}
 	if d.Script != "" && d.ScriptParam.BoltTime > 0 { // a script's tick_bolt replaces defaultTickBolt
 		g.BoltTime = d.ScriptParam.BoltTime
 	}

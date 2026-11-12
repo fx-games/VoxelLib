@@ -278,3 +278,15 @@ func TestSprint(t *testing.T) {
 		t.Fatal("ready gun stops sprint")
 	}
 }
+
+// db_short_gun_logic: a burst shot fires both barrels at once.
+func TestVolley(t *testing.T) {
+	g := &Gun{Mag: 2, RPM: 150, Modes: []FireMode{Burst}}
+	g.Burst.Count, g.Burst.Volley = 1, 2
+	s := &GunState{Gun: g, ClipLen: func(string) float32 { return 0.5 }, Phase: Ready, Ammo: 2}
+	stock := 0
+	ev := s.Tick(0.05, GunInput{Trigger: true}, &stock)
+	if len(ev) != 1 || ev[0].Rounds != 2 || s.Ammo != 0 {
+		t.Fatalf("volley %+v, ammo %d", ev, s.Ammo)
+	}
+}
