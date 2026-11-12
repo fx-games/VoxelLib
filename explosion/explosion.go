@@ -31,8 +31,18 @@ type Blast struct {
 // the blocks met while strength is left are picked, in first-met order.
 // block reports a block's blast resistance and whether it is air.
 func (b Blast) Blocks(rnd Rand, block func(x, y, z int) (res float32, air bool)) [][3]int {
+	out, _ := b.Rays(rnd, block)
+	return out
+}
+
+// Rays walks the blast rays as Blocks does and also returns the blocks a
+// ray reached but could not pass, each with the largest share of its cost
+// (resistance+0.3)*0.3 a ray had left on reaching it (0..1): how near the
+// blast came to breaking it. A picked block is not in cracked.
+func (b Blast) Rays(rnd Rand, block func(x, y, z int) (res float32, air bool)) (picked [][3]int, cracked map[[3]int]float32) {
 	const n = 16
 	seen := map[[3]int]bool{}
+	cracked = map[[3]int]float32{}
 	var out [][3]int
 	for i := 0; i < n; i++ {
 		for j := 0; j < n; j++ {
@@ -51,7 +61,11 @@ func (b Blast) Blocks(rnd Rand, block func(x, y, z int) (res float32, air bool))
 				for ; f > 0; f -= step * 0.75 {
 					p := [3]int{int(math.Floor(x)), int(math.Floor(y)), int(math.Floor(z))}
 					if res, air := block(p[0], p[1], p[2]); !air {
-						f -= (res + 0.3) * step
+						cost := (res + 0.3) * step
+						if f <= cost && f/cost > cracked[p] {
+							cracked[p] = f / cost
+						}
+						f -= cost
 					}
 					if f > 0 && !seen[p] {
 						seen[p] = true
@@ -64,7 +78,10 @@ func (b Blast) Blocks(rnd Rand, block func(x, y, z int) (res float32, air bool))
 			}
 		}
 	}
-	return out
+	for p := range seen {
+		delete(cracked, p)
+	}
+	return out, cracked
 }
 
 // Reach is the box whose entities the blast reaches: floor(c -+ 2*Size -+ 1)

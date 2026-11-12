@@ -78,7 +78,10 @@ type Server struct {
 	net   *netcode.Server
 	world *World
 	edits *EditLog
-	body  *Body
+	// damaged is every block's break progress from shots and blasts
+	// (blockdamage.go), the one store of it.
+	damaged map[voxel.BlockPos]*damaged
+	body    *Body
 
 	tick   uint32 // atomic: the AcceptFunc reads it
 	time   int64  // world time (see DayLength)
@@ -165,7 +168,7 @@ func StartServer(cfg ServerConfig) (*Server, error) {
 	if err != nil {
 		return nil, err
 	}
-	s := &Server{cfg: cfg, edits: NewEditLog(), body: NewBody(), rng: rand.New(rand.NewSource(cfg.Seed)), nextID: firstEntityID,
+	s := &Server{cfg: cfg, edits: NewEditLog(), damaged: map[voxel.BlockPos]*damaged{}, body: NewBody(), rng: rand.New(rand.NewSource(cfg.Seed)), nextID: firstEntityID,
 		time: TimeDay, calls: make(chan func()), stop: make(chan struct{}), done: make(chan struct{})}
 	s.m.round.Mode = cfg.Mode // before the first tick: a Welcome carries it
 	s.m.interval = max(1, int(cfg.ZoneInterval*TickRate/time.Second))
@@ -466,6 +469,7 @@ func (s *Server) frame() {
 	s.tickMatch()
 	s.tickDefense()
 	s.tickBullets(tick)
+	s.expireDamage(tick)
 	s.streamEdits()
 	for _, p := range s.players {
 		if p != nil {
@@ -585,17 +589,24 @@ func (s *Server) reliable(p *sPlayer, msg []byte) {
 		if r.err != nil || s.cfg.Reg.Parse(e.State) == voxel.Air && e.State != s.cfg.Reg.StateString(voxel.Air) {
 			return // unknown state
 		}
-		if !s.world.SetBlock(e.X, e.Y, e.Z, s.cfg.Reg.Parse(e.State)) {
-			return
-		}
-		// Every client gets the change (the editor already shows it; the
-		// echo is harmless): those whose edit log stream is past the
-		// position now, the others when the stream reaches it.
-		i := s.edits.Set(e)
-		for _, o := range s.players {
-			if o != nil && i < o.sentTo {
-				s.net.SendReliable(o.slot, e.encode(msgBlock))
-			}
+		s.setBlock(e)
+	}
+}
+
+// setBlock changes a block (a player's edit, a shot or a blast breaking
+// it), drops its damage and logs the edit. Every client gets the change
+// (an editor already shows it; the echo is harmless): those whose edit
+// log stream is past the position now, the others when the stream
+// reaches it.
+func (s *Server) setBlock(e BlockEdit) {
+	if !s.world.SetBlock(e.X, e.Y, e.Z, s.cfg.Reg.Parse(e.State)) {
+		return
+	}
+	s.clearDamage(voxel.BlockPos{X: e.X, Y: e.Y, Z: e.Z})
+	i := s.edits.Set(e)
+	for _, o := range s.players {
+		if o != nil && i < o.sentTo {
+			s.net.SendReliable(o.slot, e.encode(msgBlock))
 		}
 	}
 }

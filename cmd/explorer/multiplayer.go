@@ -281,6 +281,9 @@ func (g *game) netStart() {
 	g.sendView()
 	cl.OnPickup = g.takePickup
 	cl.OnExplosion = func(e mp.Explosion) { g.explosionFX(e.Pos, e.Radius) }
+	cl.OnBlockDamage = func(d mp.BlockDamage) {
+		g.DestroyBlockPartially(int(d.ID), voxel.BlockPos{X: d.X, Y: d.Y, Z: d.Z}, d.Stage)
+	}
 	cl.OnBlock = func(e mp.BlockEdit) {
 		reg := g.Eng.World.Reg
 		if id := reg.Parse(e.State); g.Eng.Block(e.X, e.Y, e.Z) != id {

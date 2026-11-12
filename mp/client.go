@@ -37,13 +37,14 @@ type Client struct {
 	Scores  [4]Score // by slot; see Ranking
 
 	// Callbacks, run from Poll.
-	OnBlock     func(BlockEdit)
-	OnHit       func(Hit)
-	OnText      func(string)
-	OnPlayer    func(PlayerInfo)
-	OnFired     func(slot int)  // another player's gun went off
-	OnPickup    func(Pickup)    // the local player took a pickup
-	OnExplosion func(Explosion) // an explosive round blew up
+	OnBlock       func(BlockEdit)
+	OnHit         func(Hit)
+	OnText        func(string)
+	OnPlayer      func(PlayerInfo)
+	OnFired       func(slot int)    // another player's gun went off
+	OnPickup      func(Pickup)      // the local player took a pickup
+	OnExplosion   func(Explosion)   // an explosive round blew up
+	OnBlockDamage func(BlockDamage) // a block's cracks changed
 
 	// Bullets are the server's flying bullets by ID, flown on by
 	// TickBullets (the client-side entity tick) until the server says
@@ -249,6 +250,10 @@ func (c *Client) reliable(msg []byte) {
 	case msgExplosion:
 		if e := decodeExplosion(&r); r.err == nil && c.OnExplosion != nil {
 			c.OnExplosion(e)
+		}
+	case msgBlockDamage:
+		if d := decodeBlockDamage(&r); r.err == nil && c.OnBlockDamage != nil {
+			c.OnBlockDamage(d)
 		}
 	case msgPickup:
 		if pk := decodePickup(&r); r.err == nil && c.OnPickup != nil {

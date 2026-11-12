@@ -515,7 +515,7 @@ type Explosion struct {
 	Damage    float32 `json:"damage"` // power
 	Radius    float32 `json:"radius"`
 	Knockback bool    `json:"knockback"`
-	// DestroyBlock is read but not applied: blocks have no blast resistance.
+	// DestroyBlock: the blast breaks blocks (mp Server.blastBlocks).
 	DestroyBlock bool    `json:"destroy_block"`
 	Delay        float32 `json:"delay"` // seconds
 }
