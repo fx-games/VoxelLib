@@ -238,3 +238,22 @@ func TestRevolverReload(t *testing.T) {
 		t.Fatalf("refilled: ammo %d stock %d phase %d", s.Ammo, stock, s.Phase)
 	}
 }
+
+// defaultTickBolt: the bolt starts once the shot's cooldown is over and
+// lasts bolt_action_time; the hip time applies under half aimed.
+func TestBoltTiming(t *testing.T) {
+	g := &Gun{Mag: 5, RPM: 60, Modes: []FireMode{Semi}, Bolt: ManualAction, BoltTime: 0.85, BoltHipTime: 0.2}
+	s := &GunState{Gun: g, ClipLen: func(string) float32 { return 5 }, Phase: Ready, Ammo: 5}
+	stock := 0
+	run(s, 0.05, GunInput{Trigger: true, Aimed: true}, &stock)
+	if run(s, 0.95+0.8, GunInput{Aimed: true}, &stock); s.Phase != Bolting {
+		t.Fatalf("bolt over before cooldown + bolt_time: phase %d", s.Phase)
+	}
+	if run(s, 0.1, GunInput{Aimed: true}, &stock); s.Phase != Ready {
+		t.Fatalf("bolt not over at 1.9 s: phase %d", s.Phase)
+	}
+	run(s, 0.05, GunInput{Trigger: true}, &stock)
+	if run(s, 0.95+0.25, GunInput{}, &stock); s.Phase != Ready {
+		t.Fatalf("hip bolt not over: phase %d", s.Phase)
+	}
+}

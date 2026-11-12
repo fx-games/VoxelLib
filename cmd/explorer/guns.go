@@ -385,6 +385,7 @@ func (g *game) tickGun() {
 		Inspect: g.keyPressed("inspect"),
 		Melee:   g.keyPressed("melee"),
 		Unload:  g.keyPressed("unload"),
+		Aimed:   g.aim >= firearm.AimProgress(halfAimed),
 	}
 	// Fire select first (TACZ handles the key before the tick's shot), its
 	// spec resolved (postChangeEvent), so a shot this tick uses the new mode.
@@ -816,6 +817,9 @@ func pushCreature(c *creature, power, xd, zd float64) {
 		m.VX, m.VY, m.VZ = actors.KnockbackMotion(m.VX, m.VY, m.VZ, m.OnGround, power, xd, zd)
 	}
 }
+
+// halfAimed is the aiming progress m1866_gun_logic's bolt switches at.
+const halfAimed = 0.5
 
 // mobEyeFraction is where a creature's eye sits up its box (Minecraft's
 // default eye height, 0.85 of the height).

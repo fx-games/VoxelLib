@@ -576,7 +576,11 @@ type taczData struct {
 	Modes     []string                       `json:"fire_mode"`
 	Adjust    map[weapon.FireMode]modeAdjust `json:"fire_mode_adjust"`
 	// ScriptParam: the tube reload's timings (m870_gun_logic's script params).
+	BoltAction  float32 `json:"bolt_action_time"`
 	ScriptParam struct {
+		// the gun scripts' tick_bolt
+		BoltTime       float32  `json:"bolt_time"`
+		BoltFastTime   float32  `json:"bolt_fast_time"`
 		IntroEmpty     *float32 `json:"intro_empty"`
 		Intro          *float32 `json:"intro"`
 		Loop           *float32 `json:"loop"`
@@ -748,6 +752,10 @@ func (d *taczData) spec(id, name, class string) (weapon.Gun, error) {
 		r.Tube = &weapon.TubeTiming{IntroEmpty: *sp.IntroEmpty, Intro: *sp.Intro, Loop: *sp.Loop, Ending: *sp.Ending, IntroEmptyFeed: *sp.IntroEmptyFeed, LoopFeed: *sp.LoopFeed}
 	}
 	g.Draw, g.PutAway, g.Aim = d.Draw, d.PutAway, d.Aim
+	g.BoltTime, g.BoltHipTime = d.BoltAction, d.ScriptParam.BoltFastTime
+	if d.Script != "" && d.ScriptParam.BoltTime > 0 { // a script's tick_bolt replaces defaultTickBolt
+		g.BoltTime = d.ScriptParam.BoltTime
+	}
 	g.Weight, g.MoveSpeed = d.Weight, d.MoveSpeed
 	for _, k := range d.Recoil.Pitch {
 		g.Recoil.Pitch = append(g.Recoil.Pitch, weapon.RecoilKey{T: k.Time, Min: k.Value[0], Max: k.Value[1]})

@@ -111,7 +111,12 @@ type Gun struct {
 	RPM   float32    `json:"rpm"`
 	Modes []FireMode `json:"modes"`
 	Bolt  Bolt       `json:"bolt"`
-	Burst struct {
+	// BoltTime is a manual action's bolt (bolt_action_time, or the gun
+	// script's bolt_time); BoltHipTime, when set, the bolt from the hip
+	// (m1866_gun_logic's bolt_fast_time, under half aimed). 0: the clip's length.
+	BoltTime    float32 `json:"bolt_time,omitempty"`
+	BoltHipTime float32 `json:"bolt_hip_time,omitempty"`
+	Burst       struct {
 		Count int     `json:"count"`
 		BPM   float32 `json:"bpm"`
 		// MinInterval is the least time from one burst's first shot to the

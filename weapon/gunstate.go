@@ -64,6 +64,7 @@ type GunInput struct {
 	Inspect bool
 	Melee   bool // went down this tick
 	Unload  bool // went down this tick
+	Aimed   bool // aiming at least half way (getAimingProgress >= 0.5)
 }
 
 // GunState runs one gun's cycle. Ammo counts the rounds in the gun,
@@ -94,6 +95,8 @@ type GunState struct {
 	// (ShootKey.lastTimeShootSuccess); dry: the dry fire sound played
 	// since (SoundPlayManager.resetDryFireSound on release).
 	shot, dry bool
+	bolting   bool    // Bolting: the bolt has started (the cooldown is over)
+	boltLen   float32 // its length
 	burstMin  float32 // burst: seconds until min_interval past the burst's first shot
 }
 
@@ -185,7 +188,16 @@ func (s *GunState) Tick(dt float32, in GunInput, stock *int) []GunEvent {
 			s.ready(&ev)
 		}
 	case Bolting:
-		if s.T >= s.ClipLen(ClipBolt) {
+		// LivingEntityBolt.bolt: the bolt starts once the shot's cooldown is over
+		if !s.bolting {
+			if s.cooldown > 0 {
+				break
+			}
+			s.bolting, s.T = true, 0
+			s.boltLen = s.boltTime(in.Aimed)
+			ev = append(ev, GunEvent{Clip: ClipBolt, Sound: SoundBolt})
+		}
+		if s.T >= s.boltLen {
 			s.ready(&ev)
 		}
 	case Reloading:
@@ -274,8 +286,7 @@ func (s *GunState) Tick(dt float32, in GunInput, stock *int) []GunEvent {
 		s.cooldown += interval
 		s.sinceShot, s.interval = 0, interval
 		if g.Bolt == ManualAction && s.Ammo > 0 {
-			s.Phase, s.T, s.burstLeft = Bolting, 0, 0
-			ev = append(ev, GunEvent{Clip: ClipBolt, Sound: SoundBolt})
+			s.Phase, s.T, s.burstLeft, s.bolting = Bolting, 0, 0, false
 			break
 		}
 	}
@@ -436,4 +447,16 @@ func (g *Gun) Spread(aiming, moving, sneaking bool) float32 {
 		return g.Inaccuracy.Move
 	}
 	return g.Inaccuracy.Stand
+}
+
+// boltTime is tick_bolt's total: the gun's bolt time (the hip one when
+// not aimed), else the bolt clip's length.
+func (s *GunState) boltTime(aimed bool) float32 {
+	switch g := s.Gun; {
+	case g.BoltHipTime > 0 && !aimed:
+		return g.BoltHipTime
+	case g.BoltTime > 0:
+		return g.BoltTime
+	}
+	return s.ClipLen(ClipBolt)
 }
