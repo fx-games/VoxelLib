@@ -360,7 +360,33 @@ const (
 	msgBullet     = 16 // BulletSpawn: the server fired a bullet
 	msgBulletGone = 17 // id u32: that bullet is gone (hit something or its life ran out)
 	msgPickup     = 18 // Pickup: the player took a pickup (zombie defense)
+	msgExplosion  = 19 // Explosion: an explosive round blew up
 )
+
+// Explosion is an explosive round's blast for the clients' effects
+// (ProjectileExplosion.finalizeExplosion on the client).
+type Explosion struct {
+	Pos    [3]float64
+	Radius float32
+}
+
+func (e Explosion) encode() []byte {
+	b := wbuf{msgExplosion}
+	for _, v := range e.Pos {
+		b.f64(v)
+	}
+	b.f32(float64(e.Radius))
+	return b
+}
+
+func decodeExplosion(r *rbuf) Explosion {
+	var e Explosion
+	for i := range e.Pos {
+		e.Pos[i] = r.f64()
+	}
+	e.Radius = float32(r.f32())
+	return e
+}
 
 // BlockEdit is one block change.
 type BlockEdit struct {

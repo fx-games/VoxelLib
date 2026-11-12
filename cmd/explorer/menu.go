@@ -31,6 +31,7 @@ func (g *game) setupUI(jar string) error {
 	if err != nil {
 		return fmt.Errorf("GUI assets (-jar): %w", err)
 	}
+	g.jar = zr
 	assets := ui.StackFS{zr, basepack.FS}
 	cat := i18n.New()
 	if err := cat.LoadFS(assets); err != nil {

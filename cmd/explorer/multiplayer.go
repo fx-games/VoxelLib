@@ -280,6 +280,7 @@ func (g *game) netStart() {
 	g.sendHold()
 	g.sendView()
 	cl.OnPickup = g.takePickup
+	cl.OnExplosion = func(e mp.Explosion) { g.explosionFX(e.Pos, e.Radius) }
 	cl.OnBlock = func(e mp.BlockEdit) {
 		reg := g.Eng.World.Reg
 		if id := reg.Parse(e.State); g.Eng.Block(e.X, e.Y, e.Z) != id {

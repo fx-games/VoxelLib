@@ -214,12 +214,17 @@ func (s *Server) melee(p *sPlayer, gun string, l Look) {
 	}
 }
 
-// explode is ProjectileExplosion on p's enemies and the zombies, as p saw
-// them: each takes the blast's damage and push.
-//
-// ponytail: the shooter and allies are spared (TACZ hurts everyone in
-// reach); add them with a self-damage Hit if friendly fire matters.
+// explode is ProjectileExplosion on everyone p's blast may harm: its
+// enemies and the zombies as p saw them, and p itself (hurt's
+// canHarmPlayer: no friendly fire, so no harm to allies, nor to oneself
+// on a team or in zombie defense). Each takes the blast's damage and push.
 func (s *Server) explode(p *sPlayer, e *weapon.Explosion, at [3]float64, ts []projectile.BulletTarget, who []hitTarget, boxes physics.BoxFunc) {
+	s.broadcast(Explosion{Pos: at, Radius: e.Radius}.encode())
+	if p.team == 0 && s.cfg.Mode != ZombieDefense && p.dead == 0 {
+		vel := [3]float64{p.ch.X - p.ch.PrevX, p.ch.Y - p.ch.PrevY, p.ch.Z - p.ch.PrevZ}
+		ts = append(ts[:len(ts):len(ts)], projectile.BulletTarget{Box: projectile.HitBox(p.ch.Box(), vel, true, p.anim.Sneak)})
+		who = append(who[:len(who):len(who)], hitTarget{player: p})
+	}
 	inSight := func(a, b [3]float64) bool { return projectile.InSight(s.world, boxes, a, b) }
 	for i, t := range ts {
 		dmg, push, ok := projectile.Blast(e, at, t.Box, inSight)

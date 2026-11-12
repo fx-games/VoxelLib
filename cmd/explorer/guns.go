@@ -754,6 +754,12 @@ func (g *game) tickBullets() {
 	}
 	inSight := func(a, b [3]float64) bool { return projectile.InSight(w, col.Boxes, a, b) }
 	col.Explode = func(b *projectile.Bullet, at [3]float64) {
+		e := b.Gun.Bullet.Explosion
+		g.explosionFX(at, e.Radius)
+		// the player: the push only (nothing hurts the single player)
+		if _, push, ok := projectile.Blast(e, at, projectile.HitBox(g.Player.Box(), [3]float64{g.Player.X - g.Player.PrevX, g.Player.Y - g.Player.PrevY, g.Player.Z - g.Player.PrevZ}, true, g.Input.Down(app.ActSneak)), inSight); ok {
+			g.Player.VX, g.Player.VY, g.Player.VZ = g.Player.VX+push[0], g.Player.VY+push[1], g.Player.VZ+push[2]
+		}
 		for i, c := range who {
 			dmg, push, ok := projectile.Blast(b.Gun.Bullet.Explosion, at, targets[i].Box, inSight)
 			if !ok || c.dying != 0 {

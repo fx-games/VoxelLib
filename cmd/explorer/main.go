@@ -29,6 +29,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"io/fs"
 	"log"
 	"math"
 	"math/rand"
@@ -316,6 +317,8 @@ type game struct {
 	signs    *signtext.Renderer
 	nameTags *nametag.Renderer // other players' names (multiplayer)
 	torches  torchFX
+	blasts   blastFX
+	jar      fs.FS // the client jar (-jar): GUI and particle textures
 
 	itemsState
 	creaturesState
@@ -455,6 +458,7 @@ func (g *game) tick() {
 		g.tickGun()       // its shots go to the server, after the command
 		g.tickCreatures() // the animals: client-side scenery
 		g.tickTorches()
+		g.tickBlasts()
 		g.tickNet()
 		g.tickPlayerHealth() // the hurt flash fades
 		g.tickAutoplay()
@@ -463,6 +467,7 @@ func (g *game) tick() {
 	g.tickGun()
 	g.tickCreatures()
 	g.tickBullets()
+	g.tickBlasts()
 	g.tickTorches()
 	g.tickPlayerHealth()
 }
@@ -488,6 +493,7 @@ func (g *game) drawWorld(cam *render.Camera, alpha float64) {
 	g.drawTorches(cam, alpha)
 	g.drawPickups(cam)
 	g.drawFX(cam)
+	g.drawBlasts(cam, alpha)
 	g.drawAmmoEntities(cam, alpha)
 	g.drawTracers(cam, alpha)
 }
