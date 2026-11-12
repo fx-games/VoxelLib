@@ -11,6 +11,25 @@ type half struct{}
 
 func (half) Float32() float32 { return 0.5 }
 
+// TestRaysCrack: a stone floor (resistance 6) under a size 3 blast (RPG-7)
+// breaks right under the centre, and the floor further out cracks.
+func TestRaysCrack(t *testing.T) {
+	b := Blast{X: 0.5, Y: 1.2, Z: 0.5, Size: 3}
+	floor := func(x, y, z int) (float32, bool) { return 6, y > 0 }
+	picked, cracked := b.Rays(half{}, floor)
+	if !contains(picked, [3]int{0, 0, 0}) {
+		t.Fatal("stone under the centre survived")
+	}
+	if len(cracked) == 0 {
+		t.Fatal("no cracks")
+	}
+	for p, f := range cracked {
+		if f <= 0 || f > 1 || contains(picked, p) || p[1] != 0 {
+			t.Fatalf("crack %v at %v", f, p)
+		}
+	}
+}
+
 func TestBlocks(t *testing.T) {
 	b := Blast{X: 0.5, Y: 0.5, Z: 0.5, Size: 2}
 	air := func(x, y, z int) (float32, bool) { return 0, true }
