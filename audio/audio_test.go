@@ -3,6 +3,7 @@ package audio
 import (
 	"encoding/binary"
 	"encoding/json"
+	"io/fs"
 	"math"
 	"math/rand"
 	"os"
@@ -226,6 +227,39 @@ func TestPickVariants(t *testing.T) {
 	}
 	if _, _, ok := r.Pick("x:none", rng); ok {
 		t.Error("unknown event picked")
+	}
+}
+
+// TestAssetIndex plays an event from a launcher asset index whose other
+// entry's object is missing (dropped, as SoundHandler drops missing files).
+func TestAssetIndex(t *testing.T) {
+	dir := t.TempDir()
+	ogg, _ := os.ReadFile("testdata/test.ogg")
+	put := func(hash string, b []byte) {
+		os.MkdirAll(filepath.Join(dir, "objects", hash[:2]), 0o755)
+		os.WriteFile(filepath.Join(dir, "objects", hash[:2], hash), b, 0o644)
+	}
+	put("aa11", ogg)
+	put("bb22", []byte(`{"random.explode": {"category": "block", "sounds": ["random/explode1", "random/explode2"]}}`))
+	os.MkdirAll(filepath.Join(dir, "indexes"), 0o755)
+	os.WriteFile(filepath.Join(dir, "indexes", "1.7.10.json"), []byte(`{"objects": {
+		"minecraft/sounds/random/explode1.ogg": {"hash": "aa11"},
+		"minecraft/sounds/random/explode2.ogg": {"hash": "cc33"},
+		"minecraft/sounds.json": {"hash": "bb22"}}}`), 0o644)
+	files, err := resloc.AssetIndex(filepath.Join(dir, "indexes", "1.7.10.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	exists := func(f string) bool { _, err := fs.Stat(files, SoundPath(f)); return err == nil }
+	s, err := OpenFS(files, resloc.Default+"/sounds.json", exists, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if e := s.Events[resloc.Default+":random.explode"]; e == nil || len(e.Sounds) != 1 {
+		t.Fatalf("events %+v", e)
+	}
+	if v := s.Play("random.explode", At(0, 0, 0, 4, 1)); v == nil {
+		t.Fatal("not playing")
 	}
 }
 

@@ -2,6 +2,7 @@ package audio
 
 import (
 	"encoding/json"
+	"io/fs"
 	"log"
 	"math"
 	"math/rand"
@@ -18,13 +19,16 @@ import (
 //	dir/sounds.json            events (Registry format, keys "domain:name")
 //	dir/<domain>/sounds/<path>.ogg  the file of entry "domain:path"
 //	dir/blocksounds.json       optional {"<type>": BlockSound}
+//
+// or from the launcher's assets (OpenFS over resloc.AssetIndex).
 type Sounds struct {
 	Events Registry
 	Blocks map[string]BlockSound
 	Mixer  *Mixer
 	Rand   *rand.Rand
-	Dir    string
+	Dir    string // Open's directory ("" for OpenFS)
 
+	files   fs.FS // <domain>/sounds/<path>.ogg
 	mu      sync.Mutex
 	cache   map[string]*cached
 	delayed []delayedSound
@@ -43,18 +47,31 @@ type delayedSound struct {
 
 // Open reads dir's sounds.json (and blocksounds.json) and plays through m (nil: NewSilent()).
 func Open(dir string, m *Mixer) (*Sounds, error) {
-	if m == nil {
-		m = NewSilent()
-	}
-	s := &Sounds{Events: Registry{}, Mixer: m, Dir: dir, Rand: rand.New(rand.NewSource(rand.Int63())), cache: map[string]*cached{}}
-	data, err := os.ReadFile(filepath.Join(dir, "sounds.json"))
+	s, err := OpenFS(os.DirFS(dir), "sounds.json", nil, m)
 	if err != nil {
 		return nil, err
 	}
-	if err := s.Events.Load(resloc.Default, data, nil); err != nil {
+	s.Dir = dir
+	return s, nil
+}
+
+// OpenFS reads the events file events of files (and its blocksounds.json)
+// and plays through m (nil: NewSilent()). exists, when set, filters the
+// entries to those whose file is there (Registry.Load); over a launcher
+// asset index (resloc.AssetIndex) events is resloc.Default+"/sounds.json".
+func OpenFS(files fs.FS, events string, exists func(file string) bool, m *Mixer) (*Sounds, error) {
+	if m == nil {
+		m = NewSilent()
+	}
+	s := &Sounds{Events: Registry{}, Mixer: m, files: files, Rand: rand.New(rand.NewSource(rand.Int63())), cache: map[string]*cached{}}
+	data, err := fs.ReadFile(files, events)
+	if err != nil {
 		return nil, err
 	}
-	if data, err := os.ReadFile(filepath.Join(dir, "blocksounds.json")); err == nil {
+	if err := s.Events.Load(resloc.Default, data, exists); err != nil {
+		return nil, err
+	}
+	if data, err := fs.ReadFile(files, "blocksounds.json"); err == nil {
 		if err := json.Unmarshal(data, &s.Blocks); err != nil {
 			return nil, err
 		}
@@ -62,10 +79,16 @@ func Open(dir string, m *Mixer) (*Sounds, error) {
 	return s, nil
 }
 
-// File returns the path of an entry's file ("domain:path").
-func (s *Sounds) File(name string) string {
+// SoundPath is an entry's file ("domain:path") in a sound directory or
+// asset index: domain/sounds/path.ogg.
+func SoundPath(name string) string {
 	d, p, _ := strings.Cut(name, ":")
-	return filepath.Join(s.Dir, d, "sounds", filepath.FromSlash(p)+".ogg")
+	return d + "/sounds/" + p + ".ogg"
+}
+
+// File returns the path of an entry's file ("domain:path") under Open's directory.
+func (s *Sounds) File(name string) string {
+	return filepath.Join(s.Dir, filepath.FromSlash(SoundPath(name)))
 }
 
 // Play plays a sound event like 1.7.10's SoundManager.playSound: a random variant, volume
@@ -99,9 +122,9 @@ func (s *Sounds) Play(name string, p Params) *Voice {
 	if min(1, v.vol*cv) <= 0 {
 		return nil
 	}
-	file := s.File(e.Name)
+	file := SoundPath(e.Name)
 	if e.Stream {
-		f, err := os.Open(file)
+		f, err := s.files.Open(file)
 		if err != nil {
 			log.Printf("audio: %v", err)
 			return nil
@@ -124,7 +147,7 @@ func (s *Sounds) Play(name string, p Params) *Voice {
 	m.add(v)
 	go func() {
 		c.once.Do(func() {
-			f, err := os.Open(file)
+			f, err := s.files.Open(file)
 			if err == nil {
 				c.snd, err = Decode(f)
 				f.Close()
