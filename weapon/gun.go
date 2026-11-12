@@ -165,6 +165,10 @@ type Gun struct {
 	Draw    float32 `json:"draw"`
 	PutAway float32 `json:"put_away"`
 	Aim     float32 `json:"aim"`
+	// AimExitOnReload, AimExitOnBolt: no aiming while reloading or
+	// bolting (force_aim_exit_on_reload, force_aim_exit_on_bolt).
+	AimExitOnReload bool `json:"aim_exit_on_reload,omitempty"`
+	AimExitOnBolt   bool `json:"aim_exit_on_bolt,omitempty"`
 	// Sprint is sprint_time: seconds the gun takes to come down from a
 	// sprint before it can fire (and up into it).
 	Sprint float32 `json:"sprint"`

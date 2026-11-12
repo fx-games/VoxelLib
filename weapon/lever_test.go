@@ -51,3 +51,19 @@ func TestLeverClips(t *testing.T) {
 		t.Errorf("one round: %s", c)
 	}
 }
+
+// TestCanAim: shouldBlockAim keeps the sights up through a reload unless
+// force_aim_exit_on_reload.
+func TestCanAim(t *testing.T) {
+	s := &GunState{Gun: &Gun{}, Phase: Reloading}
+	if !s.CanAim() {
+		t.Error("reloading blocks aim without force_aim_exit_on_reload")
+	}
+	s.Gun.AimExitOnReload = true
+	if s.CanAim() {
+		t.Error("force_aim_exit_on_reload: aimed while reloading")
+	}
+	if s.Phase = PuttingAway; s.CanAim() {
+		t.Error("aimed while putting away")
+	}
+}

@@ -338,6 +338,21 @@ func (s *GunState) melee() GunEvent {
 	return e
 }
 
+// CanAim: LocalPlayerAim.shouldBlockAim and tickAimingProgress, the
+// sights stay up through reloads, bolts and inspections unless the gun
+// forces them down; not while putting the gun away.
+func (s *GunState) CanAim() bool {
+	switch s.Phase {
+	case PuttingAway, Holstered:
+		return false
+	case Reloading:
+		return !s.Gun.AimExitOnReload
+	case Bolting:
+		return !s.Gun.AimExitOnBolt
+	}
+	return true
+}
+
 // canUnload: the gun unloads (Gun.Unload) and holds a round.
 func (s *GunState) canUnload() bool { return s.Gun.Unload && s.Ammo > 0 }
 

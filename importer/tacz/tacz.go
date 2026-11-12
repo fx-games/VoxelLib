@@ -746,13 +746,15 @@ type taczData struct {
 			Value [2]float32
 		}
 	}
-	Inaccuracy  struct{ Stand, Move, Sneak, Aim float32 }
-	RecoilPush  *taczRecoilPush `json:"recoil_push"`
-	Heat        *taczHeat
-	Melee       taczGunMelee
-	CanSlide    *bool  `json:"can_slide"` // GunData's default: true
-	Script      string `json:"script"`
-	AllowUnload bool   `json:"allow_ammo_unload"`
+	Inaccuracy      struct{ Stand, Move, Sneak, Aim float32 }
+	RecoilPush      *taczRecoilPush `json:"recoil_push"`
+	Heat            *taczHeat
+	Melee           taczGunMelee
+	CanSlide        *bool  `json:"can_slide"` // GunData's default: true
+	Script          string `json:"script"`
+	AllowUnload     bool   `json:"allow_ammo_unload"`
+	AimExitOnReload bool   `json:"force_aim_exit_on_reload"`
+	AimExitOnBolt   bool   `json:"force_aim_exit_on_bolt"`
 }
 
 // taczHeat is a gun's "heat" block, GunHeatData's defaults where absent.
@@ -872,6 +874,7 @@ func (d *taczData) spec(id, name, class string) (weapon.Gun, error) {
 			Loop2: sp.Loop2, LoopFeed2: sp.LoopFeed2, IntroEmptyBurst: sp.IntroEmptySemi, IntroEmptyFeedBurst: sp.IntroEmptyFeedSemi}
 	}
 	g.Draw, g.PutAway, g.Aim = d.Draw, d.PutAway, d.Aim
+	g.AimExitOnReload, g.AimExitOnBolt = d.AimExitOnReload, d.AimExitOnBolt
 	g.Sprint = defaultSprintTime
 	if d.Sprint != nil {
 		g.Sprint = *d.Sprint

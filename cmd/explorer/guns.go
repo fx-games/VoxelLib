@@ -375,7 +375,7 @@ func (g *game) tickGun() {
 	}
 	g.aimPrev = g.aim
 	g.recoilTicks++
-	aiming := g.Input.Down(app.ActUse) && !g.ScreenOpen() && g.gun.Phase == firearm.Ready
+	aiming := g.Input.Down(app.ActUse) && !g.ScreenOpen() && g.gun.CanAim()
 	g.aim = g.aim.Tick(aiming, g.gun.Gun.Aim, time.Second/app.TickRate)
 	g.syncGun(aiming)
 	// LivingEntitySpeedModifier: the gun's weight and movement_speed.
