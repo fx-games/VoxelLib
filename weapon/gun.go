@@ -451,6 +451,14 @@ type TubeTiming struct {
 	Ending         float32 `json:"ending"`
 	IntroEmptyFeed float32 `json:"intro_empty_feed"`
 	LoopFeed       float32 `json:"loop_feed"`
+	// Loop2, LoopFeed2: m1014_gun_logic loads two shells per Loop2 while
+	// two or more are needed (0: one at a time).
+	Loop2     float32 `json:"loop_2,omitempty"`
+	LoopFeed2 float32 `json:"loop_feed_2,omitempty"`
+	// IntroEmptyBurst, IntroEmptyFeedBurst: spas_12_gun_logic's empty
+	// reload in burst mode (intro_empty_semi; 0: as the others).
+	IntroEmptyBurst     float32 `json:"intro_empty_burst,omitempty"`
+	IntroEmptyFeedBurst float32 `json:"intro_empty_feed_burst,omitempty"`
 	// Unload, when set, is taurus943_gun_logic's revolver reload instead:
 	// the cylinder empties back into the stock at Unload.Time, then
 	// rounds go in LoopFeed into each Loop after Intro (no chambering).

@@ -290,3 +290,27 @@ func TestVolley(t *testing.T) {
 		t.Fatalf("volley %+v, ammo %d", ev, s.Ammo)
 	}
 }
+
+// m1014_gun_logic loads shells in pairs per loop_2; spas_12_gun_logic
+// times an empty reload in burst mode by intro_empty_semi.
+func TestTubePairs(t *testing.T) {
+	g := &Gun{Mag: 4, RPM: 300, Modes: []FireMode{Semi}, Bolt: ClosedBolt}
+	g.Reload.Kind = Tube
+	g.Reload.Tube = &TubeTiming{IntroEmpty: 1.8, Intro: 0.5, Loop: 0.67, Loop2: 0.7, Ending: 0.36, IntroEmptyFeed: 1, LoopFeed: 0.33, LoopFeed2: 0.4}
+	s := &GunState{Gun: g, ClipLen: func(string) float32 { return 0.5 }, Phase: Ready}
+	stock := 10
+	run(s, 0.05, GunInput{Reload: true}, &stock)
+	if run(s, 2.15, GunInput{}, &stock); s.Ammo != 3 {
+		t.Fatalf("first pair at 2.2 s: ammo %d", s.Ammo)
+	}
+	if run(s, 0.7, GunInput{}, &stock); s.Ammo != 5 {
+		t.Fatalf("second pair at 2.9 s: ammo %d", s.Ammo)
+	}
+	g.Reload.Tube = &TubeTiming{IntroEmpty: 2.43, IntroEmptyBurst: 1.9, Intro: 0.6, Loop: 0.65, Ending: 0.6, IntroEmptyFeed: 1.63, IntroEmptyFeedBurst: 1.02, LoopFeed: 0.45}
+	g.Modes = []FireMode{Burst}
+	s = &GunState{Gun: g, ClipLen: func(string) float32 { return 0.5 }, Phase: Ready}
+	run(s, 0.05, GunInput{Reload: true}, &stock)
+	if run(s, 1.05, GunInput{}, &stock); s.Ammo != 1 {
+		t.Fatalf("burst-mode empty feed at 1.1 s: ammo %d", s.Ammo)
+	}
+}

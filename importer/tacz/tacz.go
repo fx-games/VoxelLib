@@ -388,6 +388,11 @@ type scriptParam struct {
 	Ending         *float32   `json:"ending"`
 	IntroEmptyFeed *float32   `json:"intro_empty_feed"`
 	LoopFeed       *float32   `json:"loop_feed"`
+	// m1014_gun_logic's pairs, spas_12_gun_logic's burst-mode empty intro
+	Loop2              float32 `json:"loop_2"`
+	LoopFeed2          float32 `json:"loop_feed_2"`
+	IntroEmptySemi     float32 `json:"intro_empty_semi"`
+	IntroEmptyFeedSemi float32 `json:"intro_empty_feed_semi"`
 	// taurus943_gun_logic's unloading
 	UnloadMagazine *bool    `json:"unload_magazine"`
 	UnloadAmount   *int     `json:"unload_amount"`
@@ -827,7 +832,8 @@ func (d *taczData) spec(id, name, class string) (weapon.Gun, error) {
 		}
 		r.Tube = &weapon.TubeTiming{Intro: *sp.Intro, Loop: *sp.Loop, Ending: *sp.Ending, LoopFeed: *sp.LoopFeed, Unload: u}
 	case sp.IntroEmpty != nil && sp.Intro != nil && sp.Loop != nil && sp.Ending != nil && sp.IntroEmptyFeed != nil && sp.LoopFeed != nil:
-		r.Tube = &weapon.TubeTiming{IntroEmpty: *sp.IntroEmpty, Intro: *sp.Intro, Loop: *sp.Loop, Ending: *sp.Ending, IntroEmptyFeed: *sp.IntroEmptyFeed, LoopFeed: *sp.LoopFeed}
+		r.Tube = &weapon.TubeTiming{IntroEmpty: *sp.IntroEmpty, Intro: *sp.Intro, Loop: *sp.Loop, Ending: *sp.Ending, IntroEmptyFeed: *sp.IntroEmptyFeed, LoopFeed: *sp.LoopFeed,
+			Loop2: sp.Loop2, LoopFeed2: sp.LoopFeed2, IntroEmptyBurst: sp.IntroEmptySemi, IntroEmptyFeedBurst: sp.IntroEmptyFeedSemi}
 	}
 	g.Draw, g.PutAway, g.Aim = d.Draw, d.PutAway, d.Aim
 	g.Sprint = defaultSprintTime

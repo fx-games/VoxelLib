@@ -78,10 +78,14 @@ func (s *GunState) tickTube(ev *[]GunEvent, stock *int) {
 	if *stock == 0 { // !hasAmmoToConsume
 		r.stopAt = s.T
 	}
+	introEmpty, introEmptyFeed := tm.IntroEmpty, tm.IntroEmptyFeed
+	if tm.IntroEmptyBurst > 0 && s.FireMode() == Burst {
+		introEmpty, introEmptyFeed = tm.IntroEmptyBurst, tm.IntroEmptyFeedBurst
+	}
 	if r.reloaded == 0 {
 		if !s.empty {
 			r.reloaded = 1
-		} else if s.T > tm.IntroEmptyFeed {
+		} else if s.T > introEmptyFeed {
 			s.take(1, stock) // into the barrel
 			r.reloaded = 1
 		}
@@ -89,10 +93,17 @@ func (s *GunState) tickTube(ev *[]GunEvent, stock *int) {
 	if r.reloaded > 0 {
 		intro := tm.Intro
 		if s.empty {
-			intro = tm.IntroEmpty
+			intro = introEmpty
 		}
-		for at := float32(r.reloaded-1)*tm.Loop + tm.LoopFeed + intro; at < s.T && r.reloaded <= r.needed; at += tm.Loop {
+		for at := intro + tm.nextFeed(r.reloaded, r.needed); at < s.T && r.reloaded <= r.needed; {
+			if tm.Loop2 > 0 && r.needed-r.reloaded >= 1 { // a pair
+				r.reloaded += 2
+				at += tm.Loop2
+				s.take(2, stock)
+				continue
+			}
 			r.reloaded++
+			at += tm.Loop
 			s.take(1, stock)
 		}
 	}
@@ -140,3 +151,20 @@ func (s *GunState) tickRevolver(tm *TubeTiming, stock *int) {
 
 // UnloadAll is TubeUnload.Amount for the whole cylinder.
 const UnloadAll = -1
+
+// nextFeed is the time after the intro the next round goes in, reloaded
+// counting the chambered one (m870: a round per Loop; m1014: pairs per
+// Loop2 while two or more are needed).
+func (tm *TubeTiming) nextFeed(reloaded, needed int) float32 {
+	switch {
+	case tm.Loop2 <= 0:
+		return float32(reloaded-1)*tm.Loop + tm.LoopFeed
+	case needed == 1:
+		return tm.LoopFeed
+	case needed < 1:
+		return 0
+	case reloaded%2 == 0:
+		return float32((reloaded-2)/2)*tm.Loop2 + tm.LoopFeed2
+	}
+	return float32((reloaded-1)/2)*tm.Loop2 + tm.LoopFeed
+}
