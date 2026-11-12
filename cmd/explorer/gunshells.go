@@ -45,7 +45,53 @@ func shellBones(v *gunView) []int {
 	return bs
 }
 
-// ejectShells queues one casing per shell bone of the held gun.
+// shellTimer is a casing the state machine throws in t seconds (on: one
+// is pending).
+type shellTimer struct {
+	t  float32
+	on bool
+}
+
+// scheduleShell runs on each gun event: the shot, the bolt, an empty
+// reload's start and reload_end_empty start the casing's timer.
+func (g *game) scheduleShell(e firearm.GunEvent) {
+	sh := g.gun.Gun.Shell
+	if sh == nil {
+		return
+	}
+	tm, at := sh.Timing, (*float32)(nil)
+	switch {
+	case e.Shot && tm.OnShot(g.gun.FireMode()):
+		g.ejectShells(g.gun.Gun, g.heldView())
+	case e.Clip == firearm.ClipBolt:
+		at = tm.Bolt
+		if tm.BoltHip != nil && g.aim < firearm.AimProgress(halfAimed) {
+			at = tm.BoltHip
+		}
+	case e.Clip == firearm.ClipReloadEmpty || e.Clip == firearm.ClipReloadIntroEmpty || e.Clip == firearm.ClipReloadEmptyClip:
+		if !tm.OnShot(g.gun.FireMode()) { // the last casing is still in
+			at = tm.EmptyReload
+		}
+	case e.Clip == firearm.ClipReloadEndEmpty:
+		at = tm.EndingEmpty
+	}
+	if at != nil {
+		g.shellAt = shellTimer{t: *at, on: true}
+	}
+}
+
+// tickShellTimer throws the scheduled casing once its time is up.
+func (g *game) tickShellTimer(dt float32) {
+	if !g.shellAt.on {
+		return
+	}
+	if g.shellAt.t -= dt; g.shellAt.t < 0 {
+		g.shellAt.on = false
+		g.ejectShells(g.gun.Gun, g.heldView())
+	}
+}
+
+// ejectShells throws a casing from the held gun's shell bone.
 func (g *game) ejectShells(spec *firearm.Gun, v *gunView) {
 	if spec.Shell == nil {
 		return
@@ -71,10 +117,10 @@ func (g *game) ejectShells(spec *firearm.Gun, v *gunView) {
 	if h.handle < 0 {
 		return
 	}
-	for _, b := range shellBones(v) {
+	if bs := shellBones(v); len(bs) > 0 { // the scripts only popShellFrom(0)
 		r := spec.Shell.Random
 		rnd := mgl32.Vec3{r[0] * g.gunRand.Float32(), r[1] * g.gunRand.Float32(), r[2] * g.gunRand.Float32()}
-		s.live = append(s.live, shell{spec: spec.Shell, model: h, bone: b, rnd: rnd})
+		s.live = append(s.live, shell{spec: spec.Shell, model: h, bone: bs[0], rnd: rnd})
 	}
 	if n := len(s.live) - maxShells; n > 0 {
 		s.live = s.live[n:]

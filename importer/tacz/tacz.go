@@ -538,13 +538,14 @@ func (p *Pack) loadGun(file string, lang map[string]string, sound func(string) s
 	var disp struct {
 		Model, Texture, Slot, Animation string
 		Hud                             string
-		HudEmpty                        string   `json:"hud_empty"`
-		Default                         string   `json:"use_default_animation"`
-		Zoom                            *float32 `json:"iron_zoom"`
-		StateMachine                    string   `json:"state_machine"`
-		ThirdPersonAnimation            string   `json:"third_person_animation"`
-		ModelFOV                        *float32 `json:"model_fov"`
-		ZoomModelFOV                    *float32 `json:"zoom_model_fov"`
+		HudEmpty                        string         `json:"hud_empty"`
+		Default                         string         `json:"use_default_animation"`
+		Zoom                            *float32       `json:"iron_zoom"`
+		StateMachine                    string         `json:"state_machine"`
+		StateMachineParam               map[string]any `json:"state_machine_param"`
+		ThirdPersonAnimation            string         `json:"third_person_animation"`
+		ModelFOV                        *float32       `json:"model_fov"`
+		ZoomModelFOV                    *float32       `json:"zoom_model_fov"`
 		adsPreset
 		AdsPreset string `json:"ads_preset"`
 		Transform struct {
@@ -638,7 +639,8 @@ func (p *Pack) loadGun(file string, lang map[string]string, sound func(string) s
 	spec.Model, spec.Icon = asset("geo_models", disp.Model)+".json", asset("textures", disp.Slot)+".png"
 	spec.Hud = asset("textures", disp.Hud) + ".png"
 	if sh := disp.Shell; sh != nil {
-		spec.Shell = &weapon.ShellEjection{Velocity: sh.Velocity, Random: sh.Random, Accel: sh.Accel, Angular: sh.Angular, Life: sh.Life}
+		spec.Shell = &weapon.ShellEjection{Velocity: sh.Velocity, Random: sh.Random, Accel: sh.Accel, Angular: sh.Angular, Life: sh.Life,
+			Timing: shellScripts[disp.StateMachine].timing(disp.StateMachineParam)}
 		files.shell = sh.shellFiles
 	}
 	if disp.HudEmpty != "" {
@@ -667,6 +669,8 @@ func (p *Pack) loadGun(file string, lang map[string]string, sound func(string) s
 const (
 	gunIronZoom = 1.2
 	// minigunStateMachine is the script that spins the barrel.
+	// (shellScripts: the state machines that throw casings other than on
+	// every shot.)
 	minigunStateMachine = "tacz:minigun_state_machine"
 	gunModelFOV         = 70
 )
@@ -1202,4 +1206,49 @@ func smokeVectors(raw json.RawMessage) [][3]float32 {
 		dirs = append(dirs, [3]float32{float32(d[0] / l), float32(d[1] / l), float32(d[2] / l)})
 	}
 	return dirs
+}
+
+// shellScript is a state machine's casing timing: the state_machine_param
+// keys of its ejection times ("": none).
+type shellScript struct {
+	shot                         weapon.ShellShot
+	bolt, boltHip, empty, ending string
+}
+
+const (
+	boltShellKey        = "bolt_shell_ejecting_time"
+	introShellKey       = "intro_shell_ejecting_time"
+	reloadEmptyShellKey = "reload_empty_shell_ejecting_time"
+)
+
+// shellScripts are the pack's state machines that pop the casing other
+// than on every shot (manual_action_state_machine and its users, the
+// pump and lever guns, hk_mk23's single action).
+var shellScripts = map[string]shellScript{
+	"tacz:manual_action_state_machine": {shot: weapon.ShellNoShot, bolt: boltShellKey},
+	"tacz:hm50b_state_machine":         {shot: weapon.ShellNoShot, bolt: boltShellKey},
+	"tacz:kar98_state_machine":         {shot: weapon.ShellNoShot, bolt: boltShellKey, empty: introShellKey},
+	"tacz:m870_state_machine":          {shot: weapon.ShellNoShot, bolt: boltShellKey, empty: introShellKey},
+	"tacz:m870_unload_state_machine":   {shot: weapon.ShellNoShot, bolt: boltShellKey, empty: introShellKey},
+	"tacz:m1897_state_machine":         {shot: weapon.ShellNoShot, bolt: boltShellKey, empty: introShellKey},
+	"tacz:spas_12_state_machine":       {shot: weapon.ShellBurstShot, bolt: boltShellKey, empty: introShellKey},
+	"tacz:ai_awp_state_machine":        {shot: weapon.ShellNoShot, bolt: boltShellKey, empty: reloadEmptyShellKey},
+	"tacz:m95_state_machine":           {shot: weapon.ShellNoShot, bolt: boltShellKey, empty: reloadEmptyShellKey},
+	"tacz:mrad_state_machine":          {shot: weapon.ShellNoShot, bolt: boltShellKey, empty: reloadEmptyShellKey},
+	"tacz:m1866_state_machine": {shot: weapon.ShellNoShot, bolt: boltShellKey, boltHip: "bolt_shell_ejecting_time_fast",
+		ending: "ending_shell_ejecting_time"},
+	"tacz:hk_mk23_state_machine": {shot: weapon.ShellBurstShot},
+}
+
+// timing reads the times from params; the scripts take a missing one as 0.
+func (s shellScript) timing(params map[string]any) weapon.ShellTiming {
+	at := func(key string) *float32 {
+		if key == "" {
+			return nil
+		}
+		v, _ := params[key].(float64)
+		f := float32(v)
+		return &f
+	}
+	return weapon.ShellTiming{Shot: s.shot, Bolt: at(s.bolt), BoltHip: at(s.boltHip), EmptyReload: at(s.empty), EndingEmpty: at(s.ending)}
 }

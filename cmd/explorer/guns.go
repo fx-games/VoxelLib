@@ -79,6 +79,7 @@ type gunsState struct {
 	gunRecoil        firearm.Recoil
 	recoilTicks      int
 	recoilP, recoilY float32
+	shellAt          shellTimer // a casing the bolt or reload throws later
 	sounds           gunSounds
 	// switching: the gun in hand is being put away, then nextStack's gun
 	// (nil: none) comes out.
@@ -168,7 +169,7 @@ func (g *game) gunSpec(id string) *firearm.Gun {
 func (g *game) selectGun(s *inventory.Stack) {
 	// The draw resets the gun's synced state (ShooterDataHolder.initialData),
 	// here and on the server (msgHold with another gun).
-	g.aim, g.aimPrev, g.gunSent, g.tracers = 0, 0, 0, projectile.Shooter{}
+	g.aim, g.aimPrev, g.gunSent, g.tracers, g.shellAt = 0, 0, 0, projectile.Shooter{}, shellTimer{}
 	g.sendNextHold(s)
 	if g.gunOn() && g.gun.Phase != firearm.Holstered {
 		g.nextStack, g.switching = s, true
@@ -375,6 +376,7 @@ func (g *game) tickGun() {
 	}
 	g.aimPrev = g.aim
 	g.recoilTicks++
+	g.tickShellTimer(1.0 / app.TickRate)
 	aiming := g.Input.Down(app.ActUse) && !g.ScreenOpen() && g.gun.CanAim()
 	g.aim = g.aim.Tick(aiming, g.gun.Gun.Aim, time.Second/app.TickRate)
 	g.syncGun(aiming)
@@ -436,6 +438,7 @@ func (g *game) gunEvents(ev []firearm.GunEvent) {
 		if e.Shot {
 			g.shoot(e.Rounds)
 		}
+		g.scheduleShell(e)
 		if e.Dry {
 			g.gunSound(firearm.SoundDryFire, 1, g.soundPitch())
 		}
@@ -707,7 +710,6 @@ func (g *game) shoot(rounds int) {
 		}
 	}
 	g.startMuzzle(spec, nil)
-	g.ejectShells(spec, g.heldView())
 	g.gunRecoil = spec.NewRecoil(g.gunRand, firearm.AimRecoil(aim, spec.Zoom))
 	g.recoilTicks, g.recoilP, g.recoilY = 0, 0, 0
 }

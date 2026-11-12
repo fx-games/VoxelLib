@@ -74,6 +74,11 @@ func TestLoadPack(t *testing.T) {
 			if _, err := p.ShellModel(&g); err != nil || g.Shell.Life <= 0 {
 				t.Errorf("%s: shell %+v: %v", g.ID, g.Shell, err)
 			}
+			// kar98_state_machine: the bolt throws the casing at 0.3 s, an empty reload at 0.4 s
+			if tm := g.Shell.Timing; g.ID == "kar98" && (tm.Shot != weapon.ShellNoShot || tm.Bolt == nil || *tm.Bolt != 0.3 || tm.EmptyReload == nil || *tm.EmptyReload != 0.4) ||
+				g.ID == "ak47" && (tm.Shot != weapon.ShellEveryShot || tm.Bolt != nil) {
+				t.Errorf("%s shell timing %+v", g.ID, tm)
+			}
 		}
 		if g.Mag == 0 && g.Reload.Kind != weapon.Inventory || g.RPM == 0 || g.Name == "" {
 			t.Errorf("%s: mag %d rpm %v name %q", g.ID, g.Mag, g.RPM, g.Name)

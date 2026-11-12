@@ -400,6 +400,31 @@ type ShellEjection struct {
 	// pack (the gun's own, else its ammo's).
 	Model   string `json:"model"`
 	Texture string `json:"texture"`
+	// Timing is when the state machine throws the casing.
+	Timing ShellTiming `json:"timing"`
+}
+
+// ShellShot is which shots throw their casing at once.
+type ShellShot int
+
+const (
+	ShellEveryShot ShellShot = iota // default_state_machine: popShellFrom on INPUT_SHOOT
+	ShellNoShot                     // manual action: the bolt throws it
+	ShellBurstShot                  // hk_mk23, spas_12: only BURST, SEMI pumps or cocks
+)
+
+// ShellTiming is a state machine's popShellFrom(0) calls: on the shot, and
+// Bolt (BoltHip when aimed under half, m1866) seconds into the bolt,
+// EmptyReload into an empty reload, EndingEmpty into reload_end_empty;
+// nil: none then.
+type ShellTiming struct {
+	Shot                                    ShellShot `json:"shot"`
+	Bolt, BoltHip, EmptyReload, EndingEmpty *float32  `json:",omitempty"`
+}
+
+// OnShot reports whether a shot in mode throws its casing at once.
+func (t ShellTiming) OnShot(mode FireMode) bool {
+	return t.Shot == ShellEveryShot || t.Shot == ShellBurstShot && mode == Burst
 }
 
 // NoTracer is a TracerInterval without tracers (TACZ's -1).
