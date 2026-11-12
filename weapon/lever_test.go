@@ -1,6 +1,9 @@
 package weapon
 
-import "testing"
+import (
+	"slices"
+	"testing"
+)
 
 // TestLever: m1866 loads into the magazine from the first loop and ends
 // with ending_empty; kar98 empty loads a stripper clip, barrel included.
@@ -28,5 +31,23 @@ func TestLever(t *testing.T) {
 	}
 	if run(s, 0.3, GunInput{}, &stock); s.Phase != Ready {
 		t.Fatalf("clip done at 3 s: phase %v", s.Phase)
+	}
+}
+
+// TestLeverClips: m1866_state_machine's loop clip sequence.
+func TestLeverClips(t *testing.T) {
+	s := &GunState{ClipLen: func(string) float32 { return 0.5 }}
+	s.tube.animNeed = 3
+	var got []string
+	for c := s.loopClip(); c != ""; c = s.loopClip() {
+		got = append(got, c)
+		s.tube.loops++
+	}
+	if want := []string{ClipReloadLoopIntro, ClipReloadLoopNext, ClipReloadLoopEnd}; !slices.Equal(got, want) {
+		t.Errorf("clips %v, want %v", got, want)
+	}
+	s.tube.animNeed, s.tube.loops = 1, 0
+	if c := s.loopClip(); c != ClipReloadLoop1Load {
+		t.Errorf("one round: %s", c)
 	}
 }

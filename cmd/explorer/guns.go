@@ -532,7 +532,8 @@ func (g *game) playGunClip(v *gunView, clip string) {
 // and loop hold their last frame, the rest PLAY_ONCE_STOP.
 func mainPlay(clip string) model.Loop {
 	switch clip {
-	case firearm.ClipPutAway, firearm.ClipReloadIntro, firearm.ClipReloadIntroEmpty, firearm.ClipReloadLoop:
+	case firearm.ClipPutAway, firearm.ClipReloadIntro, firearm.ClipReloadIntroEmpty, firearm.ClipReloadLoop,
+		firearm.ClipReloadLoop1Load, firearm.ClipReloadLoopIntro, firearm.ClipReloadLoopNext, firearm.ClipReloadLoopEnd:
 		return model.LoopHold
 	}
 	return model.LoopOnce

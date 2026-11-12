@@ -36,9 +36,17 @@ const (
 	ClipReloadEmptyClip  = "reload_empty_clip" // kar98's stripper clip
 	ClipReloadLoop       = "reload_loop"
 	ClipReloadEnd        = "reload_end"
-	ClipMeleePush        = "melee_push"
-	ClipMeleeStock       = "melee_stock"
-	ClipMeleeBayonet     = "melee_bayonet_" // + 1..meleeBayonetClips in turn
+	// m1866_state_machine's loop: reload_loop_1_load for a single round,
+	// else reload_loop_intro, reload_loop_next..., reload_loop_end last;
+	// reload_end_empty after an empty reload.
+	ClipReloadLoop1Load = "reload_loop_1_load"
+	ClipReloadLoopIntro = "reload_loop_intro"
+	ClipReloadLoopNext  = "reload_loop_next"
+	ClipReloadLoopEnd   = "reload_loop_end"
+	ClipReloadEndEmpty  = "reload_end_empty"
+	ClipMeleePush       = "melee_push"
+	ClipMeleeStock      = "melee_stock"
+	ClipMeleeBayonet    = "melee_bayonet_" // + 1..meleeBayonetClips in turn
 )
 
 // meleeBayonetClips is how many bayonet clips the state machine cycles through.

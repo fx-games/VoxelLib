@@ -9,6 +9,7 @@ type tubeReload struct {
 	animEnd  float32 // when the playing intro or loop clip ends
 	loops    int     // reload_loop clips played (loaded_ammo)
 	animDone bool    // reload_end played
+	animNeed int     // need_ammo, for the m1866 loop clips
 	clip     bool    // a stripper clip reload (TubeTiming.Clip)
 	clipped  bool    // its rounds went in
 	unloaded bool    // revolver: the cylinder emptied
@@ -35,6 +36,7 @@ func (s *GunState) startTube() string {
 		clip = ClipReloadIntroEmpty
 	}
 	s.tube.animEnd = s.ClipLen(clip)
+	s.tube.animNeed = s.Gun.Mag - s.Ammo // m1866_state_machine's need_ammo
 	return clip
 }
 
@@ -50,7 +52,11 @@ func (s *GunState) interruptTube(ev *[]GunEvent) {
 func (s *GunState) endTubeClip(ev *[]GunEvent) {
 	if !s.tube.animDone {
 		s.tube.animDone = true
-		*ev = append(*ev, GunEvent{Clip: ClipReloadEnd})
+		clip := ClipReloadEnd
+		if s.empty && s.ClipLen(ClipReloadEndEmpty) > 0 {
+			clip = ClipReloadEndEmpty
+		}
+		*ev = append(*ev, GunEvent{Clip: clip})
 	}
 }
 
@@ -74,12 +80,12 @@ func (s *GunState) tickTube(ev *[]GunEvent, stock *int) {
 		return
 	}
 	if !r.animDone && s.T >= r.animEnd {
-		if r.loops > r.needed || *stock == 0 {
+		if clip := s.loopClip(); clip == "" || *stock == 0 {
 			s.endTubeClip(ev)
 		} else {
 			r.loops++
-			r.animEnd += s.ClipLen(ClipReloadLoop)
-			*ev = append(*ev, GunEvent{Clip: ClipReloadLoop})
+			r.animEnd += s.ClipLen(clip)
+			*ev = append(*ev, GunEvent{Clip: clip})
 		}
 	}
 	if r.stopAt >= 0 {
@@ -191,4 +197,27 @@ func (tm *TubeTiming) nextFeed(reloaded, needed int) float32 {
 		return float32((reloaded-2)/2)*tm.Loop2 + tm.LoopFeed2
 	}
 	return float32((reloaded-1)/2)*tm.Loop2 + tm.LoopFeed
+}
+
+// loopClip is the next loop clip, "" when the loop is done: reload_loop
+// while rounds are needed, or m1866_state_machine's sequence.
+func (s *GunState) loopClip() string {
+	r := &s.tube
+	if s.ClipLen(ClipReloadLoopIntro) <= 0 {
+		if r.loops > r.needed {
+			return ""
+		}
+		return ClipReloadLoop
+	}
+	switch left := r.animNeed - r.loops; {
+	case left <= 0:
+		return ""
+	case r.loops == 0 && left == 1:
+		return ClipReloadLoop1Load
+	case r.loops == 0:
+		return ClipReloadLoopIntro
+	case left == 1:
+		return ClipReloadLoopEnd
+	}
+	return ClipReloadLoopNext
 }
