@@ -116,6 +116,9 @@ type BlockDef struct {
 	// Connect, when set, picks every face's texture by its in-plane
 	// neighbours (connected textures; overrides Textures and box textures).
 	Connect *Connect
+	// Strength, when set, is the block's hardness and blast resistance
+	// (nil: the vanilla block of its name, see StateInfo.Strength).
+	Strength *Strength
 }
 
 // Part is a group of elements drawn when every condition holds. A Replace
@@ -220,6 +223,9 @@ type StateInfo struct {
 	UVSeed         *[6]uint8
 	UVRotate       [6]uint8
 	Connect        *ConnectInfo // BlockDef.Connect
+	// Strength is BlockDef.Strength, else the vanilla block's of the
+	// name, else DefaultStrength.
+	Strength Strength
 }
 
 // ModelResolver lets a resource pack decide shape and face textures of a state
@@ -398,8 +404,9 @@ func (r *Registry) bake(def *BlockDef, canon string, props map[string]string) St
 		Opacity: def.LightOpacity, CullSelf: def.CullSelf, Connects: def.Connects,
 		Collision: def.Collision, TintColor: def.TintColor, Level: def.Level,
 		NeighbourLight: def.NeighbourLight, PlantOffset: def.PlantOffset, Scatter: def.Scatter, UVRandom: def.UVRandom, UVSeed: def.UVSeed, UVRotate: def.UVRotate,
-		Step:  def.Shape == ShapeBoxes && (strings.HasSuffix(base, "_stairs") || strings.HasSuffix(base, "_slab")),
-		Climb: def.Shape == ShapeBoxes && isLadder(base) || strings.HasSuffix(base, "vine"),
+		Step:     def.Shape == ShapeBoxes && (strings.HasSuffix(base, "_stairs") || strings.HasSuffix(base, "_slab")),
+		Climb:    def.Shape == ShapeBoxes && isLadder(base) || strings.HasSuffix(base, "vine"),
+		Strength: strengthOf(def, base),
 	}
 	for _, t := range def.Tags {
 		info.Tags = append(info.Tags, r.tagID(t))
