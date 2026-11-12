@@ -255,11 +255,8 @@ func (s *GunState) Tick(dt float32, in GunInput, stock *int) []GunEvent {
 		rounds = stock
 	}
 	for s.cooldown <= 0 && (s.FireMode() == Auto && in.Trigger || s.burstLeft > 0) {
-		if s.Overheated {
-			s.burstLeft = 0
-			break
-		}
-		if *rounds == 0 {
+		// LocalPlayerShoot: NO_AMMO, then OVERHEATED, both with the dry click
+		if *rounds == 0 || s.Overheated {
 			s.burstLeft = 0
 			if !s.dry {
 				s.dry = true

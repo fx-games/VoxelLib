@@ -230,7 +230,7 @@ func (s *Server) hurtZombie(p *sPlayer, z *sZombie, h Hit, dmg float64, dx, dz, 
 	m := z.m
 	z.health -= dmg
 	m.VX, m.VY, m.VZ = actors.KnockbackMotion(m.VX, m.VY, m.VZ, m.OnGround, knock, -dx, -dz)
-	h.Attacker, h.Zombie, h.Damage = p.slot, z.id, max(1, int(math.Round(dmg)))
+	h.Attacker, h.Zombie, h.Damage = p.slot, z.id, float32(dmg)
 	if z.health <= 0 {
 		h.Killed = true
 		z.dead = 1

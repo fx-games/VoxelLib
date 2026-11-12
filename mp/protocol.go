@@ -388,7 +388,7 @@ type Hit struct {
 	Attacker, Victim int
 	Zombie           uint32 // the zombie's entity id (0: none)
 	ByZombie         bool
-	Damage           int
+	Damage           float32 // LivingEntity.hurt's amount (fractional: a pellet's share)
 	Head, Killed     bool
 	Gun              bool // a bullet: the shooter plays TACZ's hit marks
 	Melee            bool // a gun's melee attack
@@ -399,13 +399,13 @@ func (h Hit) encode() []byte {
 	b.u8(uint8(h.Attacker))
 	b.u8(uint8(h.Victim))
 	b.u32(h.Zombie)
-	b.u8(uint8(h.Damage))
+	b.f32(float64(h.Damage))
 	b.u8(flag(h.Head, 1) | flag(h.Killed, 2) | flag(h.Gun, 4) | flag(h.Melee, 8) | flag(h.ByZombie, 16))
 	return b
 }
 
 func decodeHit(r *rbuf) Hit {
-	h := Hit{Attacker: int(r.u8()), Victim: int(r.u8()), Zombie: r.u32(), Damage: int(r.u8())}
+	h := Hit{Attacker: int(r.u8()), Victim: int(r.u8()), Zombie: r.u32(), Damage: float32(r.f32())}
 	f := r.u8()
 	h.Head, h.Killed, h.Gun, h.Melee, h.ByZombie = f&1 != 0, f&2 != 0, f&4 != 0, f&8 != 0, f&16 != 0
 	return h

@@ -157,7 +157,7 @@ func sq(v float64) float64 { return v * v }
 // state is p's own state as its snapshots and Welcome carry it.
 func (p *sPlayer) state() PlayerState {
 	st := stateOf(p.ch)
-	st.Health, st.Dead = p.health, p.dead > 0
+	st.Health, st.Dead = p.hearts(), p.dead > 0
 	st.Protected, st.Aim = p.protect > 0, p.aim
 	return st
 }
@@ -171,7 +171,7 @@ func (s *Server) sendSnapshot(p *sPlayer, tick uint32) {
 			continue
 		}
 		snap[uint32(o.slot+1)] = PlayerView{Slot: o.slot, X: o.ch.X, Y: o.ch.Y, Z: o.ch.Z, Yaw: o.yaw, Pitch: o.pitch,
-			Sneak: o.anim.Sneak, Dead: o.dead > 0, Protected: o.protect > 0, Health: o.health, Aim: o.aim, Empty: o.flags&GunEmpty != 0}.encode()
+			Sneak: o.anim.Sneak, Dead: o.dead > 0, Protected: o.protect > 0, Health: o.hearts(), Aim: o.aim, Empty: o.flags&GunEmpty != 0}.encode()
 	}
 	s.def.snapshot(snap)
 	var b wbuf
@@ -187,3 +187,6 @@ func (s *Server) sendSnapshot(p *sPlayer, tick uint32) {
 		s.cfg.Logf("mp: snapshot to %s: %v", p.name, err)
 	}
 }
+
+// hearts is p's health as the HUD shows it: rounded up (Gui's Mth.ceil).
+func (p *sPlayer) hearts() int { return int(math.Ceil(float64(p.health))) }

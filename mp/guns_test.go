@@ -152,10 +152,10 @@ func TestGunShot(t *testing.T) {
 			t.Fatalf("hit %+v", h)
 		}
 	}
-	var health int
+	var health float32
 	s.call(func() { health = s.players[b.c.Slot()].health })
 	if health != MaxHealth-8 || len(b.hits) != 2 {
-		t.Fatalf("health %d after %d hits", health, len(b.hits))
+		t.Fatalf("health %v after %d hits", health, len(b.hits))
 	}
 	if a.hits[0] != b.hits[0] {
 		t.Fatalf("shooter got %+v, victim %+v", a.hits[0], b.hits[0])

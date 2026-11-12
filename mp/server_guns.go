@@ -151,10 +151,12 @@ func (s *Server) tickBullets(tick uint32) {
 				if v.dead > 0 {
 					return // killed by an earlier bullet
 				}
-				s.damage(Hit{Attacker: p.slot, Victim: v.slot, Damage: max(1, int(math.Round(dmg))), Head: h.Head, Gun: true},
+				s.damage(Hit{Attacker: p.slot, Victim: v.slot, Damage: float32(dmg), Head: h.Head, Gun: true},
 					v.ch.X-p.ch.X, v.ch.Z-p.ch.Z, knock)
 			},
-			Explode: func(b *projectile.Bullet, at [3]float64) { s.explode(p, b.Gun.Bullet.Explosion, at, t.ts, t.who, boxes) },
+			Explode: func(b *projectile.Bullet, at [3]float64) {
+				s.explode(p, b.Gun.Bullet.Explosion, at, t.ts, t.who, boxes)
+			},
 		})
 		if sb.b.Gone {
 			s.broadcast(bulletGone(sb.id))
@@ -198,7 +200,7 @@ func (s *Server) melee(p *sPlayer, gun string, l Look) {
 		// doPerLivingHurt: knockback(melee knockback) along the look, then
 		// hurt's own vanilla knockback away from the attacker.
 		push(r.p, float64(m.Knockback), d[0], d[2])
-		s.damage(Hit{Attacker: p.slot, Victim: r.p.slot, Damage: int(math.Round(float64(m.Damage))), Melee: true},
+		s.damage(Hit{Attacker: p.slot, Victim: r.p.slot, Damage: m.Damage, Melee: true},
 			r.p.ch.X-p.ch.X, r.p.ch.Z-p.ch.Z, actors.HurtKnockback)
 	}
 	for _, z := range s.def.zombies {
@@ -233,7 +235,7 @@ func (s *Server) explode(p *sPlayer, e *weapon.Explosion, at [3]float64, ts []pr
 		if v.dead > 0 {
 			continue
 		}
-		s.damage(Hit{Attacker: p.slot, Victim: v.slot, Damage: max(1, int(math.Round(float64(dmg)))), Gun: true}, v.ch.X-at[0], v.ch.Z-at[2], 0)
+		s.damage(Hit{Attacker: p.slot, Victim: v.slot, Damage: dmg, Gun: true}, v.ch.X-at[0], v.ch.Z-at[2], 0)
 		v.ch.VX, v.ch.VY, v.ch.VZ = v.ch.VX+push[0], v.ch.VY+push[1], v.ch.VZ+push[2]
 	}
 }

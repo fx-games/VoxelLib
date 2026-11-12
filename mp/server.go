@@ -113,9 +113,9 @@ type sPlayer struct {
 	yaw   float64
 	pitch float64
 
-	health  int
-	dead    int // ticks until respawn while dead
-	protect int // ticks of spawn protection left
+	health  float32 // LivingEntity health: fractional; the wire carries hearts' Health
+	dead    int     // ticks until respawn while dead
+	protect int     // ticks of spawn protection left
 	kills   int
 	deaths  int
 	wins    int                // battle royale rounds won
@@ -261,7 +261,7 @@ func (s *Server) Status() []PlayerStatus {
 	s.call(func() {
 		for _, p := range s.players {
 			if p != nil {
-				out = append(out, PlayerStatus{Slot: p.slot, Name: p.name, Health: p.health, Dead: p.dead > 0,
+				out = append(out, PlayerStatus{Slot: p.slot, Name: p.name, Health: p.hearts(), Dead: p.dead > 0,
 					Kills: p.kills, Deaths: p.deaths, Wins: p.wins, Team: p.team, Out: p.out, Ping: s.net.Stats(p.slot).RTT})
 			}
 		}
