@@ -416,6 +416,9 @@ func (s *GunState) tickReload(ev *[]GunEvent, stock *int) {
 		feed, done := g.Reload.FeedTactical, g.Reload.DoneTactical
 		if s.empty {
 			feed, done = g.Reload.FeedEmpty, g.Reload.DoneEmpty
+			if g.Reload.DoneEmptyBurst > 0 && s.FireMode() == Burst {
+				feed, done = g.Reload.FeedEmptyBurst, g.Reload.DoneEmptyBurst
+			}
 		}
 		if !s.fed && s.T >= feed {
 			s.fed = true

@@ -59,6 +59,10 @@ func TestLoadPack(t *testing.T) {
 		if g.ID == "ak47" && (len(g.Reload.XMag) != 3 || g.Reload.XMag[0] != (weapon.MagTiming{FeedEmpty: 2.5, FeedTactical: 1.54, DoneEmpty: 2.85, DoneTactical: 2.29}) || g.Reload.DoneTactical != 2) {
 			t.Errorf("ak47 xmag %+v", g.Reload)
 		}
+		// hk_mk23_logic: SEMI pumps the slide on an empty reload; xmag 3 reuses 2
+		if g.ID == "hk_mk23" && (g.Reload.MagTiming != (weapon.MagTiming{FeedEmpty: 1.8, FeedTactical: 1.1, DoneEmpty: 2.2, DoneTactical: 1.77, FeedEmptyBurst: 1.53, DoneEmptyBurst: 2.07}) || len(g.Reload.XMag) != 3 || g.Reload.XMag[2] != g.Reload.XMag[1]) {
+			t.Errorf("hk_mk23 reload %+v", g.Reload)
+		}
 		if g.Reload.Kind == weapon.Tube && g.Reload.Tube == nil {
 			t.Errorf("%s: tube reload without script_param timings", g.ID)
 		}

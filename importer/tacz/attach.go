@@ -567,8 +567,7 @@ func (p *Pack) Gun(id string, c Choice, mode weapon.FireMode) (weapon.Gun, error
 			spec.Mag = f.extMag[l-1]
 		}
 		if l := atts[SlotExtendedMag].magLevel; l > 0 && len(spec.Reload.XMag) >= l { // xmag_reload_logic
-			t := spec.Reload.XMag[l-1]
-			spec.Reload.FeedEmpty, spec.Reload.FeedTactical, spec.Reload.DoneEmpty, spec.Reload.DoneTactical = t.FeedEmpty, t.FeedTactical, t.DoneEmpty, t.DoneTactical
+			spec.Reload.MagTiming = spec.Reload.XMag[l-1]
 		}
 	}
 	if c.Attachments[SlotMuzzle] != "" {

@@ -427,6 +427,9 @@ const (
 	kar98Script = "tacz:kar98_gun_logic"
 )
 
+// mk23Script times the reload by mag level and, empty, by fire mode.
+const mk23Script = "tacz:hk_mk23_logic"
+
 // xmagReloadScript is the gun script whose magazine reload times depend
 // on the extended magazine's level.
 const xmagReloadScript = "tacz:xmag_reload_logic"
@@ -449,26 +452,40 @@ func (x *xmagParams) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-// levels are the timings at levels 0..3 (getReloadTimingFromParam: all
-// sixteen or none).
-func (x xmagParams) levels() ([]weapon.MagTiming, bool) {
+// magKeys name a script's per-level reload params: <tactical|empty|burst>
+// [_xmag_<n>]_<feed|cooldown> for n up to top; higher levels reuse top.
+type magKeys struct {
+	tactical, empty, burst string // burst "": no burst-mode empty reload
+	top                    int
+}
+
+var (
+	xmagKeys = magKeys{tactical: "reload", empty: "empty", top: maxMagLevel}              // xmag_reload_logic
+	mk23Keys = magKeys{tactical: "tactical", empty: "empty_pump", burst: "empty", top: 2} // hk_mk23_logic
+)
+
+// levels are the timings at levels 0..3 (all or none).
+func (x xmagParams) levels(k magKeys) ([]weapon.MagTiming, bool) {
 	out := make([]weapon.MagTiming, maxMagLevel+1)
+	get := func(prefix, infix, what string, ok *bool) float32 {
+		v, has := x[prefix+infix+"_"+what]
+		*ok = *ok && has
+		return v
+	}
+	ok := true
 	for l := range out {
 		infix := ""
 		if l > 0 {
-			infix = fmt.Sprintf("_xmag_%d", l)
+			infix = fmt.Sprintf("_xmag_%d", min(l, k.top))
 		}
-		var ok [4]bool
 		t := &out[l]
-		t.FeedTactical, ok[0] = x["reload"+infix+"_feed"]
-		t.DoneTactical, ok[1] = x["reload"+infix+"_cooldown"]
-		t.FeedEmpty, ok[2] = x["empty"+infix+"_feed"]
-		t.DoneEmpty, ok[3] = x["empty"+infix+"_cooldown"]
-		if ok != [4]bool{true, true, true, true} {
-			return nil, false
+		t.FeedTactical, t.DoneTactical = get(k.tactical, infix, "feed", &ok), get(k.tactical, infix, "cooldown", &ok)
+		t.FeedEmpty, t.DoneEmpty = get(k.empty, infix, "feed", &ok), get(k.empty, infix, "cooldown", &ok)
+		if k.burst != "" {
+			t.FeedEmptyBurst, t.DoneEmptyBurst = get(k.burst, infix, "feed", &ok), get(k.burst, infix, "cooldown", &ok)
 		}
 	}
-	return out, true
+	return out, ok
 }
 
 // defaultSprintTime is GunData's sprint_time default.
@@ -824,12 +841,12 @@ func (d *taczData) spec(id, name, class string) (weapon.Gun, error) {
 	g.Unload = r.Kind != weapon.Inventory && (d.Script == "" || d.AllowUnload)
 	r.FeedEmpty, r.FeedTactical = d.Reload.Feed.Empty, d.Reload.Feed.Tactical
 	r.DoneEmpty, r.DoneTactical = d.Reload.Cooldown.Empty, d.Reload.Cooldown.Tactical
-	if d.Script == xmagReloadScript {
-		lv, ok := d.ScriptParam.XMag.levels()
+	if keys, ok := map[string]magKeys{xmagReloadScript: xmagKeys, mk23Script: mk23Keys}[d.Script]; ok {
+		lv, ok := d.ScriptParam.XMag.levels(keys)
 		if !ok {
-			return weapon.Gun{}, fmt.Errorf("%s: %s without its script_param timings", id, xmagReloadScript)
+			return weapon.Gun{}, fmt.Errorf("%s: %s without its script_param timings", id, d.Script)
 		}
-		r.FeedEmpty, r.FeedTactical, r.DoneEmpty, r.DoneTactical = lv[0].FeedEmpty, lv[0].FeedTactical, lv[0].DoneEmpty, lv[0].DoneTactical
+		r.MagTiming = lv[0]
 		r.XMag = lv[1:]
 	}
 	switch sp := d.ScriptParam; {

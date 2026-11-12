@@ -155,10 +155,7 @@ type Gun struct {
 	Reload struct {
 		Kind ReloadKind `json:"kind"`
 		// Magazine: the rounds go in at Feed, the reload ends at Done.
-		FeedEmpty    float32 `json:"feed_empty"`
-		FeedTactical float32 `json:"feed_tactical"`
-		DoneEmpty    float32 `json:"done_empty"`
-		DoneTactical float32 `json:"done_tactical"`
+		MagTiming
 		// XMag are xmag_reload_logic's timings with an extended magazine
 		// of level 1, 2, 3 (replacing the four above).
 		XMag []MagTiming `json:"xmag,omitempty"`
@@ -496,7 +493,14 @@ type Explosion struct {
 
 // MagTiming is a magazine reload's feed and end, empty and tactical.
 type MagTiming struct {
-	FeedEmpty, FeedTactical, DoneEmpty, DoneTactical float32
+	FeedEmpty    float32 `json:"feed_empty"`
+	FeedTactical float32 `json:"feed_tactical"`
+	DoneEmpty    float32 `json:"done_empty"`
+	DoneTactical float32 `json:"done_tactical"`
+	// FeedEmptyBurst, DoneEmptyBurst, when set, are the empty reload in
+	// burst mode (hk_mk23_logic: SEMI pumps the slide, BURST does not).
+	FeedEmptyBurst float32 `json:"feed_empty_burst,omitempty"`
+	DoneEmptyBurst float32 `json:"done_empty_burst,omitempty"`
 }
 
 // ClipLoad is a stripper clip reload: the rounds go in at Feed, it ends at Done.
