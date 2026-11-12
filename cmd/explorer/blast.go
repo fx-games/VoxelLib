@@ -1,11 +1,13 @@
 package main
 
 import (
+	"fmt"
 	"image"
 	"image/png"
 	"io/fs"
 	"log"
 	"math/rand/v2"
+	"slices"
 
 	"github.com/memmaker/voxellib/audio"
 	"github.com/memmaker/voxellib/explosion"
@@ -105,6 +107,25 @@ func (g *game) drawBlasts(cam *render.Camera, alpha float64) {
 	white := func(x, y, z float64) [3]float32 { return [3]float32{1, 1, 1} }
 	boost := func(x, y, z float64, _, _ float32) [3]float32 { return [3]float32{1, 1, 1} }
 	b.rend.Draw(cam, b.sys.Sprites(nil, alpha, white, boost), alpha, nil)
+}
+
+// vanillaCrack is the client jar's destroy_stage texture %d.
+const vanillaCrack = "assets/minecraft/textures/blocks/destroy_stage_%d.png"
+
+// cracks are the breaking cracks: the client jar's (RenderGlobal's
+// destroyBlockIcons), else the pack's (respack draws its own where it has
+// none).
+func (g *game) cracks() []image.Image {
+	imgs := slices.Clone(g.crackTex)
+	for i := range imgs {
+		img, err := g.jarImage(fmt.Sprintf(vanillaCrack, i))
+		if err != nil {
+			log.Printf("cracks: %v (the pack's instead)", err)
+			return g.crackTex
+		}
+		imgs[i] = img
+	}
+	return imgs
 }
 
 // jarImage reads a PNG from the client jar (-jar).
