@@ -375,6 +375,9 @@ func (p *Pack) applyAds(spec *weapon.Gun, own adsPreset, id string) error {
 // cylinder first.
 const revolverReloadScript = "tacz:taurus943_gun_logic"
 
+// defaultSprintTime is GunData's sprint_time default.
+const defaultSprintTime = 0.2
+
 // defaultBurstMinInterval is BurstData.minInterval's default, seconds.
 const defaultBurstMinInterval = 1
 
@@ -635,6 +638,7 @@ type taczData struct {
 	Draw      float32          `json:"draw_time"`
 	PutAway   float32          `json:"put_away_time"`
 	Aim       float32          `json:"aim_time"`
+	Sprint    *float32         `json:"sprint_time"`
 	Weight    float32          `json:"weight"`
 	MoveSpeed weapon.MoveSpeed `json:"movement_speed"`
 	Recoil    struct {
@@ -752,6 +756,10 @@ func (d *taczData) spec(id, name, class string) (weapon.Gun, error) {
 		r.Tube = &weapon.TubeTiming{IntroEmpty: *sp.IntroEmpty, Intro: *sp.Intro, Loop: *sp.Loop, Ending: *sp.Ending, IntroEmptyFeed: *sp.IntroEmptyFeed, LoopFeed: *sp.LoopFeed}
 	}
 	g.Draw, g.PutAway, g.Aim = d.Draw, d.PutAway, d.Aim
+	g.Sprint = defaultSprintTime
+	if d.Sprint != nil {
+		g.Sprint = *d.Sprint
+	}
 	g.BoltTime, g.BoltHipTime = d.BoltAction, d.ScriptParam.BoltFastTime
 	if d.Script != "" && d.ScriptParam.BoltTime > 0 { // a script's tick_bolt replaces defaultTickBolt
 		g.BoltTime = d.ScriptParam.BoltTime

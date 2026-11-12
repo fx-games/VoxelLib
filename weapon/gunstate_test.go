@@ -260,3 +260,21 @@ func TestBoltTiming(t *testing.T) {
 		t.Fatalf("hip bolt not over: phase %d", s.Phase)
 	}
 }
+
+// LivingEntityShoot rejects a shot until sprintTimeS has come down to 0;
+// a sprint attempt interrupts a tube reload.
+func TestSprint(t *testing.T) {
+	g := &Gun{Mag: 5, RPM: 600, Modes: []FireMode{Semi}, Sprint: 0.2}
+	s := &GunState{Gun: g, ClipLen: func(string) float32 { return 0.5 }, Phase: Ready, Ammo: 5}
+	stock := 0
+	run(s, 1, GunInput{Sprinting: true}, &stock)
+	if n := run(s, 0.15, GunInput{Trigger: true}, &stock); n != 0 {
+		t.Fatalf("fired %d coming out of a sprint", n)
+	}
+	if n := run(s, 0.1, GunInput{Trigger: true}, &stock); n != 1 {
+		t.Fatalf("fired %d after sprint_time", n)
+	}
+	if s.StopsSprint() {
+		t.Fatal("ready gun stops sprint")
+	}
+}

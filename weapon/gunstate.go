@@ -65,6 +65,10 @@ type GunInput struct {
 	Melee   bool // went down this tick
 	Unload  bool // went down this tick
 	Aimed   bool // aiming at least half way (getAimingProgress >= 0.5)
+	// Sprint: the player tries to sprint (a tube reload is interrupted,
+	// LocalPlayerMixin.swapSprintStatus); Sprinting: is sprinting, not
+	// crouched (LivingEntityAim's sprint ramp).
+	Sprint, Sprinting bool
 }
 
 // GunState runs one gun's cycle. Ammo counts the rounds in the gun,
@@ -95,9 +99,12 @@ type GunState struct {
 	// (ShootKey.lastTimeShootSuccess); dry: the dry fire sound played
 	// since (SoundPlayManager.resetDryFireSound on release).
 	shot, dry bool
-	bolting   bool    // Bolting: the bolt has started (the cooldown is over)
-	boltLen   float32 // its length
-	burstMin  float32 // burst: seconds until min_interval past the burst's first shot
+	// SprintT is sprintTimeS: up toward Gun.Sprint while sprinting; the
+	// gun fires only at 0.
+	SprintT  float32
+	bolting  bool    // Bolting: the bolt has started (the cooldown is over)
+	boltLen  float32 // its length
+	burstMin float32 // burst: seconds until min_interval past the burst's first shot
 }
 
 // firingGrace is how late a shot may come and still continue a stream of
@@ -167,6 +174,14 @@ func (s *GunState) Tick(dt float32, in GunInput, stock *int) []GunEvent {
 	s.sinceShot += dt
 	s.burstMin -= dt
 	s.cool(dt)
+	if in.Sprinting {
+		s.SprintT = min(s.SprintT+dt, g.Sprint)
+	} else {
+		s.SprintT = max(s.SprintT-dt, 0)
+	}
+	if s.SprintT > 0 {
+		in.Trigger = false // LivingEntityShoot: IS_SPRINTING
+	}
 	if !in.Trigger {
 		s.shot, s.dry = false, false
 	}
@@ -203,7 +218,7 @@ func (s *GunState) Tick(dt float32, in GunInput, stock *int) []GunEvent {
 	case Reloading:
 		// LocalPlayerMixin: a shot cancels a reload (interrupt_reload);
 		// the shot itself waits for the reload's end
-		if tryShoot && g.Reload.Kind == Tube {
+		if (tryShoot || in.Sprint) && g.Reload.Kind == Tube {
 			s.interruptTube(&ev)
 		}
 		s.tickReload(&ev, stock)
@@ -456,4 +471,17 @@ func (s *GunState) boltTime(aimed bool) float32 {
 		return g.BoltTime
 	}
 	return s.ClipLen(ClipBolt)
+}
+
+// StopsSprint is LocalPlayerSprint.getProcessedSprintStatus's gun part
+// (with aiming and the held trigger): a reload not yet finishing (a
+// magazine not yet fed, a tube reload before its ending).
+func (s *GunState) StopsSprint() bool {
+	switch {
+	case s.Phase != Reloading:
+		return false
+	case s.Gun.Reload.Kind == Tube:
+		return s.tube.stopAt < 0 || s.T < s.tube.stopAt
+	}
+	return !s.fed
 }

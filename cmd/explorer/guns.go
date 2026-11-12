@@ -66,6 +66,7 @@ type gunsState struct {
 	// aim is the aiming progress 0..1 (LocalPlayerAim: 1/aim_time per
 	// second), aimPrev the last tick's.
 	aim, aimPrev firearm.AimProgress
+	sprintWant   bool        // the player tried to sprint this tick (Hooks.Sprint)
 	gunSent      mp.GunFlags // the held gun's state the server has (mp.Client.SendGun)
 	fov          gunFOVState
 	gunRand      *rand.Rand
@@ -380,12 +381,14 @@ func (g *game) tickGun() {
 	// LivingEntitySpeedModifier: the gun's weight and movement_speed.
 	g.Player.MoveSpeed = character.SpeedOf(character.PlayerMoveSpeed * float64(g.gun.Gun.SpeedFactor(aiming, g.gun.Phase == firearm.Reloading)))
 	in := firearm.GunInput{
-		Trigger: g.Input.Down(app.ActAttack) && !g.ScreenOpen(),
-		Reload:  g.Input.Down("reload"),
-		Inspect: g.keyPressed("inspect"),
-		Melee:   g.keyPressed("melee"),
-		Unload:  g.keyPressed("unload"),
-		Aimed:   g.aim >= firearm.AimProgress(halfAimed),
+		Trigger:   g.Input.Down(app.ActAttack) && !g.ScreenOpen(),
+		Reload:    g.Input.Down("reload"),
+		Inspect:   g.keyPressed("inspect"),
+		Melee:     g.keyPressed("melee"),
+		Unload:    g.keyPressed("unload"),
+		Aimed:     g.aim >= firearm.AimProgress(halfAimed),
+		Sprint:    g.sprintWant,
+		Sprinting: g.Player.Sprinting && !g.Input.Down(app.ActSneak),
 	}
 	// Fire select first (TACZ handles the key before the tick's shot), its
 	// spec resolved (postChangeEvent), so a shot this tick uses the new mode.
@@ -816,6 +819,17 @@ func pushCreature(c *creature, power, xd, zd float64) {
 	if m := c.mob; !m.Static {
 		m.VX, m.VY, m.VZ = actors.KnockbackMotion(m.VX, m.VY, m.VZ, m.OnGround, power, xd, zd)
 	}
+}
+
+// gunSprint is LocalPlayerSprint.getProcessedSprintStatus: no sprint
+// while aiming, holding the trigger or in a reload not yet finishing.
+func (g *game) gunSprint(want bool) bool {
+	g.sprintWant = want
+	if !g.gunOn() {
+		return want
+	}
+	trigger := g.Input.Down(app.ActAttack) && !g.ScreenOpen()
+	return want && !trigger && !g.Input.Down(app.ActUse) && !g.gun.StopsSprint()
 }
 
 // halfAimed is the aiming progress m1866_gun_logic's bolt switches at.

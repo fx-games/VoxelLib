@@ -176,6 +176,9 @@ type Hooks struct {
 	// UsingItem reports that the player is using an item (eating,
 	// drinking, drawing a bow): movement x0.2 and no sprint.
 	UsingItem func() bool
+	// Sprint filters the player's sprint (want: the sprint key held
+	// walking forward) and reports whether it may sprint.
+	Sprint func(want bool) bool
 	// UseItem uses the held item into the air (no block or entity
 	// targeted). A use press always calls it; while the button stays held
 	// it repeats every 4 ticks unless UsingItem reports a use in progress

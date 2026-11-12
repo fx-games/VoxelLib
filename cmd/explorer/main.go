@@ -273,6 +273,7 @@ func main() {
 		Held:          g.heldChanged,
 		Status:        g.status,
 		Ride:          g.ride,
+		Sprint:        g.gunSprint,
 		BlockBroken:   g.blockBroken,
 		BlockPlaced:   g.blockPlaced,
 	}

@@ -162,7 +162,10 @@ type Gun struct {
 	Draw    float32 `json:"draw"`
 	PutAway float32 `json:"put_away"`
 	Aim     float32 `json:"aim"`
-	Recoil  struct {
+	// Sprint is sprint_time: seconds the gun takes to come down from a
+	// sprint before it can fire (and up into it).
+	Sprint float32 `json:"sprint"`
+	Recoil struct {
 		Pitch []RecoilKey `json:"pitch"`
 		Yaw   []RecoilKey `json:"yaw"`
 	} `json:"recoil"`

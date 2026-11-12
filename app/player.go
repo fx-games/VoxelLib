@@ -213,6 +213,9 @@ func (p *Player) tick() {
 		a.Cam.Yaw += 2 * math.Pi / (8 * TickRate) // a turn every 8 s, for 20 s
 	}
 	ci.Using = a.Hooks.UsingItem != nil && a.Hooks.UsingItem()
+	if a.Hooks.Sprint != nil {
+		ci.Sprint = a.Hooks.Sprint(ci.Sprint && ci.Forward > 0)
+	}
 	if a.Hooks.Ride != nil && a.Hooks.Ride(ci) {
 		p.bobTick(a.Cam.Yaw, a.Cam.Pitch, false, true)
 		return
