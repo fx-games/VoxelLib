@@ -33,6 +33,7 @@ const (
 	ClipReloadIntro    = "reload_intro"
 	// ClipReloadIntroEmpty starts a tube reload with no round chambered.
 	ClipReloadIntroEmpty = "reload_intro_empty"
+	ClipReloadEmptyClip  = "reload_empty_clip" // kar98's stripper clip
 	ClipReloadLoop       = "reload_loop"
 	ClipReloadEnd        = "reload_end"
 	ClipMeleePush        = "melee_push"

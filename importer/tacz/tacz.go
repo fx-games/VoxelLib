@@ -389,6 +389,10 @@ type scriptParam struct {
 	IntroEmptyFeed *float32   `json:"intro_empty_feed"`
 	LoopFeed       *float32   `json:"loop_feed"`
 	// m1014_gun_logic's pairs, spas_12_gun_logic's burst-mode empty intro
+	// m1866_gun_logic's empty ending, kar98_gun_logic's stripper clip
+	EndingEmpty        float32 `json:"ending_empty"`
+	ClipLoad           float32 `json:"clip_load"`
+	ClipLoadFeed       float32 `json:"clip_load_feed"`
 	Loop2              float32 `json:"loop_2"`
 	LoopFeed2          float32 `json:"loop_feed_2"`
 	IntroEmptySemi     float32 `json:"intro_empty_semi"`
@@ -414,6 +418,13 @@ func (sp *scriptParam) UnmarshalJSON(b []byte) error {
 const (
 	doubleBarrelScript = "tacz:db_short_gun_logic"
 	doubleBarrelVolley = 2
+)
+
+// leverScript and kar98Script reload round by round into the magazine
+// (kar98: a stripper clip when empty and unscoped).
+const (
+	leverScript = "tacz:m1866_gun_logic"
+	kar98Script = "tacz:kar98_gun_logic"
 )
 
 // xmagReloadScript is the gun script whose magazine reload times depend
@@ -822,6 +833,14 @@ func (d *taczData) spec(id, name, class string) (weapon.Gun, error) {
 		r.XMag = lv[1:]
 	}
 	switch sp := d.ScriptParam; {
+	case (d.Script == leverScript || d.Script == kar98Script) && sp.IntroEmpty != nil && sp.Intro != nil && sp.Loop != nil && sp.Ending != nil && sp.LoopFeed != nil:
+		r.Kind = weapon.Tube
+		r.Tube = &weapon.TubeTiming{IntroEmpty: *sp.IntroEmpty, Intro: *sp.Intro, Loop: *sp.Loop, Ending: *sp.Ending, LoopFeed: *sp.LoopFeed,
+			Lever: true, EndingEmpty: sp.EndingEmpty}
+		if d.Script == kar98Script {
+			r.Tube.ChamberFirst = true
+			r.Tube.Clip = &weapon.ClipLoad{Feed: sp.ClipLoadFeed, Done: sp.ClipLoad}
+		}
 	case d.Script == revolverReloadScript && sp.Intro != nil && sp.Loop != nil && sp.Ending != nil && sp.LoopFeed != nil && sp.UnloadTime != nil:
 		u := &weapon.TubeUnload{Time: *sp.UnloadTime, Amount: weapon.UnloadAll} // getUnloadAmount
 		if sp.UnloadAmount != nil {

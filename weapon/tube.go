@@ -9,6 +9,8 @@ type tubeReload struct {
 	animEnd  float32 // when the playing intro or loop clip ends
 	loops    int     // reload_loop clips played (loaded_ammo)
 	animDone bool    // reload_end played
+	clip     bool    // a stripper clip reload (TubeTiming.Clip)
+	clipped  bool    // its rounds went in
 	unloaded bool    // revolver: the cylinder emptied
 }
 
@@ -19,6 +21,14 @@ func (s *GunState) startTube() string {
 	s.tube = tubeReload{needed: s.Gun.Mag - inTube, stopAt: -1}
 	if tm := s.Gun.Reload.Tube; tm != nil && tm.Unload != nil {
 		s.tube.needed = s.Gun.Mag // getMaxAmmoCount until unloaded
+	}
+	tm := s.Gun.Reload.Tube
+	if tm != nil && tm.Clip != nil && s.empty {
+		s.tube.clip = true
+		return ClipReloadEmptyClip
+	}
+	if tm != nil && tm.ChamberFirst && s.empty {
+		s.tube.needed++ // the first round chambers (kar98_gun_logic)
 	}
 	clip := ClipReloadIntro
 	if s.empty && s.ClipLen(ClipReloadIntroEmpty) > 0 {
@@ -53,6 +63,16 @@ func (s *GunState) tickTube(ev *[]GunEvent, stock *int) {
 		s.endTubeClip(ev)
 		return
 	}
+	if r.clip {
+		if !r.clipped && s.T >= tm.Clip.Feed {
+			r.clipped = true
+			s.take(s.Gun.Mag+1, stock) // the barrel and the magazine
+		}
+		if s.T >= tm.Clip.Done {
+			s.Phase, s.T = Ready, 0
+		}
+		return
+	}
 	if !r.animDone && s.T >= r.animEnd {
 		if r.loops > r.needed || *stock == 0 {
 			s.endTubeClip(ev)
@@ -63,7 +83,11 @@ func (s *GunState) tickTube(ev *[]GunEvent, stock *int) {
 		}
 	}
 	if r.stopAt >= 0 {
-		if s.T-r.stopAt >= tm.Ending {
+		ending := tm.Ending
+		if s.empty && tm.EndingEmpty > 0 {
+			ending = tm.EndingEmpty
+		}
+		if s.T-r.stopAt >= ending {
 			// ponytail: the state machine ends its clips on its own count;
 			// here reload_end plays by the end at the latest
 			s.endTubeClip(ev)
@@ -83,7 +107,7 @@ func (s *GunState) tickTube(ev *[]GunEvent, stock *int) {
 		introEmpty, introEmptyFeed = tm.IntroEmptyBurst, tm.IntroEmptyFeedBurst
 	}
 	if r.reloaded == 0 {
-		if !s.empty {
+		if !s.empty || tm.Lever {
 			r.reloaded = 1
 		} else if s.T > introEmptyFeed {
 			s.take(1, stock) // into the barrel

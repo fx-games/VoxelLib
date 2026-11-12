@@ -459,6 +459,17 @@ type TubeTiming struct {
 	// reload in burst mode (intro_empty_semi; 0: as the others).
 	IntroEmptyBurst     float32 `json:"intro_empty_burst,omitempty"`
 	IntroEmptyFeedBurst float32 `json:"intro_empty_feed_burst,omitempty"`
+	// Lever: the rounds go into the magazine from the first loop, none
+	// into the barrel first (m1866_gun_logic, kar98_gun_logic);
+	// EndingEmpty, when set, is the ending after an empty reload.
+	// ChamberFirst: an empty gun's first round goes into the barrel, one
+	// more needed (kar98).
+	Lever        bool    `json:"lever,omitempty"`
+	EndingEmpty  float32 `json:"ending_empty,omitempty"`
+	ChamberFirst bool    `json:"chamber_first,omitempty"`
+	// Clip, when set, loads an empty gun at once with a stripper clip
+	// (kar98_gun_logic without a scope).
+	Clip *ClipLoad `json:"clip,omitempty"`
 	// Unload, when set, is taurus943_gun_logic's revolver reload instead:
 	// the cylinder empties back into the stock at Unload.Time, then
 	// rounds go in LoopFeed into each Loop after Intro (no chambering).
@@ -486,4 +497,9 @@ type Explosion struct {
 // MagTiming is a magazine reload's feed and end, empty and tactical.
 type MagTiming struct {
 	FeedEmpty, FeedTactical, DoneEmpty, DoneTactical float32
+}
+
+// ClipLoad is a stripper clip reload: the rounds go in at Feed, it ends at Done.
+type ClipLoad struct {
+	Feed, Done float32
 }

@@ -557,6 +557,11 @@ func (p *Pack) Gun(id string, c Choice, mode weapon.FireMode) (weapon.Gun, error
 			spec.IdleRaise = sc.idleAdjust / pixelsPerBlock
 		}
 	}
+	if tm := spec.Reload.Tube; tm != nil && tm.Clip != nil && c.Attachments[SlotScope] != "" {
+		t := *tm // kar98_gun_logic: no stripper clip past a scope
+		t.Clip = nil
+		spec.Reload.Tube = &t
+	}
 	if c.Attachments[SlotExtendedMag] != "" { // AttachmentDataUtils.getAmmoCountWithAttachment
 		if l := atts[SlotExtendedMag].magLevel; l > 0 && len(f.extMag) >= l {
 			spec.Mag = f.extMag[l-1]
