@@ -5,8 +5,12 @@ import (
 	"image/png"
 	"io/fs"
 	"log"
+	"math/rand/v2"
 
+	"github.com/memmaker/voxellib/audio"
+	"github.com/memmaker/voxellib/explosion"
 	"github.com/memmaker/voxellib/particles"
+	"github.com/memmaker/voxellib/resloc"
 	"github.com/memmaker/voxellib/voxel/render"
 )
 
@@ -17,6 +21,32 @@ type blastFX struct {
 	sys  particles.System
 	rend *render.ParticleRenderer
 	off  bool // no renderer or no explosion.png: explosions are not drawn
+	// sounds are the vanilla sounds (-mcassets), nil without them.
+	sounds *audio.Sounds
+	rnd    *rand.Rand // the blast sound's pitch
+}
+
+// explodeSound is the blast's sound (Explosion.doExplosionB, TACZ
+// ProjectileExplosion's GENERIC_EXPLODE), at volume explodeVolume.
+const (
+	explodeSound  = "random.explode"
+	explodeVolume = 4
+)
+
+// vanillaSounds opens the vanilla sounds of the launcher asset index
+// index, played through m; nil (logged) without it.
+func vanillaSounds(index string, m *audio.Mixer) *audio.Sounds {
+	files, err := resloc.AssetIndex(index)
+	var s *audio.Sounds
+	if err == nil {
+		exists := func(f string) bool { _, err := fs.Stat(files, audio.SoundPath(f)); return err == nil }
+		s, err = audio.OpenFS(files, resloc.Default+"/sounds.json", exists, m)
+	}
+	if err != nil {
+		log.Printf("vanilla sounds (-mcassets): %v", err)
+		return nil
+	}
+	return s
 }
 
 // explosionTexture is EntityLargeExplodeFX's texture in the client jar.
@@ -27,10 +57,15 @@ const explosionTexture = "assets/minecraft/textures/entity/explosion.png"
 const hugeBlastRadius = 2
 
 // explosionFX shows an explosion of radius at at (ProjectileExplosion's
-// finalizeExplosion particles). Its sound, entity.generic.explode, is a
-// vanilla asset the explorer does not have.
+// finalizeExplosion particles and sound).
 func (g *game) explosionFX(at [3]float64, radius float32) {
 	b := &g.blasts
+	if b.sounds != nil {
+		if b.rnd == nil {
+			b.rnd = rand.New(rand.NewPCG(rand.Uint64(), rand.Uint64()))
+		}
+		b.sounds.Play(explodeSound, audio.At(at[0], at[1], at[2], explodeVolume, explosion.Pitch(b.rnd)))
+	}
 	if b.rend == nil && !b.off {
 		b.off = true
 		img, err := g.jarImage(explosionTexture)

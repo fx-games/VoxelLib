@@ -99,6 +99,7 @@ func main() {
 		worldDir = flag.String("world", "saves/demo", "world directory to load/save ('' = memory only)")
 		readOnly = flag.Bool("readonly", false, "never write to the world directory")
 		jar      = flag.String("jar", "minecraft-1.7.10.jar", "Minecraft 1.7.10 client jar (GUI textures, font, language)")
+		mcAssets = flag.String("mcassets", filepath.Join("mcassets", "indexes", "1.7.10.json"), "the Minecraft launcher's 1.7.10 asset index (objects/ next to indexes/): vanilla sounds")
 		packs    = flag.String("pack", "", "extra resource packs (dir/zip/jar), comma separated, highest priority first")
 		genName  = flag.String("gen", "overworld", "terrain generator for new chunks: overworld | flat")
 		seed     = flag.Int64("seed", 1337, "terrain seed")
@@ -243,6 +244,7 @@ func main() {
 	}
 	a.RenderScale = *scale
 	g := &game{App: a, opt: o, playerName: *name}
+	g.blasts.sounds = vanillaSounds(*mcAssets, a.Mixer)
 	if g.defaultSkin, g.skins, err = loadSkins(*skinDir); err != nil {
 		log.Fatal(err)
 	}
