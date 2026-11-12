@@ -119,14 +119,12 @@ func (s *Server) shotBlock(b *projectile.Bullet, h physics.Hit) {
 	s.damageBlock(h.Block, b.Damage(at, false)/(max(hard, 0)*shotHardnessScale))
 }
 
-// blastBlocks is ProjectileExplosion's block part with destroy_block: the
+// blastBlocks is ProjectileExplosion's block part. Every explosion breaks
+// blocks (the game's rule; the pack's destroy_block is not read): the
 // vanilla rays (explosion.Blast, strength = the radius) break every block
 // they pass, and the blocks they reach but cannot pass take the share of
 // their resistance the ray had left as progress. Nothing drops.
 func (s *Server) blastBlocks(e *weapon.Explosion, at [3]float64) {
-	if !e.DestroyBlock {
-		return
-	}
 	b := explosion.Blast{X: at[0], Y: at[1], Z: at[2], Size: e.Radius}
 	picked, cracked := b.Rays(s.rng, func(x, y, z int) (float32, bool) {
 		st := s.world.Block(x, y, z)

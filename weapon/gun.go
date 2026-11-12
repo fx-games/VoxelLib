@@ -515,9 +515,7 @@ type Explosion struct {
 	Damage    float32 `json:"damage"` // power
 	Radius    float32 `json:"radius"`
 	Knockback bool    `json:"knockback"`
-	// DestroyBlock: the blast breaks blocks (mp Server.blastBlocks).
-	DestroyBlock bool    `json:"destroy_block"`
-	Delay        float32 `json:"delay"` // seconds
+	Delay     float32 `json:"delay"` // seconds
 }
 
 // MagTiming is a magazine reload's feed and end, empty and tactical.

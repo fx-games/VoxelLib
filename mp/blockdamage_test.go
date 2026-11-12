@@ -70,7 +70,7 @@ func TestBlockDamage(t *testing.T) {
 		bed := s.cfg.Reg.Default("bedrock")
 		s.world.SetBlock(x, top.Y-2, z, bed)
 		at := [3]float64{x + 0.5, float64(top.Y) + 0.5, z + 0.5}
-		s.blastBlocks(&weapon.Explosion{Radius: 3, DestroyBlock: true}, at)
+		s.blastBlocks(&weapon.Explosion{Radius: 3}, at)
 		hole = s.world.Block(x, top.Y-1, z) == voxel.Air
 		bedrock = s.world.Block(x, top.Y-2, z) == bed
 		n = len(s.damaged)

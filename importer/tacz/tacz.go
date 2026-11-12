@@ -722,7 +722,7 @@ type taczData struct {
 			Damage       float32 `json:"damage"`
 			Radius       float32 `json:"radius"`
 			Knockback    bool    `json:"knockback"`
-			DestroyBlock bool    `json:"destroy_block"`
+			DestroyBlock bool    `json:"destroy_block"` // not used: every explosion breaks blocks (mp Server.blastBlocks)
 			Delay        float32 `json:"delay"`
 		} `json:"explosion"`
 		Extra struct {
@@ -825,7 +825,7 @@ func (d *taczData) spec(id, name, class string) (weapon.Gun, error) {
 	b.Friction, b.Life, b.TracerInterval = d.Bullet.Friction, d.Bullet.Life, d.Bullet.TracerInterval
 	b.Headshot, b.Knockback = d.Bullet.Extra.Headshot, d.Bullet.Knockback
 	if e := d.Bullet.Explosion; e != nil && e.Explode {
-		b.Explosion = &weapon.Explosion{Damage: e.Damage, Radius: e.Radius, Knockback: e.Knockback, DestroyBlock: e.DestroyBlock, Delay: e.Delay}
+		b.Explosion = &weapon.Explosion{Damage: e.Damage, Radius: e.Radius, Knockback: e.Knockback, Delay: e.Delay}
 	}
 	for _, a := range d.Bullet.Extra.Adjust {
 		dist := float32(math.MaxFloat32) // DistanceDamagePairSerializer: "infinite"
