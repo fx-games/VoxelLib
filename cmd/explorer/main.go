@@ -28,6 +28,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"image"
 	"io"
 	"io/fs"
 	"log"
@@ -245,6 +246,7 @@ func main() {
 	a.RenderScale = *scale
 	g := &game{App: a, opt: o, playerName: *name}
 	g.blasts.sounds = vanillaSounds(*mcAssets, a.Mixer)
+	g.crackTex = pack.DamageTextures()
 	if g.defaultSkin, g.skins, err = loadSkins(*skinDir); err != nil {
 		log.Fatal(err)
 	}
@@ -321,6 +323,8 @@ type game struct {
 	torches  torchFX
 	blasts   blastFX
 	jar      fs.FS // the client jar (-jar): GUI and particle textures
+	// crackTex are the pack's destroy_stage cracks (respack.Pack.DamageTextures).
+	crackTex []image.Image
 
 	itemsState
 	creaturesState
@@ -383,7 +387,8 @@ func (g *game) start() {
 	if g.torches.rend != nil {
 		g.torches.rend.Destroy()
 	}
-	g.Eng.Renderer.Opt.Daylight = 1 // after a multiplayer game's
+	g.Eng.Renderer.SetDamageTextures(g.cracks()) // cracks of shot and blasted blocks (mp.BlockDamage)
+	g.Eng.Renderer.Opt.Daylight = 1              // after a multiplayer game's
 	if o.night {
 		g.Eng.Renderer.Opt.Daylight = 0.2
 	}
