@@ -375,6 +375,79 @@ func (p *Pack) applyAds(spec *weapon.Gun, own adsPreset, id string) error {
 // cylinder first.
 const revolverReloadScript = "tacz:taurus943_gun_logic"
 
+// scriptParam is the gun scripts' script_param.
+type scriptParam struct {
+	// the gun scripts' tick_bolt
+	BoltTime     float32 `json:"bolt_time"`
+	BoltFastTime float32 `json:"bolt_fast_time"`
+	// XMag: every number, for xmag_reload_logic
+	XMag           xmagParams `json:"-"`
+	IntroEmpty     *float32   `json:"intro_empty"`
+	Intro          *float32   `json:"intro"`
+	Loop           *float32   `json:"loop"`
+	Ending         *float32   `json:"ending"`
+	IntroEmptyFeed *float32   `json:"intro_empty_feed"`
+	LoopFeed       *float32   `json:"loop_feed"`
+	// taurus943_gun_logic's unloading
+	UnloadMagazine *bool    `json:"unload_magazine"`
+	UnloadAmount   *int     `json:"unload_amount"`
+	UnloadTime     *float32 `json:"unload_time"`
+}
+
+// UnmarshalJSON reads the named params and keeps every number for
+// xmag_reload_logic.
+func (sp *scriptParam) UnmarshalJSON(b []byte) error {
+	type plain scriptParam
+	if err := json.Unmarshal(b, (*plain)(sp)); err != nil {
+		return err
+	}
+	return sp.XMag.UnmarshalJSON(b)
+}
+
+// xmagReloadScript is the gun script whose magazine reload times depend
+// on the extended magazine's level.
+const xmagReloadScript = "tacz:xmag_reload_logic"
+
+// xmagParams are xmag_reload_logic's script params, read from the raw
+// script_param object: <reload|empty>[_xmag_<n>]_<feed|cooldown>.
+type xmagParams map[string]float32
+
+func (x *xmagParams) UnmarshalJSON(b []byte) error {
+	m := map[string]any{}
+	if err := json.Unmarshal(b, &m); err != nil {
+		return err
+	}
+	*x = xmagParams{}
+	for k, v := range m {
+		if f, ok := v.(float64); ok {
+			(*x)[k] = float32(f)
+		}
+	}
+	return nil
+}
+
+// levels are the timings at levels 0..3 (getReloadTimingFromParam: all
+// sixteen or none).
+func (x xmagParams) levels() ([]weapon.MagTiming, bool) {
+	out := make([]weapon.MagTiming, maxMagLevel+1)
+	for l := range out {
+		infix := ""
+		if l > 0 {
+			infix = fmt.Sprintf("_xmag_%d", l)
+		}
+		var ok [4]bool
+		t := &out[l]
+		t.FeedTactical, ok[0] = x["reload"+infix+"_feed"]
+		t.DoneTactical, ok[1] = x["reload"+infix+"_cooldown"]
+		t.FeedEmpty, ok[2] = x["empty"+infix+"_feed"]
+		t.DoneEmpty, ok[3] = x["empty"+infix+"_cooldown"]
+		if ok != [4]bool{true, true, true, true} {
+			return nil, false
+		}
+	}
+	return out, true
+}
+
 // defaultSprintTime is GunData's sprint_time default.
 const defaultSprintTime = 0.2
 
@@ -579,23 +652,9 @@ type taczData struct {
 	Modes     []string                       `json:"fire_mode"`
 	Adjust    map[weapon.FireMode]modeAdjust `json:"fire_mode_adjust"`
 	// ScriptParam: the tube reload's timings (m870_gun_logic's script params).
-	BoltAction  float32 `json:"bolt_action_time"`
-	ScriptParam struct {
-		// the gun scripts' tick_bolt
-		BoltTime       float32  `json:"bolt_time"`
-		BoltFastTime   float32  `json:"bolt_fast_time"`
-		IntroEmpty     *float32 `json:"intro_empty"`
-		Intro          *float32 `json:"intro"`
-		Loop           *float32 `json:"loop"`
-		Ending         *float32 `json:"ending"`
-		IntroEmptyFeed *float32 `json:"intro_empty_feed"`
-		LoopFeed       *float32 `json:"loop_feed"`
-		// taurus943_gun_logic's unloading
-		UnloadMagazine *bool    `json:"unload_magazine"`
-		UnloadAmount   *int     `json:"unload_amount"`
-		UnloadTime     *float32 `json:"unload_time"`
-	} `json:"script_param"`
-	Burst struct {
+	BoltAction  float32     `json:"bolt_action_time"`
+	ScriptParam scriptParam `json:"script_param"`
+	Burst       struct {
 		Count int     `json:"count"`
 		BPM   float32 `json:"bpm"`
 		// BurstData.minInterval defaults to 1 s
@@ -742,6 +801,14 @@ func (d *taczData) spec(id, name, class string) (weapon.Gun, error) {
 	g.Unload = r.Kind != weapon.Inventory && (d.Script == "" || d.AllowUnload)
 	r.FeedEmpty, r.FeedTactical = d.Reload.Feed.Empty, d.Reload.Feed.Tactical
 	r.DoneEmpty, r.DoneTactical = d.Reload.Cooldown.Empty, d.Reload.Cooldown.Tactical
+	if d.Script == xmagReloadScript {
+		lv, ok := d.ScriptParam.XMag.levels()
+		if !ok {
+			return weapon.Gun{}, fmt.Errorf("%s: %s without its script_param timings", id, xmagReloadScript)
+		}
+		r.FeedEmpty, r.FeedTactical, r.DoneEmpty, r.DoneTactical = lv[0].FeedEmpty, lv[0].FeedTactical, lv[0].DoneEmpty, lv[0].DoneTactical
+		r.XMag = lv[1:]
+	}
 	switch sp := d.ScriptParam; {
 	case d.Script == revolverReloadScript && sp.Intro != nil && sp.Loop != nil && sp.Ending != nil && sp.LoopFeed != nil && sp.UnloadTime != nil:
 		u := &weapon.TubeUnload{Time: *sp.UnloadTime, Amount: weapon.UnloadAll} // getUnloadAmount

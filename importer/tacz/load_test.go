@@ -55,6 +55,10 @@ func TestLoadPack(t *testing.T) {
 		if e := g.Bullet.Explosion; g.ID == "rpg7" && (e == nil || e.Damage != 120 || e.Radius != 3 || e.Delay != 30) || g.ID == "ak47" && e != nil {
 			t.Errorf("%s explosion %+v", g.ID, e)
 		}
+		// xmag_reload_logic: ak47's extended magazines reload slower
+		if g.ID == "ak47" && (len(g.Reload.XMag) != 3 || g.Reload.XMag[0] != (weapon.MagTiming{FeedEmpty: 2.5, FeedTactical: 1.54, DoneEmpty: 2.85, DoneTactical: 2.29}) || g.Reload.DoneTactical != 2) {
+			t.Errorf("ak47 xmag %+v", g.Reload)
+		}
 		if g.Reload.Kind == weapon.Tube && g.Reload.Tube == nil {
 			t.Errorf("%s: tube reload without script_param timings", g.ID)
 		}

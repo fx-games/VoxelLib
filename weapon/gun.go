@@ -156,6 +156,9 @@ type Gun struct {
 		FeedTactical float32 `json:"feed_tactical"`
 		DoneEmpty    float32 `json:"done_empty"`
 		DoneTactical float32 `json:"done_tactical"`
+		// XMag are xmag_reload_logic's timings with an extended magazine
+		// of level 1, 2, 3 (replacing the four above).
+		XMag []MagTiming `json:"xmag,omitempty"`
 		// Tube: the scripted tube reload's timings.
 		Tube *TubeTiming `json:"tube,omitempty"`
 	} `json:"reload"`
@@ -467,4 +470,9 @@ type Explosion struct {
 	// DestroyBlock is read but not applied: blocks have no blast resistance.
 	DestroyBlock bool    `json:"destroy_block"`
 	Delay        float32 `json:"delay"` // seconds
+}
+
+// MagTiming is a magazine reload's feed and end, empty and tactical.
+type MagTiming struct {
+	FeedEmpty, FeedTactical, DoneEmpty, DoneTactical float32
 }
