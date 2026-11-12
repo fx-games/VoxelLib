@@ -157,6 +157,7 @@ func (s *Server) tickBullets(tick uint32) {
 				s.damage(Hit{Attacker: p.slot, Victim: v.slot, Damage: float32(dmg), Head: h.Head, Gun: true},
 					v.ch.X-p.ch.X, v.ch.Z-p.ch.Z, knock)
 			},
+			Block: s.shotBlock,
 			Explode: func(b *projectile.Bullet, at [3]float64) {
 				s.explode(p, b.Gun.Bullet.Explosion, at, t.ts, t.who, boxes)
 			},
@@ -223,6 +224,7 @@ func (s *Server) melee(p *sPlayer, gun string, l Look) {
 // on a team or in zombie defense). Each takes the blast's damage and push.
 func (s *Server) explode(p *sPlayer, e *weapon.Explosion, at [3]float64, ts []projectile.BulletTarget, who []hitTarget, boxes physics.BoxFunc) {
 	s.broadcast(Explosion{Pos: at, Radius: e.Radius}.encode())
+	defer s.blastBlocks(e, at) // after the entities: the blocks shielded them (doExplosionA)
 	if p.team == 0 && s.cfg.Mode != ZombieDefense && p.dead == 0 {
 		vel := [3]float64{p.ch.X - p.ch.PrevX, p.ch.Y - p.ch.PrevY, p.ch.Z - p.ch.PrevZ}
 		ts = append(ts[:len(ts):len(ts)], projectile.BulletTarget{Box: projectile.HitBox(p.ch.Box(), vel, true, p.anim.Sneak)})

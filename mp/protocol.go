@@ -351,16 +351,17 @@ const (
 	msgView      = 8 // fov, aspect f32: the player's unzoomed projection (zombie defense spawns out of sight)
 	msgCheatGuns = 9 // (empty): give the player every gun and some ammo (zombie defense cheat)
 	// server → client
-	msgPlayer     = 10 // slot u8, joined u8, name, skin png: a player joined, changed skin or left
-	msgBlock      = 11 // x, y, z i32, state name: a block changed
-	msgHit        = 12 // attacker u8, victim u8, damage u8, flags (head, killed, gun)
-	msgText       = 13 // a line for the chat/kill feed
-	msgScore      = 14 // slot u8, kills u16, deaths u16: a player's score changed
-	msgFired      = 15 // slot u8: that player's gun went off (not sent to the shooter)
-	msgBullet     = 16 // BulletSpawn: the server fired a bullet
-	msgBulletGone = 17 // id u32: that bullet is gone (hit something or its life ran out)
-	msgPickup     = 18 // Pickup: the player took a pickup (zombie defense)
-	msgExplosion  = 19 // Explosion: an explosive round blew up
+	msgPlayer      = 10 // slot u8, joined u8, name, skin png: a player joined, changed skin or left
+	msgBlock       = 11 // x, y, z i32, state name: a block changed
+	msgHit         = 12 // attacker u8, victim u8, damage u8, flags (head, killed, gun)
+	msgText        = 13 // a line for the chat/kill feed
+	msgScore       = 14 // slot u8, kills u16, deaths u16: a player's score changed
+	msgFired       = 15 // slot u8: that player's gun went off (not sent to the shooter)
+	msgBullet      = 16 // BulletSpawn: the server fired a bullet
+	msgBulletGone  = 17 // id u32: that bullet is gone (hit something or its life ran out)
+	msgPickup      = 18 // Pickup: the player took a pickup (zombie defense)
+	msgExplosion   = 19 // Explosion: an explosive round blew up
+	msgBlockDamage = 20 // BlockDamage: a block's cracks changed
 )
 
 // Explosion is an explosive round's blast for the clients' effects
