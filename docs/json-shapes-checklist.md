@@ -71,3 +71,22 @@ client) with the renderer's own placement transform and converts the faces
 to JSON (tojson.py solves each face's uv/rotation from the game's vertices).
 Add a family there (a dump loop + a small generator script), then rerun.
 Positions are meshed at 1/128 block: the pot neck's 4.1 px becomes 4.125.
+
+## Texture memory: sprites instead of one layer size (Felix: "Do it")
+
+Goal: entity sheets (64 px) must not inflate every block texture, and fine
+model UVs must not cost a 5th vertex word. How: like the game's atlas
+sprites. (1) Each texture is a tile of its own size inside the array's
+layers; its layer-map entry names layer, tile grid and tile. (2) Faces with
+fractional UVs use a region: a registry texture entry {base texture, rect}
+whose layer-map entry carries the rect; the vertex keeps the old 4-word
+format with 0..16 corner UVs. Index budget: 4096 textures + regions
+(26.3: 1311 textures, 923 fractional rects); overflow panics loudly.
+
+- [ ] T1 Revert the 5-word vertex (keep the DecodeVertex test migration)
+- [ ] T2 Layer map entries RGBA32: code (layer, grid, tile) + region rect
+- [ ] T3 Per-texture tile size: layers sized max(largest, 128), textures packed at native size
+- [ ] T4 blockTex: always the grad path (per-entry grid is not uniform)
+- [ ] T5 Registry: fractional box faces → region entries (typed), corner UVs 0..16
+- [ ] T6 Vertex shaders apply the region rect
+- [ ] T7 Tests (texarray, mesh, registry), VoxelEdit shot of chests/pot, memory stat before/after
