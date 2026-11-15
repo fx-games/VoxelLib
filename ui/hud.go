@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"io/fs"
 	"math"
 	"strings"
 )
@@ -53,7 +54,11 @@ type AttackIndicator struct {
 
 // The sprites of the off-hand frame and the attack indicator.
 const (
-	OffHandFrameTex     = "textures/gui/sprites/hud/hotbar_offhand_left.png"
+	OffHandFrameTex = "textures/gui/sprites/hud/hotbar_offhand_left.png"
+	// HotbarTex and HotbarSelectionTex are the 1.20+ hotbar sprites, used
+	// over widgets.png's hotbar strip when the pack has them.
+	HotbarTex           = "textures/gui/sprites/hud/hotbar.png"
+	HotbarSelectionTex  = "textures/gui/sprites/hud/hotbar_selection.png"
 	AttackFullTex       = "textures/gui/sprites/hud/crosshair_attack_indicator_full.png"
 	AttackBackgroundTex = "textures/gui/sprites/hud/crosshair_attack_indicator_background.png"
 	AttackProgressTex   = "textures/gui/sprites/hud/crosshair_attack_indicator_progress.png"
@@ -250,9 +255,14 @@ func (h *HUD) Draw(ctx *Context, partial float32) {
 func (h *HUD) drawHotbar(ctx *Context) {
 	c := ctx.Canvas
 	w, ht := ctx.W, ctx.H
-	t := ctx.Tex(widgetsTex)
-	DrawTexturedModalRect(c, t, w/2-91, ht-22, 0, 0, 182, 22)
-	DrawTexturedModalRect(c, t, w/2-91-1+h.State.Selected*20, ht-22-1, 0, 22, 24, 22)
+	if _, err := fs.Stat(ctx.Assets, AssetPath(HotbarTex)); err == nil {
+		DrawTexRect(c, ctx.Tex(HotbarTex), w/2-91, ht-22, 0, 0, 182, 22, 182, 22, 0xFFFFFFFF)
+		DrawTexRect(c, ctx.Tex(HotbarSelectionTex), w/2-91-1+h.State.Selected*20, ht-22-1, 0, 0, 24, 23, 24, 23, 0xFFFFFFFF)
+	} else {
+		t := ctx.Tex(widgetsTex)
+		DrawTexturedModalRect(c, t, w/2-91, ht-22, 0, 0, 182, 22)
+		DrawTexturedModalRect(c, t, w/2-91-1+h.State.Selected*20, ht-22-1, 0, 22, 24, 22)
+	}
 	if off := h.State.OffHand; !off.Empty() { // the left-handed frame (main arm right)
 		DrawTexRect(c, ctx.Tex(OffHandFrameTex), w/2-91-29, ht-23, 0, 0, 29, 24, 29, 24, 0xFFFFFFFF)
 		DrawItem(ctx, off, w/2-91-26, ht-16-3)
