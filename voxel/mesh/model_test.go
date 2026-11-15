@@ -31,15 +31,17 @@ func meshBoxes(t *testing.T, def *voxel.BlockDef, stoneAt ...[3]int) []vert {
 	m := NewMesher()
 	m.Snap.Capture(w, voxel.SectionPos{})
 	res := m.Build(reg.Table(), nil)
+	stoneTex := reg.Info(stone).Tex[0]
 	var out []vert
 	for i := 0; i+VertexWords <= len(res.Data); i += VertexWords {
 		d := res.Data[i : i+VertexWords]
-		if d[1]&projectedUV == 0 {
+		dv := DecodeVertex(d)
+		if dv.Tex == stoneTex {
 			continue // a stone cube face
 		}
 		out = append(out, vert{
 			pos: pos32(d),
-			u:   d[1] >> 12 & 31, v: d[1] >> 17 & 31, normal: d[1] >> 22 & 7,
+			u:   uint32(dv.UV[0]*16 + 0.5), v: uint32(dv.UV[1]*16 + 0.5), normal: uint32(dv.Normal), // 1/16 tile
 			tint: d[2] & 0xFFFFFF,
 		})
 	}
@@ -365,7 +367,7 @@ func TestUVRandom(t *testing.T) {
 			cx, cz := pos32(dv)[0]/32-uint32(x0), pos32(dv)[2]/32
 			for j, co := range cornerOff[voxel.FaceUp] {
 				if uint32(co[0]) == cx && uint32(co[2]) == cz {
-					if uv := [2]uint32{dv[1] >> 12 & 31, dv[1] >> 17 & 31}; uv != rbTab[voxel.FaceUp][r][j] {
+					if uv := tileUV(dv); uv != rbTab[voxel.FaceUp][r][j] {
 						t.Errorf("x %d rot %d corner %d: uv %v, want %v", x0, r, j, uv, rbTab[voxel.FaceUp][r][j])
 					}
 				}
@@ -413,4 +415,10 @@ func TestMaterials(t *testing.T) {
 			t.Fatalf("material %d", got)
 		}
 	}
+}
+
+// tileUV is a whole-tile vertex's u, v.
+func tileUV(w []uint32) [2]uint32 {
+	uv := DecodeVertex(w).UV
+	return [2]uint32{uint32(uv[0] + 0.5), uint32(uv[1] + 0.5)}
 }

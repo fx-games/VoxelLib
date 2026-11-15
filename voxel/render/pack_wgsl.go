@@ -248,7 +248,7 @@ struct U {
 // (OptiFine's shaders mode drops it), light coordinates, face and class.
 const packTerrainDecodeWGSL = `
 struct TV { pos: vec3f, uv: vec2f, layer: u32, color: vec3f, light: vec2f, n: u32, mat: u32 }
-fn decodeTerrain(d: vec4<u32>) -> TV {
+fn decodeTerrain(d: vec4<u32>, e: u32) -> TV {
 	var ao = array<f32, 4>(0.45, 0.65, 0.82, 1.0);
 	let w0 = d.x; let w1 = d.y; let w2 = d.z; let w3 = d.w;
 	let coarse = vec3f(f32(w0 & 1023u), f32((w0 >> 10u) & 1023u), f32((w0 >> 20u) & 1023u));
@@ -259,8 +259,7 @@ fn decodeTerrain(d: vec4<u32>) -> TV {
 	var t: TV;
 	t.pos = u.origin.xyz + sec + local;
 	t.layer = textureLoad(layerMap, vec2<i32>(i32(w1 & 4095u), 0), 0).r;
-	t.uv = vec2f(f32((w1 >> 12u) & 31u), f32((w1 >> 17u) & 31u));
-	if ((w1 & (1u << 25u)) != 0u) { t.uv = t.uv * (1.0 / 16.0); }
+	t.uv = vec2f(f32(e & 65535u), f32(e >> 16u)) * (1.0 / 2048.0); // mesh.uvWord
 	t.n = (w1 >> 22u) & 7u;
 	let tint = vec3f(f32(w2 & 255u), f32((w2 >> 8u) & 255u), f32((w2 >> 16u) & 255u)) * (1.0 / 255.0);
 	let wt = f32((w3 >> 16u) & 255u) * (1.0 / 255.0);
@@ -290,8 +289,8 @@ struct GV {
 	@location(6) vpos: vec3f,
 }
 @vertex
-fn vs(@location(0) d: vec4<u32>) -> GV {
-	let t = decodeTerrain(d);
+fn vs(@location(0) d: vec4<u32>, @location(1) e: u32) -> GV {
+	let t = decodeTerrain(d, e);
 	var o: GV;
 	let g = terrainVertex(t.pos, t.mat, t.uv, vec4f(t.color, 1.0));
 	let position = g.pos;
@@ -354,8 +353,8 @@ fn SunIntensity(zenithAngleCos: f32, sunIntensity: f32, cutoffAngle: f32, steepn
 	return sunIntensity * max(0.0, 1.0 - exp(-((cutoffAngle - acos(zenithAngleCos)) / steepness)));
 }
 @vertex
-fn vs(@location(0) d: vec4<u32>) -> WV {
-	let t = decodeTerrain(d);
+fn vs(@location(0) d: vec4<u32>, @location(1) e: u32) -> WV {
+	let t = decodeTerrain(d, e);
 	var o: WV;
 	let normal = normalize(m3(pu.mv) * faceNormal(t.n));
 	var position = t.pos;
@@ -868,7 +867,7 @@ fn faceNormal(n: u32) -> vec3f {
 	return normals[min(n, 6u)];
 }
 @vertex
-fn vs(@location(0) d: vec4<u32>) -> VOut {
+fn vs(@location(0) d: vec4<u32>, @location(1) e: u32) -> VOut {
 	let w0 = d.x; let w1 = d.y; let w2 = d.z;
 	let coarse = vec3f(f32(w0 & 1023u), f32((w0 >> 10u) & 1023u), f32((w0 >> 20u) & 1023u));
 	let fine = vec3f(f32((w1 >> 26u) & 3u), f32((w1 >> 28u) & 3u), f32(w1 >> 30u));
@@ -876,8 +875,7 @@ fn vs(@location(0) d: vec4<u32>) -> VOut {
 	var o: VOut;
 	o.pos = jitter(u.mvp * vec4f(local, 1.0));
 	if (HAND) { o.pos.z = o.pos.z * 0.1; } // in front of the world (see packHand)
-	o.uv = vec2f(f32((w1 >> 12u) & 31u), f32((w1 >> 17u) & 31u));
-	if ((w1 & (1u << 25u)) != 0u) { o.uv = o.uv * (1.0 / 16.0); }
+	o.uv = vec2f(f32(e & 65535u), f32(e >> 16u)) * (1.0 / 2048.0); // mesh.uvWord
 	o.layer = textureLoad(layerMap, vec2<i32>(i32(w1 & 4095u), 0), 0).r;
 	o.color = vec3f(f32(w2 & 255u), f32((w2 >> 8u) & 255u), f32((w2 >> 16u) & 255u)) * (1.0 / 255.0);
 	var n = normalize(m3(u.model) * faceNormal((w1 >> 22u) & 7u));
@@ -1080,8 +1078,8 @@ fn calcShadowDistortion(shadowpos: vec2f) -> vec2f {
 	return shadowpos / distortion;
 }
 @vertex
-fn vs(@location(0) d: vec4<u32>) -> SV {
-	let t = decodeTerrain(d);
+fn vs(@location(0) d: vec4<u32>, @location(1) e: u32) -> SV {
+	let t = decodeTerrain(d, e);
 	var p = pu.shadowProj * pu.shadowMV * vec4f(t.pos, 1.0);
 	p = vec4f(calcShadowDistortion(p.xy), p.z / 6.0, p.w);
 	var o: SV;
@@ -2092,14 +2090,13 @@ fn faceNormal(n: u32) -> vec3f {
 	return normals[min(n, 6u)];
 }
 @vertex
-fn vs(@location(0) d: vec4<u32>) -> VOut {
+fn vs(@location(0) d: vec4<u32>, @location(1) e: u32) -> VOut {
 	let w0 = d.x; let w1 = d.y; let w3 = d.w;
 	let coarse = vec3f(f32(w0 & 1023u), f32((w0 >> 10u) & 1023u), f32((w0 >> 20u) & 1023u));
 	let fine = vec3f(f32((w1 >> 26u) & 3u), f32((w1 >> 28u) & 3u), f32(w1 >> 30u));
 	let local = (coarse * 4.0 + fine) * (1.0 / 128.0) - 8.0;
 	var o: VOut;
-	o.uv = vec2f(f32((w1 >> 12u) & 31u), f32((w1 >> 17u) & 31u));
-	if ((w1 & (1u << 25u)) != 0u) { o.uv = o.uv * (1.0 / 16.0); }
+	o.uv = vec2f(f32(e & 65535u), f32(e >> 16u)) * (1.0 / 2048.0); // mesh.uvWord
 	let g = terrainVertex((u.model * vec4f(local, 1.0)).xyz, w3 >> 24u, o.uv, vec4f(1.0, 1.0, 1.0, 0.5));
 	o.pos = jitter(u.mvp * vec4f(g.pos * (1.0 - damagePull), 1.0));
 	let n = (w1 >> 22u) & 7u;

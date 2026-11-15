@@ -23,10 +23,8 @@ func decodeCell(data []uint32) []cellVert {
 			v.pos[a] = (int(w0>>(10*a)&1023)*4 + int(w1>>(26+2*a)&3) - 8*128) / 8
 		}
 		v.face = voxel.Face(w1 >> 22 & 7)
-		v.uv = [2]int{int(w1 >> 12 & 31), int(w1 >> 17 & 31)}
-		if w1&projectedUV == 0 {
-			v.uv[0], v.uv[1] = v.uv[0]*16, v.uv[1]*16
-		}
+		uv := DecodeVertex(data[i:]).UV
+		v.uv = [2]int{int(uv[0]*16 + 0.5), int(uv[1]*16 + 0.5)} // 1/16 tile
 		out = append(out, v)
 	}
 	return out

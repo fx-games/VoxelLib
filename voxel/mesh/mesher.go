@@ -24,10 +24,10 @@ const (
 	GroupCount      = 7
 )
 
-// VertexWords is the vertex size in uint32s (16 bytes).
+// VertexWords is the vertex size in uint32s (20 bytes).
 //
 //	w0: x:10 y:10 z:10 (high bits of the position) ao:2
-//	w1: texture layer:12 u:5 v:5 normal:3 projected uv:1,
+//	w1: texture layer:12 (10 bits free) normal:3 (1 bit free),
 //	    x:2 y:2 z:2 (low bits of the position)
 //
 // A position is section local in 1/128 block, biased by 8 blocks, so
@@ -37,7 +37,20 @@ const (
 //	w2: tint r:8 g:8 b:8, section index in region:8
 //	w3: sky light:8 block light:8 (level*16, smoothly averaged),
 //	    dynamic tint weight:8 (see Config.BlockTint)
-const VertexWords = 4
+//	w4: u:16 v:16 in 1/uvUnit of a tile (see uvWord)
+const VertexWords = 5
+
+// uvUnit is the texture-coordinate step: 1/2048 of a tile, a quarter texel
+// of the largest (512 px) layers, so model UVs keep their fractions (entity
+// sheets use quarter pixels of a 64 px texture); 16 bits reach 32 tiles,
+// past the 16 a merged section face repeats its texture.
+const uvUnit = 2048
+
+// uvWord packs a vertex's texture coordinates (in tiles) into w4.
+func uvWord(u, v float32) uint32 {
+	q := func(x float32) uint32 { return uint32(min(max(x*uvUnit+0.5, 0), 65535)) }
+	return q(u) | q(v)<<16
+}
 
 // vpos packs a section-local position in 1/128 block into w0 and w1 bits.
 func vpos(x, y, z int) (w0, w1 uint32) {
@@ -530,9 +543,10 @@ func (m *Mesher) quadTops(f voxel.Face, p [3]int, w, h int, tex uint16, tint uin
 		p0, p1 := vpos(x*4, y*4, z*4)
 		out = append(out,
 			p0|uint32(c.ao)<<30,
-			p1|uint32(tex)|u<<12|v<<17|uint32(f)<<22,
+			p1|uint32(tex)|uint32(f)<<22,
 			tint&0xffffff|m.ridx,
-			uint32(c.sky)|uint32(c.blk)<<8|tint>>24<<16|m.mat)
+			uint32(c.sky)|uint32(c.blk)<<8|tint>>24<<16|m.mat,
+			uvWord(float32(u), float32(v)))
 	}
 	m.out[layer][group] = out
 	if layer == voxel.LayerTranslucent {
@@ -592,10 +606,6 @@ func (m *Mesher) specials() {
 		}
 	}
 }
-
-// projectedUV marks a vertex whose u/v are in 1/16 of a tile (box faces
-// show the part of the texture their extent covers, like vanilla models).
-const projectedUV = 1 << 25
 
 // boxes meshes a ShapeBoxes block's elements, flat lit. A face is culled by
 // an opaque neighbour on its Box.Cull side (model cullface), or without
@@ -812,13 +822,12 @@ func (m *Mesher) boxFace(f voxel.Face, base [3]float32, b *voxel.Box, tex uint16
 		}
 		p0, p1 := vpos(p[0], p[1], p[2])
 		c := cornerMix(f, cl, q[k])
-		u := uint32(min(max(uv[k][0]+0.5, 0), 31))
-		v := uint32(min(max(uv[k][1]+0.5, 0), 31))
 		out = append(out,
 			p0|uint32(c.ao)<<30,
-			p1|uint32(tex)|u<<12|v<<17|normal<<22|projectedUV,
+			p1|uint32(tex)|normal<<22,
 			tint&0xffffff|m.ridx,
-			uint32(c.sky)|uint32(c.blk)<<8|tint>>24<<16|m.mat)
+			uint32(c.sky)|uint32(c.blk)<<8|tint>>24<<16|m.mat,
+			uvWord(uv[k][0]/16, uv[k][1]/16)) // box UVs are in 1/16 tile
 	}
 	m.out[layer][group] = out
 	if layer == voxel.LayerTranslucent {
@@ -876,7 +885,8 @@ func (m *Mesher) quadReversed(p [3]int, tex uint16, tint uint32, cl [4]cornerLig
 		u, v := uvTab[voxel.FaceUp][k][0], uvTab[voxel.FaceUp][k][1]
 		p0, p1 := vpos(x*4, y*4, z*4)
 		out = append(out, p0|3<<30,
-			p1|uint32(tex)|u<<12|v<<17|uint32(voxel.FaceDown)<<22, tint&0xffffff|m.ridx, uint32(cl[0].sky)|uint32(cl[0].blk)<<8|tint>>24<<16|m.mat)
+			p1|uint32(tex)|uint32(voxel.FaceDown)<<22, tint&0xffffff|m.ridx, uint32(cl[0].sky)|uint32(cl[0].blk)<<8|tint>>24<<16|m.mat,
+			uvWord(float32(u), float32(v)))
 	}
 	m.out[voxel.LayerTranslucent][GroupUnassigned] = out
 	m.trans = append(m.trans, [3]float32{cx / 128, float32(y) / 32, cz / 128})
@@ -904,9 +914,10 @@ func (m *Mesher) cross(x, y, z int, off [3]int, tex uint16, tint uint32, layer v
 				p0, p1 := vpos(bx+v[0], by+v[1], bz+v[2])
 				out = append(out,
 					p0|3<<30,
-					p1|uint32(tex)|u<<12|uvs[k][1]<<17|6<<22,
+					p1|uint32(tex)|6<<22,
 					tint&0xffffff|m.ridx,
-					uint32(c.sky)|uint32(c.blk)<<8|tint>>24<<16|m.mat)
+					uint32(c.sky)|uint32(c.blk)<<8|tint>>24<<16|m.mat,
+					uvWord(float32(u), float32(uvs[k][1])))
 			}
 			if layer == voxel.LayerTranslucent {
 				m.trans = append(m.trans, [3]float32{float32(bx+64) / 128, float32(by+64) / 128, float32(bz+64) / 128})
@@ -1034,17 +1045,14 @@ type Vertex struct {
 // DecodeVertex unpacks the VertexWords words of one vertex as the
 // shaders do.
 func DecodeVertex(w []uint32) Vertex {
-	w0, w1, w2 := w[0], w[1], w[2]
+	w0, w1, w2, w4 := w[0], w[1], w[2], w[4]
 	var v Vertex
 	for a := range 3 {
 		q := (w0>>(10*a)&1023)<<2 | w1>>(26+2*a)&3
 		v.Pos[a] = float32(q)/128 - 8
 	}
 	v.Tex = uint16(w1 & 4095)
-	v.UV = [2]float32{float32(w1 >> 12 & 31), float32(w1 >> 17 & 31)}
-	if w1&(1<<25) != 0 {
-		v.UV[0], v.UV[1] = v.UV[0]/16, v.UV[1]/16
-	}
+	v.UV = [2]float32{float32(w4&65535) / uvUnit, float32(w4>>16) / uvUnit}
 	v.Normal = int(w1 >> 22 & 7)
 	v.Tint = [3]uint8{uint8(w2), uint8(w2 >> 8), uint8(w2 >> 16)}
 	return v

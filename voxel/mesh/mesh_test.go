@@ -145,12 +145,12 @@ func TestCrossBackUV(t *testing.T) {
 		u := map[[3]uint32]uint32{}
 		for k := range 4 {
 			v := d[(q*4+k)*VertexWords:]
-			u[pos32(v)] = v[1] >> 12 & 31
+			u[pos32(v)] = tileUV(v)[0]
 		}
 		for k := range 4 {
 			v := d[((q+1)*4+k)*VertexWords:]
-			if p := pos32(v); v[1]>>12&31 != 1-u[p] {
-				t.Errorf("plane %d corner %v: back u %d, front %d", q/2, p, v[1]>>12&31, u[p])
+			if p := pos32(v); tileUV(v)[0] != 1-u[p] {
+				t.Errorf("plane %d corner %v: back u %d, front %d", q/2, p, tileUV(v)[0], u[p])
 			}
 		}
 	}

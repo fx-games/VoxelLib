@@ -37,7 +37,7 @@ struct VOut {
 }
 ` + wgslLight + `
 @vertex
-fn vs(@location(0) d: vec4<u32>) -> VOut {
+fn vs(@location(0) d: vec4<u32>, @location(1) e: u32) -> VOut {
 	var normals = array<vec3f, 6>(vec3f(0.0, -1.0, 0.0), vec3f(0.0, 1.0, 0.0), vec3f(0.0, 0.0, -1.0),
 		vec3f(0.0, 0.0, 1.0), vec3f(-1.0, 0.0, 0.0), vec3f(1.0, 0.0, 0.0));
 	let w0 = d.x; let w1 = d.y; let w2 = d.z;
@@ -53,8 +53,7 @@ fn vs(@location(0) d: vec4<u32>) -> VOut {
 		// depth test against the terrain's copy of the face (glPolygonOffset).
 		o.pos = u.mvp * vec4f((u.model * vec4f(local, 1.0)).xyz * (1.0 - damagePull), 1.0);
 	}
-	o.uv = vec2f(f32((w1 >> 12u) & 31u), f32((w1 >> 17u) & 31u));
-	if ((w1 & (1u << 25u)) != 0u) { o.uv = o.uv * (1.0 / 16.0); }
+	o.uv = vec2f(f32(e & 65535u), f32(e >> 16u)) * (1.0 / 2048.0); // mesh.uvWord
 	o.dist = length((u.model * vec4f(local, 1.0)).xz);
 	if (u.light.w > 0.5) { // RenderGlobal.drawBlockDamageTexture, the flash: colour array and lighting off
 		o.layer = u32(u.fog.z);
