@@ -51,6 +51,10 @@ type Options struct {
 	// to the fog colour and these are drawn before terrain. SkyAfter is
 	// drawn after translucent terrain (e.g. high clouds, rain).
 	Sky, SkyAfter []SkyDraw
+	// Flashlight, when set, lights a cone along the camera's view like a
+	// block light of level 15 fading out over FlashlightReach (no shadows:
+	// it lights through blocks). Terrain of the plain renderer only.
+	Flashlight bool
 	// Pack, when set, renders the world with the shader pack (pack.go):
 	// shadows, deferred lighting and the pack's sky instead of Sky and
 	// SkyAfter. Set it every frame; nil: the plain renderer.
@@ -215,6 +219,7 @@ type Renderer struct {
 	queue            []bfsNode
 	visible          []*section
 	camX, camY, camZ float64
+	camFwd           mgl32.Vec3 // the camera's view direction (flashlight)
 
 	// draw lists for this frame: index counts and base vertices per range
 	counts  []int32
@@ -586,6 +591,7 @@ func (r *Renderer) cullVisible(fr *frustum) {
 // Render draws sky and terrain for a camera.
 func (r *Renderer) Render(cam *Camera) {
 	r.camX, r.camY, r.camZ = cam.X, cam.Y, cam.Z
+	r.camFwd = cam.Forward()
 	r.frame++
 	r.releaseRetired()
 	if cam.Far == 0 {
@@ -865,4 +871,16 @@ func (r *Renderer) Destroy() {
 	r.sections = map[voxel.SectionPos]*section{}
 	r.tex.delete()
 	r.destroyGPU()
+}
+
+// FlashlightReach is how far the flashlight lights, in blocks.
+const FlashlightReach = 20
+
+// flashUniform is terrainWGSL's flash: the camera's view direction and the
+// flashlight's reach, 0 when it is off.
+func (r *Renderer) flashUniform() [4]float32 {
+	if !r.Opt.Flashlight {
+		return [4]float32{}
+	}
+	return [4]float32{r.camFwd[0], r.camFwd[1], r.camFwd[2], FlashlightReach}
 }

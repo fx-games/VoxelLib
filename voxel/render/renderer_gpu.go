@@ -112,7 +112,7 @@ func (r *Renderer) drawBatches(p *wgpu.RenderPassEncoder, vp mgl32.Mat4, fog Fog
 	}
 	r.terrainBG()
 	cvp := clip(vp)
-	dt := r.Opt.DynamicTint
+	dt, fl := r.Opt.DynamicTint, r.flashUniform()
 	layer, cut := voxel.LayerCount, false
 	for _, b := range batches {
 		if b.layer != layer || b.cut != cut {
@@ -138,7 +138,8 @@ func (r *Renderer) drawBatches(p *wgpu.RenderPassEncoder, vp mgl32.Mat4, fog Fog
 		}
 		o := r.regionOrigin(b.reg)
 		bindUniforms(p, g.u.reset().mat(cvp).f(o[0], o[1], o[2], 0).f(fogCol[0], fogCol[1], fogCol[2], 0).
-			f(r.Opt.Daylight, r.Opt.BlockBrightness, alpha, 0).f(fx(fog), fy(fog), 0, 0).f(dt[0], dt[1], dt[2], 0))
+			f(r.Opt.Daylight, r.Opt.BlockBrightness, alpha, 0).f(fx(fog), fy(fog), 0, 0).f(dt[0], dt[1], dt[2], 0).
+			f(fl[0], fl[1], fl[2], fl[3]))
 		p.SetVertexBuffer(0, b.reg.gpu.vbo, 0)
 		r.multiDraw(p, b)
 	}

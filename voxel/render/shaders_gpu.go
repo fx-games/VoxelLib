@@ -22,6 +22,22 @@ fn fogFactor(dist: f32, fog: vec4f) -> f32 {
 }
 `
 
+// wgslFlashlight raises a fragment's block light (lightmap coordinate x)
+// inside the flashlight's cone (Options.Flashlight): full level 15 within
+// flashInner of the view axis, fading out to flashOuter and over the reach.
+// No shadows: it lights through blocks.
+const wgslFlashlight = `
+const flashInner = 0.95; // cos 18 degrees
+const flashOuter = 0.85; // cos 32 degrees
+fn flashlight(light: vec2f, rel: vec3f, flash: vec4f) -> vec2f {
+	if (flash.w <= 0.0) { return light; }
+	let d = length(rel);
+	let cone = smoothstep(flashOuter, flashInner, dot(rel / max(d, 1e-4), flash.xyz));
+	let level = 15.0 * cone * clamp(1.0 - d / flash.w, 0.0, 1.0);
+	return vec2f(max(light.x, (level * 16.0 + 8.0) / 256.0), light.y);
+}
+`
+
 const terrainWGSL = wgslBlockTex + `
 struct U {
 	viewProj: mat4x4f, // rotation-only view * projection (camera-relative)
@@ -30,6 +46,7 @@ struct U {
 	params: vec4f,     // daylight, block brightness, alpha cut
 	fog: vec4f,        // start, end
 	dynTint: vec4f,    // added to the tint by the vertex's tint weight
+	flash: vec4f,      // camera forward; w: flashlight reach in blocks (0: off)
 }
 @group(0) @binding(0) var<uniform> u: U;
 @group(1) @binding(0) var tex: texture_2d_array<f32>;
@@ -45,8 +62,9 @@ struct VOut {
 	@location(2) color: vec3f,
 	@location(3) light: vec2f,
 	@location(4) dist: f32,
+	@location(5) rel: vec3f, // position relative to the camera
 }
-` + wgslLight + `
+` + wgslLight + wgslFlashlight + `
 @vertex
 fn vs(@location(0) d: vec4<u32>) -> VOut {
 	var shade = array<f32, 7>(0.5, 1.0, 0.8, 0.8, 0.6, 0.6, 1.0);
@@ -73,6 +91,7 @@ fn vs(@location(0) d: vec4<u32>) -> VOut {
 	// Light is level*16 (0..240); the reference samples (l + 8) / 256.
 	o.light = (vec2f(f32((w3 >> 8u) & 255u), f32(w3 & 255u)) + 8.0) * (1.0 / 256.0);
 	o.dist = length(pos.xz); // cylindrical fog like the reference game
+	o.rel = pos;
 	return o;
 }
 
@@ -80,7 +99,7 @@ fn vs(@location(0) d: vec4<u32>) -> VOut {
 fn fs(i: VOut) -> @location(0) vec4f {
 	let c = blockTex(i.uv, i.layer);
 	if (c.a < u.params.z) { discard; }
-	let col = c.rgb * i.color * textureSampleLevel(lightmap, lightSamp, i.light, 0.0).rgb;
+	let col = c.rgb * i.color * textureSampleLevel(lightmap, lightSamp, flashlight(i.light, i.rel, u.flash), 0.0).rgb;
 	return vec4f(mix(col, u.fogColor.rgb, fogFactor(i.dist, u.fog)), c.a);
 }
 `
