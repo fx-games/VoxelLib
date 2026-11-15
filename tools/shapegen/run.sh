@@ -22,5 +22,13 @@ for t in single:createSingleBodyLayer left:createDoubleBodyLeftLayer right:creat
 		dump net.minecraft.client.model.object.chest.ChestModel "${t#*:}" net.minecraft.client.renderer.blockentity.ChestRenderer modelTransformation dir "$f" > "$out/chest_${t%%:*}_$f.json"
 	done
 done
-PYTHONDONTWRITEBYTECODE=1 python3 "$here/chests.py" "$out" "$here/../../voxel/shapes/assets/minecraft"
+pot=net.minecraft.client.renderer.blockentity.DecoratedPotRenderer
+for f in north east south west; do
+	dump $pot createBaseLayer $pot modelTransformation dir "$f" > "$out/pot_base_$f.json"
+	dump $pot createSidesLayer $pot modelTransformation dir "$f" > "$out/pot_sides_$f.json"
+done
+dst="$here/../../voxel/shapes/assets/minecraft"
+for gen in chests pots; do
+	PYTHONDONTWRITEBYTECODE=1 python3 "$here/$gen.py" "$out" "$dst"
+done
 rm -rf "$out"

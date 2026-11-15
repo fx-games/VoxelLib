@@ -5,6 +5,8 @@ import json, itertools
 
 FACES = {(0, -1, 0): "down", (0, 1, 0): "up", (0, 0, -1): "north", (0, 0, 1): "south", (-1, 0, 0): "west", (1, 0, 0): "east"}
 
+AXIS = {"down": 1, "up": 1, "north": 2, "south": 2, "west": 0, "east": 0}
+
 def st(face, p, lo, hi):
     """Block-model texture coordinates (0..1, origin top-left) of point p on face."""
     n = lambda a: (p[a] - lo[a]) / (hi[a] - lo[a]) if hi[a] != lo[a] else 0.0
@@ -45,6 +47,8 @@ def elements(dump, texture, cull_down_at_zero=True):
         faces = {}
         for p in polys:
             face = FACES[tuple(round(c) for c in p["normal"])]
+            if any(hi[a] == lo[a] for a in range(3) if a != AXIS[face]):
+                continue  # zero area (an edge of a flat cube): draws nothing in the game either
             f = solve(face, p["verts"], lo, hi)
             f["texture"] = texture
             if face == "down" and lo[1] == 0 and cull_down_at_zero:
