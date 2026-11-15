@@ -54,8 +54,9 @@ blockstate must resolve to geometry with existing textures.
 - [x] C2 TestShapeCoverage (gap list); 26.3 jar: 148 → 85 gaps
 - [x] C3 Bare face texture names ("all", heavy_core) resolve as variables
 - [x] C4 Intentionally empty models (pitcher_crop upper 0-2) listed in empty.json
-- [x] C5 decorated_pot (renderer geometry, entity textures) — UVs unverified visually
-- [ ] C6 chest, trapped_chest, ender_chest, 8 copper chests (single + double halves)
+- [x] C5 decorated_pot — copied from DecoratedPotRenderer, checked in a VoxelEdit shot
+- [x] C6 chest, trapped_chest, ender_chest, 8 copper chests (single + double halves) — copied from ChestModel; single chests checked in a shot, double halves not yet
+- [x] C6a Vertex UVs 16-bit fixed point (1/2048 tile, 5-word vertex): fractional model UVs no longer rounded (the "gaps")
 - [ ] C7 17 shulker boxes
 - [ ] C8 32 banners (standing rotation 0-15 + wall)
 - [ ] C9 12 heads/skulls (standing rotation + wall)
@@ -63,3 +64,10 @@ blockstate must resolve to geometry with existing textures.
 - [ ] C11 Move shapes.go Go shapes (VoxelLib-only blocks: iron_spikes, custom ladders) into the collection; delete shapeVariants (= B1/B2)
 - [ ] C12 Runtime: an unresolved state is logged once with its name (no silent placeholder)
 - [ ] C13 Packs lacking textures/entity (old VoxelEdit builds): source for them
+
+Shapes are copied from the game, never hand-derived: `tools/shapegen/run.sh`
+bakes each renderer's model layer (Dump.java, run against the installed
+client) with the renderer's own placement transform and converts the faces
+to JSON (tojson.py solves each face's uv/rotation from the game's vertices).
+Add a family there (a dump loop + a small generator script), then rerun.
+Positions are meshed at 1/128 block: the pot neck's 4.1 px becomes 4.125.
