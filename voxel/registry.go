@@ -2,6 +2,7 @@ package voxel
 
 import (
 	"fmt"
+	"log"
 	"maps"
 	"slices"
 	"sort"
@@ -412,6 +413,10 @@ func (r *Registry) bake(def *BlockDef, canon string, props map[string]string) St
 	resolved := false
 	if r.Resolver != nil && def.Boxes == nil {
 		model, resolved = r.Resolver(def.Name, props)
+	}
+	if def.Unknown && !resolved {
+		// baked once per state: one line per state nothing draws properly
+		log.Printf("voxel: no shape for %s[%s]: drawn as the unknown-block cube", def.Name, canon)
 	}
 	shape := def.Shape
 	if resolved {

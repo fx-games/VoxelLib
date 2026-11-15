@@ -285,7 +285,6 @@ func alphaCut(px []byte) bool {
 	return false
 }
 
-
 // code is what the layer map stores for slot s: array layer:11, tile:14,
 // grid:3 (wgslBlockTex decodes it).
 func (s slot) code() uint32 { return uint32(s.layer) | uint32(s.tile)<<11 | uint32(s.grid)<<25 }
