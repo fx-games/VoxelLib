@@ -272,6 +272,9 @@ func (in *Input) dispatch(name string, pressed bool) {
 }
 
 // fbPos converts window coordinates to framebuffer pixels.
+// Cursor is the mouse position in framebuffer pixels, as Events carry it.
+func (in *Input) Cursor() (x, y float64) { return in.fbPos(in.a.Win.GetCursorPos()) }
+
 func (in *Input) fbPos(x, y float64) (float64, float64) {
 	ww, wh := in.a.Win.GetSize()
 	fw, fh := in.a.Win.GetFramebufferSize()

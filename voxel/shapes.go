@@ -809,6 +809,9 @@ func (w *World) cellBoxes(info *StateInfo, x, y, z int, area collide.AABB, bp **
 		if len(b.Rot) > 0 {
 			b = axisAligned(b)
 		}
+		if b.Min[0] == b.Max[0] || b.Min[1] == b.Max[1] || b.Min[2] == b.Max[2] {
+			continue // a plane (a plant's quad) has nothing to collide with
+		}
 		top := float64(b.Max[1])
 		if info.Connects {
 			top = 24

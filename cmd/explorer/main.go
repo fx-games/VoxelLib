@@ -228,7 +228,7 @@ func main() {
 		}
 		hotbar = mapHotbar
 	} else {
-		reg.Resolver, reg.Faces = pack.Resolver(), pack.FaceResolver()
+		reg.Resolver = pack.Resolver()
 		switch *genName {
 		case "overworld":
 			cfg.Engine.Generator = overworld.New(reg, *seed)

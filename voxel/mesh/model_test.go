@@ -165,10 +165,9 @@ func TestFaceTint(t *testing.T) {
 func TestCubeFaceRules(t *testing.T) {
 	reg := voxel.NewRegistry()
 	rules := voxel.FaceRules{Cull: [6]voxel.Face{0, 1, voxel.FaceCount, 3, 4, 5}, Tinted: 1 << voxel.FaceSouth}
-	reg.Resolver = func(name string, _ map[string]string) (voxel.Shape, [6]string, bool) {
-		return voxel.ShapeCube, [6]string{"c", "c", "c", "c", "c", "c"}, name == "test:c"
+	reg.Resolver = func(name string, _ map[string]string) (voxel.Model, bool) {
+		return voxel.Model{Shape: voxel.ShapeCube, Tex: [6]string{"c", "c", "c", "c", "c", "c"}, Rules: rules}, name == "test:c"
 	}
-	reg.Faces = func(name string, _ map[string]string) (voxel.FaceRules, bool) { return rules, name == "test:c" }
 	reg.Register(&voxel.BlockDef{Name: "test:c", Shape: voxel.ShapeCube, Tint: voxel.TintGrass, Opaque: true, Collides: true})
 	w := voxel.NewWorld(reg, 0, 64)
 	w.AddChunk(w.NewChunk(voxel.ChunkPos{}))

@@ -48,10 +48,10 @@ func TestModelBoxesFaceDetails(t *testing.T) {
 	}
 }
 
-// TestFaceResolver: a cube's per-face cullfaces and tintindexes reach the
+// TestCubeRules: a cube's per-face cullfaces and tintindexes reach the
 // registry, turned with the blockstate; a vanilla-style cube keeps the
 // defaults (culled by the facing neighbour).
-func TestFaceResolver(t *testing.T) {
+func TestCubeRules(t *testing.T) {
 	p := FromFS(fstest.MapFS{
 		"assets/" + resloc.Default + "/blockstates/grass.json": {Data: []byte(`{"variants": {"": {"model": "block/grass"}}}`)},
 		"assets/" + resloc.Default + "/blockstates/odd.json": {Data: []byte(`{"variants": {
@@ -68,7 +68,7 @@ func TestFaceResolver(t *testing.T) {
 				"west": {"texture": "#t", "cullface": "west"}, "east": {"texture": "#t", "cullface": "east"}}}]}`)},
 	})
 	reg := voxel.NewRegistry()
-	reg.Resolver, reg.Faces = p.Resolver(), p.FaceResolver()
+	reg.Resolver = p.Resolver()
 	reg.Register(&voxel.BlockDef{Name: resloc.Default + ":grass", Shape: voxel.ShapeCube, Tint: voxel.TintGrass, Opaque: true})
 	reg.Register(&voxel.BlockDef{Name: resloc.Default + ":odd", Shape: voxel.ShapeCube, Tint: voxel.TintGrass, Opaque: true})
 

@@ -341,9 +341,10 @@ type blockstate struct {
 }
 
 type variant struct {
-	Model string `json:"model"`
-	X     int    `json:"x"`
-	Y     int    `json:"y"`
+	Model  string `json:"model"`
+	X      int    `json:"x"`
+	Y      int    `json:"y"`
+	UVLock bool   `json:"uvlock"`
 }
 
 type modelFace struct {
@@ -500,14 +501,8 @@ func pickVariant(bs *blockstate, props map[string]string) (*variant, error) {
 		if !ok {
 			continue
 		}
-		var v variant
-		if raw[0] == '[' {
-			var vs []variant
-			if err := json.Unmarshal(raw, &vs); err != nil || len(vs) == 0 {
-				return nil, errors.New("bad variant list")
-			}
-			v = vs[0]
-		} else if err := json.Unmarshal(raw, &v); err != nil {
+		v, err := firstVariant(raw)
+		if err != nil {
 			return nil, err
 		}
 		return &v, nil
@@ -526,81 +521,6 @@ func rotateFaces(t [6]string, rx, ry int) [6]string {
 			t[voxel.FaceNorth], t[voxel.FaceEast], t[voxel.FaceSouth], t[voxel.FaceWest]
 	}
 	return t
-}
-
-// Resolver returns a voxel.ModelResolver that reads blockstates and models
-// from the pack. Full cubes and cross plants are understood; anything else
-// (stairs, multipart fences, ...) falls back to the registry defaults.
-func (p *Pack) Resolver() voxel.ModelResolver {
-	return func(name string, props map[string]string) (voxel.Shape, [6]string, bool) {
-		shape, tex, _, ok := p.resolveState(name, props)
-		return shape, tex, ok
-	}
-}
-
-// FaceResolver returns the voxel.FaceResolver of the cubes Resolver finds:
-// each face's cullface and whether it has a tintindex, turned with the
-// blockstate. Set both on a registry.
-func (p *Pack) FaceResolver() voxel.FaceResolver {
-	return func(name string, props map[string]string) (voxel.FaceRules, bool) {
-		shape, _, rules, ok := p.resolveState(name, props)
-		return rules, ok && shape == voxel.ShapeCube
-	}
-}
-
-// ponytail: resolveState runs twice per state (Resolver, FaceResolver);
-// models are cached, only the blockstate file is read again, once per
-// state at registration.
-func (p *Pack) resolveState(name string, props map[string]string) (voxel.Shape, [6]string, voxel.FaceRules, bool) {
-	var none [6]string
-	var rules voxel.FaceRules
-	ns, rel := splitID(name)
-	data, err := p.readFile(path.Join("assets", ns, "blockstates", rel+".json"))
-	if err != nil {
-		return 0, none, rules, false
-	}
-	var bs blockstate
-	if json.Unmarshal(data, &bs) != nil || len(bs.Variants) == 0 {
-		return 0, none, rules, false
-	}
-	v, err := pickVariant(&bs, props)
-	if err != nil {
-		return 0, none, rules, false
-	}
-	tex, elems, chain, err := p.resolve(v.Model)
-	if err != nil {
-		return 0, none, rules, false
-	}
-	for _, c := range chain {
-		if c == "block/cross" || c == "block/tinted_cross" {
-			return voxel.ShapeCross, all(lookupTex(tex, "#cross")), rules, true
-		}
-	}
-	// First full-cube element (vanilla grass_block adds a second, tinted
-	// overlay element on top; the base cube is enough here).
-	for _, e := range elems {
-		if e.From == [3]float32{0, 0, 0} && e.To == [3]float32{16, 16, 16} {
-			var t [6]string
-			for f := range rules.Cull {
-				rules.Cull[f] = voxel.FaceCount
-			}
-			for fn, face := range e.Faces {
-				f, ok := voxel.FaceByName(fn)
-				if !ok {
-					continue
-				}
-				t[f] = lookupTex(tex, face.Texture)
-				if c, ok := voxel.FaceByName(face.Cullface); ok {
-					rules.Cull[f] = c
-				}
-				if face.TintIndex != nil && *face.TintIndex >= 0 {
-					rules.Tinted |= 1 << f
-				}
-			}
-			return voxel.ShapeCube, rotateFaces(t, v.X, v.Y), rotateRules(rules, v.X, v.Y), true
-		}
-	}
-	return 0, none, rules, false
 }
 
 // rotateRules turns face rules like rotateFaces turns textures; cullface

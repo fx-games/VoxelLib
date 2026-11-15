@@ -2,6 +2,7 @@ package voxel
 
 import (
 	"fmt"
+	"maps"
 	"slices"
 	"sort"
 	"strconv"
@@ -228,9 +229,21 @@ type StateInfo struct {
 	Strength Strength
 }
 
-// ModelResolver lets a resource pack decide shape and face textures of a state
-// (see mcres). It returns ok=false to keep the BlockDef's defaults.
-type ModelResolver func(name string, props map[string]string) (shape Shape, tex [6]string, ok bool)
+// Model is a state's geometry as a resource pack's JSON block model gives
+// it (see respack): the one source of block shapes. A ShapeCube or
+// ShapeCross has its face textures (and a cube its face rules); ShapeBoxes
+// its elements as boxes, with Tex the texture standing for the block
+// (particle) on every face.
+type Model struct {
+	Shape Shape
+	Tex   [6]string
+	Rules FaceRules // ShapeCube
+	Boxes []Box     // ShapeBoxes
+}
+
+// ModelResolver gives a state's model from a resource pack. ok=false keeps
+// the BlockDef's own cube or cross.
+type ModelResolver func(name string, props map[string]string) (m Model, ok bool)
 
 // FaceRules are a cube model's per-face details: Cull[f] is the side whose
 // opaque neighbour hides face f (a model face's cullface; FaceCount when it
@@ -239,11 +252,6 @@ type FaceRules struct {
 	Cull   [6]Face
 	Tinted uint8
 }
-
-// FaceResolver lets a resource pack give the per-face rules of a state the
-// ModelResolver made a cube (see mcres). ok=false keeps the defaults: every
-// face culled by the neighbour it faces, tinted by BlockDef.TintMask.
-type FaceResolver func(name string, props map[string]string) (rules FaceRules, ok bool)
 
 // Registry owns block definitions, state ids and the texture name table. It is
 // safe for concurrent use; Table() is lock free.
@@ -257,7 +265,6 @@ type Registry struct {
 	texVersion atomic.Uint64
 	tagIndex   map[string]uint16
 	Resolver   ModelResolver
-	Faces      FaceResolver // used for states Resolver made cubes
 	// Missing is the texture name used for faces without one.
 	Missing string
 }
@@ -397,6 +404,15 @@ func (r *Registry) conds(cs []Cond, flags map[string]uint16) []Cond {
 
 func (r *Registry) bake(def *BlockDef, canon string, props map[string]string) StateInfo {
 	base, _, _ := strings.Cut(def.Name, "#") // a VoxelMap key: the name without its meta
+	var model Model
+	resolved := false
+	if r.Resolver != nil && def.Boxes == nil {
+		model, resolved = r.Resolver(def.Name, props)
+	}
+	shape := def.Shape
+	if resolved {
+		shape = model.Shape
+	}
 	info := StateInfo{
 		Def: def, Name: def.Name, Props: canon,
 		Shape: def.Shape, Layer: def.Layer, Tint: def.Tint, TintMask: def.TintMask,
@@ -404,8 +420,8 @@ func (r *Registry) bake(def *BlockDef, canon string, props map[string]string) St
 		Opacity: def.LightOpacity, CullSelf: def.CullSelf, Connects: def.Connects,
 		Collision: def.Collision, TintColor: def.TintColor, Level: def.Level,
 		NeighbourLight: def.NeighbourLight, PlantOffset: def.PlantOffset, Scatter: def.Scatter, UVRandom: def.UVRandom, UVSeed: def.UVSeed, UVRotate: def.UVRotate,
-		Step:     def.Shape == ShapeBoxes && (strings.HasSuffix(base, "_stairs") || strings.HasSuffix(base, "_slab")),
-		Climb:    def.Shape == ShapeBoxes && isLadder(base) || strings.HasSuffix(base, "vine"),
+		Step:     shape == ShapeBoxes && (strings.HasSuffix(base, "_stairs") || strings.HasSuffix(base, "_slab")),
+		Climb:    shape == ShapeBoxes && isLadder(base) || strings.HasSuffix(base, "vine"),
 		Strength: strengthOf(def, base),
 	}
 	for _, t := range def.Tags {
@@ -442,12 +458,15 @@ func (r *Registry) bake(def *BlockDef, canon string, props map[string]string) St
 		}
 		info.Retex = append(info.Retex, x)
 	}
-	if def.Shape == ShapeBoxes {
-		if def.Boxes != nil {
-			info.Variants = map[string][]Box{"": append([]Box(nil), def.Boxes...)}
-		} else {
-			info.Variants = shapeVariants(def.Name, props)
-		}
+	switch {
+	case resolved && model.Shape == ShapeBoxes:
+		info.Variants = r.modelVariants(def.Name, props, model.Boxes)
+	case def.Shape == ShapeBoxes && def.Boxes != nil:
+		info.Variants = map[string][]Box{"": append([]Box(nil), def.Boxes...)}
+	case def.Shape == ShapeBoxes:
+		info.Variants = shapeVariants(def.Name, props)
+	}
+	if info.Variants != nil {
 		for _, bs := range info.Variants {
 			for i := range bs {
 				for f, t := range bs[i].Tex {
@@ -498,20 +517,15 @@ func (r *Registry) bake(def *BlockDef, canon string, props map[string]string) St
 	if a, ok := props["age"]; ok && strings.Contains(tex[0], "_stage") {
 		tex = all6(tex[0][:strings.LastIndex(tex[0], "_stage")+6] + a)
 	}
-	if r.Resolver != nil && def.Shape != ShapeBoxes {
-		if shape, t, ok := r.Resolver(def.Name, props); ok {
-			info.Shape = shape
-			tex = t
-			if def.Unknown && shape != ShapeCube {
-				info.Opaque, info.Collides, info.Opacity, info.Layer = false, false, 0, LayerCutout
-			}
-			if shape == ShapeCube && r.Faces != nil {
-				if fr, ok := r.Faces(def.Name, props); ok {
-					info.TintMask = fr.Tinted
-					if fr.Cull != [6]Face{FaceDown, FaceUp, FaceNorth, FaceSouth, FaceWest, FaceEast} {
-						info.Cull = &fr.Cull
-					}
-				}
+	if resolved {
+		info.Shape, tex = model.Shape, model.Tex
+		if shape != ShapeCube && (def.Unknown || def.Shape == ShapeCube) { // not a full block after all
+			info.Opaque, info.Collides, info.Opacity, info.Layer = false, false, 0, LayerCutout
+		}
+		if shape == ShapeCube {
+			info.TintMask = model.Rules.Tinted
+			if fr := model.Rules; fr.Cull != [6]Face{FaceDown, FaceUp, FaceNorth, FaceSouth, FaceWest, FaceEast} {
+				info.Cull = &fr.Cull
 			}
 		}
 	}
@@ -661,3 +675,32 @@ const (
 	OffsetDouble             // double plants: x, z by ±0.15, the same for both halves
 	OffsetClover             // a mod's clovers: x, z by ±0.25 (the grass hash), y kept
 )
+
+// stairShapes are a stair's "shape" values; Connected picks one by the
+// neighbouring stairs, as the key of its Variants ("" for straight).
+var stairShapes = []string{"straight", "outer_left", "outer_right", "inner_left", "inner_right"}
+
+// modelVariants is a resolved model's boxes as StateInfo.Variants. A
+// stair's are those of every shape (whatever its own "shape" property),
+// which its neighbours choose. Caller holds mu.
+func (r *Registry) modelVariants(name string, props map[string]string, boxes []Box) map[string][]Box {
+	if !strings.HasSuffix(name, "_stairs") {
+		return map[string][]Box{"": boxes}
+	}
+	out := map[string][]Box{}
+	p := maps.Clone(props)
+	for _, s := range stairShapes {
+		p["shape"] = s
+		if m, ok := r.Resolver(name, p); ok && m.Shape == ShapeBoxes {
+			key := s
+			if s == stairShapes[0] {
+				key = ""
+			}
+			out[key] = m.Boxes
+		}
+	}
+	if out[""] == nil {
+		out[""] = boxes
+	}
+	return out
+}
