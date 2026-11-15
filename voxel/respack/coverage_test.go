@@ -49,7 +49,15 @@ func TestShapeCoverage(t *testing.T) {
 		if err := json.Unmarshal(data, &bs); err != nil {
 			t.Fatalf("%s: %v", f, err)
 		}
-		for _, props := range sampleStates(t, &bs) {
+		states := sampleStates(t, &bs)
+		if data, err := entityPack.readFile(f); err == nil { // the collection defines these states (chests: facing, type)
+			var own blockstate
+			if err := json.Unmarshal(data, &own); err != nil {
+				t.Fatalf("voxel/shapes %s: %v", f, err)
+			}
+			states = sampleStates(t, &own)
+		}
+		for _, props := range states {
 			if why := p.gap(name, props); why != "" {
 				gaps[name] = why
 				break
