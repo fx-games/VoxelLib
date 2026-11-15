@@ -1,0 +1,52 @@
+{
+ "textures": {
+  "all": "block/redstone_block",
+  "down": "block/redstone_block",
+  "east": "block/redstone_block",
+  "north": "block/redstone_block",
+  "particle": "block/redstone_block",
+  "south": "block/redstone_block",
+  "up": "block/redstone_block",
+  "west": "block/redstone_block"
+ },
+ "elements": [
+  {
+   "from": [
+    0,
+    0,
+    0
+   ],
+   "to": [
+    16,
+    16,
+    16
+   ],
+   "faces": {
+    "down": {
+     "texture": "#down",
+     "cullface": "down"
+    },
+    "east": {
+     "texture": "#east",
+     "cullface": "east"
+    },
+    "north": {
+     "texture": "#north",
+     "cullface": "north"
+    },
+    "south": {
+     "texture": "#south",
+     "cullface": "south"
+    },
+    "up": {
+     "texture": "#up",
+     "cullface": "up"
+    },
+    "west": {
+     "texture": "#west",
+     "cullface": "west"
+    }
+   }
+  }
+ ]
+}

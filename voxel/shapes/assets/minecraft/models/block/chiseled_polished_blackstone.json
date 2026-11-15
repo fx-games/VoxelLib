@@ -1,0 +1,52 @@
+{
+ "textures": {
+  "all": "block/chiseled_polished_blackstone",
+  "down": "block/chiseled_polished_blackstone",
+  "east": "block/chiseled_polished_blackstone",
+  "north": "block/chiseled_polished_blackstone",
+  "particle": "block/chiseled_polished_blackstone",
+  "south": "block/chiseled_polished_blackstone",
+  "up": "block/chiseled_polished_blackstone",
+  "west": "block/chiseled_polished_blackstone"
+ },
+ "elements": [
+  {
+   "from": [
+    0,
+    0,
+    0
+   ],
+   "to": [
+    16,
+    16,
+    16
+   ],
+   "faces": {
+    "down": {
+     "texture": "#down",
+     "cullface": "down"
+    },
+    "east": {
+     "texture": "#east",
+     "cullface": "east"
+    },
+    "north": {
+     "texture": "#north",
+     "cullface": "north"
+    },
+    "south": {
+     "texture": "#south",
+     "cullface": "south"
+    },
+    "up": {
+     "texture": "#up",
+     "cullface": "up"
+    },
+    "west": {
+     "texture": "#west",
+     "cullface": "west"
+    }
+   }
+  }
+ ]
+}

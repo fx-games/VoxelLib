@@ -1,0 +1,52 @@
+{
+ "textures": {
+  "all": "block/coarse_dirt",
+  "down": "block/coarse_dirt",
+  "east": "block/coarse_dirt",
+  "north": "block/coarse_dirt",
+  "particle": "block/coarse_dirt",
+  "south": "block/coarse_dirt",
+  "up": "block/coarse_dirt",
+  "west": "block/coarse_dirt"
+ },
+ "elements": [
+  {
+   "from": [
+    0,
+    0,
+    0
+   ],
+   "to": [
+    16,
+    16,
+    16
+   ],
+   "faces": {
+    "down": {
+     "texture": "#down",
+     "cullface": "down"
+    },
+    "east": {
+     "texture": "#east",
+     "cullface": "east"
+    },
+    "north": {
+     "texture": "#north",
+     "cullface": "north"
+    },
+    "south": {
+     "texture": "#south",
+     "cullface": "south"
+    },
+    "up": {
+     "texture": "#up",
+     "cullface": "up"
+    },
+    "west": {
+     "texture": "#west",
+     "cullface": "west"
+    }
+   }
+  }
+ ]
+}

@@ -1,0 +1,79 @@
+{
+ "textures": {
+  "particle": "block/pitcher_crop_top",
+  "pitcher_bottom": "block/pitcher_crop_bottom",
+  "pitcher_side": "block/pitcher_crop_side",
+  "pitcher_top": "block/pitcher_crop_top"
+ },
+ "elements": [
+  {
+   "from": [
+    5,
+    -1,
+    5
+   ],
+   "to": [
+    11,
+    3,
+    11
+   ],
+   "faces": {
+    "down": {
+     "texture": "#pitcher_bottom",
+     "uv": [
+      5,
+      5,
+      11,
+      11
+     ]
+    },
+    "east": {
+     "texture": "#pitcher_side",
+     "uv": [
+      3,
+      10,
+      9,
+      14
+     ]
+    },
+    "north": {
+     "texture": "#pitcher_side",
+     "uv": [
+      3,
+      10,
+      9,
+      14
+     ]
+    },
+    "south": {
+     "texture": "#pitcher_side",
+     "uv": [
+      3,
+      10,
+      9,
+      14
+     ]
+    },
+    "up": {
+     "texture": "#pitcher_top",
+     "uv": [
+      5,
+      5,
+      11,
+      11
+     ]
+    },
+    "west": {
+     "texture": "#pitcher_side",
+     "uv": [
+      3,
+      10,
+      9,
+      14
+     ]
+    }
+   }
+  }
+ ],
+ "ambientocclusion": false
+}

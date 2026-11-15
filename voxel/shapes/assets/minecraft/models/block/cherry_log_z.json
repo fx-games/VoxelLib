@@ -1,0 +1,55 @@
+{
+ "textures": {
+  "down": "block/cherry_log",
+  "east": "block/cherry_log",
+  "end": "block/cherry_log_top",
+  "north": "block/cherry_log_top",
+  "particle": "block/cherry_log",
+  "side": "block/cherry_log",
+  "south": "block/cherry_log_top",
+  "up": "block/cherry_log",
+  "west": "block/cherry_log"
+ },
+ "elements": [
+  {
+   "from": [
+    0,
+    0,
+    0
+   ],
+   "to": [
+    16,
+    16,
+    16
+   ],
+   "faces": {
+    "down": {
+     "texture": "#down",
+     "cullface": "down"
+    },
+    "east": {
+     "texture": "#east",
+     "cullface": "east",
+     "rotation": 90
+    },
+    "north": {
+     "texture": "#north",
+     "cullface": "north"
+    },
+    "south": {
+     "texture": "#south",
+     "cullface": "south"
+    },
+    "up": {
+     "texture": "#up",
+     "cullface": "up"
+    },
+    "west": {
+     "texture": "#west",
+     "cullface": "west",
+     "rotation": 90
+    }
+   }
+  }
+ ]
+}

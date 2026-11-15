@@ -1,0 +1,52 @@
+{
+ "textures": {
+  "all": "block/bamboo_planks",
+  "down": "block/bamboo_planks",
+  "east": "block/bamboo_planks",
+  "north": "block/bamboo_planks",
+  "particle": "block/bamboo_planks",
+  "south": "block/bamboo_planks",
+  "up": "block/bamboo_planks",
+  "west": "block/bamboo_planks"
+ },
+ "elements": [
+  {
+   "from": [
+    0,
+    0,
+    0
+   ],
+   "to": [
+    16,
+    16,
+    16
+   ],
+   "faces": {
+    "down": {
+     "texture": "#down",
+     "cullface": "down"
+    },
+    "east": {
+     "texture": "#east",
+     "cullface": "east"
+    },
+    "north": {
+     "texture": "#north",
+     "cullface": "north"
+    },
+    "south": {
+     "texture": "#south",
+     "cullface": "south"
+    },
+    "up": {
+     "texture": "#up",
+     "cullface": "up"
+    },
+    "west": {
+     "texture": "#west",
+     "cullface": "west"
+    }
+   }
+  }
+ ]
+}

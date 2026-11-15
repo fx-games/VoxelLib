@@ -1,0 +1,52 @@
+{
+ "textures": {
+  "all": "block/acacia_planks",
+  "down": "block/acacia_planks",
+  "east": "block/acacia_planks",
+  "north": "block/acacia_planks",
+  "particle": "block/acacia_planks",
+  "south": "block/acacia_planks",
+  "up": "block/acacia_planks",
+  "west": "block/acacia_planks"
+ },
+ "elements": [
+  {
+   "from": [
+    0,
+    0,
+    0
+   ],
+   "to": [
+    16,
+    16,
+    16
+   ],
+   "faces": {
+    "down": {
+     "texture": "#down",
+     "cullface": "down"
+    },
+    "east": {
+     "texture": "#east",
+     "cullface": "east"
+    },
+    "north": {
+     "texture": "#north",
+     "cullface": "north"
+    },
+    "south": {
+     "texture": "#south",
+     "cullface": "south"
+    },
+    "up": {
+     "texture": "#up",
+     "cullface": "up"
+    },
+    "west": {
+     "texture": "#west",
+     "cullface": "west"
+    }
+   }
+  }
+ ]
+}

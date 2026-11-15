@@ -1,0 +1,52 @@
+{
+ "textures": {
+  "all": "block/orange_concrete",
+  "down": "block/orange_concrete",
+  "east": "block/orange_concrete",
+  "north": "block/orange_concrete",
+  "particle": "block/orange_concrete",
+  "south": "block/orange_concrete",
+  "up": "block/orange_concrete",
+  "west": "block/orange_concrete"
+ },
+ "elements": [
+  {
+   "from": [
+    0,
+    0,
+    0
+   ],
+   "to": [
+    16,
+    16,
+    16
+   ],
+   "faces": {
+    "down": {
+     "texture": "#down",
+     "cullface": "down"
+    },
+    "east": {
+     "texture": "#east",
+     "cullface": "east"
+    },
+    "north": {
+     "texture": "#north",
+     "cullface": "north"
+    },
+    "south": {
+     "texture": "#south",
+     "cullface": "south"
+    },
+    "up": {
+     "texture": "#up",
+     "cullface": "up"
+    },
+    "west": {
+     "texture": "#west",
+     "cullface": "west"
+    }
+   }
+  }
+ ]
+}

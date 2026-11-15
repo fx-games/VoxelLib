@@ -1,0 +1,52 @@
+{
+ "textures": {
+  "all": "block/lime_wool",
+  "down": "block/lime_wool",
+  "east": "block/lime_wool",
+  "north": "block/lime_wool",
+  "particle": "block/lime_wool",
+  "south": "block/lime_wool",
+  "up": "block/lime_wool",
+  "west": "block/lime_wool"
+ },
+ "elements": [
+  {
+   "from": [
+    0,
+    0,
+    0
+   ],
+   "to": [
+    16,
+    16,
+    16
+   ],
+   "faces": {
+    "down": {
+     "texture": "#down",
+     "cullface": "down"
+    },
+    "east": {
+     "texture": "#east",
+     "cullface": "east"
+    },
+    "north": {
+     "texture": "#north",
+     "cullface": "north"
+    },
+    "south": {
+     "texture": "#south",
+     "cullface": "south"
+    },
+    "up": {
+     "texture": "#up",
+     "cullface": "up"
+    },
+    "west": {
+     "texture": "#west",
+     "cullface": "west"
+    }
+   }
+  }
+ ]
+}

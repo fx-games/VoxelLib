@@ -1,0 +1,51 @@
+{
+ "textures": {
+  "down": "block/smithing_table_bottom",
+  "east": "block/smithing_table_side",
+  "north": "block/smithing_table_front",
+  "particle": "block/smithing_table_front",
+  "south": "block/smithing_table_front",
+  "up": "block/smithing_table_top",
+  "west": "block/smithing_table_side"
+ },
+ "elements": [
+  {
+   "from": [
+    0,
+    0,
+    0
+   ],
+   "to": [
+    16,
+    16,
+    16
+   ],
+   "faces": {
+    "down": {
+     "texture": "#down",
+     "cullface": "down"
+    },
+    "east": {
+     "texture": "#east",
+     "cullface": "east"
+    },
+    "north": {
+     "texture": "#north",
+     "cullface": "north"
+    },
+    "south": {
+     "texture": "#south",
+     "cullface": "south"
+    },
+    "up": {
+     "texture": "#up",
+     "cullface": "up"
+    },
+    "west": {
+     "texture": "#west",
+     "cullface": "west"
+    }
+   }
+  }
+ ]
+}

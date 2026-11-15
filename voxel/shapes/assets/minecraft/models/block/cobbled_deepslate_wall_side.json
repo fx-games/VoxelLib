@@ -1,0 +1,39 @@
+{
+ "textures": {
+  "particle": "block/cobbled_deepslate",
+  "wall": "block/cobbled_deepslate"
+ },
+ "elements": [
+  {
+   "from": [
+    5,
+    0,
+    0
+   ],
+   "to": [
+    11,
+    14,
+    8
+   ],
+   "faces": {
+    "down": {
+     "texture": "#wall",
+     "cullface": "down"
+    },
+    "east": {
+     "texture": "#wall"
+    },
+    "north": {
+     "texture": "#wall",
+     "cullface": "north"
+    },
+    "up": {
+     "texture": "#wall"
+    },
+    "west": {
+     "texture": "#wall"
+    }
+   }
+  }
+ ]
+}

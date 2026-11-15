@@ -1,0 +1,52 @@
+{
+ "textures": {
+  "all": "block/polished_andesite",
+  "down": "block/polished_andesite",
+  "east": "block/polished_andesite",
+  "north": "block/polished_andesite",
+  "particle": "block/polished_andesite",
+  "south": "block/polished_andesite",
+  "up": "block/polished_andesite",
+  "west": "block/polished_andesite"
+ },
+ "elements": [
+  {
+   "from": [
+    0,
+    0,
+    0
+   ],
+   "to": [
+    16,
+    16,
+    16
+   ],
+   "faces": {
+    "down": {
+     "texture": "#down",
+     "cullface": "down"
+    },
+    "east": {
+     "texture": "#east",
+     "cullface": "east"
+    },
+    "north": {
+     "texture": "#north",
+     "cullface": "north"
+    },
+    "south": {
+     "texture": "#south",
+     "cullface": "south"
+    },
+    "up": {
+     "texture": "#up",
+     "cullface": "up"
+    },
+    "west": {
+     "texture": "#west",
+     "cullface": "west"
+    }
+   }
+  }
+ ]
+}

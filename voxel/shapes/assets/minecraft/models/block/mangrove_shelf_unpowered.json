@@ -1,0 +1,31 @@
+{
+ "textures": {
+  "all": "block/mangrove_shelf",
+  "particle": "block/stripped_mangrove_log"
+ },
+ "elements": [
+  {
+   "from": [
+    0,
+    4,
+    13
+   ],
+   "to": [
+    16,
+    12,
+    13
+   ],
+   "faces": {
+    "north": {
+     "texture": "#all",
+     "uv": [
+      0,
+      2,
+      8,
+      6
+     ]
+    }
+   }
+  }
+ ]
+}

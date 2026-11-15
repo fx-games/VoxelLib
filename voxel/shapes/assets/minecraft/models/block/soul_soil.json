@@ -1,0 +1,52 @@
+{
+ "textures": {
+  "all": "block/soul_soil",
+  "down": "block/soul_soil",
+  "east": "block/soul_soil",
+  "north": "block/soul_soil",
+  "particle": "block/soul_soil",
+  "south": "block/soul_soil",
+  "up": "block/soul_soil",
+  "west": "block/soul_soil"
+ },
+ "elements": [
+  {
+   "from": [
+    0,
+    0,
+    0
+   ],
+   "to": [
+    16,
+    16,
+    16
+   ],
+   "faces": {
+    "down": {
+     "texture": "#down",
+     "cullface": "down"
+    },
+    "east": {
+     "texture": "#east",
+     "cullface": "east"
+    },
+    "north": {
+     "texture": "#north",
+     "cullface": "north"
+    },
+    "south": {
+     "texture": "#south",
+     "cullface": "south"
+    },
+    "up": {
+     "texture": "#up",
+     "cullface": "up"
+    },
+    "west": {
+     "texture": "#west",
+     "cullface": "west"
+    }
+   }
+  }
+ ]
+}

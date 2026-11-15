@@ -1,0 +1,52 @@
+{
+ "textures": {
+  "all": "block/tuff_bricks",
+  "down": "block/tuff_bricks",
+  "east": "block/tuff_bricks",
+  "north": "block/tuff_bricks",
+  "particle": "block/tuff_bricks",
+  "south": "block/tuff_bricks",
+  "up": "block/tuff_bricks",
+  "west": "block/tuff_bricks"
+ },
+ "elements": [
+  {
+   "from": [
+    0,
+    0,
+    0
+   ],
+   "to": [
+    16,
+    16,
+    16
+   ],
+   "faces": {
+    "down": {
+     "texture": "#down",
+     "cullface": "down"
+    },
+    "east": {
+     "texture": "#east",
+     "cullface": "east"
+    },
+    "north": {
+     "texture": "#north",
+     "cullface": "north"
+    },
+    "south": {
+     "texture": "#south",
+     "cullface": "south"
+    },
+    "up": {
+     "texture": "#up",
+     "cullface": "up"
+    },
+    "west": {
+     "texture": "#west",
+     "cullface": "west"
+    }
+   }
+  }
+ ]
+}

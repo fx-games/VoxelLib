@@ -1,0 +1,53 @@
+{
+ "textures": {
+  "down": "block/stripped_spruce_log",
+  "east": "block/stripped_spruce_log",
+  "end": "block/stripped_spruce_log",
+  "north": "block/stripped_spruce_log",
+  "particle": "block/stripped_spruce_log",
+  "side": "block/stripped_spruce_log",
+  "south": "block/stripped_spruce_log",
+  "up": "block/stripped_spruce_log",
+  "west": "block/stripped_spruce_log"
+ },
+ "elements": [
+  {
+   "from": [
+    0,
+    0,
+    0
+   ],
+   "to": [
+    16,
+    16,
+    16
+   ],
+   "faces": {
+    "down": {
+     "texture": "#down",
+     "cullface": "down"
+    },
+    "east": {
+     "texture": "#east",
+     "cullface": "east"
+    },
+    "north": {
+     "texture": "#north",
+     "cullface": "north"
+    },
+    "south": {
+     "texture": "#south",
+     "cullface": "south"
+    },
+    "up": {
+     "texture": "#up",
+     "cullface": "up"
+    },
+    "west": {
+     "texture": "#west",
+     "cullface": "west"
+    }
+   }
+  }
+ ]
+}

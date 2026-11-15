@@ -1,0 +1,41 @@
+{
+ "textures": {
+  "particle": "block/resin_clump",
+  "texture": "block/resin_clump"
+ },
+ "elements": [
+  {
+   "from": [
+    0,
+    0,
+    0.1
+   ],
+   "to": [
+    16,
+    16,
+    0.1
+   ],
+   "faces": {
+    "north": {
+     "texture": "#texture",
+     "uv": [
+      16,
+      0,
+      0,
+      16
+     ]
+    },
+    "south": {
+     "texture": "#texture",
+     "uv": [
+      0,
+      0,
+      16,
+      16
+     ]
+    }
+   }
+  }
+ ],
+ "ambientocclusion": false
+}

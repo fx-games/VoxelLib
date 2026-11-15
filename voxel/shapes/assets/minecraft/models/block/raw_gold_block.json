@@ -1,0 +1,52 @@
+{
+ "textures": {
+  "all": "block/raw_gold_block",
+  "down": "block/raw_gold_block",
+  "east": "block/raw_gold_block",
+  "north": "block/raw_gold_block",
+  "particle": "block/raw_gold_block",
+  "south": "block/raw_gold_block",
+  "up": "block/raw_gold_block",
+  "west": "block/raw_gold_block"
+ },
+ "elements": [
+  {
+   "from": [
+    0,
+    0,
+    0
+   ],
+   "to": [
+    16,
+    16,
+    16
+   ],
+   "faces": {
+    "down": {
+     "texture": "#down",
+     "cullface": "down"
+    },
+    "east": {
+     "texture": "#east",
+     "cullface": "east"
+    },
+    "north": {
+     "texture": "#north",
+     "cullface": "north"
+    },
+    "south": {
+     "texture": "#south",
+     "cullface": "south"
+    },
+    "up": {
+     "texture": "#up",
+     "cullface": "up"
+    },
+    "west": {
+     "texture": "#west",
+     "cullface": "west"
+    }
+   }
+  }
+ ]
+}

@@ -1,0 +1,165 @@
+{
+ "textures": {
+  "particle": "block/pitcher_crop_top_stage_4",
+  "top": "block/pitcher_crop_top_stage_4"
+ },
+ "elements": [
+  {
+   "from": [
+    8,
+    -5,
+    0
+   ],
+   "to": [
+    8,
+    11,
+    16
+   ],
+   "rotation": {
+    "origin": [
+     8,
+     19,
+     8
+    ],
+    "axis": "y",
+    "angle": 45
+   },
+   "faces": {
+    "down": {
+     "texture": "#top",
+     "uv": [
+      0,
+      0,
+      16,
+      0
+     ],
+     "rotation": 270
+    },
+    "east": {
+     "texture": "#top",
+     "uv": [
+      0,
+      0,
+      16,
+      16
+     ]
+    },
+    "north": {
+     "texture": "#top",
+     "uv": [
+      0,
+      0,
+      0,
+      16
+     ]
+    },
+    "south": {
+     "texture": "#top",
+     "uv": [
+      0,
+      0,
+      0,
+      16
+     ]
+    },
+    "up": {
+     "texture": "#top",
+     "uv": [
+      0,
+      0,
+      16,
+      0
+     ],
+     "rotation": 90
+    },
+    "west": {
+     "texture": "#top",
+     "uv": [
+      0,
+      0,
+      16,
+      16
+     ]
+    }
+   }
+  },
+  {
+   "from": [
+    0,
+    -5,
+    8
+   ],
+   "to": [
+    16,
+    11,
+    8
+   ],
+   "rotation": {
+    "origin": [
+     8,
+     19,
+     8
+    ],
+    "axis": "y",
+    "angle": 45
+   },
+   "faces": {
+    "down": {
+     "texture": "#top",
+     "uv": [
+      0,
+      0,
+      16,
+      0
+     ]
+    },
+    "east": {
+     "texture": "#top",
+     "uv": [
+      0,
+      0,
+      0,
+      16
+     ]
+    },
+    "north": {
+     "texture": "#top",
+     "uv": [
+      0,
+      0,
+      16,
+      16
+     ]
+    },
+    "south": {
+     "texture": "#top",
+     "uv": [
+      0,
+      0,
+      16,
+      16
+     ]
+    },
+    "up": {
+     "texture": "#top",
+     "uv": [
+      0,
+      0,
+      16,
+      0
+     ]
+    },
+    "west": {
+     "texture": "#top",
+     "uv": [
+      0,
+      0,
+      0,
+      16
+     ]
+    }
+   }
+  }
+ ],
+ "ambientocclusion": false
+}

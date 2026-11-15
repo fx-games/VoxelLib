@@ -1,0 +1,54 @@
+{
+ "textures": {
+  "bottom": "block/respawn_anchor_bottom",
+  "down": "block/respawn_anchor_bottom",
+  "east": "block/respawn_anchor_side2",
+  "north": "block/respawn_anchor_side2",
+  "particle": "block/respawn_anchor_side2",
+  "side": "block/respawn_anchor_side2",
+  "south": "block/respawn_anchor_side2",
+  "top": "block/respawn_anchor_top",
+  "up": "block/respawn_anchor_top",
+  "west": "block/respawn_anchor_side2"
+ },
+ "elements": [
+  {
+   "from": [
+    0,
+    0,
+    0
+   ],
+   "to": [
+    16,
+    16,
+    16
+   ],
+   "faces": {
+    "down": {
+     "texture": "#down",
+     "cullface": "down"
+    },
+    "east": {
+     "texture": "#east",
+     "cullface": "east"
+    },
+    "north": {
+     "texture": "#north",
+     "cullface": "north"
+    },
+    "south": {
+     "texture": "#south",
+     "cullface": "south"
+    },
+    "up": {
+     "texture": "#up",
+     "cullface": "up"
+    },
+    "west": {
+     "texture": "#west",
+     "cullface": "west"
+    }
+   }
+  }
+ ]
+}

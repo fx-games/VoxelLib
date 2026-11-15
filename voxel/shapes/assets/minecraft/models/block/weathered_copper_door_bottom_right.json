@@ -1,0 +1,74 @@
+{
+ "textures": {
+  "bottom": "block/weathered_copper_door_bottom",
+  "particle": "block/weathered_copper_door_bottom",
+  "top": "block/weathered_copper_door_top"
+ },
+ "elements": [
+  {
+   "from": [
+    0,
+    0,
+    0
+   ],
+   "to": [
+    3,
+    16,
+    16
+   ],
+   "faces": {
+    "down": {
+     "texture": "#bottom",
+     "cullface": "down",
+     "uv": [
+      0,
+      13,
+      16,
+      16
+     ],
+     "rotation": 90
+    },
+    "east": {
+     "texture": "#bottom",
+     "uv": [
+      0,
+      0,
+      16,
+      16
+     ]
+    },
+    "north": {
+     "texture": "#bottom",
+     "cullface": "north",
+     "uv": [
+      3,
+      0,
+      0,
+      16
+     ]
+    },
+    "south": {
+     "texture": "#bottom",
+     "cullface": "south",
+     "uv": [
+      0,
+      0,
+      3,
+      16
+     ]
+    },
+    "west": {
+     "texture": "#bottom",
+     "cullface": "west",
+     "uv": [
+      16,
+      0,
+      0,
+      16
+     ]
+    }
+   }
+  }
+ ],
+ "ambientocclusion": false
+}

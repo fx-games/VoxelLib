@@ -1,0 +1,81 @@
+{
+ "textures": {
+  "particle": "block/pink_wool",
+  "wool": "block/pink_wool"
+ },
+ "elements": [
+  {
+   "from": [
+    0,
+    0,
+    0
+   ],
+   "to": [
+    16,
+    1,
+    16
+   ],
+   "faces": {
+    "down": {
+     "texture": "#wool",
+     "cullface": "down",
+     "uv": [
+      0,
+      0,
+      16,
+      16
+     ]
+    },
+    "east": {
+     "texture": "#wool",
+     "cullface": "east",
+     "uv": [
+      0,
+      15,
+      16,
+      16
+     ]
+    },
+    "north": {
+     "texture": "#wool",
+     "cullface": "north",
+     "uv": [
+      0,
+      15,
+      16,
+      16
+     ]
+    },
+    "south": {
+     "texture": "#wool",
+     "cullface": "south",
+     "uv": [
+      0,
+      15,
+      16,
+      16
+     ]
+    },
+    "up": {
+     "texture": "#wool",
+     "uv": [
+      0,
+      0,
+      16,
+      16
+     ]
+    },
+    "west": {
+     "texture": "#wool",
+     "cullface": "west",
+     "uv": [
+      0,
+      15,
+      16,
+      16
+     ]
+    }
+   }
+  }
+ ]
+}

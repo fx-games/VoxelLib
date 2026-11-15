@@ -1,0 +1,109 @@
+{
+ "textures": {
+  "cocoa": "block/cocoa_stage1",
+  "particle": "block/cocoa_stage1"
+ },
+ "elements": [
+  {
+   "from": [
+    5,
+    5,
+    9
+   ],
+   "to": [
+    11,
+    12,
+    15
+   ],
+   "faces": {
+    "down": {
+     "texture": "#cocoa",
+     "uv": [
+      0,
+      0,
+      6,
+      6
+     ]
+    },
+    "east": {
+     "texture": "#cocoa",
+     "uv": [
+      9,
+      4,
+      15,
+      11
+     ]
+    },
+    "north": {
+     "texture": "#cocoa",
+     "uv": [
+      9,
+      4,
+      15,
+      11
+     ]
+    },
+    "south": {
+     "texture": "#cocoa",
+     "uv": [
+      9,
+      4,
+      15,
+      11
+     ]
+    },
+    "up": {
+     "texture": "#cocoa",
+     "uv": [
+      0,
+      0,
+      6,
+      6
+     ]
+    },
+    "west": {
+     "texture": "#cocoa",
+     "uv": [
+      9,
+      4,
+      15,
+      11
+     ]
+    }
+   }
+  },
+  {
+   "from": [
+    8,
+    12,
+    12
+   ],
+   "to": [
+    8,
+    16,
+    16
+   ],
+   "faces": {
+    "east": {
+     "texture": "#cocoa",
+     "uv": [
+      16,
+      0,
+      12,
+      4
+     ]
+    },
+    "west": {
+     "texture": "#cocoa",
+     "uv": [
+      12,
+      0,
+      16,
+      4
+     ]
+    }
+   }
+  }
+ ],
+ "ambientocclusion": false
+}

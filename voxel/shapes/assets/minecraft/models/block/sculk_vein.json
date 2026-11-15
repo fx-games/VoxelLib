@@ -1,0 +1,41 @@
+{
+ "textures": {
+  "particle": "block/sculk_vein",
+  "sculk_vein": "block/sculk_vein"
+ },
+ "elements": [
+  {
+   "from": [
+    0,
+    0,
+    0.1
+   ],
+   "to": [
+    16,
+    16,
+    0.1
+   ],
+   "faces": {
+    "north": {
+     "texture": "#sculk_vein",
+     "uv": [
+      16,
+      0,
+      0,
+      16
+     ]
+    },
+    "south": {
+     "texture": "#sculk_vein",
+     "uv": [
+      0,
+      0,
+      16,
+      16
+     ]
+    }
+   }
+  }
+ ],
+ "ambientocclusion": false
+}

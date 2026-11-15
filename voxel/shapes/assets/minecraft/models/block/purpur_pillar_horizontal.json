@@ -1,0 +1,54 @@
+{
+ "textures": {
+  "down": "block/purpur_pillar_top",
+  "east": "block/purpur_pillar_side",
+  "end": "block/purpur_pillar_top",
+  "north": "block/purpur_pillar_side",
+  "particle": "block/purpur_pillar_side",
+  "side": "block/purpur_pillar_side",
+  "south": "block/purpur_pillar_side",
+  "up": "block/purpur_pillar_top",
+  "west": "block/purpur_pillar_side"
+ },
+ "elements": [
+  {
+   "from": [
+    0,
+    0,
+    0
+   ],
+   "to": [
+    16,
+    16,
+    16
+   ],
+   "faces": {
+    "down": {
+     "texture": "#down",
+     "cullface": "down"
+    },
+    "east": {
+     "texture": "#east",
+     "cullface": "east"
+    },
+    "north": {
+     "texture": "#north",
+     "cullface": "north"
+    },
+    "south": {
+     "texture": "#south",
+     "cullface": "south"
+    },
+    "up": {
+     "texture": "#up",
+     "cullface": "up",
+     "rotation": 180
+    },
+    "west": {
+     "texture": "#west",
+     "cullface": "west"
+    }
+   }
+  }
+ ]
+}

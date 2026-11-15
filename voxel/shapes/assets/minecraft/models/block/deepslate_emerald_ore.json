@@ -1,0 +1,52 @@
+{
+ "textures": {
+  "all": "block/deepslate_emerald_ore",
+  "down": "block/deepslate_emerald_ore",
+  "east": "block/deepslate_emerald_ore",
+  "north": "block/deepslate_emerald_ore",
+  "particle": "block/deepslate_emerald_ore",
+  "south": "block/deepslate_emerald_ore",
+  "up": "block/deepslate_emerald_ore",
+  "west": "block/deepslate_emerald_ore"
+ },
+ "elements": [
+  {
+   "from": [
+    0,
+    0,
+    0
+   ],
+   "to": [
+    16,
+    16,
+    16
+   ],
+   "faces": {
+    "down": {
+     "texture": "#down",
+     "cullface": "down"
+    },
+    "east": {
+     "texture": "#east",
+     "cullface": "east"
+    },
+    "north": {
+     "texture": "#north",
+     "cullface": "north"
+    },
+    "south": {
+     "texture": "#south",
+     "cullface": "south"
+    },
+    "up": {
+     "texture": "#up",
+     "cullface": "up"
+    },
+    "west": {
+     "texture": "#west",
+     "cullface": "west"
+    }
+   }
+  }
+ ]
+}

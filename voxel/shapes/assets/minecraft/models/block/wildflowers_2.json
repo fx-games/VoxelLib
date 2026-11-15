@@ -1,0 +1,160 @@
+{
+ "textures": {
+  "flowerbed": "block/wildflowers",
+  "particle": "block/wildflowers",
+  "stem": "block/wildflowers_stem"
+ },
+ "elements": [
+  {
+   "from": [
+    0,
+    1,
+    8
+   ],
+   "to": [
+    8,
+    1,
+    16
+   ],
+   "faces": {
+    "down": {
+     "texture": "#flowerbed",
+     "uv": [
+      0,
+      16,
+      8,
+      8
+     ]
+    },
+    "up": {
+     "texture": "#flowerbed",
+     "uv": [
+      0,
+      8,
+      8,
+      16
+     ]
+    }
+   }
+  },
+  {
+   "from": [
+    0,
+    1,
+    8
+   ],
+   "to": [
+    8,
+    1,
+    16
+   ],
+   "faces": {
+    "down": {
+     "texture": "#flowerbed",
+     "uv": [
+      0,
+      16,
+      8,
+      8
+     ]
+    },
+    "up": {
+     "texture": "#flowerbed",
+     "uv": [
+      0,
+      8,
+      8,
+      16
+     ]
+    }
+   }
+  },
+  {
+   "from": [
+    10.15,
+    0,
+    5.25
+   ],
+   "to": [
+    11.15,
+    1,
+    5.25
+   ],
+   "rotation": {
+    "origin": [
+     0,
+     0,
+     1
+    ],
+    "axis": "y",
+    "angle": -45
+   },
+   "faces": {
+    "north": {
+     "texture": "#stem",
+     "uv": [
+      0,
+      6,
+      1,
+      7
+     ],
+     "tintindex": 1
+    },
+    "south": {
+     "texture": "#stem",
+     "uv": [
+      0,
+      6,
+      1,
+      7
+     ],
+     "tintindex": 1
+    }
+   }
+  },
+  {
+   "from": [
+    10.65,
+    0,
+    4.75
+   ],
+   "to": [
+    10.65,
+    1,
+    5.75
+   ],
+   "rotation": {
+    "origin": [
+     0,
+     0,
+     1
+    ],
+    "axis": "y",
+    "angle": -45
+   },
+   "faces": {
+    "east": {
+     "texture": "#stem",
+     "uv": [
+      0,
+      6,
+      1,
+      7
+     ],
+     "tintindex": 1
+    },
+    "west": {
+     "texture": "#stem",
+     "uv": [
+      0,
+      6,
+      1,
+      7
+     ],
+     "tintindex": 1
+    }
+   }
+  }
+ ],
+ "ambientocclusion": false
+}

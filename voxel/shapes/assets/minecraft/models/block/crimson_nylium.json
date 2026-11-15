@@ -1,0 +1,54 @@
+{
+ "textures": {
+  "bottom": "block/netherrack",
+  "down": "block/netherrack",
+  "east": "block/crimson_nylium_side",
+  "north": "block/crimson_nylium_side",
+  "particle": "block/crimson_nylium_side",
+  "side": "block/crimson_nylium_side",
+  "south": "block/crimson_nylium_side",
+  "top": "block/crimson_nylium",
+  "up": "block/crimson_nylium",
+  "west": "block/crimson_nylium_side"
+ },
+ "elements": [
+  {
+   "from": [
+    0,
+    0,
+    0
+   ],
+   "to": [
+    16,
+    16,
+    16
+   ],
+   "faces": {
+    "down": {
+     "texture": "#down",
+     "cullface": "down"
+    },
+    "east": {
+     "texture": "#east",
+     "cullface": "east"
+    },
+    "north": {
+     "texture": "#north",
+     "cullface": "north"
+    },
+    "south": {
+     "texture": "#south",
+     "cullface": "south"
+    },
+    "up": {
+     "texture": "#up",
+     "cullface": "up"
+    },
+    "west": {
+     "texture": "#west",
+     "cullface": "west"
+    }
+   }
+  }
+ ]
+}

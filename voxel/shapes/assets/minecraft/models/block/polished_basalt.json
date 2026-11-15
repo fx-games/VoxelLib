@@ -1,0 +1,53 @@
+{
+ "textures": {
+  "down": "block/polished_basalt_top",
+  "east": "block/polished_basalt_side",
+  "end": "block/polished_basalt_top",
+  "north": "block/polished_basalt_side",
+  "particle": "block/polished_basalt_side",
+  "side": "block/polished_basalt_side",
+  "south": "block/polished_basalt_side",
+  "up": "block/polished_basalt_top",
+  "west": "block/polished_basalt_side"
+ },
+ "elements": [
+  {
+   "from": [
+    0,
+    0,
+    0
+   ],
+   "to": [
+    16,
+    16,
+    16
+   ],
+   "faces": {
+    "down": {
+     "texture": "#down",
+     "cullface": "down"
+    },
+    "east": {
+     "texture": "#east",
+     "cullface": "east"
+    },
+    "north": {
+     "texture": "#north",
+     "cullface": "north"
+    },
+    "south": {
+     "texture": "#south",
+     "cullface": "south"
+    },
+    "up": {
+     "texture": "#up",
+     "cullface": "up"
+    },
+    "west": {
+     "texture": "#west",
+     "cullface": "west"
+    }
+   }
+  }
+ ]
+}

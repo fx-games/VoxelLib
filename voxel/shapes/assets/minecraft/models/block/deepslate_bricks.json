@@ -1,0 +1,52 @@
+{
+ "textures": {
+  "all": "block/deepslate_bricks",
+  "down": "block/deepslate_bricks",
+  "east": "block/deepslate_bricks",
+  "north": "block/deepslate_bricks",
+  "particle": "block/deepslate_bricks",
+  "south": "block/deepslate_bricks",
+  "up": "block/deepslate_bricks",
+  "west": "block/deepslate_bricks"
+ },
+ "elements": [
+  {
+   "from": [
+    0,
+    0,
+    0
+   ],
+   "to": [
+    16,
+    16,
+    16
+   ],
+   "faces": {
+    "down": {
+     "texture": "#down",
+     "cullface": "down"
+    },
+    "east": {
+     "texture": "#east",
+     "cullface": "east"
+    },
+    "north": {
+     "texture": "#north",
+     "cullface": "north"
+    },
+    "south": {
+     "texture": "#south",
+     "cullface": "south"
+    },
+    "up": {
+     "texture": "#up",
+     "cullface": "up"
+    },
+    "west": {
+     "texture": "#west",
+     "cullface": "west"
+    }
+   }
+  }
+ ]
+}

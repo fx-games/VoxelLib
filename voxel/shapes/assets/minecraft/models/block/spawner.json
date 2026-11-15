@@ -1,0 +1,162 @@
+{
+ "textures": {
+  "all": "block/spawner",
+  "down": "block/spawner",
+  "east": "block/spawner",
+  "north": "block/spawner",
+  "particle": "block/spawner",
+  "south": "block/spawner",
+  "up": "block/spawner",
+  "west": "block/spawner"
+ },
+ "elements": [
+  {
+   "from": [
+    0,
+    0,
+    0
+   ],
+   "to": [
+    16,
+    16,
+    16
+   ],
+   "faces": {
+    "down": {
+     "texture": "#all",
+     "cullface": "down",
+     "uv": [
+      0,
+      0,
+      16,
+      16
+     ]
+    },
+    "east": {
+     "texture": "#all",
+     "cullface": "east",
+     "uv": [
+      0,
+      0,
+      16,
+      16
+     ]
+    },
+    "north": {
+     "texture": "#all",
+     "cullface": "north",
+     "uv": [
+      0,
+      0,
+      16,
+      16
+     ]
+    },
+    "south": {
+     "texture": "#all",
+     "cullface": "south",
+     "uv": [
+      0,
+      0,
+      16,
+      16
+     ]
+    },
+    "up": {
+     "texture": "#all",
+     "cullface": "up",
+     "uv": [
+      0,
+      0,
+      16,
+      16
+     ]
+    },
+    "west": {
+     "texture": "#all",
+     "cullface": "west",
+     "uv": [
+      0,
+      0,
+      16,
+      16
+     ]
+    }
+   }
+  },
+  {
+   "from": [
+    15.998,
+    0.002,
+    0.002
+   ],
+   "to": [
+    0.002,
+    15.998,
+    15.998
+   ],
+   "faces": {
+    "down": {
+     "texture": "#all",
+     "cullface": "down",
+     "uv": [
+      16,
+      0,
+      0,
+      16
+     ]
+    },
+    "east": {
+     "texture": "#all",
+     "cullface": "west",
+     "uv": [
+      16,
+      0,
+      0,
+      16
+     ]
+    },
+    "north": {
+     "texture": "#all",
+     "cullface": "south",
+     "uv": [
+      16,
+      0,
+      0,
+      16
+     ]
+    },
+    "south": {
+     "texture": "#all",
+     "cullface": "north",
+     "uv": [
+      16,
+      0,
+      0,
+      16
+     ]
+    },
+    "up": {
+     "texture": "#all",
+     "cullface": "up",
+     "uv": [
+      16,
+      0,
+      0,
+      16
+     ]
+    },
+    "west": {
+     "texture": "#all",
+     "cullface": "east",
+     "uv": [
+      16,
+      0,
+      0,
+      16
+     ]
+    }
+   }
+  }
+ ]
+}

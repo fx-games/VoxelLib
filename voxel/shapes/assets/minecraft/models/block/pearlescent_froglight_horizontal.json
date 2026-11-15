@@ -1,0 +1,54 @@
+{
+ "textures": {
+  "down": "block/pearlescent_froglight_top",
+  "east": "block/pearlescent_froglight_side",
+  "end": "block/pearlescent_froglight_top",
+  "north": "block/pearlescent_froglight_side",
+  "particle": "block/pearlescent_froglight_side",
+  "side": "block/pearlescent_froglight_side",
+  "south": "block/pearlescent_froglight_side",
+  "up": "block/pearlescent_froglight_top",
+  "west": "block/pearlescent_froglight_side"
+ },
+ "elements": [
+  {
+   "from": [
+    0,
+    0,
+    0
+   ],
+   "to": [
+    16,
+    16,
+    16
+   ],
+   "faces": {
+    "down": {
+     "texture": "#down",
+     "cullface": "down"
+    },
+    "east": {
+     "texture": "#east",
+     "cullface": "east"
+    },
+    "north": {
+     "texture": "#north",
+     "cullface": "north"
+    },
+    "south": {
+     "texture": "#south",
+     "cullface": "south"
+    },
+    "up": {
+     "texture": "#up",
+     "cullface": "up",
+     "rotation": 180
+    },
+    "west": {
+     "texture": "#west",
+     "cullface": "west"
+    }
+   }
+  }
+ ]
+}

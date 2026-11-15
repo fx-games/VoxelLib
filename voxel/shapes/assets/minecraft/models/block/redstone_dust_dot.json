@@ -1,0 +1,76 @@
+{
+ "textures": {
+  "line": "block/redstone_dust_dot",
+  "overlay": "block/redstone_dust_overlay",
+  "particle": "block/redstone_dust_dot"
+ },
+ "elements": [
+  {
+   "from": [
+    0,
+    0.25,
+    0
+   ],
+   "to": [
+    16,
+    0.25,
+    16
+   ],
+   "faces": {
+    "down": {
+     "texture": "#line",
+     "uv": [
+      0,
+      16,
+      16,
+      0
+     ],
+     "tintindex": 0
+    },
+    "up": {
+     "texture": "#line",
+     "uv": [
+      0,
+      0,
+      16,
+      16
+     ],
+     "tintindex": 0
+    }
+   }
+  },
+  {
+   "from": [
+    0,
+    0.25,
+    0
+   ],
+   "to": [
+    16,
+    0.25,
+    16
+   ],
+   "faces": {
+    "down": {
+     "texture": "#overlay",
+     "uv": [
+      0,
+      16,
+      16,
+      0
+     ]
+    },
+    "up": {
+     "texture": "#overlay",
+     "uv": [
+      0,
+      0,
+      16,
+      16
+     ]
+    }
+   }
+  }
+ ],
+ "ambientocclusion": false
+}

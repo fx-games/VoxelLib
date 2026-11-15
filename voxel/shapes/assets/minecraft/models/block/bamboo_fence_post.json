@@ -1,0 +1,78 @@
+{
+ "textures": {
+  "particle": "block/bamboo_fence_particle",
+  "texture": "block/bamboo_fence"
+ },
+ "elements": [
+  {
+   "from": [
+    6,
+    0,
+    6
+   ],
+   "to": [
+    10,
+    16,
+    10
+   ],
+   "faces": {
+    "down": {
+     "texture": "#texture",
+     "cullface": "down",
+     "uv": [
+      4,
+      0,
+      8,
+      4
+     ]
+    },
+    "east": {
+     "texture": "#texture",
+     "uv": [
+      0,
+      0,
+      4,
+      16
+     ]
+    },
+    "north": {
+     "texture": "#texture",
+     "uv": [
+      0,
+      0,
+      4,
+      16
+     ]
+    },
+    "south": {
+     "texture": "#texture",
+     "uv": [
+      0,
+      0,
+      4,
+      16
+     ]
+    },
+    "up": {
+     "texture": "#texture",
+     "cullface": "up",
+     "uv": [
+      4,
+      0,
+      8,
+      4
+     ]
+    },
+    "west": {
+     "texture": "#texture",
+     "uv": [
+      0,
+      0,
+      4,
+      16
+     ]
+    }
+   }
+  }
+ ]
+}

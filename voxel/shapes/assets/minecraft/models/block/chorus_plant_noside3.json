@@ -1,0 +1,56 @@
+{
+ "textures": {
+  "inside": "block/chorus_plant",
+  "particle": "block/chorus_plant",
+  "texture": "block/chorus_plant"
+ },
+ "elements": [
+  {
+   "from": [
+    4,
+    4,
+    4
+   ],
+   "to": [
+    12,
+    12,
+    12
+   ],
+   "faces": {
+    "north": {
+     "texture": "#inside"
+    }
+   }
+  },
+  {
+   "from": [
+    4,
+    4,
+    3
+   ],
+   "to": [
+    12,
+    12,
+    4
+   ],
+   "faces": {
+    "down": {
+     "texture": "#texture"
+    },
+    "east": {
+     "texture": "#texture"
+    },
+    "north": {
+     "texture": "#texture"
+    },
+    "up": {
+     "texture": "#texture"
+    },
+    "west": {
+     "texture": "#texture"
+    }
+   }
+  }
+ ],
+ "ambientocclusion": false
+}

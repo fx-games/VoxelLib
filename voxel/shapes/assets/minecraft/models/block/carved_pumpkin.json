@@ -1,0 +1,55 @@
+{
+ "textures": {
+  "bottom": "block/pumpkin_top",
+  "down": "block/pumpkin_top",
+  "east": "block/pumpkin_side",
+  "front": "block/carved_pumpkin",
+  "north": "block/carved_pumpkin",
+  "particle": "block/carved_pumpkin",
+  "side": "block/pumpkin_side",
+  "south": "block/pumpkin_side",
+  "top": "block/pumpkin_top",
+  "up": "block/pumpkin_top",
+  "west": "block/pumpkin_side"
+ },
+ "elements": [
+  {
+   "from": [
+    0,
+    0,
+    0
+   ],
+   "to": [
+    16,
+    16,
+    16
+   ],
+   "faces": {
+    "down": {
+     "texture": "#down",
+     "cullface": "down"
+    },
+    "east": {
+     "texture": "#east",
+     "cullface": "east"
+    },
+    "north": {
+     "texture": "#north",
+     "cullface": "north"
+    },
+    "south": {
+     "texture": "#south",
+     "cullface": "south"
+    },
+    "up": {
+     "texture": "#up",
+     "cullface": "up"
+    },
+    "west": {
+     "texture": "#west",
+     "cullface": "west"
+    }
+   }
+  }
+ ]
+}

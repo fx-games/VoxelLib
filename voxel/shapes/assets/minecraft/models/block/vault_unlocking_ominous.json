@@ -1,0 +1,153 @@
+{
+ "textures": {
+  "bottom": "block/vault_bottom_ominous",
+  "front": "block/vault_front_ejecting_ominous",
+  "particle": "block/vault_side_on_ominous",
+  "side": "block/vault_side_on_ominous",
+  "top": "block/vault_top_ominous"
+ },
+ "elements": [
+  {
+   "from": [
+    0,
+    0,
+    0
+   ],
+   "to": [
+    16,
+    16,
+    16
+   ],
+   "faces": {
+    "down": {
+     "texture": "#bottom",
+     "cullface": "down",
+     "uv": [
+      0,
+      0,
+      16,
+      16
+     ]
+    },
+    "east": {
+     "texture": "#side",
+     "cullface": "east",
+     "uv": [
+      0,
+      0,
+      16,
+      16
+     ]
+    },
+    "north": {
+     "texture": "#front",
+     "cullface": "north",
+     "uv": [
+      0,
+      0,
+      16,
+      16
+     ]
+    },
+    "south": {
+     "texture": "#side",
+     "cullface": "south",
+     "uv": [
+      0,
+      0,
+      16,
+      16
+     ]
+    },
+    "up": {
+     "texture": "#top",
+     "cullface": "up",
+     "uv": [
+      0,
+      0,
+      16,
+      16
+     ]
+    },
+    "west": {
+     "texture": "#side",
+     "cullface": "west",
+     "uv": [
+      0,
+      0,
+      16,
+      16
+     ]
+    }
+   }
+  },
+  {
+   "from": [
+    15.998,
+    3.002,
+    0.002
+   ],
+   "to": [
+    0.002,
+    15.998,
+    15.998
+   ],
+   "faces": {
+    "down": {
+     "texture": "#bottom",
+     "uv": [
+      0,
+      0,
+      16,
+      16
+     ]
+    },
+    "east": {
+     "texture": "#side",
+     "uv": [
+      16,
+      0,
+      0,
+      13
+     ]
+    },
+    "north": {
+     "texture": "#front",
+     "uv": [
+      16,
+      0,
+      0,
+      13
+     ]
+    },
+    "south": {
+     "texture": "#side",
+     "uv": [
+      16,
+      0,
+      0,
+      13
+     ]
+    },
+    "up": {
+     "texture": "#top",
+     "uv": [
+      16,
+      0,
+      0,
+      16
+     ]
+    },
+    "west": {
+     "texture": "#side",
+     "uv": [
+      16,
+      0,
+      0,
+      13
+     ]
+    }
+   }
+  }
+ ]
+}

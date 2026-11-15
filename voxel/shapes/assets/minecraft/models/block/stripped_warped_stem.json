@@ -1,0 +1,53 @@
+{
+ "textures": {
+  "down": "block/stripped_warped_stem_top",
+  "east": "block/stripped_warped_stem",
+  "end": "block/stripped_warped_stem_top",
+  "north": "block/stripped_warped_stem",
+  "particle": "block/stripped_warped_stem",
+  "side": "block/stripped_warped_stem",
+  "south": "block/stripped_warped_stem",
+  "up": "block/stripped_warped_stem_top",
+  "west": "block/stripped_warped_stem"
+ },
+ "elements": [
+  {
+   "from": [
+    0,
+    0,
+    0
+   ],
+   "to": [
+    16,
+    16,
+    16
+   ],
+   "faces": {
+    "down": {
+     "texture": "#down",
+     "cullface": "down"
+    },
+    "east": {
+     "texture": "#east",
+     "cullface": "east"
+    },
+    "north": {
+     "texture": "#north",
+     "cullface": "north"
+    },
+    "south": {
+     "texture": "#south",
+     "cullface": "south"
+    },
+    "up": {
+     "texture": "#up",
+     "cullface": "up"
+    },
+    "west": {
+     "texture": "#west",
+     "cullface": "west"
+    }
+   }
+  }
+ ]
+}

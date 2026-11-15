@@ -1,0 +1,52 @@
+{
+ "textures": {
+  "all": "block/calcite",
+  "down": "block/calcite",
+  "east": "block/calcite",
+  "north": "block/calcite",
+  "particle": "block/calcite",
+  "south": "block/calcite",
+  "up": "block/calcite",
+  "west": "block/calcite"
+ },
+ "elements": [
+  {
+   "from": [
+    0,
+    0,
+    0
+   ],
+   "to": [
+    16,
+    16,
+    16
+   ],
+   "faces": {
+    "down": {
+     "texture": "#down",
+     "cullface": "down"
+    },
+    "east": {
+     "texture": "#east",
+     "cullface": "east"
+    },
+    "north": {
+     "texture": "#north",
+     "cullface": "north"
+    },
+    "south": {
+     "texture": "#south",
+     "cullface": "south"
+    },
+    "up": {
+     "texture": "#up",
+     "cullface": "up"
+    },
+    "west": {
+     "texture": "#west",
+     "cullface": "west"
+    }
+   }
+  }
+ ]
+}

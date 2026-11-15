@@ -1,0 +1,52 @@
+{
+ "textures": {
+  "all": "block/budding_amethyst",
+  "down": "block/budding_amethyst",
+  "east": "block/budding_amethyst",
+  "north": "block/budding_amethyst",
+  "particle": "block/budding_amethyst",
+  "south": "block/budding_amethyst",
+  "up": "block/budding_amethyst",
+  "west": "block/budding_amethyst"
+ },
+ "elements": [
+  {
+   "from": [
+    0,
+    0,
+    0
+   ],
+   "to": [
+    16,
+    16,
+    16
+   ],
+   "faces": {
+    "down": {
+     "texture": "#down",
+     "cullface": "down"
+    },
+    "east": {
+     "texture": "#east",
+     "cullface": "east"
+    },
+    "north": {
+     "texture": "#north",
+     "cullface": "north"
+    },
+    "south": {
+     "texture": "#south",
+     "cullface": "south"
+    },
+    "up": {
+     "texture": "#up",
+     "cullface": "up"
+    },
+    "west": {
+     "texture": "#west",
+     "cullface": "west"
+    }
+   }
+  }
+ ]
+}

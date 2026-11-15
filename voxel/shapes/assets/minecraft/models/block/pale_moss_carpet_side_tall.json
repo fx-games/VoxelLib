@@ -1,0 +1,40 @@
+{
+ "textures": {
+  "particle": "block/pale_moss_carpet_side_tall",
+  "side": "block/pale_moss_carpet_side_tall"
+ },
+ "elements": [
+  {
+   "from": [
+    0,
+    0,
+    0.1
+   ],
+   "to": [
+    16,
+    16,
+    0.1
+   ],
+   "faces": {
+    "north": {
+     "texture": "#side",
+     "uv": [
+      16,
+      0,
+      0,
+      16
+     ]
+    },
+    "south": {
+     "texture": "#side",
+     "uv": [
+      0,
+      0,
+      16,
+      16
+     ]
+    }
+   }
+  }
+ ]
+}

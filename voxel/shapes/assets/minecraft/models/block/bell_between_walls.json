@@ -1,0 +1,78 @@
+{
+ "textures": {
+  "bar": "block/dark_oak_planks",
+  "particle": "block/bell_bottom"
+ },
+ "elements": [
+  {
+   "from": [
+    0,
+    13,
+    7
+   ],
+   "to": [
+    16,
+    15,
+    9
+   ],
+   "faces": {
+    "down": {
+     "texture": "#bar",
+     "uv": [
+      2,
+      3,
+      14,
+      5
+     ]
+    },
+    "east": {
+     "texture": "#bar",
+     "cullface": "east",
+     "uv": [
+      5,
+      4,
+      7,
+      6
+     ]
+    },
+    "north": {
+     "texture": "#bar",
+     "uv": [
+      2,
+      2,
+      14,
+      4
+     ]
+    },
+    "south": {
+     "texture": "#bar",
+     "uv": [
+      2,
+      3,
+      14,
+      5
+     ]
+    },
+    "up": {
+     "texture": "#bar",
+     "uv": [
+      2,
+      3,
+      14,
+      5
+     ]
+    },
+    "west": {
+     "texture": "#bar",
+     "cullface": "west",
+     "uv": [
+      5,
+      4,
+      7,
+      6
+     ]
+    }
+   }
+  }
+ ]
+}

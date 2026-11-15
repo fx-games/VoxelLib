@@ -1,0 +1,52 @@
+{
+ "textures": {
+  "all": "block/glowstone",
+  "down": "block/glowstone",
+  "east": "block/glowstone",
+  "north": "block/glowstone",
+  "particle": "block/glowstone",
+  "south": "block/glowstone",
+  "up": "block/glowstone",
+  "west": "block/glowstone"
+ },
+ "elements": [
+  {
+   "from": [
+    0,
+    0,
+    0
+   ],
+   "to": [
+    16,
+    16,
+    16
+   ],
+   "faces": {
+    "down": {
+     "texture": "#down",
+     "cullface": "down"
+    },
+    "east": {
+     "texture": "#east",
+     "cullface": "east"
+    },
+    "north": {
+     "texture": "#north",
+     "cullface": "north"
+    },
+    "south": {
+     "texture": "#south",
+     "cullface": "south"
+    },
+    "up": {
+     "texture": "#up",
+     "cullface": "up"
+    },
+    "west": {
+     "texture": "#west",
+     "cullface": "west"
+    }
+   }
+  }
+ ]
+}

@@ -1,0 +1,54 @@
+{
+ "textures": {
+  "bottom": "block/netherrack",
+  "down": "block/netherrack",
+  "east": "block/warped_nylium_side",
+  "north": "block/warped_nylium_side",
+  "particle": "block/warped_nylium_side",
+  "side": "block/warped_nylium_side",
+  "south": "block/warped_nylium_side",
+  "top": "block/warped_nylium",
+  "up": "block/warped_nylium",
+  "west": "block/warped_nylium_side"
+ },
+ "elements": [
+  {
+   "from": [
+    0,
+    0,
+    0
+   ],
+   "to": [
+    16,
+    16,
+    16
+   ],
+   "faces": {
+    "down": {
+     "texture": "#down",
+     "cullface": "down"
+    },
+    "east": {
+     "texture": "#east",
+     "cullface": "east"
+    },
+    "north": {
+     "texture": "#north",
+     "cullface": "north"
+    },
+    "south": {
+     "texture": "#south",
+     "cullface": "south"
+    },
+    "up": {
+     "texture": "#up",
+     "cullface": "up"
+    },
+    "west": {
+     "texture": "#west",
+     "cullface": "west"
+    }
+   }
+  }
+ ]
+}

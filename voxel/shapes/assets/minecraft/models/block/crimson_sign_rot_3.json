@@ -1,0 +1,155 @@
+{
+ "textures": {
+  "all": "block/crimson_sign",
+  "particle": "block/crimson_planks"
+ },
+ "elements": [
+  {
+   "from": [
+    7.33333,
+    0,
+    7.33333
+   ],
+   "to": [
+    8.66667,
+    9.33333,
+    8.66667
+   ],
+   "rotation": {
+    "origin": [
+     8,
+     0,
+     8
+    ],
+    "axis": "y",
+    "angle": -67.5
+   },
+   "faces": {
+    "down": {
+     "texture": "#all",
+     "cullface": "down",
+     "uv": [
+      14,
+      15,
+      15,
+      16
+     ]
+    },
+    "east": {
+     "texture": "#all",
+     "uv": [
+      15,
+      0,
+      16,
+      7
+     ]
+    },
+    "north": {
+     "texture": "#all",
+     "uv": [
+      14,
+      8,
+      15,
+      15
+     ]
+    },
+    "south": {
+     "texture": "#all",
+     "uv": [
+      14,
+      0,
+      15,
+      7
+     ]
+    },
+    "west": {
+     "texture": "#all",
+     "uv": [
+      15,
+      8,
+      16,
+      15
+     ]
+    }
+   }
+  },
+  {
+   "from": [
+    0,
+    9.33333,
+    7.33333
+   ],
+   "to": [
+    16,
+    17.33333,
+    8.66667
+   ],
+   "rotation": {
+    "origin": [
+     8,
+     0,
+     8
+    ],
+    "axis": "y",
+    "angle": -67.5
+   },
+   "faces": {
+    "down": {
+     "texture": "#all",
+     "uv": [
+      0,
+      14,
+      12,
+      15
+     ]
+    },
+    "east": {
+     "texture": "#all",
+     "uv": [
+      12,
+      1,
+      13,
+      7
+     ]
+    },
+    "north": {
+     "texture": "#all",
+     "uv": [
+      0,
+      8,
+      12,
+      14
+     ]
+    },
+    "south": {
+     "texture": "#all",
+     "uv": [
+      0,
+      1,
+      12,
+      7
+     ]
+    },
+    "up": {
+     "texture": "#all",
+     "uv": [
+      0,
+      0,
+      12,
+      1
+     ]
+    },
+    "west": {
+     "texture": "#all",
+     "uv": [
+      12,
+      8,
+      13,
+      14
+     ]
+    }
+   }
+  }
+ ],
+ "ambientocclusion": false
+}

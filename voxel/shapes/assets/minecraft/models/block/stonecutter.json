@@ -1,0 +1,118 @@
+{
+ "textures": {
+  "bottom": "block/stonecutter_bottom",
+  "particle": "block/stonecutter_bottom",
+  "saw": "block/stonecutter_saw",
+  "side": "block/stonecutter_side",
+  "top": "block/stonecutter_top"
+ },
+ "elements": [
+  {
+   "from": [
+    0,
+    0,
+    0
+   ],
+   "to": [
+    16,
+    9,
+    16
+   ],
+   "faces": {
+    "down": {
+     "texture": "#bottom",
+     "cullface": "down",
+     "uv": [
+      0,
+      0,
+      16,
+      16
+     ]
+    },
+    "east": {
+     "texture": "#side",
+     "cullface": "east",
+     "uv": [
+      0,
+      7,
+      16,
+      16
+     ]
+    },
+    "north": {
+     "texture": "#side",
+     "cullface": "north",
+     "uv": [
+      0,
+      7,
+      16,
+      16
+     ]
+    },
+    "south": {
+     "texture": "#side",
+     "cullface": "south",
+     "uv": [
+      0,
+      7,
+      16,
+      16
+     ]
+    },
+    "up": {
+     "texture": "#top",
+     "uv": [
+      0,
+      0,
+      16,
+      16
+     ]
+    },
+    "west": {
+     "texture": "#side",
+     "cullface": "west",
+     "uv": [
+      0,
+      7,
+      16,
+      16
+     ]
+    }
+   }
+  },
+  {
+   "from": [
+    1,
+    9,
+    8
+   ],
+   "to": [
+    15,
+    16,
+    8
+   ],
+   "faces": {
+    "north": {
+     "texture": "#saw",
+     "uv": [
+      1,
+      9,
+      15,
+      16
+     ],
+     "tintindex": 0
+    },
+    "south": {
+     "texture": "#saw",
+     "uv": [
+      15,
+      9,
+      1,
+      16
+     ],
+     "tintindex": 0
+    }
+   }
+  }
+ ]
+}

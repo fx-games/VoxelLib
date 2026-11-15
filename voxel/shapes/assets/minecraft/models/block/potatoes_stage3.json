@@ -1,0 +1,137 @@
+{
+ "textures": {
+  "crop": "block/potatoes_stage3",
+  "particle": "block/potatoes_stage3"
+ },
+ "elements": [
+  {
+   "from": [
+    4,
+    -1,
+    0
+   ],
+   "to": [
+    4,
+    15,
+    16
+   ],
+   "faces": {
+    "east": {
+     "texture": "#crop",
+     "uv": [
+      16,
+      0,
+      0,
+      16
+     ]
+    },
+    "west": {
+     "texture": "#crop",
+     "uv": [
+      0,
+      0,
+      16,
+      16
+     ]
+    }
+   }
+  },
+  {
+   "from": [
+    12,
+    -1,
+    0
+   ],
+   "to": [
+    12,
+    15,
+    16
+   ],
+   "faces": {
+    "east": {
+     "texture": "#crop",
+     "uv": [
+      0,
+      0,
+      16,
+      16
+     ]
+    },
+    "west": {
+     "texture": "#crop",
+     "uv": [
+      16,
+      0,
+      0,
+      16
+     ]
+    }
+   }
+  },
+  {
+   "from": [
+    0,
+    -1,
+    4
+   ],
+   "to": [
+    16,
+    15,
+    4
+   ],
+   "faces": {
+    "north": {
+     "texture": "#crop",
+     "uv": [
+      0,
+      0,
+      16,
+      16
+     ]
+    },
+    "south": {
+     "texture": "#crop",
+     "uv": [
+      16,
+      0,
+      0,
+      16
+     ]
+    }
+   }
+  },
+  {
+   "from": [
+    0,
+    -1,
+    12
+   ],
+   "to": [
+    16,
+    15,
+    12
+   ],
+   "faces": {
+    "north": {
+     "texture": "#crop",
+     "uv": [
+      16,
+      0,
+      0,
+      16
+     ]
+    },
+    "south": {
+     "texture": "#crop",
+     "uv": [
+      0,
+      0,
+      16,
+      16
+     ]
+    }
+   }
+  }
+ ],
+ "ambientocclusion": false
+}

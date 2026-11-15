@@ -1,0 +1,52 @@
+{
+ "textures": {
+  "all": "block/copper_grate",
+  "down": "block/copper_grate",
+  "east": "block/copper_grate",
+  "north": "block/copper_grate",
+  "particle": "block/copper_grate",
+  "south": "block/copper_grate",
+  "up": "block/copper_grate",
+  "west": "block/copper_grate"
+ },
+ "elements": [
+  {
+   "from": [
+    0,
+    0,
+    0
+   ],
+   "to": [
+    16,
+    16,
+    16
+   ],
+   "faces": {
+    "down": {
+     "texture": "#down",
+     "cullface": "down"
+    },
+    "east": {
+     "texture": "#east",
+     "cullface": "east"
+    },
+    "north": {
+     "texture": "#north",
+     "cullface": "north"
+    },
+    "south": {
+     "texture": "#south",
+     "cullface": "south"
+    },
+    "up": {
+     "texture": "#up",
+     "cullface": "up"
+    },
+    "west": {
+     "texture": "#west",
+     "cullface": "west"
+    }
+   }
+  }
+ ]
+}

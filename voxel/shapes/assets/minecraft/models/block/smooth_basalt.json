@@ -1,0 +1,52 @@
+{
+ "textures": {
+  "all": "block/smooth_basalt",
+  "down": "block/smooth_basalt",
+  "east": "block/smooth_basalt",
+  "north": "block/smooth_basalt",
+  "particle": "block/smooth_basalt",
+  "south": "block/smooth_basalt",
+  "up": "block/smooth_basalt",
+  "west": "block/smooth_basalt"
+ },
+ "elements": [
+  {
+   "from": [
+    0,
+    0,
+    0
+   ],
+   "to": [
+    16,
+    16,
+    16
+   ],
+   "faces": {
+    "down": {
+     "texture": "#down",
+     "cullface": "down"
+    },
+    "east": {
+     "texture": "#east",
+     "cullface": "east"
+    },
+    "north": {
+     "texture": "#north",
+     "cullface": "north"
+    },
+    "south": {
+     "texture": "#south",
+     "cullface": "south"
+    },
+    "up": {
+     "texture": "#up",
+     "cullface": "up"
+    },
+    "west": {
+     "texture": "#west",
+     "cullface": "west"
+    }
+   }
+  }
+ ]
+}

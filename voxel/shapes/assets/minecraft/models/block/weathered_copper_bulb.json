@@ -1,0 +1,52 @@
+{
+ "textures": {
+  "all": "block/weathered_copper_bulb",
+  "down": "block/weathered_copper_bulb",
+  "east": "block/weathered_copper_bulb",
+  "north": "block/weathered_copper_bulb",
+  "particle": "block/weathered_copper_bulb",
+  "south": "block/weathered_copper_bulb",
+  "up": "block/weathered_copper_bulb",
+  "west": "block/weathered_copper_bulb"
+ },
+ "elements": [
+  {
+   "from": [
+    0,
+    0,
+    0
+   ],
+   "to": [
+    16,
+    16,
+    16
+   ],
+   "faces": {
+    "down": {
+     "texture": "#down",
+     "cullface": "down"
+    },
+    "east": {
+     "texture": "#east",
+     "cullface": "east"
+    },
+    "north": {
+     "texture": "#north",
+     "cullface": "north"
+    },
+    "south": {
+     "texture": "#south",
+     "cullface": "south"
+    },
+    "up": {
+     "texture": "#up",
+     "cullface": "up"
+    },
+    "west": {
+     "texture": "#west",
+     "cullface": "west"
+    }
+   }
+  }
+ ]
+}

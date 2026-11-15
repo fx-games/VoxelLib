@@ -1,0 +1,52 @@
+{
+ "textures": {
+  "all": "block/nether_quartz_ore",
+  "down": "block/nether_quartz_ore",
+  "east": "block/nether_quartz_ore",
+  "north": "block/nether_quartz_ore",
+  "particle": "block/nether_quartz_ore",
+  "south": "block/nether_quartz_ore",
+  "up": "block/nether_quartz_ore",
+  "west": "block/nether_quartz_ore"
+ },
+ "elements": [
+  {
+   "from": [
+    0,
+    0,
+    0
+   ],
+   "to": [
+    16,
+    16,
+    16
+   ],
+   "faces": {
+    "down": {
+     "texture": "#down",
+     "cullface": "down"
+    },
+    "east": {
+     "texture": "#east",
+     "cullface": "east"
+    },
+    "north": {
+     "texture": "#north",
+     "cullface": "north"
+    },
+    "south": {
+     "texture": "#south",
+     "cullface": "south"
+    },
+    "up": {
+     "texture": "#up",
+     "cullface": "up"
+    },
+    "west": {
+     "texture": "#west",
+     "cullface": "west"
+    }
+   }
+  }
+ ]
+}

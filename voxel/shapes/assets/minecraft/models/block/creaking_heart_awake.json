@@ -1,0 +1,53 @@
+{
+ "textures": {
+  "down": "block/creaking_heart_top_awake",
+  "east": "block/creaking_heart_awake",
+  "end": "block/creaking_heart_top_awake",
+  "north": "block/creaking_heart_awake",
+  "particle": "block/creaking_heart_awake",
+  "side": "block/creaking_heart_awake",
+  "south": "block/creaking_heart_awake",
+  "up": "block/creaking_heart_top_awake",
+  "west": "block/creaking_heart_awake"
+ },
+ "elements": [
+  {
+   "from": [
+    0,
+    0,
+    0
+   ],
+   "to": [
+    16,
+    16,
+    16
+   ],
+   "faces": {
+    "down": {
+     "texture": "#down",
+     "cullface": "down"
+    },
+    "east": {
+     "texture": "#east",
+     "cullface": "east"
+    },
+    "north": {
+     "texture": "#north",
+     "cullface": "north"
+    },
+    "south": {
+     "texture": "#south",
+     "cullface": "south"
+    },
+    "up": {
+     "texture": "#up",
+     "cullface": "up"
+    },
+    "west": {
+     "texture": "#west",
+     "cullface": "west"
+    }
+   }
+  }
+ ]
+}

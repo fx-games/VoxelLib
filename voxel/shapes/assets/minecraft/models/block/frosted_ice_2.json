@@ -1,0 +1,52 @@
+{
+ "textures": {
+  "all": "block/frosted_ice_2",
+  "down": "block/frosted_ice_2",
+  "east": "block/frosted_ice_2",
+  "north": "block/frosted_ice_2",
+  "particle": "block/frosted_ice_2",
+  "south": "block/frosted_ice_2",
+  "up": "block/frosted_ice_2",
+  "west": "block/frosted_ice_2"
+ },
+ "elements": [
+  {
+   "from": [
+    0,
+    0,
+    0
+   ],
+   "to": [
+    16,
+    16,
+    16
+   ],
+   "faces": {
+    "down": {
+     "texture": "#down",
+     "cullface": "down"
+    },
+    "east": {
+     "texture": "#east",
+     "cullface": "east"
+    },
+    "north": {
+     "texture": "#north",
+     "cullface": "north"
+    },
+    "south": {
+     "texture": "#south",
+     "cullface": "south"
+    },
+    "up": {
+     "texture": "#up",
+     "cullface": "up"
+    },
+    "west": {
+     "texture": "#west",
+     "cullface": "west"
+    }
+   }
+  }
+ ]
+}

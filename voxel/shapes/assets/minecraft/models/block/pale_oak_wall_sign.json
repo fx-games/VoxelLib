@@ -1,0 +1,79 @@
+{
+ "textures": {
+  "all": "block/pale_oak_sign",
+  "particle": "block/pale_oak_planks"
+ },
+ "elements": [
+  {
+   "from": [
+    0,
+    4.33333,
+    0.33333
+   ],
+   "to": [
+    16,
+    12.33333,
+    1.66667
+   ],
+   "faces": {
+    "down": {
+     "texture": "#all",
+     "uv": [
+      0,
+      14,
+      12,
+      15
+     ]
+    },
+    "east": {
+     "texture": "#all",
+     "cullface": "east",
+     "uv": [
+      12,
+      1,
+      13,
+      7
+     ]
+    },
+    "north": {
+     "texture": "#all",
+     "uv": [
+      0,
+      8,
+      12,
+      14
+     ]
+    },
+    "south": {
+     "texture": "#all",
+     "uv": [
+      0,
+      1,
+      12,
+      7
+     ]
+    },
+    "up": {
+     "texture": "#all",
+     "uv": [
+      0,
+      0,
+      12,
+      1
+     ]
+    },
+    "west": {
+     "texture": "#all",
+     "cullface": "west",
+     "uv": [
+      12,
+      8,
+      13,
+      14
+     ]
+    }
+   }
+  }
+ ],
+ "ambientocclusion": false
+}

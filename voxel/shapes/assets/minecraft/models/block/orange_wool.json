@@ -1,0 +1,52 @@
+{
+ "textures": {
+  "all": "block/orange_wool",
+  "down": "block/orange_wool",
+  "east": "block/orange_wool",
+  "north": "block/orange_wool",
+  "particle": "block/orange_wool",
+  "south": "block/orange_wool",
+  "up": "block/orange_wool",
+  "west": "block/orange_wool"
+ },
+ "elements": [
+  {
+   "from": [
+    0,
+    0,
+    0
+   ],
+   "to": [
+    16,
+    16,
+    16
+   ],
+   "faces": {
+    "down": {
+     "texture": "#down",
+     "cullface": "down"
+    },
+    "east": {
+     "texture": "#east",
+     "cullface": "east"
+    },
+    "north": {
+     "texture": "#north",
+     "cullface": "north"
+    },
+    "south": {
+     "texture": "#south",
+     "cullface": "south"
+    },
+    "up": {
+     "texture": "#up",
+     "cullface": "up"
+    },
+    "west": {
+     "texture": "#west",
+     "cullface": "west"
+    }
+   }
+  }
+ ]
+}

@@ -1,0 +1,52 @@
+{
+ "textures": {
+  "all": "block/redstone_ore",
+  "down": "block/redstone_ore",
+  "east": "block/redstone_ore",
+  "north": "block/redstone_ore",
+  "particle": "block/redstone_ore",
+  "south": "block/redstone_ore",
+  "up": "block/redstone_ore",
+  "west": "block/redstone_ore"
+ },
+ "elements": [
+  {
+   "from": [
+    0,
+    0,
+    0
+   ],
+   "to": [
+    16,
+    16,
+    16
+   ],
+   "faces": {
+    "down": {
+     "texture": "#down",
+     "cullface": "down"
+    },
+    "east": {
+     "texture": "#east",
+     "cullface": "east"
+    },
+    "north": {
+     "texture": "#north",
+     "cullface": "north"
+    },
+    "south": {
+     "texture": "#south",
+     "cullface": "south"
+    },
+    "up": {
+     "texture": "#up",
+     "cullface": "up"
+    },
+    "west": {
+     "texture": "#west",
+     "cullface": "west"
+    }
+   }
+  }
+ ]
+}

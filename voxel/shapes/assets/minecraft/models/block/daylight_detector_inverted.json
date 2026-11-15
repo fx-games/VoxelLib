@@ -1,0 +1,82 @@
+{
+ "textures": {
+  "particle": "block/daylight_detector_inverted_top",
+  "side": "block/daylight_detector_side",
+  "top": "block/daylight_detector_inverted_top"
+ },
+ "elements": [
+  {
+   "from": [
+    0,
+    0,
+    0
+   ],
+   "to": [
+    16,
+    6,
+    16
+   ],
+   "faces": {
+    "down": {
+     "texture": "#side",
+     "cullface": "down",
+     "uv": [
+      0,
+      0,
+      16,
+      16
+     ]
+    },
+    "east": {
+     "texture": "#side",
+     "cullface": "east",
+     "uv": [
+      0,
+      10,
+      16,
+      16
+     ]
+    },
+    "north": {
+     "texture": "#side",
+     "cullface": "north",
+     "uv": [
+      0,
+      10,
+      16,
+      16
+     ]
+    },
+    "south": {
+     "texture": "#side",
+     "cullface": "south",
+     "uv": [
+      0,
+      10,
+      16,
+      16
+     ]
+    },
+    "up": {
+     "texture": "#top",
+     "uv": [
+      0,
+      0,
+      16,
+      16
+     ]
+    },
+    "west": {
+     "texture": "#side",
+     "cullface": "west",
+     "uv": [
+      0,
+      10,
+      16,
+      16
+     ]
+    }
+   }
+  }
+ ]
+}

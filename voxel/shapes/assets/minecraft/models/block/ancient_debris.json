@@ -1,0 +1,53 @@
+{
+ "textures": {
+  "down": "block/ancient_debris_top",
+  "east": "block/ancient_debris_side",
+  "end": "block/ancient_debris_top",
+  "north": "block/ancient_debris_side",
+  "particle": "block/ancient_debris_side",
+  "side": "block/ancient_debris_side",
+  "south": "block/ancient_debris_side",
+  "up": "block/ancient_debris_top",
+  "west": "block/ancient_debris_side"
+ },
+ "elements": [
+  {
+   "from": [
+    0,
+    0,
+    0
+   ],
+   "to": [
+    16,
+    16,
+    16
+   ],
+   "faces": {
+    "down": {
+     "texture": "#down",
+     "cullface": "down"
+    },
+    "east": {
+     "texture": "#east",
+     "cullface": "east"
+    },
+    "north": {
+     "texture": "#north",
+     "cullface": "north"
+    },
+    "south": {
+     "texture": "#south",
+     "cullface": "south"
+    },
+    "up": {
+     "texture": "#up",
+     "cullface": "up"
+    },
+    "west": {
+     "texture": "#west",
+     "cullface": "west"
+    }
+   }
+  }
+ ]
+}

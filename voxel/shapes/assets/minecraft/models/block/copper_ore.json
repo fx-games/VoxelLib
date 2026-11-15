@@ -1,0 +1,52 @@
+{
+ "textures": {
+  "all": "block/copper_ore",
+  "down": "block/copper_ore",
+  "east": "block/copper_ore",
+  "north": "block/copper_ore",
+  "particle": "block/copper_ore",
+  "south": "block/copper_ore",
+  "up": "block/copper_ore",
+  "west": "block/copper_ore"
+ },
+ "elements": [
+  {
+   "from": [
+    0,
+    0,
+    0
+   ],
+   "to": [
+    16,
+    16,
+    16
+   ],
+   "faces": {
+    "down": {
+     "texture": "#down",
+     "cullface": "down"
+    },
+    "east": {
+     "texture": "#east",
+     "cullface": "east"
+    },
+    "north": {
+     "texture": "#north",
+     "cullface": "north"
+    },
+    "south": {
+     "texture": "#south",
+     "cullface": "south"
+    },
+    "up": {
+     "texture": "#up",
+     "cullface": "up"
+    },
+    "west": {
+     "texture": "#west",
+     "cullface": "west"
+    }
+   }
+  }
+ ]
+}

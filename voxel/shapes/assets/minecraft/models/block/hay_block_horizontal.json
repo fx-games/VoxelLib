@@ -1,0 +1,54 @@
+{
+ "textures": {
+  "down": "block/hay_block_top",
+  "east": "block/hay_block_side",
+  "end": "block/hay_block_top",
+  "north": "block/hay_block_side",
+  "particle": "block/hay_block_side",
+  "side": "block/hay_block_side",
+  "south": "block/hay_block_side",
+  "up": "block/hay_block_top",
+  "west": "block/hay_block_side"
+ },
+ "elements": [
+  {
+   "from": [
+    0,
+    0,
+    0
+   ],
+   "to": [
+    16,
+    16,
+    16
+   ],
+   "faces": {
+    "down": {
+     "texture": "#down",
+     "cullface": "down"
+    },
+    "east": {
+     "texture": "#east",
+     "cullface": "east"
+    },
+    "north": {
+     "texture": "#north",
+     "cullface": "north"
+    },
+    "south": {
+     "texture": "#south",
+     "cullface": "south"
+    },
+    "up": {
+     "texture": "#up",
+     "cullface": "up",
+     "rotation": 180
+    },
+    "west": {
+     "texture": "#west",
+     "cullface": "west"
+    }
+   }
+  }
+ ]
+}

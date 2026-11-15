@@ -1,0 +1,77 @@
+{
+ "textures": {
+  "particle": "block/bamboo_small_leaves",
+  "texture": "block/bamboo_small_leaves"
+ },
+ "elements": [
+  {
+   "from": [
+    0.8,
+    0,
+    8
+   ],
+   "to": [
+    15.2,
+    16,
+    8
+   ],
+   "faces": {
+    "north": {
+     "texture": "#texture",
+     "uv": [
+      0,
+      0,
+      16,
+      16
+     ],
+     "tintindex": 0
+    },
+    "south": {
+     "texture": "#texture",
+     "uv": [
+      0,
+      0,
+      16,
+      16
+     ],
+     "tintindex": 0
+    }
+   }
+  },
+  {
+   "from": [
+    8,
+    0,
+    0.8
+   ],
+   "to": [
+    8,
+    16,
+    15.2
+   ],
+   "faces": {
+    "east": {
+     "texture": "#texture",
+     "uv": [
+      0,
+      0,
+      16,
+      16
+     ],
+     "tintindex": 0
+    },
+    "west": {
+     "texture": "#texture",
+     "uv": [
+      0,
+      0,
+      16,
+      16
+     ],
+     "tintindex": 0
+    }
+   }
+  }
+ ],
+ "ambientocclusion": false
+}

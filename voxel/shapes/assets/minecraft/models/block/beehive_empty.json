@@ -1,0 +1,55 @@
+{
+ "textures": {
+  "bottom": "block/beehive_end",
+  "down": "block/beehive_end",
+  "east": "block/beehive_side",
+  "front": "block/beehive_front",
+  "north": "block/beehive_front",
+  "particle": "block/beehive_side",
+  "side": "block/beehive_side",
+  "south": "block/beehive_side",
+  "top": "block/beehive_end",
+  "up": "block/beehive_end",
+  "west": "block/beehive_side"
+ },
+ "elements": [
+  {
+   "from": [
+    0,
+    0,
+    0
+   ],
+   "to": [
+    16,
+    16,
+    16
+   ],
+   "faces": {
+    "down": {
+     "texture": "#down",
+     "cullface": "down"
+    },
+    "east": {
+     "texture": "#east",
+     "cullface": "east"
+    },
+    "north": {
+     "texture": "#north",
+     "cullface": "north"
+    },
+    "south": {
+     "texture": "#south",
+     "cullface": "south"
+    },
+    "up": {
+     "texture": "#up",
+     "cullface": "up"
+    },
+    "west": {
+     "texture": "#west",
+     "cullface": "west"
+    }
+   }
+  }
+ ]
+}

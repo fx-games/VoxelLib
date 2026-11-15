@@ -1,0 +1,52 @@
+{
+ "textures": {
+  "all": "block/cobbled_deepslate",
+  "down": "block/cobbled_deepslate",
+  "east": "block/cobbled_deepslate",
+  "north": "block/cobbled_deepslate",
+  "particle": "block/cobbled_deepslate",
+  "south": "block/cobbled_deepslate",
+  "up": "block/cobbled_deepslate",
+  "west": "block/cobbled_deepslate"
+ },
+ "elements": [
+  {
+   "from": [
+    0,
+    0,
+    0
+   ],
+   "to": [
+    16,
+    16,
+    16
+   ],
+   "faces": {
+    "down": {
+     "texture": "#down",
+     "cullface": "down"
+    },
+    "east": {
+     "texture": "#east",
+     "cullface": "east"
+    },
+    "north": {
+     "texture": "#north",
+     "cullface": "north"
+    },
+    "south": {
+     "texture": "#south",
+     "cullface": "south"
+    },
+    "up": {
+     "texture": "#up",
+     "cullface": "up"
+    },
+    "west": {
+     "texture": "#west",
+     "cullface": "west"
+    }
+   }
+  }
+ ]
+}

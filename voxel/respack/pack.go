@@ -349,43 +349,44 @@ type variant struct {
 
 type modelFace struct {
 	Texture   string      `json:"texture"`
-	Cullface  string      `json:"cullface"`
-	UV        *[4]float32 `json:"uv"`
-	Rotation  int         `json:"rotation"`  // texture turn, clockwise degrees
-	TintIndex *int        `json:"tintindex"` // absent or < 0: not tinted
+	Cullface  string      `json:"cullface,omitempty"`
+	UV        *[4]float32 `json:"uv,omitempty"`
+	Rotation  int         `json:"rotation,omitempty"`  // texture turn, clockwise degrees
+	TintIndex *int        `json:"tintindex,omitempty"` // absent or < 0: not tinted
 }
 
 type element struct {
 	From     [3]float32           `json:"from"`
 	To       [3]float32           `json:"to"`
-	Rotation *elemRot             `json:"rotation"`
+	Rotation *elemRot             `json:"rotation,omitempty"`
 	Faces    map[string]modelFace `json:"faces"`
 	// PlantTurn: voxel.Box.PlantTurn (an extension, ignored by the reference game).
-	PlantTurn bool  `json:"plant_turn"`
-	Shade     *bool `json:"shade"`
+	PlantTurn bool  `json:"plant_turn,omitempty"`
+	Shade     *bool `json:"shade,omitempty"`
 }
 
 type elemRot struct {
-	Origin  [3]float32
-	Axis    string
-	Angle   float32
-	Rescale bool
+	Origin  [3]float32 `json:"origin"`
+	Axis    string     `json:"axis"`
+	Angle   float32    `json:"angle"`
+	Rescale bool       `json:"rescale,omitempty"`
 	// Shear, Matrix: voxel.Rot.Shear and Mat (extensions, ignored by
 	// the reference game).
-	Shear  [2]float32
-	Matrix [9]float32
+	Shear  [2]float32 `json:"shear,omitzero"`
+	Matrix [9]float32 `json:"matrix,omitzero"`
 }
 
 type model struct {
-	Parent   string            `json:"parent"`
-	Textures map[string]texRef `json:"textures"`
-	Elements []element         `json:"elements"`
-	AO       *bool             `json:"ambientocclusion"`
+	Parent   string            `json:"parent,omitempty"`
+	Textures map[string]texRef `json:"textures,omitempty"`
+	Elements []element         `json:"elements,omitempty"`
+	AO       *bool             `json:"ambientocclusion,omitempty"`
+	// Shape "cross" marks a cross plant (a VoxelLib extension: a baked
+	// model has no block/cross parent to tell; see Bake).
+	Shape string `json:"shape,omitempty"`
 	// TintColor: voxel.Model.TintColor, "#RRGGBB" (an extension, ignored
 	// by the reference game: its block-entity renderers colour banners).
-	TintColor string `json:"tint_color"`
-	// resolved
-	chain []string
+	TintColor string `json:"tint_color,omitempty"`
 }
 
 // texRef is a model's texture variable: a texture id or "#var", or (since
@@ -438,17 +439,15 @@ func (p *Pack) model(id string) (*model, error) {
 
 // resolve walks the parent chain merging textures (child wins) and taking the
 // nearest elements.
-func (p *Pack) resolve(id string) (tex map[string]string, elems []element, chain []string, err error) {
+func (p *Pack) resolve(id string) (tex map[string]string, elems []element, err error) {
 	tex = map[string]string{}
 	for depth := 0; id != "" && depth < 16; depth++ {
-		_, rel := splitID(id)
-		chain = append(chain, rel)
-		if strings.HasPrefix(rel, "builtin/") {
+		if _, rel := splitID(id); strings.HasPrefix(rel, "builtin/") {
 			break
 		}
 		m, e := p.model(id)
 		if e != nil {
-			return nil, nil, chain, e
+			return nil, nil, e
 		}
 		for k, v := range m.Textures {
 			if _, ok := tex[k]; !ok {
@@ -472,6 +471,28 @@ func (p *Pack) flat(id string) bool {
 		}
 		if m.AO != nil {
 			return !*m.AO
+		}
+		id = m.Parent
+	}
+	return false
+}
+
+// shapeCross is model.Shape of a cross plant.
+const shapeCross = "cross"
+
+// cross reports a cross plant: a model that is, or has as a parent,
+// block/cross or block/tinted_cross, or is marked "shape": "cross".
+func (p *Pack) cross(id string) bool {
+	for depth := 0; id != "" && depth < 16; depth++ {
+		if _, rel := splitID(id); rel == "block/cross" || rel == "block/tinted_cross" {
+			return true
+		}
+		m, err := p.model(id)
+		if err != nil {
+			return false
+		}
+		if m.Shape == shapeCross {
+			return true
 		}
 		id = m.Parent
 	}
@@ -589,7 +610,7 @@ func all(t string) [6]string { return [6]string{t, t, t, t, t, t} }
 // "rescale"), cullfaces and which faces take the block's tint
 // ("tintindex"). Faces a model leaves out are not drawn.
 func (p *Pack) ModelBoxes(id string, vars map[string]string) ([]voxel.Box, error) {
-	tex, elems, _, err := p.resolve(id)
+	tex, elems, err := p.resolve(id)
 	if err != nil {
 		return nil, err
 	}

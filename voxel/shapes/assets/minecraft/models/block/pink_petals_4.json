@@ -1,0 +1,128 @@
+{
+ "textures": {
+  "flowerbed": "block/pink_petals",
+  "particle": "block/pink_petals",
+  "stem": "block/pink_petals_stem"
+ },
+ "elements": [
+  {
+   "from": [
+    8,
+    2,
+    0
+   ],
+   "to": [
+    16,
+    2,
+    8
+   ],
+   "faces": {
+    "down": {
+     "texture": "#flowerbed",
+     "uv": [
+      8,
+      8,
+      16,
+      0
+     ]
+    },
+    "up": {
+     "texture": "#flowerbed",
+     "uv": [
+      8,
+      0,
+      16,
+      8
+     ]
+    }
+   }
+  },
+  {
+   "from": [
+    12.4,
+    0,
+    -7.7
+   ],
+   "to": [
+    12.4,
+    2,
+    -6.7
+   ],
+   "rotation": {
+    "origin": [
+     -1,
+     0,
+     -3
+    ],
+    "axis": "y",
+    "angle": -45
+   },
+   "faces": {
+    "east": {
+     "texture": "#stem",
+     "uv": [
+      0,
+      5,
+      1,
+      7
+     ],
+     "tintindex": 1
+    },
+    "west": {
+     "texture": "#stem",
+     "uv": [
+      0,
+      5,
+      1,
+      7
+     ],
+     "tintindex": 1
+    }
+   }
+  },
+  {
+   "from": [
+    11.9,
+    0,
+    -7.2
+   ],
+   "to": [
+    12.9,
+    2,
+    -7.2
+   ],
+   "rotation": {
+    "origin": [
+     -1,
+     0,
+     -3
+    ],
+    "axis": "y",
+    "angle": -45
+   },
+   "faces": {
+    "north": {
+     "texture": "#stem",
+     "uv": [
+      0,
+      5,
+      1,
+      7
+     ],
+     "tintindex": 1
+    },
+    "south": {
+     "texture": "#stem",
+     "uv": [
+      0,
+      5,
+      1,
+      7
+     ],
+     "tintindex": 1
+    }
+   }
+  }
+ ],
+ "ambientocclusion": false
+}

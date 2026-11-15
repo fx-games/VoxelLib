@@ -1,5 +1,6 @@
 #!/bin/sh
-# Regenerates voxel/shapes from the game's own block-entity models: Dump.java
+# Regenerates voxel/shapes: bake (Go) copies the jar's blockstates and its
+# block models flattened, then the game's own block-entity models: Dump.java
 # bakes each model layer with the renderer's placement transform (needs a
 # JDK and an installed client: $MC, default the macOS launcher folder),
 # the Python scripts turn the dumped faces into block-model JSON.
@@ -70,6 +71,7 @@ dump $be.ConduitRenderer createShellLayer $be.ConduitRenderer DEFAULT_TRANSFORMA
 dump xf $be.TheEndPortalRenderer TRANSFORMATION > "$out/end_portal_xf.json"
 
 dst="$here/../../voxel/shapes/assets/minecraft"
+(cd "$here/../.." && go run ./tools/shapegen/bake "$MC/versions/$VER/$VER.jar" voxel/shapes)
 for gen in chests pots shulkers banners skulls golems misc; do
 	PYTHONDONTWRITEBYTECODE=1 python3 "$here/$gen.py" "$out" "$dst"
 done

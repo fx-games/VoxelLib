@@ -1,0 +1,52 @@
+{
+ "textures": {
+  "all": "block/light_gray_terracotta",
+  "down": "block/light_gray_terracotta",
+  "east": "block/light_gray_terracotta",
+  "north": "block/light_gray_terracotta",
+  "particle": "block/light_gray_terracotta",
+  "south": "block/light_gray_terracotta",
+  "up": "block/light_gray_terracotta",
+  "west": "block/light_gray_terracotta"
+ },
+ "elements": [
+  {
+   "from": [
+    0,
+    0,
+    0
+   ],
+   "to": [
+    16,
+    16,
+    16
+   ],
+   "faces": {
+    "down": {
+     "texture": "#down",
+     "cullface": "down"
+    },
+    "east": {
+     "texture": "#east",
+     "cullface": "east"
+    },
+    "north": {
+     "texture": "#north",
+     "cullface": "north"
+    },
+    "south": {
+     "texture": "#south",
+     "cullface": "south"
+    },
+    "up": {
+     "texture": "#up",
+     "cullface": "up"
+    },
+    "west": {
+     "texture": "#west",
+     "cullface": "west"
+    }
+   }
+  }
+ ]
+}

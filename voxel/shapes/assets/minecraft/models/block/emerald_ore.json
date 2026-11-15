@@ -1,0 +1,52 @@
+{
+ "textures": {
+  "all": "block/emerald_ore",
+  "down": "block/emerald_ore",
+  "east": "block/emerald_ore",
+  "north": "block/emerald_ore",
+  "particle": "block/emerald_ore",
+  "south": "block/emerald_ore",
+  "up": "block/emerald_ore",
+  "west": "block/emerald_ore"
+ },
+ "elements": [
+  {
+   "from": [
+    0,
+    0,
+    0
+   ],
+   "to": [
+    16,
+    16,
+    16
+   ],
+   "faces": {
+    "down": {
+     "texture": "#down",
+     "cullface": "down"
+    },
+    "east": {
+     "texture": "#east",
+     "cullface": "east"
+    },
+    "north": {
+     "texture": "#north",
+     "cullface": "north"
+    },
+    "south": {
+     "texture": "#south",
+     "cullface": "south"
+    },
+    "up": {
+     "texture": "#up",
+     "cullface": "up"
+    },
+    "west": {
+     "texture": "#west",
+     "cullface": "west"
+    }
+   }
+  }
+ ]
+}

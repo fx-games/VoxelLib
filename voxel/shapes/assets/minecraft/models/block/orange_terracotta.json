@@ -1,0 +1,52 @@
+{
+ "textures": {
+  "all": "block/orange_terracotta",
+  "down": "block/orange_terracotta",
+  "east": "block/orange_terracotta",
+  "north": "block/orange_terracotta",
+  "particle": "block/orange_terracotta",
+  "south": "block/orange_terracotta",
+  "up": "block/orange_terracotta",
+  "west": "block/orange_terracotta"
+ },
+ "elements": [
+  {
+   "from": [
+    0,
+    0,
+    0
+   ],
+   "to": [
+    16,
+    16,
+    16
+   ],
+   "faces": {
+    "down": {
+     "texture": "#down",
+     "cullface": "down"
+    },
+    "east": {
+     "texture": "#east",
+     "cullface": "east"
+    },
+    "north": {
+     "texture": "#north",
+     "cullface": "north"
+    },
+    "south": {
+     "texture": "#south",
+     "cullface": "south"
+    },
+    "up": {
+     "texture": "#up",
+     "cullface": "up"
+    },
+    "west": {
+     "texture": "#west",
+     "cullface": "west"
+    }
+   }
+  }
+ ]
+}

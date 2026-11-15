@@ -1,0 +1,52 @@
+{
+ "textures": {
+  "all": "block/warped_wart_block",
+  "down": "block/warped_wart_block",
+  "east": "block/warped_wart_block",
+  "north": "block/warped_wart_block",
+  "particle": "block/warped_wart_block",
+  "south": "block/warped_wart_block",
+  "up": "block/warped_wart_block",
+  "west": "block/warped_wart_block"
+ },
+ "elements": [
+  {
+   "from": [
+    0,
+    0,
+    0
+   ],
+   "to": [
+    16,
+    16,
+    16
+   ],
+   "faces": {
+    "down": {
+     "texture": "#down",
+     "cullface": "down"
+    },
+    "east": {
+     "texture": "#east",
+     "cullface": "east"
+    },
+    "north": {
+     "texture": "#north",
+     "cullface": "north"
+    },
+    "south": {
+     "texture": "#south",
+     "cullface": "south"
+    },
+    "up": {
+     "texture": "#up",
+     "cullface": "up"
+    },
+    "west": {
+     "texture": "#west",
+     "cullface": "west"
+    }
+   }
+  }
+ ]
+}

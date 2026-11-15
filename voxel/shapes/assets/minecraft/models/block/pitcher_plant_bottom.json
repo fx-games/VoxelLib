@@ -1,0 +1,165 @@
+{
+ "textures": {
+  "bottom": "block/pitcher_crop_bottom_stage_4",
+  "particle": "block/pitcher_crop_bottom_stage_4"
+ },
+ "elements": [
+  {
+   "from": [
+    8,
+    -5,
+    0
+   ],
+   "to": [
+    8,
+    11,
+    16
+   ],
+   "rotation": {
+    "origin": [
+     8,
+     3,
+     8
+    ],
+    "axis": "y",
+    "angle": 45
+   },
+   "faces": {
+    "down": {
+     "texture": "#bottom",
+     "uv": [
+      0,
+      0,
+      16,
+      0
+     ],
+     "rotation": 270
+    },
+    "east": {
+     "texture": "#bottom",
+     "uv": [
+      0,
+      0,
+      16,
+      16
+     ]
+    },
+    "north": {
+     "texture": "#bottom",
+     "uv": [
+      0,
+      0,
+      0,
+      16
+     ]
+    },
+    "south": {
+     "texture": "#bottom",
+     "uv": [
+      0,
+      0,
+      0,
+      16
+     ]
+    },
+    "up": {
+     "texture": "#bottom",
+     "uv": [
+      0,
+      0,
+      16,
+      0
+     ],
+     "rotation": 90
+    },
+    "west": {
+     "texture": "#bottom",
+     "uv": [
+      0,
+      0,
+      16,
+      16
+     ]
+    }
+   }
+  },
+  {
+   "from": [
+    0,
+    -5,
+    8
+   ],
+   "to": [
+    16,
+    11,
+    8
+   ],
+   "rotation": {
+    "origin": [
+     8,
+     3,
+     8
+    ],
+    "axis": "y",
+    "angle": 45
+   },
+   "faces": {
+    "down": {
+     "texture": "#bottom",
+     "uv": [
+      0,
+      0,
+      16,
+      0
+     ]
+    },
+    "east": {
+     "texture": "#bottom",
+     "uv": [
+      0,
+      0,
+      0,
+      16
+     ]
+    },
+    "north": {
+     "texture": "#bottom",
+     "uv": [
+      0,
+      0,
+      16,
+      16
+     ]
+    },
+    "south": {
+     "texture": "#bottom",
+     "uv": [
+      0,
+      0,
+      16,
+      16
+     ]
+    },
+    "up": {
+     "texture": "#bottom",
+     "uv": [
+      0,
+      0,
+      16,
+      0
+     ]
+    },
+    "west": {
+     "texture": "#bottom",
+     "uv": [
+      0,
+      0,
+      0,
+      16
+     ]
+    }
+   }
+  }
+ ],
+ "ambientocclusion": false
+}

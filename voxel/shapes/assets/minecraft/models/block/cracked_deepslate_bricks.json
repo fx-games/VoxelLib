@@ -1,0 +1,52 @@
+{
+ "textures": {
+  "all": "block/cracked_deepslate_bricks",
+  "down": "block/cracked_deepslate_bricks",
+  "east": "block/cracked_deepslate_bricks",
+  "north": "block/cracked_deepslate_bricks",
+  "particle": "block/cracked_deepslate_bricks",
+  "south": "block/cracked_deepslate_bricks",
+  "up": "block/cracked_deepslate_bricks",
+  "west": "block/cracked_deepslate_bricks"
+ },
+ "elements": [
+  {
+   "from": [
+    0,
+    0,
+    0
+   ],
+   "to": [
+    16,
+    16,
+    16
+   ],
+   "faces": {
+    "down": {
+     "texture": "#down",
+     "cullface": "down"
+    },
+    "east": {
+     "texture": "#east",
+     "cullface": "east"
+    },
+    "north": {
+     "texture": "#north",
+     "cullface": "north"
+    },
+    "south": {
+     "texture": "#south",
+     "cullface": "south"
+    },
+    "up": {
+     "texture": "#up",
+     "cullface": "up"
+    },
+    "west": {
+     "texture": "#west",
+     "cullface": "west"
+    }
+   }
+  }
+ ]
+}

@@ -1,0 +1,52 @@
+{
+ "textures": {
+  "all": "block/coal_ore",
+  "down": "block/coal_ore",
+  "east": "block/coal_ore",
+  "north": "block/coal_ore",
+  "particle": "block/coal_ore",
+  "south": "block/coal_ore",
+  "up": "block/coal_ore",
+  "west": "block/coal_ore"
+ },
+ "elements": [
+  {
+   "from": [
+    0,
+    0,
+    0
+   ],
+   "to": [
+    16,
+    16,
+    16
+   ],
+   "faces": {
+    "down": {
+     "texture": "#down",
+     "cullface": "down"
+    },
+    "east": {
+     "texture": "#east",
+     "cullface": "east"
+    },
+    "north": {
+     "texture": "#north",
+     "cullface": "north"
+    },
+    "south": {
+     "texture": "#south",
+     "cullface": "south"
+    },
+    "up": {
+     "texture": "#up",
+     "cullface": "up"
+    },
+    "west": {
+     "texture": "#west",
+     "cullface": "west"
+    }
+   }
+  }
+ ]
+}

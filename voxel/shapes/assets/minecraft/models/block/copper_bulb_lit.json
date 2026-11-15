@@ -1,0 +1,52 @@
+{
+ "textures": {
+  "all": "block/copper_bulb_lit",
+  "down": "block/copper_bulb_lit",
+  "east": "block/copper_bulb_lit",
+  "north": "block/copper_bulb_lit",
+  "particle": "block/copper_bulb_lit",
+  "south": "block/copper_bulb_lit",
+  "up": "block/copper_bulb_lit",
+  "west": "block/copper_bulb_lit"
+ },
+ "elements": [
+  {
+   "from": [
+    0,
+    0,
+    0
+   ],
+   "to": [
+    16,
+    16,
+    16
+   ],
+   "faces": {
+    "down": {
+     "texture": "#down",
+     "cullface": "down"
+    },
+    "east": {
+     "texture": "#east",
+     "cullface": "east"
+    },
+    "north": {
+     "texture": "#north",
+     "cullface": "north"
+    },
+    "south": {
+     "texture": "#south",
+     "cullface": "south"
+    },
+    "up": {
+     "texture": "#up",
+     "cullface": "up"
+    },
+    "west": {
+     "texture": "#west",
+     "cullface": "west"
+    }
+   }
+  }
+ ]
+}

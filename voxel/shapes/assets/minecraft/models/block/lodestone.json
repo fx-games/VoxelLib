@@ -1,0 +1,53 @@
+{
+ "textures": {
+  "down": "block/lodestone_top",
+  "east": "block/lodestone_side",
+  "end": "block/lodestone_top",
+  "north": "block/lodestone_side",
+  "particle": "block/lodestone_side",
+  "side": "block/lodestone_side",
+  "south": "block/lodestone_side",
+  "up": "block/lodestone_top",
+  "west": "block/lodestone_side"
+ },
+ "elements": [
+  {
+   "from": [
+    0,
+    0,
+    0
+   ],
+   "to": [
+    16,
+    16,
+    16
+   ],
+   "faces": {
+    "down": {
+     "texture": "#down",
+     "cullface": "down"
+    },
+    "east": {
+     "texture": "#east",
+     "cullface": "east"
+    },
+    "north": {
+     "texture": "#north",
+     "cullface": "north"
+    },
+    "south": {
+     "texture": "#south",
+     "cullface": "south"
+    },
+    "up": {
+     "texture": "#up",
+     "cullface": "up"
+    },
+    "west": {
+     "texture": "#west",
+     "cullface": "west"
+    }
+   }
+  }
+ ]
+}

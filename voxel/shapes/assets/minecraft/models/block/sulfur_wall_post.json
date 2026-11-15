@@ -1,0 +1,42 @@
+{
+ "textures": {
+  "particle": "block/sulfur",
+  "wall": "block/sulfur"
+ },
+ "elements": [
+  {
+   "from": [
+    4,
+    0,
+    4
+   ],
+   "to": [
+    12,
+    16,
+    12
+   ],
+   "faces": {
+    "down": {
+     "texture": "#wall",
+     "cullface": "down"
+    },
+    "east": {
+     "texture": "#wall"
+    },
+    "north": {
+     "texture": "#wall"
+    },
+    "south": {
+     "texture": "#wall"
+    },
+    "up": {
+     "texture": "#wall",
+     "cullface": "up"
+    },
+    "west": {
+     "texture": "#wall"
+    }
+   }
+  }
+ ]
+}

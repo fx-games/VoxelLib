@@ -1,0 +1,52 @@
+{
+ "textures": {
+  "all": "block/orange_poplar_leaves",
+  "down": "block/orange_poplar_leaves",
+  "east": "block/orange_poplar_leaves",
+  "north": "block/orange_poplar_leaves",
+  "particle": "block/orange_poplar_leaves",
+  "south": "block/orange_poplar_leaves",
+  "up": "block/orange_poplar_leaves",
+  "west": "block/orange_poplar_leaves"
+ },
+ "elements": [
+  {
+   "from": [
+    0,
+    0,
+    0
+   ],
+   "to": [
+    16,
+    16,
+    16
+   ],
+   "faces": {
+    "down": {
+     "texture": "#down",
+     "cullface": "down"
+    },
+    "east": {
+     "texture": "#east",
+     "cullface": "east"
+    },
+    "north": {
+     "texture": "#north",
+     "cullface": "north"
+    },
+    "south": {
+     "texture": "#south",
+     "cullface": "south"
+    },
+    "up": {
+     "texture": "#up",
+     "cullface": "up"
+    },
+    "west": {
+     "texture": "#west",
+     "cullface": "west"
+    }
+   }
+  }
+ ]
+}

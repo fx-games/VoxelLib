@@ -1,0 +1,146 @@
+{
+ "textures": {
+  "particle": "block/shelf_mushroom_particle",
+  "small": "block/shelf_mushroom_stage0"
+ },
+ "elements": [
+  {
+   "from": [
+    3,
+    9,
+    9
+   ],
+   "to": [
+    13,
+    11,
+    16
+   ],
+   "faces": {
+    "down": {
+     "texture": "#small",
+     "uv": [
+      5,
+      3.5,
+      0,
+      7
+     ]
+    },
+    "east": {
+     "texture": "#small",
+     "uv": [
+      5,
+      0,
+      8.5,
+      1
+     ]
+    },
+    "north": {
+     "texture": "#small",
+     "uv": [
+      5,
+      2,
+      10,
+      3
+     ]
+    },
+    "south": {
+     "texture": "#small",
+     "cullface": "south",
+     "uv": [
+      5,
+      3,
+      10,
+      4
+     ]
+    },
+    "up": {
+     "texture": "#small",
+     "uv": [
+      5,
+      3.5,
+      0,
+      0
+     ]
+    },
+    "west": {
+     "texture": "#small",
+     "uv": [
+      5,
+      1,
+      8.5,
+      2
+     ]
+    }
+   }
+  },
+  {
+   "from": [
+    5,
+    8,
+    12
+   ],
+   "to": [
+    11,
+    9,
+    16
+   ],
+   "faces": {
+    "down": {
+     "texture": "#small",
+     "uv": [
+      3,
+      9,
+      0,
+      11
+     ]
+    },
+    "east": {
+     "texture": "#small",
+     "uv": [
+      5,
+      4,
+      7,
+      4.5
+     ]
+    },
+    "north": {
+     "texture": "#small",
+     "uv": [
+      5,
+      5,
+      8,
+      5.5
+     ]
+    },
+    "south": {
+     "texture": "#small",
+     "cullface": "south",
+     "uv": [
+      5,
+      5.5,
+      8,
+      6
+     ]
+    },
+    "up": {
+     "texture": "#small",
+     "uv": [
+      3,
+      9,
+      0,
+      7
+     ]
+    },
+    "west": {
+     "texture": "#small",
+     "uv": [
+      5,
+      4.5,
+      7,
+      5
+     ]
+    }
+   }
+  }
+ ]
+}

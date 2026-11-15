@@ -1,0 +1,41 @@
+{
+ "textures": {
+  "fire": "block/soul_fire_0",
+  "particle": "block/soul_fire_0"
+ },
+ "elements": [
+  {
+   "from": [
+    0,
+    0,
+    0.01
+   ],
+   "to": [
+    16,
+    22.4,
+    0.01
+   ],
+   "faces": {
+    "north": {
+     "texture": "#fire",
+     "uv": [
+      16,
+      0,
+      0,
+      16
+     ]
+    },
+    "south": {
+     "texture": "#fire",
+     "uv": [
+      16,
+      0,
+      0,
+      16
+     ]
+    }
+   }
+  }
+ ],
+ "ambientocclusion": false
+}

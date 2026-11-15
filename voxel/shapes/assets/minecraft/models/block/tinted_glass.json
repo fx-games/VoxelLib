@@ -1,0 +1,52 @@
+{
+ "textures": {
+  "all": "block/tinted_glass",
+  "down": "block/tinted_glass",
+  "east": "block/tinted_glass",
+  "north": "block/tinted_glass",
+  "particle": "block/tinted_glass",
+  "south": "block/tinted_glass",
+  "up": "block/tinted_glass",
+  "west": "block/tinted_glass"
+ },
+ "elements": [
+  {
+   "from": [
+    0,
+    0,
+    0
+   ],
+   "to": [
+    16,
+    16,
+    16
+   ],
+   "faces": {
+    "down": {
+     "texture": "#down",
+     "cullface": "down"
+    },
+    "east": {
+     "texture": "#east",
+     "cullface": "east"
+    },
+    "north": {
+     "texture": "#north",
+     "cullface": "north"
+    },
+    "south": {
+     "texture": "#south",
+     "cullface": "south"
+    },
+    "up": {
+     "texture": "#up",
+     "cullface": "up"
+    },
+    "west": {
+     "texture": "#west",
+     "cullface": "west"
+    }
+   }
+  }
+ ]
+}

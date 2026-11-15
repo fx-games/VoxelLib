@@ -1,0 +1,52 @@
+{
+ "textures": {
+  "all": "block/wet_sponge",
+  "down": "block/wet_sponge",
+  "east": "block/wet_sponge",
+  "north": "block/wet_sponge",
+  "particle": "block/wet_sponge",
+  "south": "block/wet_sponge",
+  "up": "block/wet_sponge",
+  "west": "block/wet_sponge"
+ },
+ "elements": [
+  {
+   "from": [
+    0,
+    0,
+    0
+   ],
+   "to": [
+    16,
+    16,
+    16
+   ],
+   "faces": {
+    "down": {
+     "texture": "#down",
+     "cullface": "down"
+    },
+    "east": {
+     "texture": "#east",
+     "cullface": "east"
+    },
+    "north": {
+     "texture": "#north",
+     "cullface": "north"
+    },
+    "south": {
+     "texture": "#south",
+     "cullface": "south"
+    },
+    "up": {
+     "texture": "#up",
+     "cullface": "up"
+    },
+    "west": {
+     "texture": "#west",
+     "cullface": "west"
+    }
+   }
+  }
+ ]
+}

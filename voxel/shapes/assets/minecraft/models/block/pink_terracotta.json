@@ -1,0 +1,52 @@
+{
+ "textures": {
+  "all": "block/pink_terracotta",
+  "down": "block/pink_terracotta",
+  "east": "block/pink_terracotta",
+  "north": "block/pink_terracotta",
+  "particle": "block/pink_terracotta",
+  "south": "block/pink_terracotta",
+  "up": "block/pink_terracotta",
+  "west": "block/pink_terracotta"
+ },
+ "elements": [
+  {
+   "from": [
+    0,
+    0,
+    0
+   ],
+   "to": [
+    16,
+    16,
+    16
+   ],
+   "faces": {
+    "down": {
+     "texture": "#down",
+     "cullface": "down"
+    },
+    "east": {
+     "texture": "#east",
+     "cullface": "east"
+    },
+    "north": {
+     "texture": "#north",
+     "cullface": "north"
+    },
+    "south": {
+     "texture": "#south",
+     "cullface": "south"
+    },
+    "up": {
+     "texture": "#up",
+     "cullface": "up"
+    },
+    "west": {
+     "texture": "#west",
+     "cullface": "west"
+    }
+   }
+  }
+ ]
+}

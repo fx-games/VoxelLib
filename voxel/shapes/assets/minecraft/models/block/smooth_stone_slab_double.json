@@ -1,0 +1,53 @@
+{
+ "textures": {
+  "down": "block/smooth_stone",
+  "east": "block/smooth_stone_slab_side",
+  "end": "block/smooth_stone",
+  "north": "block/smooth_stone_slab_side",
+  "particle": "block/smooth_stone_slab_side",
+  "side": "block/smooth_stone_slab_side",
+  "south": "block/smooth_stone_slab_side",
+  "up": "block/smooth_stone",
+  "west": "block/smooth_stone_slab_side"
+ },
+ "elements": [
+  {
+   "from": [
+    0,
+    0,
+    0
+   ],
+   "to": [
+    16,
+    16,
+    16
+   ],
+   "faces": {
+    "down": {
+     "texture": "#down",
+     "cullface": "down"
+    },
+    "east": {
+     "texture": "#east",
+     "cullface": "east"
+    },
+    "north": {
+     "texture": "#north",
+     "cullface": "north"
+    },
+    "south": {
+     "texture": "#south",
+     "cullface": "south"
+    },
+    "up": {
+     "texture": "#up",
+     "cullface": "up"
+    },
+    "west": {
+     "texture": "#west",
+     "cullface": "west"
+    }
+   }
+  }
+ ]
+}

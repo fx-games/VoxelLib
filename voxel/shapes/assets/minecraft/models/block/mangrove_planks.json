@@ -1,0 +1,52 @@
+{
+ "textures": {
+  "all": "block/mangrove_planks",
+  "down": "block/mangrove_planks",
+  "east": "block/mangrove_planks",
+  "north": "block/mangrove_planks",
+  "particle": "block/mangrove_planks",
+  "south": "block/mangrove_planks",
+  "up": "block/mangrove_planks",
+  "west": "block/mangrove_planks"
+ },
+ "elements": [
+  {
+   "from": [
+    0,
+    0,
+    0
+   ],
+   "to": [
+    16,
+    16,
+    16
+   ],
+   "faces": {
+    "down": {
+     "texture": "#down",
+     "cullface": "down"
+    },
+    "east": {
+     "texture": "#east",
+     "cullface": "east"
+    },
+    "north": {
+     "texture": "#north",
+     "cullface": "north"
+    },
+    "south": {
+     "texture": "#south",
+     "cullface": "south"
+    },
+    "up": {
+     "texture": "#up",
+     "cullface": "up"
+    },
+    "west": {
+     "texture": "#west",
+     "cullface": "west"
+    }
+   }
+  }
+ ]
+}

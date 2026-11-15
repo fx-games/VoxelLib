@@ -1,0 +1,52 @@
+{
+ "textures": {
+  "all": "block/red_terracotta",
+  "down": "block/red_terracotta",
+  "east": "block/red_terracotta",
+  "north": "block/red_terracotta",
+  "particle": "block/red_terracotta",
+  "south": "block/red_terracotta",
+  "up": "block/red_terracotta",
+  "west": "block/red_terracotta"
+ },
+ "elements": [
+  {
+   "from": [
+    0,
+    0,
+    0
+   ],
+   "to": [
+    16,
+    16,
+    16
+   ],
+   "faces": {
+    "down": {
+     "texture": "#down",
+     "cullface": "down"
+    },
+    "east": {
+     "texture": "#east",
+     "cullface": "east"
+    },
+    "north": {
+     "texture": "#north",
+     "cullface": "north"
+    },
+    "south": {
+     "texture": "#south",
+     "cullface": "south"
+    },
+    "up": {
+     "texture": "#up",
+     "cullface": "up"
+    },
+    "west": {
+     "texture": "#west",
+     "cullface": "west"
+    }
+   }
+  }
+ ]
+}

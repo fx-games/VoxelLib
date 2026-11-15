@@ -1,0 +1,52 @@
+{
+ "textures": {
+  "all": "block/honeycomb_block",
+  "down": "block/honeycomb_block",
+  "east": "block/honeycomb_block",
+  "north": "block/honeycomb_block",
+  "particle": "block/honeycomb_block",
+  "south": "block/honeycomb_block",
+  "up": "block/honeycomb_block",
+  "west": "block/honeycomb_block"
+ },
+ "elements": [
+  {
+   "from": [
+    0,
+    0,
+    0
+   ],
+   "to": [
+    16,
+    16,
+    16
+   ],
+   "faces": {
+    "down": {
+     "texture": "#down",
+     "cullface": "down"
+    },
+    "east": {
+     "texture": "#east",
+     "cullface": "east"
+    },
+    "north": {
+     "texture": "#north",
+     "cullface": "north"
+    },
+    "south": {
+     "texture": "#south",
+     "cullface": "south"
+    },
+    "up": {
+     "texture": "#up",
+     "cullface": "up"
+    },
+    "west": {
+     "texture": "#west",
+     "cullface": "west"
+    }
+   }
+  }
+ ]
+}

@@ -1,0 +1,53 @@
+{
+ "textures": {
+  "down": "block/blackstone_top",
+  "east": "block/blackstone",
+  "end": "block/blackstone_top",
+  "north": "block/blackstone",
+  "particle": "block/blackstone",
+  "side": "block/blackstone",
+  "south": "block/blackstone",
+  "up": "block/blackstone_top",
+  "west": "block/blackstone"
+ },
+ "elements": [
+  {
+   "from": [
+    0,
+    0,
+    0
+   ],
+   "to": [
+    16,
+    16,
+    16
+   ],
+   "faces": {
+    "down": {
+     "texture": "#down",
+     "cullface": "down"
+    },
+    "east": {
+     "texture": "#east",
+     "cullface": "east"
+    },
+    "north": {
+     "texture": "#north",
+     "cullface": "north"
+    },
+    "south": {
+     "texture": "#south",
+     "cullface": "south"
+    },
+    "up": {
+     "texture": "#up",
+     "cullface": "up"
+    },
+    "west": {
+     "texture": "#west",
+     "cullface": "west"
+    }
+   }
+  }
+ ]
+}

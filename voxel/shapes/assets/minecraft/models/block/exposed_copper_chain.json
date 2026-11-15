@@ -1,0 +1,91 @@
+{
+ "textures": {
+  "all": "block/exposed_copper_chain",
+  "particle": "block/exposed_copper_chain",
+  "texture": "block/exposed_copper_chain"
+ },
+ "elements": [
+  {
+   "from": [
+    6.5,
+    0,
+    8
+   ],
+   "to": [
+    9.5,
+    16,
+    8
+   ],
+   "rotation": {
+    "origin": [
+     8,
+     8,
+     8
+    ],
+    "axis": "y",
+    "angle": 45
+   },
+   "faces": {
+    "north": {
+     "texture": "#all",
+     "uv": [
+      3,
+      0,
+      0,
+      16
+     ]
+    },
+    "south": {
+     "texture": "#all",
+     "uv": [
+      0,
+      0,
+      3,
+      16
+     ]
+    }
+   }
+  },
+  {
+   "from": [
+    8,
+    0,
+    6.5
+   ],
+   "to": [
+    8,
+    16,
+    9.5
+   ],
+   "rotation": {
+    "origin": [
+     8,
+     8,
+     8
+    ],
+    "axis": "y",
+    "angle": 45
+   },
+   "faces": {
+    "east": {
+     "texture": "#all",
+     "uv": [
+      3,
+      0,
+      6,
+      16
+     ]
+    },
+    "west": {
+     "texture": "#all",
+     "uv": [
+      6,
+      0,
+      3,
+      16
+     ]
+    }
+   }
+  }
+ ]
+}

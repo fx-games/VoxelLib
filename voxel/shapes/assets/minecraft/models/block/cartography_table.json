@@ -1,0 +1,51 @@
+{
+ "textures": {
+  "down": "block/dark_oak_planks",
+  "east": "block/cartography_table_side3",
+  "north": "block/cartography_table_side3",
+  "particle": "block/cartography_table_side3",
+  "south": "block/cartography_table_side1",
+  "up": "block/cartography_table_top",
+  "west": "block/cartography_table_side2"
+ },
+ "elements": [
+  {
+   "from": [
+    0,
+    0,
+    0
+   ],
+   "to": [
+    16,
+    16,
+    16
+   ],
+   "faces": {
+    "down": {
+     "texture": "#down",
+     "cullface": "down"
+    },
+    "east": {
+     "texture": "#east",
+     "cullface": "east"
+    },
+    "north": {
+     "texture": "#north",
+     "cullface": "north"
+    },
+    "south": {
+     "texture": "#south",
+     "cullface": "south"
+    },
+    "up": {
+     "texture": "#up",
+     "cullface": "up"
+    },
+    "west": {
+     "texture": "#west",
+     "cullface": "west"
+    }
+   }
+  }
+ ]
+}

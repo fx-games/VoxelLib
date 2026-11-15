@@ -1,0 +1,93 @@
+{
+ "textures": {
+  "fan": "block/dead_bubble_coral_fan",
+  "particle": "block/dead_bubble_coral_fan"
+ },
+ "elements": [
+  {
+   "from": [
+    0,
+    8,
+    0
+   ],
+   "to": [
+    16,
+    8,
+    16
+   ],
+   "rotation": {
+    "origin": [
+     8,
+     8,
+     14
+    ],
+    "axis": "x",
+    "angle": 22.5,
+    "rescale": true
+   },
+   "faces": {
+    "down": {
+     "texture": "#fan",
+     "uv": [
+      16,
+      16,
+      0,
+      0
+     ]
+    },
+    "up": {
+     "texture": "#fan",
+     "uv": [
+      0,
+      0,
+      16,
+      16
+     ]
+    }
+   }
+  },
+  {
+   "from": [
+    0,
+    8,
+    0
+   ],
+   "to": [
+    16,
+    8,
+    16
+   ],
+   "rotation": {
+    "origin": [
+     8,
+     8,
+     14
+    ],
+    "axis": "x",
+    "angle": -22.5,
+    "rescale": true
+   },
+   "faces": {
+    "down": {
+     "texture": "#fan",
+     "uv": [
+      16,
+      16,
+      0,
+      0
+     ]
+    },
+    "up": {
+     "texture": "#fan",
+     "uv": [
+      0,
+      0,
+      16,
+      16
+     ]
+    }
+   }
+  }
+ ],
+ "ambientocclusion": false
+}

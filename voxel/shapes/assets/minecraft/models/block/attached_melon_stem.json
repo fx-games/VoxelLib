@@ -1,0 +1,132 @@
+{
+ "textures": {
+  "particle": "block/melon_stem",
+  "stem": "block/melon_stem",
+  "upperstem": "block/attached_melon_stem"
+ },
+ "elements": [
+  {
+   "from": [
+    0,
+    -1,
+    8
+   ],
+   "to": [
+    16,
+    7,
+    8
+   ],
+   "rotation": {
+    "origin": [
+     8,
+     8,
+     8
+    ],
+    "axis": "y",
+    "angle": 45,
+    "rescale": true
+   },
+   "faces": {
+    "north": {
+     "texture": "#stem",
+     "uv": [
+      0,
+      0,
+      16,
+      8
+     ],
+     "tintindex": 0
+    },
+    "south": {
+     "texture": "#stem",
+     "uv": [
+      16,
+      0,
+      0,
+      8
+     ],
+     "tintindex": 0
+    }
+   }
+  },
+  {
+   "from": [
+    8,
+    -1,
+    0
+   ],
+   "to": [
+    8,
+    7,
+    16
+   ],
+   "rotation": {
+    "origin": [
+     8,
+     8,
+     8
+    ],
+    "axis": "y",
+    "angle": 45,
+    "rescale": true
+   },
+   "faces": {
+    "east": {
+     "texture": "#stem",
+     "uv": [
+      16,
+      0,
+      0,
+      8
+     ],
+     "tintindex": 0
+    },
+    "west": {
+     "texture": "#stem",
+     "uv": [
+      0,
+      0,
+      16,
+      8
+     ],
+     "tintindex": 0
+    }
+   }
+  },
+  {
+   "from": [
+    0,
+    0,
+    8
+   ],
+   "to": [
+    9,
+    16,
+    8
+   ],
+   "faces": {
+    "north": {
+     "texture": "#upperstem",
+     "uv": [
+      9,
+      0,
+      0,
+      16
+     ],
+     "tintindex": 0
+    },
+    "south": {
+     "texture": "#upperstem",
+     "uv": [
+      0,
+      0,
+      9,
+      16
+     ],
+     "tintindex": 0
+    }
+   }
+  }
+ ],
+ "ambientocclusion": false
+}

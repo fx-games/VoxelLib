@@ -1,0 +1,32 @@
+{
+ "textures": {
+  "particle": "block/chiseled_bookshelf_empty",
+  "texture": "block/chiseled_bookshelf_empty"
+ },
+ "elements": [
+  {
+   "from": [
+    0,
+    8,
+    0
+   ],
+   "to": [
+    5,
+    16,
+    0
+   ],
+   "faces": {
+    "north": {
+     "texture": "#texture",
+     "cullface": "north",
+     "uv": [
+      11,
+      0,
+      16,
+      8
+     ]
+    }
+   }
+  }
+ ]
+}

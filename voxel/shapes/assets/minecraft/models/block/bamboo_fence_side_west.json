@@ -1,0 +1,132 @@
+{
+ "textures": {
+  "particle": "block/bamboo_fence",
+  "texture": "block/bamboo_fence"
+ },
+ "elements": [
+  {
+   "from": [
+    0,
+    12,
+    7
+   ],
+   "to": [
+    9,
+    15,
+    9
+   ],
+   "faces": {
+    "down": {
+     "texture": "#texture",
+     "uv": [
+      13,
+      7,
+      15,
+      16
+     ],
+     "rotation": 90
+    },
+    "north": {
+     "texture": "#texture",
+     "uv": [
+      4,
+      4,
+      13,
+      7
+     ]
+    },
+    "south": {
+     "texture": "#texture",
+     "uv": [
+      4,
+      4,
+      13,
+      7
+     ]
+    },
+    "up": {
+     "texture": "#texture",
+     "uv": [
+      13,
+      7,
+      15,
+      16
+     ],
+     "rotation": 270
+    },
+    "west": {
+     "texture": "#texture",
+     "cullface": "west",
+     "uv": [
+      15,
+      4,
+      13,
+      7
+     ]
+    }
+   }
+  },
+  {
+   "from": [
+    0,
+    6,
+    7
+   ],
+   "to": [
+    9,
+    9,
+    9
+   ],
+   "faces": {
+    "down": {
+     "texture": "#texture",
+     "uv": [
+      13,
+      7,
+      15,
+      16
+     ],
+     "rotation": 90
+    },
+    "north": {
+     "texture": "#texture",
+     "uv": [
+      4,
+      4,
+      13,
+      7
+     ]
+    },
+    "south": {
+     "texture": "#texture",
+     "uv": [
+      4,
+      4,
+      13,
+      7
+     ]
+    },
+    "up": {
+     "texture": "#texture",
+     "uv": [
+      13,
+      7,
+      15,
+      16
+     ],
+     "rotation": 270
+    },
+    "west": {
+     "texture": "#texture",
+     "cullface": "west",
+     "uv": [
+      15,
+      4,
+      13,
+      7
+     ]
+    }
+   }
+  }
+ ]
+}

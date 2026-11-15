@@ -1,0 +1,52 @@
+{
+ "textures": {
+  "all": "block/mossy_cobblestone",
+  "down": "block/mossy_cobblestone",
+  "east": "block/mossy_cobblestone",
+  "north": "block/mossy_cobblestone",
+  "particle": "block/mossy_cobblestone",
+  "south": "block/mossy_cobblestone",
+  "up": "block/mossy_cobblestone",
+  "west": "block/mossy_cobblestone"
+ },
+ "elements": [
+  {
+   "from": [
+    0,
+    0,
+    0
+   ],
+   "to": [
+    16,
+    16,
+    16
+   ],
+   "faces": {
+    "down": {
+     "texture": "#down",
+     "cullface": "down"
+    },
+    "east": {
+     "texture": "#east",
+     "cullface": "east"
+    },
+    "north": {
+     "texture": "#north",
+     "cullface": "north"
+    },
+    "south": {
+     "texture": "#south",
+     "cullface": "south"
+    },
+    "up": {
+     "texture": "#up",
+     "cullface": "up"
+    },
+    "west": {
+     "texture": "#west",
+     "cullface": "west"
+    }
+   }
+  }
+ ]
+}

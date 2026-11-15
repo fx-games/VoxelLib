@@ -1,0 +1,55 @@
+{
+ "textures": {
+  "down": "block/stripped_bamboo_block",
+  "east": "block/stripped_bamboo_block",
+  "end": "block/stripped_bamboo_block_top",
+  "north": "block/stripped_bamboo_block_top",
+  "particle": "block/stripped_bamboo_block",
+  "side": "block/stripped_bamboo_block",
+  "south": "block/stripped_bamboo_block_top",
+  "up": "block/stripped_bamboo_block",
+  "west": "block/stripped_bamboo_block"
+ },
+ "elements": [
+  {
+   "from": [
+    0,
+    0,
+    0
+   ],
+   "to": [
+    16,
+    16,
+    16
+   ],
+   "faces": {
+    "down": {
+     "texture": "#down",
+     "cullface": "down"
+    },
+    "east": {
+     "texture": "#east",
+     "cullface": "east",
+     "rotation": 90
+    },
+    "north": {
+     "texture": "#north",
+     "cullface": "north"
+    },
+    "south": {
+     "texture": "#south",
+     "cullface": "south"
+    },
+    "up": {
+     "texture": "#up",
+     "cullface": "up"
+    },
+    "west": {
+     "texture": "#west",
+     "cullface": "west",
+     "rotation": 90
+    }
+   }
+  }
+ ]
+}

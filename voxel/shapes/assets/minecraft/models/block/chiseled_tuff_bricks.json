@@ -1,0 +1,53 @@
+{
+ "textures": {
+  "down": "block/chiseled_tuff_bricks_top",
+  "east": "block/chiseled_tuff_bricks",
+  "end": "block/chiseled_tuff_bricks_top",
+  "north": "block/chiseled_tuff_bricks",
+  "particle": "block/chiseled_tuff_bricks",
+  "side": "block/chiseled_tuff_bricks",
+  "south": "block/chiseled_tuff_bricks",
+  "up": "block/chiseled_tuff_bricks_top",
+  "west": "block/chiseled_tuff_bricks"
+ },
+ "elements": [
+  {
+   "from": [
+    0,
+    0,
+    0
+   ],
+   "to": [
+    16,
+    16,
+    16
+   ],
+   "faces": {
+    "down": {
+     "texture": "#down",
+     "cullface": "down"
+    },
+    "east": {
+     "texture": "#east",
+     "cullface": "east"
+    },
+    "north": {
+     "texture": "#north",
+     "cullface": "north"
+    },
+    "south": {
+     "texture": "#south",
+     "cullface": "south"
+    },
+    "up": {
+     "texture": "#up",
+     "cullface": "up"
+    },
+    "west": {
+     "texture": "#west",
+     "cullface": "west"
+    }
+   }
+  }
+ ]
+}

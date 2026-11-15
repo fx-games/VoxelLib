@@ -1,0 +1,52 @@
+{
+ "textures": {
+  "all": "block/iron_ore",
+  "down": "block/iron_ore",
+  "east": "block/iron_ore",
+  "north": "block/iron_ore",
+  "particle": "block/iron_ore",
+  "south": "block/iron_ore",
+  "up": "block/iron_ore",
+  "west": "block/iron_ore"
+ },
+ "elements": [
+  {
+   "from": [
+    0,
+    0,
+    0
+   ],
+   "to": [
+    16,
+    16,
+    16
+   ],
+   "faces": {
+    "down": {
+     "texture": "#down",
+     "cullface": "down"
+    },
+    "east": {
+     "texture": "#east",
+     "cullface": "east"
+    },
+    "north": {
+     "texture": "#north",
+     "cullface": "north"
+    },
+    "south": {
+     "texture": "#south",
+     "cullface": "south"
+    },
+    "up": {
+     "texture": "#up",
+     "cullface": "up"
+    },
+    "west": {
+     "texture": "#west",
+     "cullface": "west"
+    }
+   }
+  }
+ ]
+}

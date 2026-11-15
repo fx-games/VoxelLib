@@ -1,0 +1,81 @@
+{
+ "textures": {
+  "particle": "block/oxidized_copper_trapdoor",
+  "texture": "block/oxidized_copper_trapdoor"
+ },
+ "elements": [
+  {
+   "from": [
+    0,
+    0,
+    13
+   ],
+   "to": [
+    16,
+    16,
+    16
+   ],
+   "faces": {
+    "down": {
+     "texture": "#texture",
+     "cullface": "down",
+     "uv": [
+      0,
+      13,
+      16,
+      16
+     ]
+    },
+    "east": {
+     "texture": "#texture",
+     "cullface": "east",
+     "uv": [
+      13,
+      0,
+      16,
+      16
+     ]
+    },
+    "north": {
+     "texture": "#texture",
+     "uv": [
+      0,
+      0,
+      16,
+      16
+     ]
+    },
+    "south": {
+     "texture": "#texture",
+     "cullface": "south",
+     "uv": [
+      0,
+      0,
+      16,
+      16
+     ]
+    },
+    "up": {
+     "texture": "#texture",
+     "cullface": "up",
+     "uv": [
+      0,
+      16,
+      16,
+      13
+     ]
+    },
+    "west": {
+     "texture": "#texture",
+     "cullface": "west",
+     "uv": [
+      16,
+      0,
+      13,
+      16
+     ]
+    }
+   }
+  }
+ ]
+}

@@ -1,0 +1,52 @@
+{
+ "textures": {
+  "all": "block/potent_sulfur",
+  "down": "block/potent_sulfur",
+  "east": "block/potent_sulfur",
+  "north": "block/potent_sulfur",
+  "particle": "block/potent_sulfur",
+  "south": "block/potent_sulfur",
+  "up": "block/potent_sulfur",
+  "west": "block/potent_sulfur"
+ },
+ "elements": [
+  {
+   "from": [
+    0,
+    0,
+    0
+   ],
+   "to": [
+    16,
+    16,
+    16
+   ],
+   "faces": {
+    "down": {
+     "texture": "#down",
+     "cullface": "down"
+    },
+    "east": {
+     "texture": "#east",
+     "cullface": "east"
+    },
+    "north": {
+     "texture": "#north",
+     "cullface": "north"
+    },
+    "south": {
+     "texture": "#south",
+     "cullface": "south"
+    },
+    "up": {
+     "texture": "#up",
+     "cullface": "up"
+    },
+    "west": {
+     "texture": "#west",
+     "cullface": "west"
+    }
+   }
+  }
+ ]
+}

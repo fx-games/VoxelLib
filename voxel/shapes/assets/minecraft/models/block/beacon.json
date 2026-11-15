@@ -1,0 +1,214 @@
+{
+ "textures": {
+  "beacon": "block/beacon",
+  "glass": "block/glass",
+  "obsidian": "block/obsidian",
+  "particle": "block/glass"
+ },
+ "elements": [
+  {
+   "from": [
+    0,
+    0,
+    0
+   ],
+   "to": [
+    16,
+    16,
+    16
+   ],
+   "faces": {
+    "down": {
+     "texture": "#glass",
+     "uv": [
+      0,
+      0,
+      16,
+      16
+     ]
+    },
+    "east": {
+     "texture": "#glass",
+     "uv": [
+      0,
+      0,
+      16,
+      16
+     ]
+    },
+    "north": {
+     "texture": "#glass",
+     "uv": [
+      0,
+      0,
+      16,
+      16
+     ]
+    },
+    "south": {
+     "texture": "#glass",
+     "uv": [
+      0,
+      0,
+      16,
+      16
+     ]
+    },
+    "up": {
+     "texture": "#glass",
+     "uv": [
+      0,
+      0,
+      16,
+      16
+     ]
+    },
+    "west": {
+     "texture": "#glass",
+     "uv": [
+      0,
+      0,
+      16,
+      16
+     ]
+    }
+   }
+  },
+  {
+   "from": [
+    2,
+    0.1,
+    2
+   ],
+   "to": [
+    14,
+    3,
+    14
+   ],
+   "faces": {
+    "down": {
+     "texture": "#obsidian",
+     "uv": [
+      2,
+      2,
+      14,
+      14
+     ]
+    },
+    "east": {
+     "texture": "#obsidian",
+     "uv": [
+      2,
+      13,
+      14,
+      16
+     ]
+    },
+    "north": {
+     "texture": "#obsidian",
+     "uv": [
+      2,
+      13,
+      14,
+      16
+     ]
+    },
+    "south": {
+     "texture": "#obsidian",
+     "uv": [
+      2,
+      13,
+      14,
+      16
+     ]
+    },
+    "up": {
+     "texture": "#obsidian",
+     "uv": [
+      2,
+      2,
+      14,
+      14
+     ]
+    },
+    "west": {
+     "texture": "#obsidian",
+     "uv": [
+      2,
+      13,
+      14,
+      16
+     ]
+    }
+   }
+  },
+  {
+   "from": [
+    3,
+    3,
+    3
+   ],
+   "to": [
+    13,
+    14,
+    13
+   ],
+   "faces": {
+    "down": {
+     "texture": "#beacon",
+     "uv": [
+      3,
+      3,
+      13,
+      13
+     ]
+    },
+    "east": {
+     "texture": "#beacon",
+     "uv": [
+      3,
+      2,
+      13,
+      13
+     ]
+    },
+    "north": {
+     "texture": "#beacon",
+     "uv": [
+      3,
+      2,
+      13,
+      13
+     ]
+    },
+    "south": {
+     "texture": "#beacon",
+     "uv": [
+      3,
+      2,
+      13,
+      13
+     ]
+    },
+    "up": {
+     "texture": "#beacon",
+     "uv": [
+      3,
+      3,
+      13,
+      13
+     ]
+    },
+    "west": {
+     "texture": "#beacon",
+     "uv": [
+      3,
+      2,
+      13,
+      13
+     ]
+    }
+   }
+  }
+ ]
+}

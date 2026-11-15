@@ -1,0 +1,53 @@
+{
+ "textures": {
+  "down": "block/red_sandstone_top",
+  "east": "block/chiseled_red_sandstone",
+  "end": "block/red_sandstone_top",
+  "north": "block/chiseled_red_sandstone",
+  "particle": "block/chiseled_red_sandstone",
+  "side": "block/chiseled_red_sandstone",
+  "south": "block/chiseled_red_sandstone",
+  "up": "block/red_sandstone_top",
+  "west": "block/chiseled_red_sandstone"
+ },
+ "elements": [
+  {
+   "from": [
+    0,
+    0,
+    0
+   ],
+   "to": [
+    16,
+    16,
+    16
+   ],
+   "faces": {
+    "down": {
+     "texture": "#down",
+     "cullface": "down"
+    },
+    "east": {
+     "texture": "#east",
+     "cullface": "east"
+    },
+    "north": {
+     "texture": "#north",
+     "cullface": "north"
+    },
+    "south": {
+     "texture": "#south",
+     "cullface": "south"
+    },
+    "up": {
+     "texture": "#up",
+     "cullface": "up"
+    },
+    "west": {
+     "texture": "#west",
+     "cullface": "west"
+    }
+   }
+  }
+ ]
+}

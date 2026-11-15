@@ -1,0 +1,53 @@
+{
+ "textures": {
+  "down": "block/ochre_froglight_top",
+  "east": "block/ochre_froglight_side",
+  "end": "block/ochre_froglight_top",
+  "north": "block/ochre_froglight_side",
+  "particle": "block/ochre_froglight_side",
+  "side": "block/ochre_froglight_side",
+  "south": "block/ochre_froglight_side",
+  "up": "block/ochre_froglight_top",
+  "west": "block/ochre_froglight_side"
+ },
+ "elements": [
+  {
+   "from": [
+    0,
+    0,
+    0
+   ],
+   "to": [
+    16,
+    16,
+    16
+   ],
+   "faces": {
+    "down": {
+     "texture": "#down",
+     "cullface": "down"
+    },
+    "east": {
+     "texture": "#east",
+     "cullface": "east"
+    },
+    "north": {
+     "texture": "#north",
+     "cullface": "north"
+    },
+    "south": {
+     "texture": "#south",
+     "cullface": "south"
+    },
+    "up": {
+     "texture": "#up",
+     "cullface": "up"
+    },
+    "west": {
+     "texture": "#west",
+     "cullface": "west"
+    }
+   }
+  }
+ ]
+}

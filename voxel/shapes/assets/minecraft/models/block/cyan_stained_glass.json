@@ -1,0 +1,52 @@
+{
+ "textures": {
+  "all": "block/cyan_stained_glass",
+  "down": "block/cyan_stained_glass",
+  "east": "block/cyan_stained_glass",
+  "north": "block/cyan_stained_glass",
+  "particle": "block/cyan_stained_glass",
+  "south": "block/cyan_stained_glass",
+  "up": "block/cyan_stained_glass",
+  "west": "block/cyan_stained_glass"
+ },
+ "elements": [
+  {
+   "from": [
+    0,
+    0,
+    0
+   ],
+   "to": [
+    16,
+    16,
+    16
+   ],
+   "faces": {
+    "down": {
+     "texture": "#down",
+     "cullface": "down"
+    },
+    "east": {
+     "texture": "#east",
+     "cullface": "east"
+    },
+    "north": {
+     "texture": "#north",
+     "cullface": "north"
+    },
+    "south": {
+     "texture": "#south",
+     "cullface": "south"
+    },
+    "up": {
+     "texture": "#up",
+     "cullface": "up"
+    },
+    "west": {
+     "texture": "#west",
+     "cullface": "west"
+    }
+   }
+  }
+ ]
+}

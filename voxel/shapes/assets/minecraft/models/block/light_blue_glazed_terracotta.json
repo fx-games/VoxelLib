@@ -1,0 +1,85 @@
+{
+ "textures": {
+  "particle": "block/light_blue_glazed_terracotta",
+  "pattern": "block/light_blue_glazed_terracotta"
+ },
+ "elements": [
+  {
+   "from": [
+    0,
+    0,
+    0
+   ],
+   "to": [
+    16,
+    16,
+    16
+   ],
+   "faces": {
+    "down": {
+     "texture": "#pattern",
+     "cullface": "down",
+     "uv": [
+      0,
+      0,
+      16,
+      16
+     ]
+    },
+    "east": {
+     "texture": "#pattern",
+     "cullface": "east",
+     "uv": [
+      0,
+      0,
+      16,
+      16
+     ],
+     "rotation": 180
+    },
+    "north": {
+     "texture": "#pattern",
+     "cullface": "north",
+     "uv": [
+      0,
+      0,
+      16,
+      16
+     ],
+     "rotation": 90
+    },
+    "south": {
+     "texture": "#pattern",
+     "cullface": "south",
+     "uv": [
+      0,
+      0,
+      16,
+      16
+     ],
+     "rotation": 270
+    },
+    "up": {
+     "texture": "#pattern",
+     "cullface": "up",
+     "uv": [
+      0,
+      0,
+      16,
+      16
+     ]
+    },
+    "west": {
+     "texture": "#pattern",
+     "cullface": "west",
+     "uv": [
+      0,
+      0,
+      16,
+      16
+     ]
+    }
+   }
+  }
+ ]
+}

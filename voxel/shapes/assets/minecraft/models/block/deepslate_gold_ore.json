@@ -1,0 +1,52 @@
+{
+ "textures": {
+  "all": "block/deepslate_gold_ore",
+  "down": "block/deepslate_gold_ore",
+  "east": "block/deepslate_gold_ore",
+  "north": "block/deepslate_gold_ore",
+  "particle": "block/deepslate_gold_ore",
+  "south": "block/deepslate_gold_ore",
+  "up": "block/deepslate_gold_ore",
+  "west": "block/deepslate_gold_ore"
+ },
+ "elements": [
+  {
+   "from": [
+    0,
+    0,
+    0
+   ],
+   "to": [
+    16,
+    16,
+    16
+   ],
+   "faces": {
+    "down": {
+     "texture": "#down",
+     "cullface": "down"
+    },
+    "east": {
+     "texture": "#east",
+     "cullface": "east"
+    },
+    "north": {
+     "texture": "#north",
+     "cullface": "north"
+    },
+    "south": {
+     "texture": "#south",
+     "cullface": "south"
+    },
+    "up": {
+     "texture": "#up",
+     "cullface": "up"
+    },
+    "west": {
+     "texture": "#west",
+     "cullface": "west"
+    }
+   }
+  }
+ ]
+}

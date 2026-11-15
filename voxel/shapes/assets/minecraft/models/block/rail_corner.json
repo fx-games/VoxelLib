@@ -1,0 +1,41 @@
+{
+ "textures": {
+  "particle": "block/rail_corner",
+  "rail": "block/rail_corner"
+ },
+ "elements": [
+  {
+   "from": [
+    0,
+    1,
+    0
+   ],
+   "to": [
+    16,
+    1,
+    16
+   ],
+   "faces": {
+    "down": {
+     "texture": "#rail",
+     "uv": [
+      0,
+      16,
+      16,
+      0
+     ]
+    },
+    "up": {
+     "texture": "#rail",
+     "uv": [
+      0,
+      0,
+      16,
+      16
+     ]
+    }
+   }
+  }
+ ],
+ "ambientocclusion": false
+}

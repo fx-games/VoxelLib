@@ -1,0 +1,70 @@
+{
+ "textures": {
+  "edge": "block/glass_pane_top",
+  "pane": "block/glass",
+  "particle": "block/glass"
+ },
+ "elements": [
+  {
+   "from": [
+    7,
+    0,
+    0
+   ],
+   "to": [
+    9,
+    16,
+    7
+   ],
+   "faces": {
+    "down": {
+     "texture": "#edge",
+     "uv": [
+      7,
+      0,
+      9,
+      7
+     ]
+    },
+    "east": {
+     "texture": "#pane",
+     "uv": [
+      9,
+      0,
+      16,
+      16
+     ]
+    },
+    "north": {
+     "texture": "#edge",
+     "cullface": "north",
+     "uv": [
+      7,
+      0,
+      9,
+      16
+     ]
+    },
+    "up": {
+     "texture": "#edge",
+     "uv": [
+      7,
+      0,
+      9,
+      7
+     ]
+    },
+    "west": {
+     "texture": "#pane",
+     "uv": [
+      16,
+      0,
+      9,
+      16
+     ]
+    }
+   }
+  }
+ ],
+ "ambientocclusion": false
+}

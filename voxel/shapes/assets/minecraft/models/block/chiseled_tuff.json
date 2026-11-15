@@ -1,0 +1,53 @@
+{
+ "textures": {
+  "down": "block/chiseled_tuff_top",
+  "east": "block/chiseled_tuff",
+  "end": "block/chiseled_tuff_top",
+  "north": "block/chiseled_tuff",
+  "particle": "block/chiseled_tuff",
+  "side": "block/chiseled_tuff",
+  "south": "block/chiseled_tuff",
+  "up": "block/chiseled_tuff_top",
+  "west": "block/chiseled_tuff"
+ },
+ "elements": [
+  {
+   "from": [
+    0,
+    0,
+    0
+   ],
+   "to": [
+    16,
+    16,
+    16
+   ],
+   "faces": {
+    "down": {
+     "texture": "#down",
+     "cullface": "down"
+    },
+    "east": {
+     "texture": "#east",
+     "cullface": "east"
+    },
+    "north": {
+     "texture": "#north",
+     "cullface": "north"
+    },
+    "south": {
+     "texture": "#south",
+     "cullface": "south"
+    },
+    "up": {
+     "texture": "#up",
+     "cullface": "up"
+    },
+    "west": {
+     "texture": "#west",
+     "cullface": "west"
+    }
+   }
+  }
+ ]
+}

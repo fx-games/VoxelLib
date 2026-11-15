@@ -1,0 +1,135 @@
+{
+ "textures": {
+  "particle": "block/oxidized_lightning_rod",
+  "texture": "block/oxidized_lightning_rod"
+ },
+ "elements": [
+  {
+   "from": [
+    6,
+    12,
+    6
+   ],
+   "to": [
+    10,
+    16,
+    10
+   ],
+   "faces": {
+    "down": {
+     "texture": "#texture",
+     "uv": [
+      0,
+      0,
+      4,
+      4
+     ]
+    },
+    "east": {
+     "texture": "#texture",
+     "uv": [
+      0,
+      0,
+      4,
+      4
+     ]
+    },
+    "north": {
+     "texture": "#texture",
+     "uv": [
+      0,
+      0,
+      4,
+      4
+     ]
+    },
+    "south": {
+     "texture": "#texture",
+     "uv": [
+      0,
+      0,
+      4,
+      4
+     ]
+    },
+    "up": {
+     "texture": "#texture",
+     "uv": [
+      4,
+      4,
+      0,
+      0
+     ]
+    },
+    "west": {
+     "texture": "#texture",
+     "uv": [
+      0,
+      0,
+      4,
+      4
+     ]
+    }
+   }
+  },
+  {
+   "from": [
+    7,
+    0,
+    7
+   ],
+   "to": [
+    9,
+    12,
+    9
+   ],
+   "faces": {
+    "down": {
+     "texture": "#texture",
+     "uv": [
+      0,
+      4,
+      2,
+      6
+     ]
+    },
+    "east": {
+     "texture": "#texture",
+     "uv": [
+      0,
+      4,
+      2,
+      16
+     ]
+    },
+    "north": {
+     "texture": "#texture",
+     "uv": [
+      0,
+      4,
+      2,
+      16
+     ]
+    },
+    "south": {
+     "texture": "#texture",
+     "uv": [
+      0,
+      4,
+      2,
+      16
+     ]
+    },
+    "west": {
+     "texture": "#texture",
+     "uv": [
+      0,
+      4,
+      2,
+      16
+     ]
+    }
+   }
+  }
+ ]
+}

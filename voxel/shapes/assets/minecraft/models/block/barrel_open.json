@@ -1,0 +1,54 @@
+{
+ "textures": {
+  "bottom": "block/barrel_bottom",
+  "down": "block/barrel_bottom",
+  "east": "block/barrel_side",
+  "north": "block/barrel_side",
+  "particle": "block/barrel_side",
+  "side": "block/barrel_side",
+  "south": "block/barrel_side",
+  "top": "block/barrel_top_open",
+  "up": "block/barrel_top_open",
+  "west": "block/barrel_side"
+ },
+ "elements": [
+  {
+   "from": [
+    0,
+    0,
+    0
+   ],
+   "to": [
+    16,
+    16,
+    16
+   ],
+   "faces": {
+    "down": {
+     "texture": "#down",
+     "cullface": "down"
+    },
+    "east": {
+     "texture": "#east",
+     "cullface": "east"
+    },
+    "north": {
+     "texture": "#north",
+     "cullface": "north"
+    },
+    "south": {
+     "texture": "#south",
+     "cullface": "south"
+    },
+    "up": {
+     "texture": "#up",
+     "cullface": "up"
+    },
+    "west": {
+     "texture": "#west",
+     "cullface": "west"
+    }
+   }
+  }
+ ]
+}

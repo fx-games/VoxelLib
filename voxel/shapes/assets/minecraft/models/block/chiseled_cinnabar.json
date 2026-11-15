@@ -1,0 +1,52 @@
+{
+ "textures": {
+  "all": "block/chiseled_cinnabar",
+  "down": "block/chiseled_cinnabar",
+  "east": "block/chiseled_cinnabar",
+  "north": "block/chiseled_cinnabar",
+  "particle": "block/chiseled_cinnabar",
+  "south": "block/chiseled_cinnabar",
+  "up": "block/chiseled_cinnabar",
+  "west": "block/chiseled_cinnabar"
+ },
+ "elements": [
+  {
+   "from": [
+    0,
+    0,
+    0
+   ],
+   "to": [
+    16,
+    16,
+    16
+   ],
+   "faces": {
+    "down": {
+     "texture": "#down",
+     "cullface": "down"
+    },
+    "east": {
+     "texture": "#east",
+     "cullface": "east"
+    },
+    "north": {
+     "texture": "#north",
+     "cullface": "north"
+    },
+    "south": {
+     "texture": "#south",
+     "cullface": "south"
+    },
+    "up": {
+     "texture": "#up",
+     "cullface": "up"
+    },
+    "west": {
+     "texture": "#west",
+     "cullface": "west"
+    }
+   }
+  }
+ ]
+}

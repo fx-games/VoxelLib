@@ -1,0 +1,52 @@
+{
+ "textures": {
+  "all": "block/suspicious_gravel_3",
+  "down": "block/suspicious_gravel_3",
+  "east": "block/suspicious_gravel_3",
+  "north": "block/suspicious_gravel_3",
+  "particle": "block/suspicious_gravel_3",
+  "south": "block/suspicious_gravel_3",
+  "up": "block/suspicious_gravel_3",
+  "west": "block/suspicious_gravel_3"
+ },
+ "elements": [
+  {
+   "from": [
+    0,
+    0,
+    0
+   ],
+   "to": [
+    16,
+    16,
+    16
+   ],
+   "faces": {
+    "down": {
+     "texture": "#down",
+     "cullface": "down"
+    },
+    "east": {
+     "texture": "#east",
+     "cullface": "east"
+    },
+    "north": {
+     "texture": "#north",
+     "cullface": "north"
+    },
+    "south": {
+     "texture": "#south",
+     "cullface": "south"
+    },
+    "up": {
+     "texture": "#up",
+     "cullface": "up"
+    },
+    "west": {
+     "texture": "#west",
+     "cullface": "west"
+    }
+   }
+  }
+ ]
+}

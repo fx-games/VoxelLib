@@ -1,0 +1,52 @@
+{
+ "textures": {
+  "all": "block/amethyst_block",
+  "down": "block/amethyst_block",
+  "east": "block/amethyst_block",
+  "north": "block/amethyst_block",
+  "particle": "block/amethyst_block",
+  "south": "block/amethyst_block",
+  "up": "block/amethyst_block",
+  "west": "block/amethyst_block"
+ },
+ "elements": [
+  {
+   "from": [
+    0,
+    0,
+    0
+   ],
+   "to": [
+    16,
+    16,
+    16
+   ],
+   "faces": {
+    "down": {
+     "texture": "#down",
+     "cullface": "down"
+    },
+    "east": {
+     "texture": "#east",
+     "cullface": "east"
+    },
+    "north": {
+     "texture": "#north",
+     "cullface": "north"
+    },
+    "south": {
+     "texture": "#south",
+     "cullface": "south"
+    },
+    "up": {
+     "texture": "#up",
+     "cullface": "up"
+    },
+    "west": {
+     "texture": "#west",
+     "cullface": "west"
+    }
+   }
+  }
+ ]
+}

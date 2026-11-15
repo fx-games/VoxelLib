@@ -1,0 +1,40 @@
+{
+ "textures": {
+  "particle": "block/mossy_stone_bricks",
+  "wall": "block/mossy_stone_bricks"
+ },
+ "elements": [
+  {
+   "from": [
+    5,
+    0,
+    0
+   ],
+   "to": [
+    11,
+    16,
+    8
+   ],
+   "faces": {
+    "down": {
+     "texture": "#wall",
+     "cullface": "down"
+    },
+    "east": {
+     "texture": "#wall"
+    },
+    "north": {
+     "texture": "#wall",
+     "cullface": "north"
+    },
+    "up": {
+     "texture": "#wall",
+     "cullface": "up"
+    },
+    "west": {
+     "texture": "#wall"
+    }
+   }
+  }
+ ]
+}

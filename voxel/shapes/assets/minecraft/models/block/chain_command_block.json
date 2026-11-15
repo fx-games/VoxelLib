@@ -1,0 +1,57 @@
+{
+ "textures": {
+  "back": "block/chain_command_block_back",
+  "down": "block/chain_command_block_side",
+  "east": "block/chain_command_block_side",
+  "front": "block/chain_command_block_front",
+  "north": "block/chain_command_block_front",
+  "particle": "block/chain_command_block_back",
+  "side": "block/chain_command_block_side",
+  "south": "block/chain_command_block_back",
+  "up": "block/chain_command_block_side",
+  "west": "block/chain_command_block_side"
+ },
+ "elements": [
+  {
+   "from": [
+    0,
+    0,
+    0
+   ],
+   "to": [
+    16,
+    16,
+    16
+   ],
+   "faces": {
+    "down": {
+     "texture": "#down",
+     "cullface": "down",
+     "rotation": 180
+    },
+    "east": {
+     "texture": "#east",
+     "cullface": "east",
+     "rotation": 90
+    },
+    "north": {
+     "texture": "#north",
+     "cullface": "north"
+    },
+    "south": {
+     "texture": "#south",
+     "cullface": "south"
+    },
+    "up": {
+     "texture": "#up",
+     "cullface": "up"
+    },
+    "west": {
+     "texture": "#west",
+     "cullface": "west",
+     "rotation": 270
+    }
+   }
+  }
+ ]
+}

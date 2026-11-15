@@ -1,0 +1,55 @@
+{
+ "textures": {
+  "bottom": "block/blast_furnace_top",
+  "down": "block/blast_furnace_top",
+  "east": "block/blast_furnace_side",
+  "front": "block/blast_furnace_front",
+  "north": "block/blast_furnace_front",
+  "particle": "block/blast_furnace_front",
+  "side": "block/blast_furnace_side",
+  "south": "block/blast_furnace_side",
+  "top": "block/blast_furnace_top",
+  "up": "block/blast_furnace_top",
+  "west": "block/blast_furnace_side"
+ },
+ "elements": [
+  {
+   "from": [
+    0,
+    0,
+    0
+   ],
+   "to": [
+    16,
+    16,
+    16
+   ],
+   "faces": {
+    "down": {
+     "texture": "#down",
+     "cullface": "down"
+    },
+    "east": {
+     "texture": "#east",
+     "cullface": "east"
+    },
+    "north": {
+     "texture": "#north",
+     "cullface": "north"
+    },
+    "south": {
+     "texture": "#south",
+     "cullface": "south"
+    },
+    "up": {
+     "texture": "#up",
+     "cullface": "up"
+    },
+    "west": {
+     "texture": "#west",
+     "cullface": "west"
+    }
+   }
+  }
+ ]
+}

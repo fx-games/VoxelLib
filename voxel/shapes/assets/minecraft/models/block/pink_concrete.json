@@ -1,0 +1,52 @@
+{
+ "textures": {
+  "all": "block/pink_concrete",
+  "down": "block/pink_concrete",
+  "east": "block/pink_concrete",
+  "north": "block/pink_concrete",
+  "particle": "block/pink_concrete",
+  "south": "block/pink_concrete",
+  "up": "block/pink_concrete",
+  "west": "block/pink_concrete"
+ },
+ "elements": [
+  {
+   "from": [
+    0,
+    0,
+    0
+   ],
+   "to": [
+    16,
+    16,
+    16
+   ],
+   "faces": {
+    "down": {
+     "texture": "#down",
+     "cullface": "down"
+    },
+    "east": {
+     "texture": "#east",
+     "cullface": "east"
+    },
+    "north": {
+     "texture": "#north",
+     "cullface": "north"
+    },
+    "south": {
+     "texture": "#south",
+     "cullface": "south"
+    },
+    "up": {
+     "texture": "#up",
+     "cullface": "up"
+    },
+    "west": {
+     "texture": "#west",
+     "cullface": "west"
+    }
+   }
+  }
+ ]
+}

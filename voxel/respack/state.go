@@ -93,14 +93,12 @@ func (p *Pack) packState(name string, props map[string]string) (voxel.Model, boo
 // first full-cube element: vanilla grass_block adds a tinted overlay cube
 // the base cube stands for), with its face rules; ok=false for anything else.
 func (p *Pack) simpleModel(v variant) (voxel.Model, bool) {
-	tex, elems, chain, err := p.resolve(v.Model)
+	tex, elems, err := p.resolve(v.Model)
 	if err != nil {
 		return voxel.Model{}, false
 	}
-	for _, c := range chain {
-		if c == "block/cross" || c == "block/tinted_cross" {
-			return voxel.Model{Shape: voxel.ShapeCross, Tex: all(lookupTex(tex, "#cross"))}, true
-		}
+	if p.cross(v.Model) {
+		return voxel.Model{Shape: voxel.ShapeCross, Tex: all(lookupTex(tex, "#cross"))}, true
 	}
 	if len(elems) == 0 {
 		return voxel.Model{}, false
@@ -135,7 +133,7 @@ func (p *Pack) simpleModel(v variant) (voxel.Model, bool) {
 // particle is a model's "particle" texture, else the first face texture
 // of its boxes: what stands for the block as a whole (icons, particles).
 func (p *Pack) particle(id string, bs []voxel.Box) string {
-	if tex, _, _, err := p.resolve(id); err == nil {
+	if tex, _, err := p.resolve(id); err == nil {
 		if t := lookupTex(tex, "#particle"); t != "" {
 			return t
 		}

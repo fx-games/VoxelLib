@@ -1,0 +1,52 @@
+{
+ "textures": {
+  "all": "block/polished_blackstone_bricks",
+  "down": "block/polished_blackstone_bricks",
+  "east": "block/polished_blackstone_bricks",
+  "north": "block/polished_blackstone_bricks",
+  "particle": "block/polished_blackstone_bricks",
+  "south": "block/polished_blackstone_bricks",
+  "up": "block/polished_blackstone_bricks",
+  "west": "block/polished_blackstone_bricks"
+ },
+ "elements": [
+  {
+   "from": [
+    0,
+    0,
+    0
+   ],
+   "to": [
+    16,
+    16,
+    16
+   ],
+   "faces": {
+    "down": {
+     "texture": "#down",
+     "cullface": "down"
+    },
+    "east": {
+     "texture": "#east",
+     "cullface": "east"
+    },
+    "north": {
+     "texture": "#north",
+     "cullface": "north"
+    },
+    "south": {
+     "texture": "#south",
+     "cullface": "south"
+    },
+    "up": {
+     "texture": "#up",
+     "cullface": "up"
+    },
+    "west": {
+     "texture": "#west",
+     "cullface": "west"
+    }
+   }
+  }
+ ]
+}

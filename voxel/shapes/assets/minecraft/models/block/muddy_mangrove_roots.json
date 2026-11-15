@@ -1,0 +1,53 @@
+{
+ "textures": {
+  "down": "block/muddy_mangrove_roots_top",
+  "east": "block/muddy_mangrove_roots_side",
+  "end": "block/muddy_mangrove_roots_top",
+  "north": "block/muddy_mangrove_roots_side",
+  "particle": "block/muddy_mangrove_roots_side",
+  "side": "block/muddy_mangrove_roots_side",
+  "south": "block/muddy_mangrove_roots_side",
+  "up": "block/muddy_mangrove_roots_top",
+  "west": "block/muddy_mangrove_roots_side"
+ },
+ "elements": [
+  {
+   "from": [
+    0,
+    0,
+    0
+   ],
+   "to": [
+    16,
+    16,
+    16
+   ],
+   "faces": {
+    "down": {
+     "texture": "#down",
+     "cullface": "down"
+    },
+    "east": {
+     "texture": "#east",
+     "cullface": "east"
+    },
+    "north": {
+     "texture": "#north",
+     "cullface": "north"
+    },
+    "south": {
+     "texture": "#south",
+     "cullface": "south"
+    },
+    "up": {
+     "texture": "#up",
+     "cullface": "up"
+    },
+    "west": {
+     "texture": "#west",
+     "cullface": "west"
+    }
+   }
+  }
+ ]
+}

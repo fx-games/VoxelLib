@@ -1,0 +1,52 @@
+{
+ "textures": {
+  "all": "block/lime_terracotta",
+  "down": "block/lime_terracotta",
+  "east": "block/lime_terracotta",
+  "north": "block/lime_terracotta",
+  "particle": "block/lime_terracotta",
+  "south": "block/lime_terracotta",
+  "up": "block/lime_terracotta",
+  "west": "block/lime_terracotta"
+ },
+ "elements": [
+  {
+   "from": [
+    0,
+    0,
+    0
+   ],
+   "to": [
+    16,
+    16,
+    16
+   ],
+   "faces": {
+    "down": {
+     "texture": "#down",
+     "cullface": "down"
+    },
+    "east": {
+     "texture": "#east",
+     "cullface": "east"
+    },
+    "north": {
+     "texture": "#north",
+     "cullface": "north"
+    },
+    "south": {
+     "texture": "#south",
+     "cullface": "south"
+    },
+    "up": {
+     "texture": "#up",
+     "cullface": "up"
+    },
+    "west": {
+     "texture": "#west",
+     "cullface": "west"
+    }
+   }
+  }
+ ]
+}

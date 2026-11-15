@@ -1,0 +1,52 @@
+{
+ "textures": {
+  "all": "block/deepslate_iron_ore",
+  "down": "block/deepslate_iron_ore",
+  "east": "block/deepslate_iron_ore",
+  "north": "block/deepslate_iron_ore",
+  "particle": "block/deepslate_iron_ore",
+  "south": "block/deepslate_iron_ore",
+  "up": "block/deepslate_iron_ore",
+  "west": "block/deepslate_iron_ore"
+ },
+ "elements": [
+  {
+   "from": [
+    0,
+    0,
+    0
+   ],
+   "to": [
+    16,
+    16,
+    16
+   ],
+   "faces": {
+    "down": {
+     "texture": "#down",
+     "cullface": "down"
+    },
+    "east": {
+     "texture": "#east",
+     "cullface": "east"
+    },
+    "north": {
+     "texture": "#north",
+     "cullface": "north"
+    },
+    "south": {
+     "texture": "#south",
+     "cullface": "south"
+    },
+    "up": {
+     "texture": "#up",
+     "cullface": "up"
+    },
+    "west": {
+     "texture": "#west",
+     "cullface": "west"
+    }
+   }
+  }
+ ]
+}

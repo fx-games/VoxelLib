@@ -1,0 +1,218 @@
+{
+ "textures": {
+  "lantern": "block/lantern",
+  "particle": "block/lantern"
+ },
+ "elements": [
+  {
+   "from": [
+    5,
+    0,
+    5
+   ],
+   "to": [
+    11,
+    7,
+    11
+   ],
+   "faces": {
+    "down": {
+     "texture": "#lantern",
+     "cullface": "down",
+     "uv": [
+      0,
+      9,
+      6,
+      15
+     ]
+    },
+    "east": {
+     "texture": "#lantern",
+     "uv": [
+      0,
+      2,
+      6,
+      9
+     ]
+    },
+    "north": {
+     "texture": "#lantern",
+     "uv": [
+      0,
+      2,
+      6,
+      9
+     ]
+    },
+    "south": {
+     "texture": "#lantern",
+     "uv": [
+      0,
+      2,
+      6,
+      9
+     ]
+    },
+    "up": {
+     "texture": "#lantern",
+     "uv": [
+      0,
+      9,
+      6,
+      15
+     ]
+    },
+    "west": {
+     "texture": "#lantern",
+     "uv": [
+      0,
+      2,
+      6,
+      9
+     ]
+    }
+   }
+  },
+  {
+   "from": [
+    6,
+    7,
+    6
+   ],
+   "to": [
+    10,
+    9,
+    10
+   ],
+   "faces": {
+    "east": {
+     "texture": "#lantern",
+     "uv": [
+      1,
+      0,
+      5,
+      2
+     ]
+    },
+    "north": {
+     "texture": "#lantern",
+     "uv": [
+      1,
+      0,
+      5,
+      2
+     ]
+    },
+    "south": {
+     "texture": "#lantern",
+     "uv": [
+      1,
+      0,
+      5,
+      2
+     ]
+    },
+    "up": {
+     "texture": "#lantern",
+     "uv": [
+      1,
+      10,
+      5,
+      14
+     ]
+    },
+    "west": {
+     "texture": "#lantern",
+     "uv": [
+      1,
+      0,
+      5,
+      2
+     ]
+    }
+   }
+  },
+  {
+   "from": [
+    6.5,
+    9,
+    8
+   ],
+   "to": [
+    9.5,
+    11,
+    8
+   ],
+   "rotation": {
+    "origin": [
+     8,
+     8,
+     8
+    ],
+    "axis": "y",
+    "angle": 45
+   },
+   "faces": {
+    "north": {
+     "texture": "#lantern",
+     "uv": [
+      14,
+      1,
+      11,
+      3
+     ]
+    },
+    "south": {
+     "texture": "#lantern",
+     "uv": [
+      11,
+      1,
+      14,
+      3
+     ]
+    }
+   }
+  },
+  {
+   "from": [
+    8,
+    9,
+    6.5
+   ],
+   "to": [
+    8,
+    11,
+    9.5
+   ],
+   "rotation": {
+    "origin": [
+     8,
+     8,
+     8
+    ],
+    "axis": "y",
+    "angle": 45
+   },
+   "faces": {
+    "east": {
+     "texture": "#lantern",
+     "uv": [
+      11,
+      10,
+      14,
+      12
+     ]
+    },
+    "west": {
+     "texture": "#lantern",
+     "uv": [
+      14,
+      10,
+      11,
+      12
+     ]
+    }
+   }
+  }
+ ]
+}

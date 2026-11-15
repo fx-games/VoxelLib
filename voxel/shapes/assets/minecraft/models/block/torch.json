@@ -1,0 +1,78 @@
+{
+ "textures": {
+  "particle": "block/torch",
+  "torch": "block/torch"
+ },
+ "elements": [
+  {
+   "from": [
+    7,
+    0,
+    7
+   ],
+   "to": [
+    9,
+    10,
+    9
+   ],
+   "faces": {
+    "down": {
+     "texture": "#torch",
+     "cullface": "down",
+     "uv": [
+      7,
+      13,
+      9,
+      15
+     ]
+    },
+    "east": {
+     "texture": "#torch",
+     "uv": [
+      7,
+      6,
+      9,
+      16
+     ]
+    },
+    "north": {
+     "texture": "#torch",
+     "uv": [
+      7,
+      6,
+      9,
+      16
+     ]
+    },
+    "south": {
+     "texture": "#torch",
+     "uv": [
+      7,
+      6,
+      9,
+      16
+     ]
+    },
+    "up": {
+     "texture": "#torch",
+     "uv": [
+      7,
+      6,
+      9,
+      8
+     ]
+    },
+    "west": {
+     "texture": "#torch",
+     "uv": [
+      7,
+      6,
+      9,
+      16
+     ]
+    }
+   }
+  }
+ ],
+ "ambientocclusion": false
+}

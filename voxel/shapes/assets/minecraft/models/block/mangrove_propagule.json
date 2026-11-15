@@ -1,0 +1,177 @@
+{
+ "textures": {
+  "particle": "block/mangrove_propagule",
+  "sapling": "block/mangrove_propagule"
+ },
+ "elements": [
+  {
+   "from": [
+    4.5,
+    9,
+    8
+   ],
+   "to": [
+    11.5,
+    15,
+    8
+   ],
+   "rotation": {
+    "origin": [
+     8,
+     0,
+     8
+    ],
+    "axis": "y",
+    "angle": 45,
+    "rescale": true
+   },
+   "faces": {
+    "north": {
+     "texture": "#sapling",
+     "uv": [
+      4,
+      1,
+      11,
+      7
+     ]
+    },
+    "south": {
+     "texture": "#sapling",
+     "uv": [
+      4,
+      1,
+      11,
+      7
+     ]
+    }
+   }
+  },
+  {
+   "from": [
+    8,
+    9,
+    4.5
+   ],
+   "to": [
+    8,
+    15,
+    11.5
+   ],
+   "rotation": {
+    "origin": [
+     8,
+     0,
+     8
+    ],
+    "axis": "y",
+    "angle": 45,
+    "rescale": true
+   },
+   "faces": {
+    "east": {
+     "texture": "#sapling",
+     "uv": [
+      4,
+      1,
+      11,
+      7
+     ]
+    },
+    "west": {
+     "texture": "#sapling",
+     "uv": [
+      4,
+      1,
+      11,
+      7
+     ]
+    }
+   }
+  },
+  {
+   "from": [
+    8,
+    0,
+    7
+   ],
+   "to": [
+    8,
+    9,
+    9
+   ],
+   "rotation": {
+    "origin": [
+     8,
+     0,
+     8
+    ],
+    "axis": "y",
+    "angle": 45,
+    "rescale": true
+   },
+   "faces": {
+    "east": {
+     "texture": "#sapling",
+     "uv": [
+      7,
+      7,
+      9,
+      16
+     ]
+    },
+    "west": {
+     "texture": "#sapling",
+     "uv": [
+      7,
+      7,
+      9,
+      16
+     ]
+    }
+   }
+  },
+  {
+   "from": [
+    7,
+    0,
+    8
+   ],
+   "to": [
+    9,
+    9,
+    8
+   ],
+   "rotation": {
+    "origin": [
+     8,
+     0,
+     8
+    ],
+    "axis": "y",
+    "angle": 45,
+    "rescale": true
+   },
+   "faces": {
+    "north": {
+     "texture": "#sapling",
+     "uv": [
+      7,
+      7,
+      9,
+      16
+     ]
+    },
+    "south": {
+     "texture": "#sapling",
+     "uv": [
+      7,
+      7,
+      9,
+      16
+     ]
+    }
+   }
+  }
+ ],
+ "ambientocclusion": false
+}
