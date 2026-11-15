@@ -24,3 +24,18 @@ Notes:
 - Zero-volume boxes (plant planes) never collide.
 - uvlock on non-RenderBlocks boxes turns textures with the box (LockBoxes only re-maps RenderBlocks-default UVs): unverified against the reference.
 - app.Input.Cursor added (bird's-eye style screens need the cursor before it moves).
+
+Step A merged into lan-multiplayer (6c37edf). Blockers found for step B
+(deleting shapeVariants), checked with vanillapack over Pixel Perfection:
+- vanillapack generates no blockstates for oak_stairs, oak_fence (and their
+  families), rope_ladder-style custom names, iron_spikes, redstone_wire.
+- chest (and decorated_pot, signs in modern jars) are block-entity rendered:
+  no JSON geometry; VoxelLib's chest/sign boxes exist only in shapes.go.
+- States registered without properties (Registry.Default, the picker,
+  1.7-style code) match no "k=v" variant (farmland needs moisture=…):
+  a JSON-only registry needs each block's default property values.
+- Registries without a resolver (voxserver, mpbot, explorer multiplayer,
+  engine default) need a geometry source (vanillapack) for stair/slab
+  collision.
+- The explorer follows the 1.7 reference look; shapes.go carries 1.7
+  RenderBlocks UVs that vanillapack's modern models may not reproduce.
