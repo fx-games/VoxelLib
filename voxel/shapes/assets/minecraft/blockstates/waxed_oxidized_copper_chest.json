@@ -1,49 +1,40 @@
 {
  "variants": {
-  "facing=south,type=single": {
-   "model": "minecraft:block/waxed_oxidized_copper_chest"
-  },
-  "facing=west,type=single": {
-   "model": "minecraft:block/waxed_oxidized_copper_chest",
-   "y": 90
-  },
   "facing=north,type=single": {
-   "model": "minecraft:block/waxed_oxidized_copper_chest",
-   "y": 180
+   "model": "minecraft:block/waxed_oxidized_copper_chest_north"
   },
   "facing=east,type=single": {
-   "model": "minecraft:block/waxed_oxidized_copper_chest",
-   "y": 270
+   "model": "minecraft:block/waxed_oxidized_copper_chest_east"
   },
-  "facing=south,type=left": {
-   "model": "minecraft:block/waxed_oxidized_copper_chest_left"
+  "facing=south,type=single": {
+   "model": "minecraft:block/waxed_oxidized_copper_chest_south"
   },
-  "facing=west,type=left": {
-   "model": "minecraft:block/waxed_oxidized_copper_chest_left",
-   "y": 90
+  "facing=west,type=single": {
+   "model": "minecraft:block/waxed_oxidized_copper_chest_west"
   },
   "facing=north,type=left": {
-   "model": "minecraft:block/waxed_oxidized_copper_chest_left",
-   "y": 180
+   "model": "minecraft:block/waxed_oxidized_copper_chest_left_north"
   },
   "facing=east,type=left": {
-   "model": "minecraft:block/waxed_oxidized_copper_chest_left",
-   "y": 270
+   "model": "minecraft:block/waxed_oxidized_copper_chest_left_east"
   },
-  "facing=south,type=right": {
-   "model": "minecraft:block/waxed_oxidized_copper_chest_right"
+  "facing=south,type=left": {
+   "model": "minecraft:block/waxed_oxidized_copper_chest_left_south"
   },
-  "facing=west,type=right": {
-   "model": "minecraft:block/waxed_oxidized_copper_chest_right",
-   "y": 90
+  "facing=west,type=left": {
+   "model": "minecraft:block/waxed_oxidized_copper_chest_left_west"
   },
   "facing=north,type=right": {
-   "model": "minecraft:block/waxed_oxidized_copper_chest_right",
-   "y": 180
+   "model": "minecraft:block/waxed_oxidized_copper_chest_right_north"
   },
   "facing=east,type=right": {
-   "model": "minecraft:block/waxed_oxidized_copper_chest_right",
-   "y": 270
+   "model": "minecraft:block/waxed_oxidized_copper_chest_right_east"
+  },
+  "facing=south,type=right": {
+   "model": "minecraft:block/waxed_oxidized_copper_chest_right_south"
+  },
+  "facing=west,type=right": {
+   "model": "minecraft:block/waxed_oxidized_copper_chest_right_west"
   }
  }
 }
