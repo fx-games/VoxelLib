@@ -125,12 +125,13 @@ func RotateBoxes(bs []Box, axis int, deg float32) []Box {
 	return out
 }
 
-// LockBoxes is RotateBoxes with uvlock for textures laid out by position
-// (the 1.7 reference draws every box by RenderBlocks, which projects textures
-// in world space): a box without element rotation whose faces all carry
-// RenderBlocksUV of their bounds is turned into an axis-aligned box whose
-// faces get RenderBlocksUV of the new bounds, each face keeping its
-// texture, cullface and tint. Other boxes turn as in RotateBoxes.
+// LockBoxes is RotateBoxes with uvlock for textures laid out by position:
+// a box without element rotation whose faces all carry one positional
+// layout of their bounds (ModelUV, the reference's default for a face
+// without "uv", or RenderBlocksUV, the 1.7 reference's) is turned into an
+// axis-aligned box whose faces get that layout of the new bounds, each
+// face keeping its texture, cullface and tint, so overlapping turned parts
+// (a wall's arms) show the same texels. Other boxes turn as in RotateBoxes.
 func LockBoxes(bs []Box, axis int, deg float32) []Box {
 	if deg == 0 {
 		return bs
@@ -141,7 +142,7 @@ func LockBoxes(bs []Box, axis int, deg float32) []Box {
 	}
 	rot := []Rot{{Axis: axis, Deg: -deg, Origin: [3]float32{8, 8, 8}}}
 	for i, b := range bs {
-		flip, ok := rbDefaults(&b)
+		layout, ok := uvLayoutOf(&b)
 		if !ok {
 			continue
 		}
@@ -153,7 +154,7 @@ func LockBoxes(bs []Box, axis int, deg float32) []Box {
 			n.Min[a], n.Max[a] = float32(math.Round(float64(lo)*1e4)/1e4), float32(math.Round(float64(hi)*1e4)/1e4)
 		}
 		var cull [6]Face
-		uv := RenderBlocksUV(n.Min, n.Max, flip)
+		uv := layout(n.Min, n.Max)
 		for f := Face(0); f < FaceCount; f++ {
 			g := RotateFace(f, rot)
 			n.Tex[g], n.TexID[g] = b.Tex[f], b.TexID[f]
@@ -175,6 +176,24 @@ func LockBoxes(bs []Box, axis int, deg float32) []Box {
 	return out
 }
 
+// ModelUV is the UV (u0,v0,u1,v1 per face) the reference derives from a
+// box's bounds for a face that gives none (BlockElement's default UVs).
+func ModelUV(lo, hi [3]float32) [6][4]float32 {
+	x1, y1, z1, x2, y2, z2 := lo[0], lo[1], lo[2], hi[0], hi[1], hi[2]
+	return [6][4]float32{
+		{x1, 16 - z2, x2, 16 - z1}, {x1, z1, x2, z2},
+		{16 - x2, 16 - y2, 16 - x1, 16 - y1}, {x1, 16 - y2, x2, 16 - y1},
+		{z1, 16 - y2, z2, 16 - y1}, {16 - z2, 16 - y2, 16 - z1, 16 - y1},
+	}
+}
+
+// uvLayouts are the positional UV layouts LockBoxes keeps.
+var uvLayouts = []func(lo, hi [3]float32) [6][4]float32{
+	ModelUV,
+	func(lo, hi [3]float32) [6][4]float32 { return RenderBlocksUV(lo, hi, false) },
+	func(lo, hi [3]float32) [6][4]float32 { return RenderBlocksUV(lo, hi, true) },
+}
+
 // RenderBlocksUV is the model UV (u0,v0,u1,v1 per face, in the mesher's
 // 1.8 JSON mapping) that shows a box's texture as the 1.7 reference's
 // RenderBlocks draws it: the bottom with v along +z, north and east
@@ -193,15 +212,17 @@ func RenderBlocksUV(lo, hi [3]float32, flip bool) [6][4]float32 {
 	return uv
 }
 
-// rbDefaults reports whether every drawn face of b has RenderBlocksUV of
-// its bounds, and with which flip.
-func rbDefaults(b *Box) (flip, ok bool) {
-	if b.UV == nil || len(b.Rot) > 0 || b.UVRot != [6]uint8{} {
-		return false, false
+// uvLayoutOf is the positional layout every drawn face of b carries (a
+// box without UV is projected by position: ModelUV).
+func uvLayoutOf(b *Box) (func(lo, hi [3]float32) [6][4]float32, bool) {
+	if len(b.Rot) > 0 || b.UVRot != [6]uint8{} {
+		return nil, false
 	}
-	for _, fl := range [2]bool{false, true} {
-		want := RenderBlocksUV(b.Min, b.Max, fl)
-		ok = true
+	if b.UV == nil {
+		return ModelUV, true
+	}
+	for _, layout := range uvLayouts {
+		want, ok := layout(b.Min, b.Max), true
 		for f := range want {
 			for k := range 4 {
 				if d := b.UV[f][k] - want[f][k]; b.Skip&(1<<f) == 0 && (d > 1e-3 || d < -1e-3) {
@@ -210,10 +231,10 @@ func rbDefaults(b *Box) (flip, ok bool) {
 			}
 		}
 		if ok {
-			return fl, true
+			return layout, true
 		}
 	}
-	return false, false
+	return nil, false
 }
 
 // RotateFace is where face f points after rots, or FaceCount when that's

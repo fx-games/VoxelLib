@@ -644,7 +644,7 @@ func (p *Pack) ModelBoxes(id string, vars map[string]string) ([]voxel.Box, error
 			if face.UV != nil {
 				uv[f], hasUV = *face.UV, true
 			} else {
-				uv[f] = defaultUV(f, e.From, e.To)
+				uv[f] = voxel.ModelUV(e.From, e.To)[f]
 			}
 		}
 		if hasUV {
@@ -662,20 +662,3 @@ func (p *Pack) ModelBoxes(id string, vars map[string]string) ([]voxel.Box, error
 	return out, nil
 }
 
-// defaultUV is the UV the reference game derives from an element's position when a
-// face gives none.
-func defaultUV(f voxel.Face, a, b [3]float32) [4]float32 {
-	switch f {
-	case voxel.FaceDown:
-		return [4]float32{a[0], 16 - b[2], b[0], 16 - a[2]}
-	case voxel.FaceUp:
-		return [4]float32{a[0], a[2], b[0], b[2]}
-	case voxel.FaceNorth:
-		return [4]float32{16 - b[0], 16 - b[1], 16 - a[0], 16 - a[1]}
-	case voxel.FaceSouth:
-		return [4]float32{a[0], 16 - b[1], b[0], 16 - a[1]}
-	case voxel.FaceWest:
-		return [4]float32{a[2], 16 - b[1], b[2], 16 - a[1]}
-	}
-	return [4]float32{16 - b[2], 16 - b[1], 16 - a[2], 16 - a[1]}
-}

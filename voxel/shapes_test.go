@@ -196,3 +196,17 @@ func TestSpikesPointOutOfTheWall(t *testing.T) {
 		t.Fatal("IsSpikes")
 	}
 }
+
+// TestLockBoxesModelUV: uvlock keeps a model box's texture where the
+// world puts it, so a wall's arms, each the north arm turned, show the
+// same texels where they overlap (else their coplanar faces z-fight
+// visibly).
+func TestLockBoxesModelUV(t *testing.T) {
+	arm := Box{Min: [3]float32{5, 0, 0}, Max: [3]float32{11, 14, 8}}
+	for _, deg := range []float32{90, 180, 270} {
+		b := LockBoxes([]Box{arm}, 1, deg)[0]
+		if b.UV == nil || *b.UV != ModelUV(b.Min, b.Max) {
+			t.Errorf("y=%v: UV %v, want ModelUV of %v..%v", deg, b.UV, b.Min, b.Max)
+		}
+	}
+}
