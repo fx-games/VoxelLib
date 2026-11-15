@@ -1,0 +1,147 @@
+{
+ "textures": {
+  "particle": "minecraft:block/soul_sand"
+ },
+ "elements": [
+  {
+   "from": [
+    8.0,
+    4.0,
+    4.0
+   ],
+   "to": [
+    16.0,
+    12.0,
+    12.0
+   ],
+   "faces": {
+    "up": {
+     "uv": [
+      2.0,
+      0.0,
+      4.0,
+      2.0
+     ],
+     "rotation": 90,
+     "texture": "#skin"
+    },
+    "down": {
+     "uv": [
+      6.0,
+      0.0,
+      4.0,
+      2.0
+     ],
+     "rotation": 90,
+     "texture": "#skin"
+    },
+    "north": {
+     "uv": [
+      0.0,
+      2.0,
+      2.0,
+      4.0
+     ],
+     "texture": "#skin"
+    },
+    "west": {
+     "uv": [
+      2.0,
+      2.0,
+      4.0,
+      4.0
+     ],
+     "texture": "#skin"
+    },
+    "south": {
+     "uv": [
+      4.0,
+      2.0,
+      6.0,
+      4.0
+     ],
+     "texture": "#skin"
+    },
+    "east": {
+     "uv": [
+      6.0,
+      2.0,
+      8.0,
+      4.0
+     ],
+     "texture": "#skin"
+    }
+   }
+  },
+  {
+   "from": [
+    7.75,
+    3.75,
+    3.75
+   ],
+   "to": [
+    16.25,
+    12.25,
+    12.25
+   ],
+   "faces": {
+    "up": {
+     "uv": [
+      10.0,
+      0.0,
+      12.0,
+      2.0
+     ],
+     "rotation": 90,
+     "texture": "#skin"
+    },
+    "down": {
+     "uv": [
+      14.0,
+      0.0,
+      12.0,
+      2.0
+     ],
+     "rotation": 90,
+     "texture": "#skin"
+    },
+    "north": {
+     "uv": [
+      8.0,
+      2.0,
+      10.0,
+      4.0
+     ],
+     "texture": "#skin"
+    },
+    "west": {
+     "uv": [
+      10.0,
+      2.0,
+      12.0,
+      4.0
+     ],
+     "texture": "#skin"
+    },
+    "south": {
+     "uv": [
+      12.0,
+      2.0,
+      14.0,
+      4.0
+     ],
+     "texture": "#skin"
+    },
+    "east": {
+     "uv": [
+      14.0,
+      2.0,
+      16.0,
+      4.0
+     ],
+     "texture": "#skin"
+    }
+   }
+  }
+ ]
+}

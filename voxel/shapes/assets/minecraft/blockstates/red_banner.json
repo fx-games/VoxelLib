@@ -1,0 +1,52 @@
+{
+ "variants": {
+  "rotation=0": {
+   "model": "minecraft:block/red_banner_0"
+  },
+  "rotation=1": {
+   "model": "minecraft:block/red_banner_1"
+  },
+  "rotation=2": {
+   "model": "minecraft:block/red_banner_2"
+  },
+  "rotation=3": {
+   "model": "minecraft:block/red_banner_3"
+  },
+  "rotation=4": {
+   "model": "minecraft:block/red_banner_4"
+  },
+  "rotation=5": {
+   "model": "minecraft:block/red_banner_5"
+  },
+  "rotation=6": {
+   "model": "minecraft:block/red_banner_6"
+  },
+  "rotation=7": {
+   "model": "minecraft:block/red_banner_7"
+  },
+  "rotation=8": {
+   "model": "minecraft:block/red_banner_8"
+  },
+  "rotation=9": {
+   "model": "minecraft:block/red_banner_9"
+  },
+  "rotation=10": {
+   "model": "minecraft:block/red_banner_10"
+  },
+  "rotation=11": {
+   "model": "minecraft:block/red_banner_11"
+  },
+  "rotation=12": {
+   "model": "minecraft:block/red_banner_12"
+  },
+  "rotation=13": {
+   "model": "minecraft:block/red_banner_13"
+  },
+  "rotation=14": {
+   "model": "minecraft:block/red_banner_14"
+  },
+  "rotation=15": {
+   "model": "minecraft:block/red_banner_15"
+  }
+ }
+}

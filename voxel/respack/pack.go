@@ -381,6 +381,9 @@ type model struct {
 	Textures map[string]texRef `json:"textures"`
 	Elements []element         `json:"elements"`
 	AO       *bool             `json:"ambientocclusion"`
+	// TintColor: voxel.Model.TintColor, "#RRGGBB" (an extension, ignored
+	// by the reference game: its block-entity renderers colour banners).
+	TintColor string `json:"tint_color"`
 	// resolved
 	chain []string
 }
@@ -473,6 +476,25 @@ func (p *Pack) flat(id string) bool {
 		id = m.Parent
 	}
 	return false
+}
+
+// tintColor is a model's (or its nearest parent's) "tint_color".
+func (p *Pack) tintColor(id string) (uint32, error) {
+	for depth := 0; id != "" && depth < 16; depth++ {
+		m, err := p.model(id)
+		if err != nil {
+			return 0, err
+		}
+		if m.TintColor != "" {
+			c, err := strconv.ParseUint(strings.TrimPrefix(m.TintColor, "#"), 16, 24)
+			if err != nil || !strings.HasPrefix(m.TintColor, "#") {
+				return 0, fmt.Errorf("model %s: tint_color %q is not #RRGGBB", id, m.TintColor)
+			}
+			return uint32(c), nil
+		}
+		id = m.Parent
+	}
+	return 0, nil
 }
 
 // faceRef is a face's texture as a variable reference: the game reads a

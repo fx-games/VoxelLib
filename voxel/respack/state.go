@@ -78,6 +78,13 @@ func (p *Pack) packState(name string, props map[string]string) (voxel.Model, boo
 		if m.Tex[0] == "" {
 			m.Tex = all(p.particle(v.Model, bs))
 		}
+		c, err := p.tintColor(v.Model)
+		if err != nil {
+			return voxel.Model{}, false
+		}
+		if c != 0 {
+			m.Tint, m.TintColor = voxel.TintFixed, c
+		}
 	}
 	return m, true
 }

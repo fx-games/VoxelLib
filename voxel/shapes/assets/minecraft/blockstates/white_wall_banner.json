@@ -1,0 +1,16 @@
+{
+ "variants": {
+  "facing=north": {
+   "model": "minecraft:block/white_wall_banner_north"
+  },
+  "facing=east": {
+   "model": "minecraft:block/white_wall_banner_east"
+  },
+  "facing=south": {
+   "model": "minecraft:block/white_wall_banner_south"
+  },
+  "facing=west": {
+   "model": "minecraft:block/white_wall_banner_west"
+  }
+ }
+}

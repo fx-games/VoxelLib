@@ -1,0 +1,1 @@
+{"parent": "minecraft:block/template_shulker_box_west", "textures": {"shulker": "minecraft:entity/shulker/shulker_lime", "particle": "minecraft:block/lime_shulker_box"}}

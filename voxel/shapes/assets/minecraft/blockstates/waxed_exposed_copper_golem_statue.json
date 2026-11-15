@@ -1,0 +1,52 @@
+{
+ "variants": {
+  "copper_golem_pose=standing,facing=north": {
+   "model": "minecraft:block/waxed_exposed_copper_golem_statue_standing_north"
+  },
+  "copper_golem_pose=standing,facing=east": {
+   "model": "minecraft:block/waxed_exposed_copper_golem_statue_standing_east"
+  },
+  "copper_golem_pose=standing,facing=south": {
+   "model": "minecraft:block/waxed_exposed_copper_golem_statue_standing_south"
+  },
+  "copper_golem_pose=standing,facing=west": {
+   "model": "minecraft:block/waxed_exposed_copper_golem_statue_standing_west"
+  },
+  "copper_golem_pose=running,facing=north": {
+   "model": "minecraft:block/waxed_exposed_copper_golem_statue_running_north"
+  },
+  "copper_golem_pose=running,facing=east": {
+   "model": "minecraft:block/waxed_exposed_copper_golem_statue_running_east"
+  },
+  "copper_golem_pose=running,facing=south": {
+   "model": "minecraft:block/waxed_exposed_copper_golem_statue_running_south"
+  },
+  "copper_golem_pose=running,facing=west": {
+   "model": "minecraft:block/waxed_exposed_copper_golem_statue_running_west"
+  },
+  "copper_golem_pose=sitting,facing=north": {
+   "model": "minecraft:block/waxed_exposed_copper_golem_statue_sitting_north"
+  },
+  "copper_golem_pose=sitting,facing=east": {
+   "model": "minecraft:block/waxed_exposed_copper_golem_statue_sitting_east"
+  },
+  "copper_golem_pose=sitting,facing=south": {
+   "model": "minecraft:block/waxed_exposed_copper_golem_statue_sitting_south"
+  },
+  "copper_golem_pose=sitting,facing=west": {
+   "model": "minecraft:block/waxed_exposed_copper_golem_statue_sitting_west"
+  },
+  "copper_golem_pose=star,facing=north": {
+   "model": "minecraft:block/waxed_exposed_copper_golem_statue_star_north"
+  },
+  "copper_golem_pose=star,facing=east": {
+   "model": "minecraft:block/waxed_exposed_copper_golem_statue_star_east"
+  },
+  "copper_golem_pose=star,facing=south": {
+   "model": "minecraft:block/waxed_exposed_copper_golem_statue_star_south"
+  },
+  "copper_golem_pose=star,facing=west": {
+   "model": "minecraft:block/waxed_exposed_copper_golem_statue_star_west"
+  }
+ }
+}

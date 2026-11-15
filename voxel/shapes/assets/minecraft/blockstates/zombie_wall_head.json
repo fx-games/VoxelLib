@@ -1,0 +1,16 @@
+{
+ "variants": {
+  "facing=north": {
+   "model": "minecraft:block/zombie_wall_head_north"
+  },
+  "facing=east": {
+   "model": "minecraft:block/zombie_wall_head_east"
+  },
+  "facing=south": {
+   "model": "minecraft:block/zombie_wall_head_south"
+  },
+  "facing=west": {
+   "model": "minecraft:block/zombie_wall_head_west"
+  }
+ }
+}

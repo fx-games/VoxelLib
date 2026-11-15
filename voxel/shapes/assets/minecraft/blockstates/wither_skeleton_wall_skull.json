@@ -1,0 +1,16 @@
+{
+ "variants": {
+  "facing=north": {
+   "model": "minecraft:block/wither_skeleton_wall_skull_north"
+  },
+  "facing=east": {
+   "model": "minecraft:block/wither_skeleton_wall_skull_east"
+  },
+  "facing=south": {
+   "model": "minecraft:block/wither_skeleton_wall_skull_south"
+  },
+  "facing=west": {
+   "model": "minecraft:block/wither_skeleton_wall_skull_west"
+  }
+ }
+}

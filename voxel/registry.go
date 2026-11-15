@@ -239,6 +239,10 @@ type Model struct {
 	Tex   [6]string
 	Rules FaceRules // ShapeCube
 	Boxes []Box     // ShapeBoxes
+	// Tint, TintColor: TintFixed and its 0xRRGGBB for a model of one
+	// colour (a banner's dye); TintNone keeps the BlockDef's tint.
+	Tint      Tint
+	TintColor uint32
 }
 
 // ModelResolver gives a state's model from a resource pack. ok=false keeps
@@ -513,6 +517,9 @@ func (r *Registry) bake(def *BlockDef, canon string, props map[string]string) St
 		info.Shape, tex = model.Shape, model.Tex
 		if shape != ShapeCube && (def.Unknown || def.Shape == ShapeCube) { // not a full block after all
 			info.Opaque, info.Collides, info.Opacity, info.Layer = false, false, 0, LayerCutout
+		}
+		if model.Tint != TintNone {
+			info.Tint, info.TintColor = model.Tint, model.TintColor
 		}
 		if shape == ShapeCube {
 			info.TintMask = model.Rules.Tinted

@@ -1,0 +1,77 @@
+{
+ "textures": {
+  "particle": "minecraft:block/soul_sand"
+ },
+ "elements": [
+  {
+   "from": [
+    4.0,
+    0.0,
+    4.0
+   ],
+   "to": [
+    12.0,
+    8.0,
+    12.0
+   ],
+   "faces": {
+    "up": {
+     "uv": [
+      2.0,
+      0.0,
+      4.0,
+      4.0
+     ],
+     "rotation": 90,
+     "texture": "#skin"
+    },
+    "down": {
+     "uv": [
+      6.0,
+      0.0,
+      4.0,
+      4.0
+     ],
+     "rotation": 90,
+     "texture": "#skin"
+    },
+    "north": {
+     "uv": [
+      0.0,
+      4.0,
+      2.0,
+      8.0
+     ],
+     "texture": "#skin"
+    },
+    "west": {
+     "uv": [
+      2.0,
+      4.0,
+      4.0,
+      8.0
+     ],
+     "texture": "#skin"
+    },
+    "south": {
+     "uv": [
+      4.0,
+      4.0,
+      6.0,
+      8.0
+     ],
+     "texture": "#skin"
+    },
+    "east": {
+     "uv": [
+      6.0,
+      4.0,
+      8.0,
+      8.0
+     ],
+     "texture": "#skin"
+    }
+   }
+  }
+ ]
+}
