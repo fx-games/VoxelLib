@@ -10,6 +10,8 @@ import (
 type Generator struct {
 	Seed     int64
 	SeaLevel int
+	// NoBedrock fills the bedrock floor with stone instead.
+	NoBedrock bool
 
 	cont, erosion, peaks, temp, detail *Octaves
 	overhang, cheese, spagA, spagB     *Octaves
@@ -193,7 +195,7 @@ func (g *Generator) Generate(w *voxel.World, ch *voxel.Chunk) {
 			for y := minY; y <= min(max(top+1, sea), maxY-1); y++ {
 				var id voxel.StateID
 				switch {
-				case y <= bedrockTop:
+				case y <= bedrockTop && !g.NoBedrock:
 					id = g.bedrock
 				default:
 					solid := y <= surf
