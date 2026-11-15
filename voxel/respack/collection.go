@@ -1,36 +1,23 @@
 package respack
 
 import (
-	"embed"
 	"encoding/json"
-	"io/fs"
 
 	"github.com/memmaker/voxellib/voxel"
+	"github.com/memmaker/voxellib/voxel/shapes"
 )
 
-// entityFS holds block models for the blocks the game draws as block
-// entities (decorated pots, chests, shulker boxes): their jar models carry no
-// elements, so these give them the renderer's geometry over its entity
-// textures (textures/entity/...), read from the pack like any other.
-//
-//go:embed entity
-var entityFS embed.FS
-
-// entityPack is entityFS as a pack: resolveState's fallback for states whose
+// entityPack is VoxelLib's shape collection (voxel/shapes) as a pack: resolveState's fallback for states whose
 // own model has no geometry.
 var entityPack = func() *Pack {
-	sub, err := fs.Sub(entityFS, "entity")
-	if err != nil {
-		panic(err) // the embedded tree is fixed at build time
-	}
-	return FromFS(sub)
+	return FromFS(shapes.FS)
 }()
 
 // emptyStates are the states whose jar model draws nothing on purpose (an
-// element-less model like the entity ones): entity/empty.json, block state
+// element-less model like the entity ones): shapes' empty.json, block state
 // strings, each matching states that have all its properties.
 var emptyStates = func() map[string][]map[string]string {
-	data, err := entityFS.ReadFile("entity/empty.json")
+	data, err := shapes.FS.ReadFile("empty.json")
 	if err != nil {
 		panic(err)
 	}

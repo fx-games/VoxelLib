@@ -45,7 +45,7 @@ Step A merged into lan-multiplayer (6c37edf). Blockers found for step B
 Goal (Felix): one shape collection in VoxelLib everyone uses, no gaps:
 every map with every block draws. Format: JSON blockstates/models only.
 Sources: the resource pack (jar) for everything it has geometry for;
-`voxel/respack/entity/` (embedded JSON) for what it lacks; `entity/empty.json`
+`voxel/shapes/` (embedded JSON) for what it lacks; `voxel/shapes/empty.json`
 for states that draw nothing on purpose. Gaps are found by
 `TestShapeCoverage` (VOXELLIB_JAR=<client jar>): every state of every jar
 blockstate must resolve to geometry with existing textures.

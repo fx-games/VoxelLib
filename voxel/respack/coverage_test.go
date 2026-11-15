@@ -20,7 +20,7 @@ var drawnElsewhere = map[string]bool{
 
 // TestShapeCoverage is the gap list: every state of every blockstate in the
 // jar ($VOXELLIB_JAR) resolves to geometry whose textures exist. A failure
-// names a shape to add to the entity collection (voxel/respack/entity).
+// names a shape to add to the shape collection (voxel/shapes).
 func TestShapeCoverage(t *testing.T) {
 	jar := os.Getenv("VOXELLIB_JAR")
 	if jar == "" {
