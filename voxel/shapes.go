@@ -125,13 +125,15 @@ func RotateBoxes(bs []Box, axis int, deg float32) []Box {
 	return out
 }
 
-// LockBoxes is RotateBoxes with uvlock for textures laid out by position:
-// a box without element rotation whose faces all carry one positional
-// layout of their bounds (ModelUV, the reference's default for a face
-// without "uv", or RenderBlocksUV, the 1.7 reference's) is turned into an
-// axis-aligned box whose faces get that layout of the new bounds, each
-// face keeping its texture, cullface and tint, so overlapping turned parts
-// (a wall's arms) show the same texels. Other boxes turn as in RotateBoxes.
+// LockBoxes is RotateBoxes with uvlock, as the reference bakes it: a box
+// without element rotation turned a multiple of 90° becomes an
+// axis-aligned box whose faces keep their texture where the world put it,
+// so overlapping turned parts (a wall's or fence's arms) show the same
+// texels. Each face keeps its texture, cullface and tint; its UV is the
+// old one carried over by the tile map that moves the old face's
+// positional UV (ProjUV) onto the new face's. Boxes laid out by the 1.7
+// reference's RenderBlocksUV get that layout of their new bounds. Other
+// boxes turn as in RotateBoxes.
 func LockBoxes(bs []Box, axis int, deg float32) []Box {
 	if deg == 0 {
 		return bs
@@ -142,19 +144,23 @@ func LockBoxes(bs []Box, axis int, deg float32) []Box {
 	}
 	rot := []Rot{{Axis: axis, Deg: -deg, Origin: [3]float32{8, 8, 8}}}
 	for i, b := range bs {
-		layout, ok := uvLayoutOf(&b)
-		if !ok {
+		if len(b.Rot) > 0 {
 			continue
 		}
 		p, q := RotatePoint(b.Min, rot), RotatePoint(b.Max, rot)
 		n := b
-		n.Rot, n.Skip, n.NoTint = nil, 0, 0
+		n.Rot, n.Skip, n.NoTint, n.UVRot = nil, 0, 0, [6]uint8{}
 		for a := range 3 {
 			lo, hi := min(p[a], q[a]), max(p[a], q[a])
 			n.Min[a], n.Max[a] = float32(math.Round(float64(lo)*1e4)/1e4), float32(math.Round(float64(hi)*1e4)/1e4)
 		}
 		var cull [6]Face
-		uv := layout(n.Min, n.Max)
+		var uv [6][4]float32
+		flip, rb := rbDefaults(&b)
+		if rb {
+			uv = RenderBlocksUV(n.Min, n.Max, flip)
+		}
+		locked := true
 		for f := Face(0); f < FaceCount; f++ {
 			g := RotateFace(f, rot)
 			n.Tex[g], n.TexID[g] = b.Tex[f], b.TexID[f]
@@ -166,6 +172,14 @@ func LockBoxes(bs []Box, axis int, deg float32) []Box {
 					cull[g] = RotateFace(cull[g], rot)
 				}
 			}
+			if !rb {
+				r, turns, ok := lockFace(&b, &n, f, g, rot)
+				uv[g], n.UVRot[g] = r, turns
+				locked = locked && ok
+			}
+		}
+		if !locked {
+			continue // no rect and quarter turn shows it: turn it unlocked
 		}
 		if b.Cull != nil {
 			n.Cull = &cull
@@ -174,6 +188,166 @@ func LockBoxes(bs []Box, axis int, deg float32) []Box {
 		out[i] = n
 	}
 	return out
+}
+
+// lockFace is the UV rect and quarter turns that show on face g of n
+// (old box b turned by rot) the texels face f of b showed at the same
+// world points, moved by the tile map from f's ProjUV to g's.
+func lockFace(b, n *Box, f, g Face, rot []Rot) (r [4]float32, turns uint8, ok bool) {
+	old := faceCorners(f, b.Min, b.Max)
+	oldUV := b.FaceUV(f, old)
+	var pos [4][3]float32 // the old corners where the turn puts them
+	for k := range old {
+		pos[k] = RotatePoint(old[k], rot)
+	}
+	// tile map: ProjUV on f to ProjUV on g, affine (from three corners)
+	var from, to [3][2]float32
+	for k := range 3 {
+		from[k] = projUV2(f, old[k])
+		to[k] = projUV2(g, pos[k])
+	}
+	var want [4][2]float32
+	for k := range want {
+		want[k] = affine3(from, to, oldUV[k])
+	}
+	for turns = 0; turns < 4; turns++ {
+		trial := *n
+		unit := [6][4]float32{}
+		unit[g] = [4]float32{0, 0, 1, 1}
+		trial.UV, trial.UVRot[g] = &unit, turns
+		st := trial.FaceUV(g, pos) // corner position in the rect, 0..1 after the turn
+		for a := range 2 {
+			for k := range st {
+				if st[k][a] < 0.5 {
+					r[a] = want[k][a]
+				} else {
+					r[a+2] = want[k][a]
+				}
+			}
+		}
+		ok = true
+		for k := range st {
+			for a := range 2 {
+				got := r[a] + st[k][a]*(r[a+2]-r[a])
+				if d := got - want[k][a]; d > 1e-3 || d < -1e-3 {
+					ok = false
+				}
+			}
+		}
+		if ok {
+			for a := range r {
+				r[a] = float32(math.Round(float64(r[a])*1e4) / 1e4)
+			}
+			return r, turns, true
+		}
+	}
+	return r, 0, false
+}
+
+// affine3 maps p by the affine map that takes from[k] to to[k].
+func affine3(from, to [3][2]float32, p [2]float32) [2]float32 {
+	e1 := [2]float32{from[1][0] - from[0][0], from[1][1] - from[0][1]}
+	e2 := [2]float32{from[2][0] - from[0][0], from[2][1] - from[0][1]}
+	d := [2]float32{p[0] - from[0][0], p[1] - from[0][1]}
+	det := e1[0]*e2[1] - e1[1]*e2[0]
+	s := (d[0]*e2[1] - d[1]*e2[0]) / det
+	t := (e1[0]*d[1] - e1[1]*d[0]) / det
+	var out [2]float32
+	for a := range 2 {
+		out[a] = to[0][a] + s*(to[1][a]-to[0][a]) + t*(to[2][a]-to[0][a])
+	}
+	return out
+}
+
+// faceCorners are the corners of face f of the box lo..hi, three of them
+// not on one line.
+func faceCorners(f Face, lo, hi [3]float32) [4][3]float32 {
+	n := f.Normal()
+	axis, plane := 0, lo
+	switch {
+	case n.Y != 0:
+		axis = 1
+	case n.Z != 0:
+		axis = 2
+	}
+	if n.X+n.Y+n.Z > 0 {
+		plane = hi
+	}
+	u, v := (axis+1)%3, (axis+2)%3
+	var out [4][3]float32
+	for k := range out {
+		c := lo
+		c[axis] = plane[axis]
+		if k == 1 || k == 2 {
+			c[u] = hi[u]
+		}
+		if k >= 2 {
+			c[v] = hi[v]
+		}
+		out[k] = c
+	}
+	return out
+}
+
+// projUV2 is ProjUV as a pair.
+func projUV2(f Face, q [3]float32) [2]float32 {
+	u, v := ProjUV(f, q)
+	return [2]float32{u, v}
+}
+
+// ProjUV is the texture position (1/16) of point q on face f when a
+// texture is laid over the block's face: the reference's default UV
+// (ModelUV) at that point.
+func ProjUV(f Face, q [3]float32) (float32, float32) {
+	switch f {
+	case FaceDown:
+		return q[0], 16 - q[2]
+	case FaceUp:
+		return q[0], q[2]
+	case FaceNorth:
+		return 16 - q[0], 16 - q[1]
+	case FaceSouth:
+		return q[0], 16 - q[1]
+	case FaceWest:
+		return q[2], 16 - q[1]
+	}
+	return 16 - q[2], 16 - q[1]
+}
+
+// FaceUV is the texture position (1/16) at each corner q of face f: ProjUV,
+// or with model UVs the face's own extent stretched over its u0,v0..u1,v1
+// and turned by its UVRot.
+func (b *Box) FaceUV(f Face, q [4][3]float32) [4][2]float32 {
+	var uv [4][2]float32
+	for k := range q {
+		uv[k] = projUV2(f, q[k])
+	}
+	if b.UV == nil {
+		return uv
+	}
+	r := b.UV[f]
+	lo, hi := uv[0], uv[0]
+	for k := 1; k < 4; k++ {
+		lo = [2]float32{min(lo[0], uv[k][0]), min(lo[1], uv[k][1])}
+		hi = [2]float32{max(hi[0], uv[k][0]), max(hi[1], uv[k][1])}
+	}
+	for k := range uv {
+		var st [2]float32 // corner position in the face, 0..1 along u, v
+		for a := 0; a < 2; a++ {
+			if hi[a] > lo[a] {
+				st[a] = (uv[k][a] - lo[a]) / (hi[a] - lo[a])
+			}
+		}
+		// Turning the texture clockwise a quarter shows at each corner
+		// the texel of the corner before it (the reference BlockFaceUV).
+		for n := b.UVRot[f] & 3; n > 0; n-- {
+			st = [2]float32{st[1], 1 - st[0]}
+		}
+		for a := 0; a < 2; a++ {
+			uv[k][a] = r[a] + st[a]*(r[a+2]-r[a])
+		}
+	}
+	return uv
 }
 
 // ModelUV is the UV (u0,v0,u1,v1 per face) the reference derives from a
@@ -185,13 +359,6 @@ func ModelUV(lo, hi [3]float32) [6][4]float32 {
 		{16 - x2, 16 - y2, 16 - x1, 16 - y1}, {x1, 16 - y2, x2, 16 - y1},
 		{z1, 16 - y2, z2, 16 - y1}, {16 - z2, 16 - y2, 16 - z1, 16 - y1},
 	}
-}
-
-// uvLayouts are the positional UV layouts LockBoxes keeps.
-var uvLayouts = []func(lo, hi [3]float32) [6][4]float32{
-	ModelUV,
-	func(lo, hi [3]float32) [6][4]float32 { return RenderBlocksUV(lo, hi, false) },
-	func(lo, hi [3]float32) [6][4]float32 { return RenderBlocksUV(lo, hi, true) },
 }
 
 // RenderBlocksUV is the model UV (u0,v0,u1,v1 per face, in the mesher's
@@ -212,17 +379,15 @@ func RenderBlocksUV(lo, hi [3]float32, flip bool) [6][4]float32 {
 	return uv
 }
 
-// uvLayoutOf is the positional layout every drawn face of b carries (a
-// box without UV is projected by position: ModelUV).
-func uvLayoutOf(b *Box) (func(lo, hi [3]float32) [6][4]float32, bool) {
-	if len(b.Rot) > 0 || b.UVRot != [6]uint8{} {
-		return nil, false
+// rbDefaults reports whether every drawn face of b has RenderBlocksUV of
+// its bounds, and with which flip.
+func rbDefaults(b *Box) (flip, ok bool) {
+	if b.UV == nil || b.UVRot != [6]uint8{} {
+		return false, false
 	}
-	if b.UV == nil {
-		return ModelUV, true
-	}
-	for _, layout := range uvLayouts {
-		want, ok := layout(b.Min, b.Max), true
+	for _, fl := range [2]bool{false, true} {
+		want := RenderBlocksUV(b.Min, b.Max, fl)
+		ok = true
 		for f := range want {
 			for k := range 4 {
 				if d := b.UV[f][k] - want[f][k]; b.Skip&(1<<f) == 0 && (d > 1e-3 || d < -1e-3) {
@@ -231,10 +396,10 @@ func uvLayoutOf(b *Box) (func(lo, hi [3]float32) [6][4]float32, bool) {
 			}
 		}
 		if ok {
-			return layout, true
+			return fl, true
 		}
 	}
-	return nil, false
+	return false, false
 }
 
 // RotateFace is where face f points after rots, or FaceCount when that's

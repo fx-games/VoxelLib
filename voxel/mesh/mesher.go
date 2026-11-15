@@ -721,24 +721,6 @@ func cornerMix(f voxel.Face, cl *[4]cornerLight, q [3]float32) cornerLight {
 	return c
 }
 
-// projUV is the texture position (1/16) of point q on face f when a texture
-// is laid over the block's face (same orientation as uvTab).
-func projUV(f voxel.Face, q [3]float32) (float32, float32) {
-	switch f {
-	case voxel.FaceDown:
-		return q[0], 16 - q[2]
-	case voxel.FaceUp:
-		return q[0], q[2]
-	case voxel.FaceNorth:
-		return 16 - q[0], 16 - q[1]
-	case voxel.FaceSouth:
-		return q[0], 16 - q[1]
-	case voxel.FaceWest:
-		return q[2], 16 - q[1]
-	}
-	return 16 - q[2], 16 - q[1]
-}
-
 // boxFace emits face f of element b of the block at base (all 1/16), lit
 // by the face's block corner lights cl interpolated to each vertex
 // (renderStandardBlockWithAmbientOcclusionPartial, smooth lighting
@@ -746,7 +728,6 @@ func projUV(f voxel.Face, q [3]float32) (float32, float32) {
 // model UVs) maps it like RenderBlocks, replacing the model's UVs.
 func (m *Mesher) boxFace(f voxel.Face, base [3]float32, b *voxel.Box, tex uint16, tint uint32, layer voxel.Layer, cl *[4]cornerLight, rot int, rb bool) {
 	var q [4][3]float32
-	var uv [4][2]float32
 	for k := 0; k < 4; k++ {
 		co := cornerOff[f][k]
 		for a := 0; a < 3; a++ {
@@ -755,33 +736,8 @@ func (m *Mesher) boxFace(f voxel.Face, base [3]float32, b *voxel.Box, tex uint16
 				q[k][a] = b.Max[a]
 			}
 		}
-		uv[k][0], uv[k][1] = projUV(f, q[k])
 	}
-	if b.UV != nil {
-		// stretch the face's own extent over the element's u0,v0..u1,v1
-		r := b.UV[f]
-		lo, hi := uv[0], uv[0]
-		for k := 1; k < 4; k++ {
-			lo = [2]float32{min(lo[0], uv[k][0]), min(lo[1], uv[k][1])}
-			hi = [2]float32{max(hi[0], uv[k][0]), max(hi[1], uv[k][1])}
-		}
-		for k := range uv {
-			var st [2]float32 // corner position in the face, 0..1 along u, v
-			for a := 0; a < 2; a++ {
-				if hi[a] > lo[a] {
-					st[a] = (uv[k][a] - lo[a]) / (hi[a] - lo[a])
-				}
-			}
-			// Turning the texture clockwise a quarter shows at each corner
-			// the texel of the corner before it (the reference BlockFaceUV).
-			for n := b.UVRot[f] & 3; n > 0; n-- {
-				st = [2]float32{st[1], 1 - st[0]}
-			}
-			for a := 0; a < 2; a++ {
-				uv[k][a] = r[a] + st[a]*(r[a+2]-r[a])
-			}
-		}
-	}
+	uv := b.FaceUV(f, q)
 	if len(b.Rot) == 0 && (rb || b.UV == nil && m.cfg != nil && m.cfg.RenderBlocksUV) {
 		uv = rbUV(f, b.Min, b.Max, rot)
 	}

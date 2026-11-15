@@ -107,9 +107,21 @@ func TestLockBoxes(t *testing.T) {
 	if out.Tex[FaceEast] != "n" {
 		t.Errorf("north texture went to %v", out.Tex)
 	}
-	b.UVRot[FaceUp] = 1 // not laid out by position: turns with the box
-	if out := LockBoxes([]Box{b}, 1, 90)[0]; len(out.Rot) != 1 {
-		t.Error("custom-UV box was baked")
+	// any UVs: four quarter turns with uvlock show every face as before
+	b.UV = &[6][4]float32{{1, 2, 7, 9}, {3, 0, 9, 4}, {0, 0, 16, 16}, {2, 3, 4, 5}, {16, 0, 0, 16}, {5, 5, 9, 9}}
+	b.UVRot = [6]uint8{1, 2, 0, 3, 0, 1}
+	turned := []Box{b}
+	for range 4 {
+		turned = LockBoxes(turned, 1, 90)
+	}
+	if len(turned[0].Rot) != 0 {
+		t.Fatal("custom-UV box turned unlocked")
+	}
+	for f := Face(0); f < FaceCount; f++ {
+		q := faceCorners(f, b.Min, b.Max)
+		if got, want := turned[0].FaceUV(f, q), b.FaceUV(f, q); got != want {
+			t.Errorf("%v after a full turn: %v, want %v", f, got, want)
+		}
 	}
 }
 
@@ -205,8 +217,13 @@ func TestLockBoxesModelUV(t *testing.T) {
 	arm := Box{Min: [3]float32{5, 0, 0}, Max: [3]float32{11, 14, 8}}
 	for _, deg := range []float32{90, 180, 270} {
 		b := LockBoxes([]Box{arm}, 1, deg)[0]
-		if b.UV == nil || *b.UV != ModelUV(b.Min, b.Max) {
-			t.Errorf("y=%v: UV %v, want ModelUV of %v..%v", deg, b.UV, b.Min, b.Max)
+		for f := Face(0); f < FaceCount; f++ {
+			q := faceCorners(f, b.Min, b.Max)
+			for k, uv := range b.FaceUV(f, q) {
+				if want := projUV2(f, q[k]); uv != want {
+					t.Errorf("y=%v %v corner %v: uv %v, want %v", deg, f, q[k], uv, want)
+				}
+			}
 		}
 	}
 }

@@ -661,4 +661,3 @@ func (p *Pack) ModelBoxes(id string, vars map[string]string) ([]voxel.Box, error
 	}
 	return out, nil
 }
-
