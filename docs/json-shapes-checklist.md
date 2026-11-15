@@ -39,3 +39,27 @@ Step A merged into lan-multiplayer (6c37edf). Blockers found for step B
   collision.
 - The explorer follows the 1.7 reference look; shapes.go carries 1.7
   RenderBlocks UVs that vanillapack's modern models may not reproduce.
+
+## One authoritative shape collection (branch entity-models)
+
+Goal (Felix): one shape collection in VoxelLib everyone uses, no gaps:
+every map with every block draws. Format: JSON blockstates/models only.
+Sources: the resource pack (jar) for everything it has geometry for;
+`voxel/respack/entity/` (embedded JSON) for what it lacks; `entity/empty.json`
+for states that draw nothing on purpose. Gaps are found by
+`TestShapeCoverage` (VOXELLIB_JAR=<client jar>): every state of every jar
+blockstate must resolve to geometry with existing textures.
+
+- [x] C1 Fallback collection embedded in respack, consulted after the pack
+- [x] C2 TestShapeCoverage (gap list); 26.3 jar: 148 → 85 gaps
+- [x] C3 Bare face texture names ("all", heavy_core) resolve as variables
+- [x] C4 Intentionally empty models (pitcher_crop upper 0-2) listed in empty.json
+- [x] C5 decorated_pot (renderer geometry, entity textures) — UVs unverified visually
+- [ ] C6 chest, trapped_chest, ender_chest, 8 copper chests (single + double halves)
+- [ ] C7 17 shulker boxes
+- [ ] C8 32 banners (standing rotation 0-15 + wall)
+- [ ] C9 12 heads/skulls (standing rotation + wall)
+- [ ] C10 end_portal, end_gateway, conduit, 8 copper golem statues
+- [ ] C11 Move shapes.go Go shapes (VoxelLib-only blocks: iron_spikes, custom ladders) into the collection; delete shapeVariants (= B1/B2)
+- [ ] C12 Runtime: an unresolved state is logged once with its name (no silent placeholder)
+- [ ] C13 Packs lacking textures/entity (old VoxelEdit builds): source for them

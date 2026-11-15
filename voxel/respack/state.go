@@ -16,8 +16,24 @@ func (p *Pack) Resolver() voxel.ModelResolver { return p.resolveState }
 
 // resolveState turns a state into its voxel.Model: a full cube or a cross
 // plant as such, any other model as its elements (voxel boxes) turned by the
-// blockstate's x/y rotation (with uvlock).
+// blockstate's x/y rotation (with uvlock). A state the pack has no geometry
+// for (builtin/entity models) takes entityPack's, or nothing when listed in
+// emptyStates.
 func (p *Pack) resolveState(name string, props map[string]string) (voxel.Model, bool) {
+	if m, ok := p.packState(name, props); ok || p == entityPack {
+		return m, ok
+	}
+	if m, ok := entityPack.packState(name, props); ok {
+		return m, true
+	}
+	if drawsNothing(name, props) {
+		return voxel.Model{Shape: voxel.ShapeNone}, true
+	}
+	return voxel.Model{}, false
+}
+
+// packState is resolveState from this pack's own files alone.
+func (p *Pack) packState(name string, props map[string]string) (voxel.Model, bool) {
 	ns, rel := splitID(name)
 	data, err := p.readFile(path.Join("assets", ns, "blockstates", rel+".json"))
 	if err != nil {
@@ -98,7 +114,7 @@ func (p *Pack) simpleModel(v variant) (voxel.Model, bool) {
 		if !ok {
 			continue
 		}
-		t[f] = lookupTex(tex, face.Texture)
+		t[f] = lookupTex(tex, faceRef(face.Texture))
 		if c, ok := voxel.FaceByName(face.Cullface); ok {
 			rules.Cull[f] = c
 		}

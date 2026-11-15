@@ -1,0 +1,5 @@
+[
+  "minecraft:pitcher_crop[age=0,half=upper]",
+  "minecraft:pitcher_crop[age=1,half=upper]",
+  "minecraft:pitcher_crop[age=2,half=upper]"
+]

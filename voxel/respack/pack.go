@@ -475,6 +475,15 @@ func (p *Pack) flat(id string) bool {
 	return false
 }
 
+// faceRef is a face's texture as a variable reference: the game reads a
+// face's "texture" as a variable with or without its "#" (heavy_core: "all").
+func faceRef(ref string) string {
+	if ref == "" || strings.HasPrefix(ref, "#") {
+		return ref
+	}
+	return "#" + ref
+}
+
 func lookupTex(tex map[string]string, ref string) string {
 	for i := 0; i < 16 && strings.HasPrefix(ref, "#"); i++ {
 		ref = tex[ref[1:]]
@@ -579,7 +588,7 @@ func (p *Pack) ModelBoxes(id string, vars map[string]string) ([]voxel.Box, error
 				continue
 			}
 			b.Skip &^= 1 << f
-			b.Tex[f] = lookupTex(tex, face.Texture)
+			b.Tex[f] = lookupTex(tex, faceRef(face.Texture))
 			if c, ok := voxel.FaceByName(face.Cullface); ok {
 				cull[f] = c
 			}
