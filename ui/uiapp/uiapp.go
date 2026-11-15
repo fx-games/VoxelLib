@@ -37,6 +37,10 @@ type UI struct {
 	// Top draws over everything, open screens included (the reference's
 	// achievement window, drawn last in the game loop).
 	Top func(ctx *ui.Context)
+	// Show, when set, runs each frame after the HUD took the player's
+	// hotbar, held slot and off hand, and may change what it shows (an
+	// editor's tool bar in the hotbar's place); the inventory is untouched.
+	Show func(st *ui.HUDState)
 	// Inventory runs app.Player.Inv: the game sets its Item. Its HUD is
 	// HUD; what the cursor carries on closing goes back into the inventory.
 	Inventory *ui.PlayerGUI
@@ -147,6 +151,9 @@ func (u *UI) Draw(fbW, fbH int) {
 	u.HUD.State.Crosshair = false // the app draws its own crosshair
 	if p := u.App.Player; p != nil {
 		u.HUD.ShowPlayer(p.Inv, u.Inventory.Item)
+	}
+	if u.Show != nil {
+		u.Show(&u.HUD.State)
 	}
 	u.HUD.Draw(u.Ctx, partial)
 	if u.Top != nil && u.Ctx.Screens.Len() == 0 {
