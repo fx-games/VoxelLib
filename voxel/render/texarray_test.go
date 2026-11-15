@@ -5,62 +5,52 @@ import (
 	"testing"
 )
 
-// TestTexArrayGrid checks the layer allocation past the GPU's array layer
-// limit: a large map region needs 3236 physical layers on Metal's 2048.
-func TestTexArrayGrid(t *testing.T) {
-	for _, c := range []struct{ layers, max, grid int }{
-		{64, 2048, 0}, {2048, 2048, 0}, {2049, 2048, 1}, {3236, 2048, 1}, {8192, 2048, 1}, {8193, 2048, 2}, {maxLayerCode + maxLayerCode/4 + 16, 2048, 2},
-	} {
-		if g := gridShift(c.layers, c.max); g != c.grid {
-			t.Errorf("gridShift(%d, %d) = %d, want %d", c.layers, c.max, g, c.grid)
-		}
-	}
-	// every physical layer gets its own tile within the array layers
-	for grid := 0; grid <= 2; grid++ {
-		ta := textureArray{capLayers: 3236, grid: grid}
-		seen := map[[3]int]bool{}
-		for i := 0; i < ta.capLayers; i++ {
-			l, x, y := tileOf(i, grid)
-			if l >= ta.arrayLayers() || x >= 1<<grid || y >= 1<<grid || seen[[3]int{l, x, y}] {
-				t.Fatalf("grid %d: layer %d -> tile %d,%d,%d (array layers %d)", grid, i, l, x, y, ta.arrayLayers())
+// TestTexArrayTiles: tiles of mixed sizes never overlap, each size fills
+// its own layers, and the code decodes (as wgslBlockTex does) to the slot.
+func TestTexArrayTiles(t *testing.T) {
+	ta := textureArray{layerSize: 128, open: map[int]openLayer{}}
+	type px struct{ layer, x, y int }
+	owner := map[px]int{}
+	for n, s := range []int{16, 64, 16, 128, 32, 16, 64, 64, 64, 64, 16} {
+		for k := 0; k < 70; k++ {
+			sl := ta.tile(s, nil)
+			c := sl.code()
+			g, i := int(c>>25&7), int(c>>11&16383)
+			if int(c&2047) != sl.layer || g != sl.grid || i != sl.tile || ta.layerSize>>g != s {
+				t.Fatalf("size %d: code %#x decodes to layer %d grid %d tile %d, slot %+v", s, c, c&2047, g, i, sl)
 			}
-			seen[[3]int{l, x, y}] = true
+			x, y := sl.tileXY()
+			for dy := 0; dy < s; dy += 16 {
+				for dx := 0; dx < s; dx += 16 {
+					p := px{sl.layer, x*s + dx, y*s + dy}
+					if p.x >= ta.layerSize || p.y >= ta.layerSize {
+						t.Fatalf("size %d tile %d outside the layer", s, sl.tile)
+					}
+					if o, ok := owner[p]; ok {
+						t.Fatalf("size %d tile %d overlaps tile of run %d", s, sl.tile, o)
+					}
+					owner[p] = n
+				}
+			}
 		}
 	}
 }
 
-// TestBlockTexDecode mirrors wgslBlockTex on the CPU: the code decodes to
-// tileOf's tile, and nearest sampling at the tile's fract(uv) hits the
-// texel a whole repeat-wrapped layer would, at every mip level.
+// TestBlockTexDecode mirrors wgslBlockTex on the CPU: nearest sampling at
+// the tile's fract(uv) hits the texel a whole repeat-wrapped texture would,
+// at every mip level.
 func TestBlockTexDecode(t *testing.T) {
 	const size = 16
-	for grid := 0; grid <= 2; grid++ {
-		for _, i := range []int{0, 1, 5, 2047, 2048, 3235} {
-			code := uint32(layerCode(i, grid))
-			g := code >> 14
-			idx := code & 16383
-			m := uint32(1)<<g - 1
-			l, x, y := tileOf(i, grid)
-			if int(g) != grid || int(idx>>(2*g)) != l || int(idx&m) != x || int((idx>>g)&m) != y {
-				t.Fatalf("grid %d layer %d: code %#x decodes differently from tile %d,%d,%d", grid, i, code, l, x, y)
-			}
-			if grid == 0 && code != uint32(i) {
-				t.Fatalf("grid 0 code %d != layer %d", code, i)
-			}
-			n := float32(uint32(1) << g)
+	for grid := 0; grid <= 3; grid++ {
+		n := float32(uint32(1) << grid)
+		for _, x := range []int{0, 1, 1<<grid - 1} {
 			for _, u := range []float32{0, 0.03, 0.5, 0.999, 1, 1.0625, 3.97, 7.5, 31.99, -0.25, -1e-8, 2 - 1e-7} {
 				fr := min(u-float32(math.Floor(float64(u))), 1-1.0/4096) // wgslBlockTex's fract
-				p := u
-				if g > 0 {
-					p = (fr + float32(x)) / n
-				}
-				for lv := 0; lv <= 4; lv++ {
+				p := (fr + float32(x)) / n
+				for lv := 0; lv <= mipLevels; lv++ {
 					s := size >> lv
 					got := int(math.Floor(float64(p * n * float32(s))))
 					want := x*s + int(math.Floor(float64(u)*float64(s)))&(s-1)
-					if grid == 0 {
-						got &= s - 1 // repeat
-					}
 					if got != want {
 						t.Errorf("grid %d tile x %d u %v level %d: texel %d, want %d", grid, x, u, lv, got, want)
 					}

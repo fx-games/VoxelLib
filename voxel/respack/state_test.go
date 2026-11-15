@@ -107,7 +107,6 @@ func TestResolveJar(t *testing.T) {
 	defer p.Close()
 	reg := voxel.NewRegistry()
 	reg.Resolver = p.Resolver()
-	names, _ := reg.TextureNames()
 	for _, s := range []string{
 		"stone_stairs[facing=south,half=top,shape=outer_left]", "andesite_slab[type=bottom]",
 		"pitcher_plant[half=lower]", "potted_red_tulip",
@@ -118,12 +117,12 @@ func TestResolveJar(t *testing.T) {
 			t.Errorf("%s: still the unknown placeholder cube", s)
 			continue
 		}
-		names, _ = reg.TextureNames()
+		entries, _ := reg.Textures()
 		for _, b := range info.Boxes {
 			for f, id := range b.TexID {
 				if b.Skip&(1<<f) == 0 && b.Tex[f] != "" {
-					if _, err := p.Texture(names[id]); err != nil {
-						t.Errorf("%s: face texture %s: %v", s, names[id], err)
+					if _, err := p.Texture(entries[id].Name); err != nil {
+						t.Errorf("%s: face texture %s: %v", s, entries[id].Name, err)
 					}
 				}
 			}

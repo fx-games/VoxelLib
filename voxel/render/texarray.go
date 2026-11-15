@@ -5,6 +5,8 @@ import (
 	"image"
 	"image/color"
 	"math/bits"
+
+	"github.com/memmaker/voxellib/voxel"
 )
 
 // TextureSource supplies block textures by resource name ("block/stone").
@@ -20,39 +22,62 @@ type AnimatedTextureSource interface {
 	TextureFrames(name string) (frames []image.Image, ticksPerFrame int, err error)
 }
 
-// anim is one animated texture: name base's frames 1.. live in physical
-// layers extra.. .
-type anim struct{ base, extra, count, ticks int }
-
-// textureArray holds every block texture as one layer of a 2D array texture:
-// no atlas bleeding, and greedy-merged quads can tile a texture with repeat
-// wrapping. Texture ids (registry names) map to physical layers through a
-// layer map (a 1-row R16UI texture the shader reads), which also points
-// animated textures at their current frame. Names learned later are
-// appended into spare layers (see add) without re-reading the others.
-//
-// The GPU caps array layers (Metal: 2048). Past that, physical layers are
-// packed as tiles of a 2^grid x 2^grid grid per array layer (see tileOf);
-// the layer map then holds codes (layerCode) that wgslBlockTex decodes.
+// textureArray holds the block textures as tiles of a 2D array texture,
+// each at its own size, like the reference's atlas sprites: a 16 px
+// texture takes a 16 px tile however large other textures (64 px entity
+// sheets, hi-res packs) are. Tiles never bleed (nearest texels within a
+// tile, repeat by fract: see wgslBlockTex). The texture table (registry
+// TextureEntry: a texture or a region of one) maps to tiles through the
+// layer map (one RGBA32Uint texel per entry: tile code, region rect), which
+// also points animated textures at their current frame. Entries learned
+// later are appended (see add) without re-reading the others.
 type textureArray struct {
-	gpu               gpuTexArray
-	size              int
-	levels            int // highest mip level
-	tintable          []bool
-	cut               []bool // per name: a frame has a texel the 0.1 alpha test discards
-	anims             []anim
-	mapPix            []uint16   // per name: current physical layer
-	base              []uint16   // per name: frame 0's physical layer
-	mips              [][][]byte // per physical layer: cached mip chain
-	capLayers, capMap int        // GPU capacity (physical layers, layer map width)
-	grid              int        // tiles per array layer side: 1<<grid
-	gen               int        // bumped when the GPU textures are reallocated
-	lastTick          int
+	gpu       gpuTexArray
+	layerSize int // array layer side, a power of two
+	levels    int // highest mip level
+	entries   []voxel.TextureEntry
+	texOf     map[string]int // texture name -> texs index
+	texs      []texImage
+	tintable  []bool // per entry
+	cut       []bool // per entry: a frame has a texel the 0.1 alpha test discards
+	slots     []slot
+	open      map[int]openLayer // per tile size: the layer being filled
+	layers    int               // array layers in use
+	capLayers int               // GPU capacity (array layers)
+	capMap    int               // GPU capacity (layer map width)
+	gen       int               // bumped when the GPU textures are reallocated
+	lastTick  int
 
 	src     TextureSource
 	missing func(int) image.Image
 	isGrey  func(image.Image) bool
 }
+
+// texImage is one texture: its frames' slots (one unless animated).
+type texImage struct {
+	frames []int
+	ticks  int
+	cur    int // current frame's slot
+	tint   bool
+	cut    bool
+}
+
+// slot is one image placed in a tile: array layer, tile grid (the layer
+// holds 2^grid x 2^grid tiles of its size) and tile index, and its mips.
+type slot struct {
+	layer, grid, tile int
+	mips              [][]byte
+}
+
+// openLayer is the array layer tiles of one size are being added to.
+type openLayer struct{ layer, next int }
+
+// minTile is the smallest tile side: mipLevels halvings leave a texel.
+const minTile = 1 << mipLevels
+
+// maxLayerSize bounds the array layer side (tile codes hold 14 bits of
+// tile index, grids up to 7).
+const maxLayerSize = minTile << 7
 
 const mipLevels = 4
 
@@ -105,121 +130,146 @@ func downsample(src []byte, size int) []byte {
 	return dst
 }
 
-func newTextureArray(names []string, src TextureSource, missing func(int) image.Image, isGrey func(image.Image) bool) *textureArray {
-	t := &textureArray{size: 16, lastTick: -1, src: src, missing: missing, isGrey: isGrey}
-	imgs := t.load(names, 0)
-	for _, img := range imgs {
-		if img != nil {
-			if w := img.Bounds().Dx(); w > t.size && w <= 512 {
-				t.size = w
-			}
-		}
+func newTextureArray(entries []voxel.TextureEntry, src TextureSource, missing func(int) image.Image, isGrey func(image.Image) bool) *textureArray {
+	t := &textureArray{lastTick: -1, texOf: map[string]int{}, open: map[int]openLayer{}, levels: mipLevels,
+		src: src, missing: missing, isGrey: isGrey}
+	frames := t.load(entries)
+	largest, area := minTile, 0
+	for _, f := range frames {
+		s := tileSize(f)
+		largest, area = max(largest, s), area+s*s
 	}
-	// a power of two, so smaller power-of-two textures scale by whole
-	// texels and grid tiles stay aligned at every mip level
-	t.size = 1 << bits.Len(uint(t.size-1))
-	t.levels = mipLevels
-	for s := t.size; s>>t.levels == 0; t.levels-- {
+	maxLayers, maxDim := gpuArrayLimits()
+	// a layer at least the largest tile, larger while the tiles would fill
+	// more than half the GPU's array layers
+	t.layerSize = max(largest, 128)
+	for area > t.layerSize*t.layerSize*maxLayers/2 && t.layerSize*2 <= min(maxDim, maxLayerSize) {
+		t.layerSize *= 2
 	}
-	t.place(names, imgs)
+	t.place(entries, frames)
 	return t
 }
 
-// add appends textures for names[len(t.base):]; false if one is larger
-// than the array's layer size (rebuild with newTextureArray).
-func (t *textureArray) add(names []string) bool {
-	if len(names) <= len(t.base) {
+// add appends the entries after the known ones; false when a new texture
+// is larger than the layers (rebuild with newTextureArray).
+func (t *textureArray) add(entries []voxel.TextureEntry) bool {
+	if len(entries) <= len(t.entries) {
 		return true
 	}
-	imgs := t.load(names, len(t.base))
-	for _, img := range imgs {
-		if img != nil {
-			if w := img.Bounds().Dx(); w > t.size && w <= 512 {
-				return false
-			}
+	frames := t.load(entries)
+	for _, f := range frames {
+		if tileSize(f) > t.layerSize {
+			return false
 		}
 	}
-	t.place(names, imgs)
+	t.place(entries, frames)
 	return true
 }
 
-// load reads names[from:]: frame 0 per name then the extra animation
-// frames; anims get name indices and extra offsets relative to the result.
-func (t *textureArray) load(names []string, from int) []image.Image {
-	imgs := make([]image.Image, len(names)-from)
-	var extra []image.Image
-	asrc, _ := t.src.(AnimatedTextureSource)
-	for i, n := range names[from:] {
-		if asrc != nil {
-			frames, ticks, err := asrc.TextureFrames(n)
-			if err != nil || len(frames) == 0 {
-				continue
-			}
-			imgs[i] = frames[0]
-			if len(frames) > 1 {
-				t.anims = append(t.anims, anim{base: from + i, extra: -1 - len(extra), count: len(frames), ticks: max(ticks, 1)})
-				extra = append(extra, frames[1:]...)
-			}
-		} else if img, err := t.src.Texture(n); err == nil {
-			imgs[i] = img
-		}
-	}
-	return append(imgs, extra...)
+// tileSize is the tile an image takes: its larger side as a power of two,
+// at least minTile.
+func tileSize(img image.Image) int {
+	b := img.Bounds()
+	return max(minTile, 1<<bits.Len(uint(max(b.Dx(), b.Dy())-1)))
 }
 
-// place converts and uploads imgs (from load) as the layers of the names
-// after len(t.base), growing the GPU textures if needed.
-func (t *textureArray) place(names []string, imgs []image.Image) {
-	first := len(t.mips)
-	nNew := len(names) - len(t.base)
-	for i, img := range imgs {
-		if i < nNew {
-			t.tintable = append(t.tintable, img != nil && t.isGrey(img))
+// load reads the textures of entries[len(t.entries):] not read before,
+// appending them to t.texs; it returns their frames in that order (slots
+// are appended in the same order by place).
+func (t *textureArray) load(entries []voxel.TextureEntry) []image.Image {
+	var out []image.Image
+	asrc, _ := t.src.(AnimatedTextureSource)
+	for _, e := range entries[len(t.entries):] {
+		if _, ok := t.texOf[e.Name]; ok {
+			continue
 		}
-		if img == nil {
-			img = t.missing(t.size)
+		var frames []image.Image
+		ticks := 1
+		if asrc != nil {
+			if fs, tk, err := asrc.TextureFrames(e.Name); err == nil && len(fs) > 0 {
+				frames, ticks = fs, max(tk, 1)
+			}
+		} else if img, err := t.src.Texture(e.Name); err == nil {
+			frames = []image.Image{img}
 		}
-		px := toNRGBA(img, t.size).Pix
+		ti := texImage{ticks: ticks}
+		if len(frames) == 0 {
+			frames = []image.Image{t.missing(minTile)}
+		} else {
+			ti.tint = t.isGrey(frames[0])
+		}
+		for range frames {
+			ti.frames = append(ti.frames, len(t.slots)+len(out)+len(ti.frames))
+		}
+		ti.cur = ti.frames[0]
+		t.texOf[e.Name] = len(t.texs)
+		t.texs = append(t.texs, ti)
+		out = append(out, frames...)
+	}
+	return out
+}
+
+// place tiles frames (from load) and records entries, growing the GPU
+// textures if needed, then uploads what is new and the layer map.
+func (t *textureArray) place(entries []voxel.TextureEntry, frames []image.Image) {
+	first := len(t.slots)
+	for _, img := range frames {
+		s := tileSize(img)
+		px := toNRGBA(img, s).Pix
 		chain := make([][]byte, t.levels+1)
 		for l := range chain {
 			chain[l] = px
 			if l < t.levels {
-				px = downsample(px, t.size>>l)
+				px = downsample(px, s>>l)
 			}
 		}
-		t.mips = append(t.mips, chain)
+		t.slots = append(t.slots, t.tile(s, chain))
 	}
-	for i := 0; i < nNew; i++ {
-		t.base = append(t.base, uint16(first+i))
-		t.cut = append(t.cut, alphaCut(t.mips[first+i][0]))
-	}
-	t.mapPix = append(t.mapPix, t.base[len(t.mapPix):]...)
-	for k := range t.anims {
-		if a := &t.anims[k]; a.extra < 0 {
-			a.extra = first + nNew - 1 - a.extra
-			for f := range a.count - 1 {
-				t.cut[a.base] = t.cut[a.base] || alphaCut(t.mips[a.extra+f][0])
+	for k := range t.texs {
+		ti := &t.texs[k]
+		if ti.frames[len(ti.frames)-1] >= first {
+			for _, f := range ti.frames {
+				ti.cut = ti.cut || alphaCut(t.slots[f].mips[0])
 			}
 		}
 	}
-	if len(t.mips) > t.capLayers || len(t.mapPix) > t.capMap {
+	for _, e := range entries[len(t.entries):] {
+		ti := t.texs[t.texOf[e.Name]]
+		t.tintable = append(t.tintable, ti.tint)
+		t.cut = append(t.cut, ti.cut)
+	}
+	t.entries = append(t.entries, entries[len(t.entries):]...)
+	if t.layers > t.capLayers || len(t.entries) > t.capMap {
 		if t.capLayers > 0 {
 			t.delete()
 		}
-		t.capLayers = max(len(t.mips)+len(t.mips)/4+16, 64)
-		t.capMap = max(len(t.mapPix)+len(t.mapPix)/4+16, 64)
-		maxLayers, maxDim := gpuArrayLimits()
-		t.grid = gridShift(t.capLayers, maxLayers)
-		if len(t.mips) > maxLayerCode || t.size<<t.grid > maxDim {
-			panic(fmt.Sprintf("render: %d block texture layers of %dpx exceed the GPU limits (%d array layers, %dpx)", len(t.mips), t.size, maxLayers, maxDim))
+		maxLayers, _ := gpuArrayLimits()
+		if t.layers > maxLayers {
+			panic(fmt.Sprintf("render: block textures need %d array layers of %dpx, the GPU has %d", t.layers, t.layerSize, maxLayers))
 		}
+		t.capLayers = min(max(t.layers+t.layers/4+4, 8), maxLayers)
+		t.capMap = max(len(t.entries)+len(t.entries)/4+16, 64)
 		t.allocGPU()
 		first = 0
 	}
-	for i := first; i < len(t.mips); i++ {
-		t.uploadLayer(i, t.mips[i])
+	for i := first; i < len(t.slots); i++ {
+		t.uploadSlot(t.slots[i])
 	}
 	t.uploadMap()
+}
+
+// tile places an image of tile side s in the next free tile of its size.
+func (t *textureArray) tile(s int, mips [][]byte) slot {
+	grid := bits.Len(uint(t.layerSize/s)) - 1
+	o, ok := t.open[s]
+	if !ok || o.next == 1<<(2*grid) {
+		o = openLayer{layer: t.layers}
+		t.layers++
+	}
+	sl := slot{layer: o.layer, grid: grid, tile: o.next, mips: mips}
+	o.next++
+	t.open[s] = o
+	return sl
 }
 
 // alphaCut: a texel of the RGBA image has alpha <= 0.1 (the 8-bit 25 or
@@ -235,51 +285,40 @@ func alphaCut(px []byte) bool {
 	return false
 }
 
-// maxLayerCode bounds physical layers: layerCode keeps 14 bits for them.
-const maxLayerCode = 1 << 14
 
-// gridShift is the smallest grid such that layers physical layers fit in
-// maxLayers array layers of (1<<grid)² tiles each.
-func gridShift(layers, maxLayers int) int {
-	g := 0
-	for layers > maxLayers<<(2*g) {
-		g++
-	}
-	return g
+// code is what the layer map stores for slot s: array layer:11, tile:14,
+// grid:3 (wgslBlockTex decodes it).
+func (s slot) code() uint32 { return uint32(s.layer) | uint32(s.tile)<<11 | uint32(s.grid)<<25 }
+
+// tileXY is the tile's column and row in its layer.
+func (s slot) tileXY() (x, y int) { return s.tile & (1<<s.grid - 1), s.tile >> s.grid }
+
+// regionUnit is the layer map's rect step: 1/32768 of a texture (exact for
+// quarter texels of textures up to 8192 px).
+const regionUnit = 32768
+
+// mapEntry is entry i's layer map texel: tile code and region rect.
+func (t *textureArray) mapEntry(i int) [4]uint32 {
+	e := t.entries[i]
+	q := func(f float32) uint32 { return uint32(f*regionUnit + 0.5) }
+	r := e.Region
+	return [4]uint32{t.slots[t.texs[t.texOf[e.Name]].cur].code(), q(r[0]) | q(r[1])<<16, q(r[2]) | q(r[3])<<16, 0}
 }
 
-// tileOf places physical layer i: array layer, tile column and row.
-func tileOf(i, grid int) (layer, x, y int) {
-	m := 1<<grid - 1
-	return i >> (2 * grid), i & m, i >> grid & m
-}
-
-// layerCode is what the layer map stores for physical layer i: the grid
-// in the top 2 bits (wgslBlockTex decodes it; grid 0 is i itself).
-func layerCode(i, grid int) uint16 { return uint16(grid<<14 | i) }
-
-// arrayLayers is the number of array layers capLayers tiles take.
-func (t *textureArray) arrayLayers() int {
-	per := 1 << (2 * t.grid)
-	return (t.capLayers + per - 1) / per
-}
-
-// animate points animated layers at their frame for game tick (20 Hz).
+// animate points animated textures at their frame for game tick (20 Hz).
 func (t *textureArray) animate(tick int) bool {
-	if len(t.anims) == 0 || tick == t.lastTick {
+	if tick == t.lastTick {
 		return false
 	}
 	t.lastTick = tick
 	changed := false
-	for _, a := range t.anims {
-		f := (tick / a.ticks) % a.count
-		l := t.base[a.base]
-		if f > 0 {
-			l = uint16(a.extra + f - 1)
+	for k := range t.texs {
+		ti := &t.texs[k]
+		if len(ti.frames) < 2 {
+			continue
 		}
-		if t.mapPix[a.base] != l {
-			t.mapPix[a.base] = l
-			changed = true
+		if f := ti.frames[(tick/ti.ticks)%len(ti.frames)]; f != ti.cur {
+			ti.cur, changed = f, true
 		}
 	}
 	if changed {

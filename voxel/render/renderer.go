@@ -315,8 +315,8 @@ func New(w *voxel.World, src TextureSource, opt Options) (*Renderer, error) {
 }
 
 func (r *Renderer) reloadTextures() {
-	names, ver := r.world.Reg.TextureNames()
-	if r.tex != nil && r.tex.add(names) { // new names into spare layers
+	entries, ver := r.world.Reg.Textures()
+	if r.tex != nil && r.tex.add(entries) { // new entries into free tiles
 		r.texVersion = ver
 		r.cfg = &mesh.Config{Tintable: r.tex.tintable, BlockTint: r.Opt.BlockTint, RenderBlocksUV: r.Opt.RenderBlocksUV}
 		return
@@ -332,7 +332,7 @@ func (r *Renderer) reloadTextures() {
 	if grey == nil {
 		grey = func(image.Image) bool { return false }
 	}
-	r.tex = newTextureArray(names, r.src, missing, grey)
+	r.tex = newTextureArray(entries, r.src, missing, grey)
 	r.texVersion = ver
 	r.cfg = &mesh.Config{Tintable: r.tex.tintable, BlockTint: r.Opt.BlockTint, RenderBlocksUV: r.Opt.RenderBlocksUV}
 }

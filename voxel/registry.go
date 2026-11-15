@@ -260,8 +260,8 @@ type Registry struct {
 	defs       map[string]*BlockDef
 	stateByKey map[string]StateID
 	table      atomic.Pointer[[]StateInfo]
-	texNames   []string
-	texIndex   map[string]uint16
+	textures   []TextureEntry
+	texIndex   map[TextureEntry]uint16
 	texVersion atomic.Uint64
 	tagIndex   map[string]uint16
 	Resolver   ModelResolver
@@ -275,7 +275,7 @@ func NewRegistry() *Registry {
 	r := &Registry{
 		defs:       map[string]*BlockDef{},
 		stateByKey: map[string]StateID{},
-		texIndex:   map[string]uint16{},
+		texIndex:   map[TextureEntry]uint16{},
 		tagIndex:   map[string]uint16{"air": tagAir, "opaque": tagOpaque},
 		Missing:    "block/missing",
 	}
@@ -440,11 +440,7 @@ func (r *Registry) bake(def *BlockDef, canon string, props map[string]string) St
 			}
 			p.Boxes = append([]Box(nil), p.Boxes...)
 			for j := range p.Boxes {
-				for f, t := range p.Boxes[j].Tex {
-					if t != "" {
-						p.Boxes[j].TexID[f] = r.texture(t)
-					}
-				}
+				r.boxTextures(&p.Boxes[j])
 			}
 			info.Parts[i] = p
 		}
@@ -469,11 +465,7 @@ func (r *Registry) bake(def *BlockDef, canon string, props map[string]string) St
 	if info.Variants != nil {
 		for _, bs := range info.Variants {
 			for i := range bs {
-				for f, t := range bs[i].Tex {
-					if t != "" {
-						bs[i].TexID[f] = r.texture(t)
-					}
-				}
+				r.boxTextures(&bs[i])
 			}
 		}
 		info.Boxes = info.Variants[""]
@@ -573,14 +565,80 @@ func (r *Registry) texture(name string) uint16 {
 	if name == "" {
 		name = r.Missing
 	}
-	if i, ok := r.texIndex[name]; ok {
+	return r.entry(TextureEntry{Name: name, Region: WholeTexture})
+}
+
+// TextureEntry is one texture table entry: the part Region of the texture
+// Name (WholeTexture for plain textures).
+type TextureEntry struct {
+	Name   string
+	Region UVRect
+}
+
+// UVRect is a rectangle of a texture, u0, v0, u1, v1 as fractions of it.
+type UVRect [4]float32
+
+// WholeTexture is the region of a plain texture entry.
+var WholeTexture = UVRect{0, 0, 1, 1}
+
+// MaxTextures bounds the texture table: a mesh vertex holds 12 bits of it.
+const MaxTextures = 1 << 12
+
+// entry interns a texture table entry.
+func (r *Registry) entry(e TextureEntry) uint16 {
+	if i, ok := r.texIndex[e]; ok {
 		return i
 	}
-	i := uint16(len(r.texNames))
-	r.texNames = append(r.texNames, name)
-	r.texIndex[name] = i
+	if len(r.textures) >= MaxTextures {
+		panic(fmt.Sprintf("voxel: more than %d textures and texture regions (adding %+v)", MaxTextures, e))
+	}
+	i := uint16(len(r.textures))
+	r.textures = append(r.textures, e)
+	r.texIndex[e] = i
 	r.texVersion.Add(1)
 	return i
+}
+
+// boxTextures interns box b's face textures into TexID. A face whose UVs
+// fall between the 1/16 steps a mesh vertex holds (entity sheets: quarter
+// pixels of a 64 px texture) gets a region entry for its UV rectangle
+// instead, and its UVs become that region's corners (orientation kept).
+func (r *Registry) boxTextures(b *Box) {
+	copied := false
+	for f, t := range b.Tex {
+		if t == "" {
+			continue
+		}
+		if b.UV == nil || wholeSteps(b.UV[f]) {
+			b.TexID[f] = r.texture(t)
+			continue
+		}
+		if !copied { // UV may be shared with other states' boxes
+			uv := *b.UV
+			b.UV, copied = &uv, true
+		}
+		uv := &b.UV[f]
+		rect := UVRect{min(uv[0], uv[2]) / 16, min(uv[1], uv[3]) / 16, max(uv[0], uv[2]) / 16, max(uv[1], uv[3]) / 16}
+		b.TexID[f] = r.entry(TextureEntry{Name: t, Region: rect})
+		corner := func(lo, hi float32) (float32, float32) {
+			if lo <= hi {
+				return 0, 16
+			}
+			return 16, 0
+		}
+		uv[0], uv[2] = corner(uv[0], uv[2])
+		uv[1], uv[3] = corner(uv[1], uv[3])
+	}
+}
+
+// wholeSteps: every coordinate is a whole 1/16 step (what a vertex holds).
+func wholeSteps(uv [4]float32) bool {
+	for _, c := range uv {
+		if c != float32(int(c)) {
+			return false
+		}
+	}
+	return true
 }
 
 // Texture returns (interning) the layer index of a texture name.
@@ -590,12 +648,12 @@ func (r *Registry) Texture(name string) uint16 {
 	return r.texture(name)
 }
 
-// TextureNames returns the texture table (index = texture layer) and its
-// version, which changes whenever a texture is added.
-func (r *Registry) TextureNames() ([]string, uint64) {
+// Textures returns the texture table (index = a box face's TexID, a
+// vertex's texture) and its version, which changes whenever an entry is added.
+func (r *Registry) Textures() ([]TextureEntry, uint64) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	return append([]string(nil), r.texNames...), r.texVersion.Load()
+	return append([]TextureEntry(nil), r.textures...), r.texVersion.Load()
 }
 
 func (r *Registry) TextureVersion() uint64 { return r.texVersion.Load() }

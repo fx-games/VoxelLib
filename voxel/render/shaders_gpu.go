@@ -61,9 +61,11 @@ fn vs(@location(0) d: vec4<u32>) -> VOut {
 	let pos = u.origin.xyz + sec + local;
 	var o: VOut;
 	o.pos = u.viewProj * vec4f(pos, 1.0);
-	o.layer = textureLoad(layerMap, vec2<i32>(i32(w1 & 4095u), 0), 0).r;
+	let lm = textureLoad(layerMap, vec2<i32>(i32(w1 & 4095u), 0), 0);
+	o.layer = lm.x;
 	o.uv = vec2f(f32((w1 >> 12u) & 31u), f32((w1 >> 17u) & 31u));
 	if ((w1 & (1u << 25u)) != 0u) { o.uv = o.uv * (1.0 / 16.0); } // box faces: u/v in 1/16 tile
+	o.uv = regionUV(o.uv, lm);
 	let n = (w1 >> 22u) & 7u;
 	let tint = vec3f(f32(w2 & 255u), f32((w2 >> 8u) & 255u), f32((w2 >> 16u) & 255u)) * (1.0 / 255.0);
 	let wt = f32((w3 >> 16u) & 255u) * (1.0 / 255.0);

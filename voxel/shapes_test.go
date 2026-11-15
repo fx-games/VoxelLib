@@ -79,7 +79,7 @@ func TestShapeBoxes(t *testing.T) {
 	}
 }
 
-func texName(r *Registry, i uint16) string { n, _ := r.TextureNames(); return n[i] }
+func texName(r *Registry, i uint16) string { e, _ := r.Textures(); return e[i].Name }
 
 func TestWallSignHangsOnWall(t *testing.T) {
 	// facing north: text faces north, so the board backs onto the south wall.

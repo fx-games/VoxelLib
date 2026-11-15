@@ -61,7 +61,9 @@ fn vs(@location(0) d: vec4<u32>) -> VOut {
 		o.color = vec3f(1.0);
 		return o;
 	}
-	o.layer = textureLoad(layerMap, vec2<i32>(i32(w1 & 4095u), 0), 0).r;
+	let lm = textureLoad(layerMap, vec2<i32>(i32(w1 & 4095u), 0), 0);
+	o.layer = lm.x;
+	o.uv = regionUV(o.uv, lm);
 	let tint = vec3f(f32(w2 & 255u), f32((w2 >> 8u) & 255u), f32((w2 >> 16u) & 255u)) * (1.0 / 255.0);
 	let n = (w1 >> 22u) & 7u;
 	var shade = 1.0; // faces without one direction (rotated, unshaded boxes)
