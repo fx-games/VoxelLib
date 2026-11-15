@@ -57,13 +57,13 @@ blockstate must resolve to geometry with existing textures.
 - [x] C5 decorated_pot — copied from DecoratedPotRenderer, checked in a VoxelEdit shot
 - [x] C6 chest, trapped_chest, ender_chest, 8 copper chests (single + double halves) — copied from ChestModel; single chests checked in a shot, double halves not yet
 - [x] C6a Vertex UVs 16-bit fixed point (1/2048 tile, 5-word vertex): fractional model UVs no longer rounded (the "gaps")
-- [ ] C7 17 shulker boxes
-- [ ] C8 32 banners (standing rotation 0-15 + wall)
-- [ ] C9 12 heads/skulls (standing rotation + wall)
-- [ ] C10 end_portal, end_gateway, conduit, 8 copper golem statues
+- [x] C7 17 shulker boxes
+- [x] C8 32 banners (standing rotation 0-15 + wall); dye via the tint_color model extension; patterns not drawn
+- [x] C9 12 heads/skulls (standing rotation + wall)
+- [x] C10 end_portal, end_gateway (static end_portal texture, not the game's shader), conduit, 8 copper golem statues
 - [ ] C11 Move shapes.go Go shapes (VoxelLib-only blocks: iron_spikes, custom ladders) into the collection; delete shapeVariants (= B1/B2)
-- [ ] C12 Runtime: an unresolved state is logged once with its name (no silent placeholder)
-- [ ] C13 Packs lacking textures/entity (old VoxelEdit builds): source for them
+- [x] C12 Runtime: an unresolved state is logged once with its name (no silent placeholder)
+- [x] C13 Packs lacking textures/entity (old VoxelEdit builds): VoxelEdit Build.CompletePack adds them from the jar on open
 
 Shapes are copied from the game, never hand-derived: `tools/shapegen/run.sh`
 bakes each renderer's model layer (Dump.java, run against the installed
@@ -84,9 +84,20 @@ format with 0..16 corner UVs. Index budget: 4096 textures + regions
 (26.3: 1311 textures, 923 fractional rects); overflow panics loudly.
 
 - [x] T1 Revert the 5-word vertex (keep the DecodeVertex test migration)
-- [ ] T2 Layer map entries RGBA32: code (layer, grid, tile) + region rect
-- [ ] T3 Per-texture tile size: layers sized max(largest, 128), textures packed at native size
-- [ ] T4 blockTex: always the grad path (per-entry grid is not uniform)
-- [ ] T5 Registry: fractional box faces → region entries (typed), corner UVs 0..16
-- [ ] T6 Vertex shaders apply the region rect
-- [ ] T7 Tests (texarray, mesh, registry), VoxelEdit shot of chests/pot, memory stat before/after
+- [x] T2 Layer map entries RGBA32: code (layer, grid, tile) + region rect
+- [x] T3 Per-texture tile size: layers sized max(largest, 128), textures packed at native size
+- [x] T4 blockTex: always the grad path (per-entry grid is not uniform)
+- [x] T5 Registry: fractional box faces → region entries (typed), corner UVs 0..16
+- [x] T6 Vertex shaders apply the region rect
+- [x] T7 Tests (texarray, mesh, registry), VoxelEdit shot of chests/pot, memory stat before/after
+
+Status (2026-11-15): TestShapeCoverage on 26.3: 0 gaps. Seen in shots:
+shulker box, banners, skulls/heads, copper golem statue, end portal.
+Not seen: conduit, wall banners, double/copper/trapped chests.
+Known: the breaking-crack overlay maps over a region face's 0..1 UVs (it
+stretches on small model faces). C11 open: deleting shapeVariants needs a
+geometry source for registries without a resolver (voxserver, mpbot,
+explorer multiplayer): decision pending.
+
+Flashlight (VoxelEdit G): render.Options.Flashlight, terrain of the plain
+renderer only (not the shader pack, models or items); verified in a night shot.
