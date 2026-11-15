@@ -83,7 +83,7 @@ whose layer-map entry carries the rect; the vertex keeps the old 4-word
 format with 0..16 corner UVs. Index budget: 4096 textures + regions
 (26.3: 1311 textures, 923 fractional rects); overflow panics loudly.
 
-- [ ] T1 Revert the 5-word vertex (keep the DecodeVertex test migration)
+- [x] T1 Revert the 5-word vertex (keep the DecodeVertex test migration)
 - [ ] T2 Layer map entries RGBA32: code (layer, grid, tile) + region rect
 - [ ] T3 Per-texture tile size: layers sized max(largest, 128), textures packed at native size
 - [ ] T4 blockTex: always the grad path (per-entry grid is not uniform)

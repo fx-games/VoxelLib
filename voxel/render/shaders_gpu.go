@@ -48,7 +48,7 @@ struct VOut {
 }
 ` + wgslLight + `
 @vertex
-fn vs(@location(0) d: vec4<u32>, @location(1) e: u32) -> VOut {
+fn vs(@location(0) d: vec4<u32>) -> VOut {
 	var shade = array<f32, 7>(0.5, 1.0, 0.8, 0.8, 0.6, 0.6, 1.0);
 	var ao = array<f32, 4>(0.45, 0.65, 0.82, 1.0);
 	let w0 = d.x; let w1 = d.y; let w2 = d.z; let w3 = d.w;
@@ -62,7 +62,8 @@ fn vs(@location(0) d: vec4<u32>, @location(1) e: u32) -> VOut {
 	var o: VOut;
 	o.pos = u.viewProj * vec4f(pos, 1.0);
 	o.layer = textureLoad(layerMap, vec2<i32>(i32(w1 & 4095u), 0), 0).r;
-	o.uv = vec2f(f32(e & 65535u), f32(e >> 16u)) * (1.0 / 2048.0); // mesh.uvWord
+	o.uv = vec2f(f32((w1 >> 12u) & 31u), f32((w1 >> 17u) & 31u));
+	if ((w1 & (1u << 25u)) != 0u) { o.uv = o.uv * (1.0 / 16.0); } // box faces: u/v in 1/16 tile
 	let n = (w1 >> 22u) & 7u;
 	let tint = vec3f(f32(w2 & 255u), f32((w2 >> 8u) & 255u), f32((w2 >> 16u) & 255u)) * (1.0 / 255.0);
 	let wt = f32((w3 >> 16u) & 255u) * (1.0 / 255.0);
@@ -556,7 +557,7 @@ func (ps *pipelines) init() error {
 		return gputypes.VertexAttribute{Format: f, Offset: off, ShaderLocation: loc}
 	}
 	terrainBuf := []gputypes.VertexBufferLayout{{ArrayStride: vertexBytes, StepMode: gputypes.VertexStepModeVertex,
-		Attributes: []gputypes.VertexAttribute{attr(0, gputypes.VertexFormatUint32x4, 0), attr(1, gputypes.VertexFormatUint32, 16)}}}
+		Attributes: []gputypes.VertexAttribute{attr(0, gputypes.VertexFormatUint32x4, 0)}}}
 	lineBuf := []gputypes.VertexBufferLayout{{ArrayStride: 12, StepMode: gputypes.VertexStepModeVertex,
 		Attributes: []gputypes.VertexAttribute{attr(0, gputypes.VertexFormatFloat32x3, 0)}}}
 	modelBuf := []gputypes.VertexBufferLayout{{ArrayStride: modelStride * 4, StepMode: gputypes.VertexStepModeVertex,
